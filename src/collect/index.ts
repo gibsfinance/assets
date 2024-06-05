@@ -18,14 +18,7 @@ export const main = async () => {
       tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
     }),
     phux.collect(),
-    github.collect({
-      // owner: 'PLS369',
-      // name: 'pulsechain-assets',
-      // paths: [{
-      //   path: 'blockchain/pulsechain/assets',
-      //   filter: (item) => { },
-      // }],
-    }),
+    github.collect(),
   ])
   const relativePaths = filePaths.map(utils.pathFromOutRoot)
   fs.writeFileSync(path.join(utils.root, 'index.json'), JSON.stringify(relativePaths, null, 2))

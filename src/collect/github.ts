@@ -39,15 +39,7 @@ const walkFor = (start: string, fn: Walker): string[] => {
   return _.flattenDeep(filtered)
 }
 
-export const collect = async ({
-  // owner,
-  // name,
-  // paths,
-}: {
-    // owner: string;
-    // name: string;
-    // paths: { path: string; filter: Filter }[]
-  }) => {
+export const collect = async () => {
   const walkPath = path.join(utils.root, 'submodules', 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
   const infoFiles = walkFor(walkPath, (file, walker) => {
     const stat = fs.statSync(file)
@@ -84,7 +76,6 @@ export const collect = async ({
       utils.tokenImage.update(pulsechain.id, piece.address, image, {
         setLatest: false,
         version,
-        // outRoot: true,
       }),
       utils.multicallRead<[string, string, number]>({
         chain: pulsechain,
@@ -130,23 +121,7 @@ export const collect = async ({
       }),
     })
   })
-  await utils.providerLink.update('pls369', entries.sort(utils.sortTokenEntry))
-  // const tokenList: types.TokenList = {
-  //   tokens: pieces.map((piece) => ({
-  //     address: piece.address,
-  //     // logoURI:
-  //   }))
-  // }
-  // console.log(pieces[0])
-  // const contentsPath = `https://api.github.com/repos/${owner}/${name}/contents`
-  // const res = await fetch(contentsPath, {
-  //   headers: {
-  //     'Authorization': `token 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`,
-  //     'X-GitHub-Api-Version': '2022-11-28',
-  //   },
-  // })
-  // const remaining = res.headers.get('x-ratelimit-remaining')
-  // console.log(remaining)
-  return ''
+  const { path: providerLinkPath } = await utils.providerLink.update('pls369', entries.sort(utils.sortTokenEntry))
+  return providerLinkPath
 }
 
