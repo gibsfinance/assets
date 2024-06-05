@@ -84,7 +84,9 @@ export const updateImage = (
     return ImageUpdateStatus.MATCHES_SPECIFIC
   }
   fs.writeFileSync(specificPath, image)
-  fs.writeFileSync(latestPath, image)
+  if (writeLatest) {
+    fs.writeFileSync(latestPath, image)
+  }
   return ImageUpdateStatus.MATCHES_NEITHER
 }
 
@@ -101,15 +103,16 @@ export const networkImage = {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
     const ext = type?.ext
-    const specificPath = networkImage.path(chainId, {
+    const opts = {
       ...defaultImageOptions,
       ext,
       ...options,
       version: newHash,
-    })
+    }
+    const specificPath = networkImage.path(chainId, opts)
     return {
       path: specificPath,
-      status: updateImage(specificPath, image, options.setLatest),
+      status: updateImage(specificPath, image, opts.setLatest),
     }
   },
 }
@@ -126,15 +129,16 @@ export const providerImage = {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
     const ext = type?.ext
-    const specificPath = providerImage.path(key, {
+    const opts = {
       ...defaultImageOptions,
       ext,
       ...options,
       version: newHash,
-    })
+    }
+    const specificPath = providerImage.path(key, opts)
     return {
       path: specificPath,
-      status: updateImage(specificPath, image, options.setLatest),
+      status: updateImage(specificPath, image, opts.setLatest),
     }
   },
 }

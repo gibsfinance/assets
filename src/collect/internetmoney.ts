@@ -43,7 +43,9 @@ export const scrape = async () => {
           client,
         })
         const image = await fetch(token.icon).then(utils.responseToBuffer)
-        const { path: outPath } = await utils.tokenImage.update(network.chainId, address, image)
+        const { path: outPath } = await utils.tokenImage.update(network.chainId, address, image, {
+          setLatest: false,
+        })
         const [name, symbol, decimals] = await utils.multicallRead<[string, string, number]>({
           chain,
           client,
