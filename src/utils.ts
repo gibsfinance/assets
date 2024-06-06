@@ -109,7 +109,7 @@ export const networkImage = {
       ...options,
     }
     const fullChainId = viem.toHex(chainId, { size: 32 })
-    return path.join(images, 'networks', fullChainId, `${opts.version}.${opts.ext}`)
+    return path.join(images, 'networks', fullChainId, `${opts.version}${opts.ext}`)
   },
   update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
@@ -140,7 +140,7 @@ export const providerImage = {
       ...defaultImageOptions,
       ...options,
     }
-    return path.join(images, 'providers', key, `${opts.version}.${opts.ext}`)
+    return path.join(images, 'providers', key, `${opts.version}${opts.ext}`)
   },
   update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
