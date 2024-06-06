@@ -114,9 +114,9 @@ export const networkImage = {
   update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext ? `.${type?.ext}` : null
+    const ext = getExt(image, type?.ext)
     if (!ext) {
-      failureLog('ext %o', chainId)
+      failureLog('ext %o - %o', newHash, chainId)
       return null
     }
     const opts = {
@@ -145,9 +145,9 @@ export const providerImage = {
   update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext ? `.${type.ext}` : null
+    const ext = getExt(image, type?.ext)
     if (!ext) {
-      failureLog('ext %o', key)
+      failureLog('ext %o - %o', newHash, key)
       return null
     }
     const opts = {
@@ -163,6 +163,12 @@ export const providerImage = {
       version: newHash,
     }
   },
+}
+
+const getExt = (image: Buffer, e: string | undefined) => {
+  const ext = e ? `.${e}` : null
+  if (ext) return ext
+  return image.toString().split('<').length > 2 ? '.svg' : null
 }
 
 type ImageUpdateResult = {
@@ -190,9 +196,9 @@ export const tokenImage = {
   ): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext ? `.${type.ext}` : null
+    const ext = getExt(image, type?.ext)
     if (!ext) {
-      failureLog('ext %o -> %o', chainId, address)
+      failureLog('ext %o - %o -> %o', newHash, address, chainId)
       return null
     }
     const opts = {
