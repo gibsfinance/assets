@@ -1,3 +1,6 @@
 [submodule "submodules/trustwallet"]
 	path = submodules/trustwallet
 	url = https://github.com/trustwallet/assets
+[submodule "submodules/pulsechain-assets"]
+	path = submodules/pulsechain-assets
+	url = https://github.com/PLS369/pulsechain-assets
