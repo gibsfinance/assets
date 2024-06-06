@@ -1,3 +1,3 @@
-import * as collectGithub from '../collect/github'
+import { collect } from '../collect/trustwallet'
 
-collectGithub.collect({}).catch((err) => console.log(err))
+collect().catch((err) => console.log(err))

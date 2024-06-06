@@ -20,7 +20,7 @@ export const scrape = async () => {
       })
       let chain = utils.findChain(network.chainId)
       if (!chain) {
-        console.log('missing %o - %o', network.chainId, network.networkName)
+        // console.log('missing %o - %o', network.chainId, network.networkName)
         chain = {
           id: network.chainId,
           contracts: chains.mainnet.contracts,

@@ -113,6 +113,7 @@ export const networkImage = {
     return {
       path: specificPath,
       status: updateImage(specificPath, image, opts.setLatest),
+      version: newHash,
     }
   },
 }
@@ -139,6 +140,7 @@ export const providerImage = {
     return {
       path: specificPath,
       status: updateImage(specificPath, image, opts.setLatest),
+      version: newHash,
     }
   },
 }
@@ -146,6 +148,7 @@ export const providerImage = {
 type ImageUpdateResult = {
   path: string
   status: ImageUpdateStatus
+  version: string
 }
 
 export const tokenImage = {
@@ -178,6 +181,7 @@ export const tokenImage = {
     return {
       path: specificPath,
       status: updateImage(specificPath, image, opts.setLatest),
+      version: newHash,
     }
   }
 }
@@ -190,7 +194,10 @@ export const providerLink = {
     }
     return path.join(links, 'providers', providerKey, `${opts.version}.${opts.ext}`)
   },
-  update: async (providerKey: string, sortedEntries: types.TokenEntry[], options = {}): Promise<{ path: string }> => {
+  update: async (
+    providerKey: string, sortedEntries: types.TokenEntry[],
+    options = {},
+  ): Promise<{ path: string }> => {
     const opts = {
       ...defaultListOptions,
       ...options,
@@ -326,3 +333,7 @@ export const commonNativeNames = new Set<viem.Hex>([
   viem.zeroAddress,
   viem.getAddress('0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'),
 ])
+
+export const removedUndesirable = (names: string[]) => {
+  return names.filter((name) => name !== '.DS_Store')
+}
