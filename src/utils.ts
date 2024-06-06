@@ -9,6 +9,7 @@ import * as types from './types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { setTimeout } from 'timers/promises'
+import { Spinner } from '@topcli/spinner'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -29,7 +30,7 @@ type ChainId = number | bigint | viem.Hex
 
 const defaultImageOptions = {
   version: 'latest',
-  ext: 'svg',
+  ext: '.svg',
   outRoot: false,
   setLatest: false,
 }
@@ -90,6 +91,17 @@ export const updateImage = (
   return ImageUpdateStatus.MATCHES_NEITHER
 }
 
+const failures: any[][] = []
+const failureLog = (...a: any[]) => {
+  failures.push(a)
+}
+
+export const printFailures = () => {
+  for (const failure of failures) {
+    console.log(...failure)
+  }
+}
+
 export const networkImage = {
   path: (chainId: ChainId, options: ImageOptions = {}) => {
     const opts = {
@@ -99,10 +111,14 @@ export const networkImage = {
     const fullChainId = viem.toHex(chainId, { size: 32 })
     return path.join(images, 'networks', fullChainId, `${opts.version}.${opts.ext}`)
   },
-  update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult> => {
+  update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext
+    const ext = type?.ext ? `.${type?.ext}` : null
+    if (!ext) {
+      failureLog('ext %o', chainId)
+      return null
+    }
     const opts = {
       ...defaultImageOptions,
       ext,
@@ -126,10 +142,14 @@ export const providerImage = {
     }
     return path.join(images, 'providers', key, `${opts.version}.${opts.ext}`)
   },
-  update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult> => {
+  update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext
+    const ext = type?.ext ? `.${type.ext}` : null
+    if (!ext) {
+      failureLog('ext %o', key)
+      return null
+    }
     const opts = {
       ...defaultImageOptions,
       ext,
@@ -158,7 +178,7 @@ export const tokenImage = {
       ...options,
     }
     const fullChainId = viem.toHex(chainId, { size: 32 })
-    const filePath = path.join(images, 'tokens', fullChainId, address, `${opts.version}.${opts.ext}`)
+    const filePath = path.join(images, 'tokens', fullChainId, address, `${opts.version}${opts.ext}`)
     if (opts.outRoot) {
       return pathFromOutRoot(filePath)
     }
@@ -167,10 +187,14 @@ export const tokenImage = {
   update: async (
     chainId: ChainId, address: viem.Hex,
     image: Buffer, options: ImageOptions = {},
-  ): Promise<ImageUpdateResult> => {
+  ): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
     const type = await fileType.fileTypeFromBuffer(image)
-    const ext = type?.ext
+    const ext = type?.ext ? `.${type.ext}` : null
+    if (!ext) {
+      failureLog('ext %o -> %o', chainId, address)
+      return null
+    }
     const opts = {
       ...defaultImageOptions,
       ext,
@@ -195,7 +219,7 @@ export const providerLink = {
     return path.join(links, 'providers', providerKey, `${opts.version}.${opts.ext}`)
   },
   update: async (
-    providerKey: string, sortedEntries: types.TokenEntry[],
+    providerKey: string, tokens: types.TokenEntry[],
     options = {},
   ): Promise<{ path: string }> => {
     const opts = {
@@ -211,8 +235,7 @@ export const providerLink = {
       name: providerKey,
       timestamp: (new Date()).toISOString(),
       ...opts,
-      tokens: sortedEntries,
-      tokenMap: entiresToMap(sortedEntries),
+      tokens: tokens.sort(sortTokenEntry),
     } as types.TokenList
     fs.writeFileSync(file, JSON.stringify(tokenList))
     return {
@@ -336,4 +359,15 @@ export const commonNativeNames = new Set<viem.Hex>([
 
 export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
+}
+
+const spinnerLimit = promiseLimit<any>(4)
+
+export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
+  return spinnerLimit(async () => {
+    const spinner = new Spinner().start(key)
+    const result = await fn()
+    spinner.succeed()
+    return result
+  })
 }

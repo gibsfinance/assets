@@ -72,41 +72,40 @@ export const collect = async () => {
   await utils.limit.map(pieces, async (piece: { fullPath: string, address: viem.Hex }) => {
     const image = fs.readFileSync(piece.fullPath)
     const version = utils.calculateHash(image)
-    const [writeResult, multicall] = await Promise.all([
-      utils.tokenImage.update(pulsechain.id, piece.address, image, {
-        setLatest: false,
-        version,
-      }),
-      utils.multicallRead<[string, string, number]>({
+    const writeResult = await utils.tokenImage.update(pulsechain.id, piece.address, image, {
+      setLatest: false,
+      version,
+    })
+    if (!writeResult) return
+    const multicall = await utils.multicallRead<[string, string, number]>({
+      chain: pulsechain,
+      client,
+      abi: viem.erc20Abi,
+      calls: [
+        { functionName: 'name' },
+        { functionName: 'symbol' },
+        { functionName: 'decimals' },
+      ],
+      target: piece.address,
+    }).catch(async () => {
+      return utils.multicallRead<[viem.Hex, viem.Hex, number]>({
         chain: pulsechain,
         client,
-        abi: viem.erc20Abi,
+        abi: viem.erc20Abi_bytes32,
         calls: [
           { functionName: 'name' },
           { functionName: 'symbol' },
           { functionName: 'decimals' },
         ],
         target: piece.address,
-      }).catch(async () => {
-        return utils.multicallRead<[viem.Hex, viem.Hex, number]>({
-          chain: pulsechain,
-          client,
-          abi: viem.erc20Abi_bytes32,
-          calls: [
-            { functionName: 'name' },
-            { functionName: 'symbol' },
-            { functionName: 'decimals' },
-          ],
-          target: piece.address,
-        }).then(([name, symbol, decimals]) => (
-          [
-            viem.fromHex(name, 'string').split('\x00').join(''),
-            viem.fromHex(symbol, 'string').split('\x00').join(''),
-            decimals,
-          ] as const
-        ))
-      }).catch(() => ['', '', 18] as const)
-    ])
+      }).then(([name, symbol, decimals]) => (
+        [
+          viem.fromHex(name, 'string').split('\x00').join(''),
+          viem.fromHex(symbol, 'string').split('\x00').join(''),
+          decimals,
+        ] as const
+      ))
+    }).catch(() => ['', '', 18] as const)
     const [name, symbol, decimals] = multicall
     entries.push({
       address: piece.address,
@@ -117,11 +116,11 @@ export const collect = async () => {
       logoURI: utils.tokenImage.path(pulsechain.id, piece.address, {
         outRoot: true,
         version,
-        ext: path.extname(writeResult.path).slice(1),
+        ext: path.extname(writeResult.path),
       }),
     })
   })
-  const { path: providerLinkPath } = await utils.providerLink.update('pls369', entries.sort(utils.sortTokenEntry))
+  const { path: providerLinkPath } = await utils.providerLink.update('pls369', entries)
   return providerLinkPath
 }
 

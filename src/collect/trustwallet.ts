@@ -3,6 +3,7 @@ import * as path from 'path'
 import * as utils from '../utils'
 import * as types from '../types'
 import * as viem from 'viem'
+import _ from 'lodash'
 
 const blockchainsRoot = path.join(utils.root, 'submodules', 'trustwallet', 'blockchains')
 const assetsFolder = 'assets'
@@ -13,7 +14,7 @@ export const collect = async (): Promise<string[]> => {
     try {
       const assets = await fs.promises.readdir(path.join(blockchainsRoot, folder, assetsFolder))
       const entries = await entriesFromAssets(folder, utils.removedUndesirable(assets))
-      const result = await utils.providerLink.update('trustwallet', entries.sort(utils.sortTokenEntry))
+      const result = await utils.providerLink.update('trustwallet', _.compact(entries))
       return result.path
     } catch (err) {
       return ''
@@ -49,7 +50,7 @@ type Info = types.TokenEntry & {
 const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   // https://assets-cdn.trustwallet.com/blockchains/ethereum/
   const cdnPrefix = 'https://assets-cdn.trustwallet.com/blockchains'
-  const pathPrefix = `${cdnPrefix}/${blockchainKey}/${assetsFolder}/`
+  // const pathPrefix = `${cdnPrefix}/${blockchainKey}/${assetsFolder}/`
   const [networkInfo, networkLogo] = await load(path.join(blockchainsRoot, blockchainKey, 'info'))
   const tokenList = JSON.parse((await fs.promises.readFile(path.join(blockchainsRoot, blockchainKey, 'tokenlist.json'))).toString()) as types.TokenList
   let chainId = networkInfo.coin_type || tokenList.tokens[0].chainId
@@ -64,6 +65,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     const [info, logo] = await load(path.join(blockchainsRoot, blockchainKey, assetsFolder, asset))
     const address = asset as viem.Hex
     const writeResult = await utils.tokenImage.update(chainId, address, logo)
+    if (!writeResult) return null
     const entry: types.TokenEntry = {
       name: info.name,
       decimals: info.decimals,
@@ -73,7 +75,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       logoURI: utils.tokenImage.path(chainId, address, {
         outRoot: true,
         version: writeResult.version,
-        ext: path.extname(writeResult.path).slice(1),
+        ext: path.extname(writeResult.path),
       }),
     }
     return entry

@@ -6,11 +6,13 @@ import * as remoteTokenList from './remote-tokenlist'
 import * as phux from './phux'
 import * as github from './github'
 import * as trustwallet from './trustwallet'
+import * as uniswapTokenlists from './uniswap-tokenlists'
 import _ from 'lodash'
 
 export const main = async () => {
   const filePaths = await Promise.all([
     trustwallet.collect(),
+    uniswapTokenlists.collect(),
     remoteTokenList.collect({
       providerKey: 'piteas',
       tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',

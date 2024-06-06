@@ -1,5 +1,6 @@
 import * as types from '../types'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
+import { fetch } from '../fetch'
 
 export const collect = async ({
   providerKey,
