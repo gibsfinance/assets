@@ -11,6 +11,7 @@ export default tseslint.config(
   mocha.configs.flat.recommended,
   {
     ignores: [
+      'images',
       '.DS_Store',
       'node_modules',
       'build',
@@ -38,6 +39,9 @@ export default tseslint.config(
       'import/no-unresolved': 'off',
       'mocha/no-mocha-arrows': 'off',
       'mocha/no-global-tests': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/consistent-type-definitions': 'off',
     },
   },
 )

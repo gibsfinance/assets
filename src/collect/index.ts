@@ -1,4 +1,4 @@
-import * as utils from '../utils'
+import * as utils from '@/utils'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as internetmoney from './internetmoney'
@@ -21,13 +21,10 @@ export const main = async () => {
       providerKey: 'pulsex',
       tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
     }),
-    internetmoney.scrape(),
+    internetmoney.collect(),
     phux.collect(),
     github.collect(),
   ])
-  const relativePaths = _(filePaths)
-    .flatten().compact()
-    .map(utils.pathFromOutRoot)
-    .value()
+  const relativePaths = _(filePaths).flatten().compact().map(utils.pathFromOutRoot).value()
   fs.writeFileSync(path.join(utils.root, 'index.json'), JSON.stringify(relativePaths, null, 2))
 }

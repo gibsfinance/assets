@@ -1,0 +1,10 @@
+# Start from the official PostgreSQL image
+FROM postgres:13
+
+# Install Python and the necessary PostgreSQL packages for PL/Python
+RUN apt-get update --fix-missing && \
+    apt-get install -y --fix-missing postgresql-plpython3-13 postgresql-contrib python3-pip
+
+# Install the pysha3 library
+RUN pip3 install pysha3
+

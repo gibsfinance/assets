@@ -1,10 +1,9 @@
-import lists from '../harvested/uniswap/lists.json'
-import * as types from '../types'
+import lists from '@/harvested/uniswap/lists.json'
+import * as types from '@/types'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 import promiseLimit from 'promise-limit'
 import _ from 'lodash'
-import { fetch } from '../fetch'
-import * as utils from '../utils'
+import { fetch } from '@/fetch'
 
 const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 
@@ -21,12 +20,14 @@ export const collect = async () => {
       homepage: item.homepage,
     }
   })
-  const tokenListPaths = await promiseLimit<any>(4).map(usable, async (info) => {
+  const tokenListPaths = await promiseLimit<any>(4).map(usable, async (info): Promise<string[] | false> => {
     const result = await fetch(info.uri)
-      .then(async (res) => await res.json() as types.TokenList)
+      .then(async (res) => (await res.json()) as types.TokenList)
       .catch(() => null)
-    if (!result) { return false }
-    if (info.machineName === 'testnet-tokens') return
+    if (!result) {
+      return false
+    }
+    if (info.machineName === 'testnet-tokens') return false
     // custom domain replacement logic
     result.tokens.forEach((token) => {
       const replacing = 'ethereum-optimism.github.io'
@@ -40,5 +41,5 @@ export const collect = async () => {
     })
     return await inmemoryTokenlist.collect(info.machineName, result)
   })
-  return _.compact(tokenListPaths)
+  return _(tokenListPaths).compact().flatten().value()
 }

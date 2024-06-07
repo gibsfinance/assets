@@ -1,0 +1,35 @@
+services:
+  gibassets-postgres-rw:
+    container_name: gibassets-postgres-rw
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    shm_size: 16g
+    command: postgres -c 'max_connections=500' -c work_mem=256MB -c maintenance_work_mem=256MB -c max_wal_size=1GB
+    ports:
+      - 5876:5432
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - gibassets
+    environment:
+      - POSTGRES_DB=gibassets
+      - POSTGRES_USER=gibassets
+      - POSTGRES_PASSWORD=password
+  gibassets-postgres-migrate:
+    container_name: gibassets-postgres-migrate
+    image: registry.gitlab.com/pulsechaincom/gibassets:latest
+    command: sh -cx "npm run db:migrate-latest && npm run db:seed"
+    networks:
+      - gibassets
+    environment:
+      DEBUG: "${DEBUG:-📷*}"
+      DATABASE_URL: "${DATABASE_URL:-postgres://gibassets:password@postgres-rw:5432/gibassets}"
+
+networks:
+  gibassets:
+    driver: bridge
+
+volumes:
+  gibassets:
+    external: true

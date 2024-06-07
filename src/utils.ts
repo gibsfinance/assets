@@ -5,7 +5,7 @@ import * as fs from 'fs'
 import * as crypto from 'crypto'
 import * as viem from 'viem'
 import { fileURLToPath } from 'url'
-import * as types from './types'
+import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { setTimeout } from 'timers/promises'
@@ -32,20 +32,21 @@ const defaultImageOptions = {
   version: 'latest',
   ext: '.svg',
   outRoot: false,
-  setLatest: false,
 }
 
 type ImageOptions = Partial<typeof defaultImageOptions>
 
 const defaultListOptions = {
   logoURI: '',
-  // name: '',
+  name: '',
   version: {
     major: 0,
     minor: 0,
     patch: 0,
-  }
+  },
 }
+
+type ListOptions = Partial<typeof defaultListOptions>
 
 enum ImageUpdateStatus {
   MATCHES_SPECIFIC,
@@ -58,11 +59,7 @@ export const pathFromOutRoot = (filePath: string) => {
   return filePath.split(root).join(outRoot)
 }
 
-export const updateImage = (
-  specificPath: string,
-  image: Buffer,
-  writeLatest = false,
-): ImageUpdateStatus => {
+export const updateImage = (specificPath: string, image: Buffer, writeLatest = false): ImageUpdateStatus => {
   const newHash = calculateHash(image)
   const folder = path.dirname(specificPath)
   fs.mkdirSync(folder, {
@@ -91,8 +88,9 @@ export const updateImage = (
   return ImageUpdateStatus.MATCHES_NEITHER
 }
 
-const failures: any[][] = []
-const failureLog = (...a: any[]) => {
+type ConsoleLogParams = Parameters<typeof console.log>
+const failures: ConsoleLogParams[] = []
+const failureLog = (...a: ConsoleLogParams) => {
   failures.push(a)
 }
 
@@ -102,19 +100,20 @@ export const printFailures = () => {
   }
 }
 
+export const getFullChainId = (chainId: ChainId) => viem.toHex(chainId, { size: 32 })
+
 export const networkImage = {
   path: (chainId: ChainId, options: ImageOptions = {}) => {
     const opts = {
       ...defaultImageOptions,
       ...options,
     }
-    const fullChainId = viem.toHex(chainId, { size: 32 })
+    const fullChainId = getFullChainId(chainId)
     return path.join(images, 'networks', fullChainId, `${opts.version}${opts.ext}`)
   },
   update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
-    const type = await fileType.fileTypeFromBuffer(image)
-    const ext = getExt(image, type?.ext)
+    const ext = await getExt(image)
     if (!ext) {
       failureLog('ext %o - %o', newHash, chainId)
       return null
@@ -128,7 +127,8 @@ export const networkImage = {
     const specificPath = networkImage.path(chainId, opts)
     return {
       path: specificPath,
-      status: updateImage(specificPath, image, opts.setLatest),
+      ext,
+      status: updateImage(specificPath, image),
       version: newHash,
     }
   },
@@ -144,8 +144,7 @@ export const providerImage = {
   },
   update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
-    const type = await fileType.fileTypeFromBuffer(image)
-    const ext = getExt(image, type?.ext)
+    const ext = await getExt(image)
     if (!ext) {
       failureLog('ext %o - %o', newHash, key)
       return null
@@ -159,22 +158,28 @@ export const providerImage = {
     const specificPath = providerImage.path(key, opts)
     return {
       path: specificPath,
-      status: updateImage(specificPath, image, opts.setLatest),
+      ext,
+      status: updateImage(specificPath, image),
       version: newHash,
     }
   },
 }
 
-const getExt = (image: Buffer, e: string | undefined) => {
+const getExt = async (image: Buffer) => {
+  const e = await fileType.fileTypeFromBuffer(image)
   const ext = e ? `.${e}` : null
   if (ext) return ext
   return image.toString().split('<').length > 2 ? '.svg' : null
 }
 
-type ImageUpdateResult = {
+interface FileUpdateResult {
   path: string
-  status: ImageUpdateStatus
   version: string
+  ext: string
+}
+
+interface ImageUpdateResult extends FileUpdateResult {
+  status: ImageUpdateStatus
 }
 
 export const tokenImage = {
@@ -191,12 +196,13 @@ export const tokenImage = {
     return filePath
   },
   update: async (
-    chainId: ChainId, address: viem.Hex,
-    image: Buffer, options: ImageOptions = {},
+    chainId: ChainId,
+    address: viem.Hex,
+    image: Buffer,
+    options: ImageOptions = {},
   ): Promise<ImageUpdateResult | null> => {
     const newHash = calculateHash(image)
-    const type = await fileType.fileTypeFromBuffer(image)
-    const ext = getExt(image, type?.ext)
+    const ext = await getExt(image)
     if (!ext) {
       failureLog('ext %o - %o -> %o', newHash, address, chainId)
       return null
@@ -210,66 +216,60 @@ export const tokenImage = {
     const specificPath = tokenImage.path(chainId, address, opts)
     return {
       path: specificPath,
-      status: updateImage(specificPath, image, opts.setLatest),
+      ext,
+      status: updateImage(specificPath, image),
       version: newHash,
     }
-  }
+  },
 }
 
 export const providerLink = {
-  path: (providerKey: string, options = {}) => {
+  path: (providerKey: string, chainId: ChainId, options = {}) => {
     const opts = {
       ...defaultImageOptions,
       ...options,
     }
-    return path.join(links, 'providers', providerKey, `${opts.version}.${opts.ext}`)
+    const fullChainId = getFullChainId(chainId)
+    return path.join(links, 'providers', providerKey, fullChainId, `${opts.version}.${opts.ext}`)
   },
   update: async (
-    providerKey: string, tokens: types.TokenEntry[],
-    options = {},
-  ): Promise<{ path: string }> => {
+    providerKey: string,
+    chainId: ChainId,
+    tokens: types.TokenEntry[],
+    options: ListOptions = {},
+  ): Promise<FileUpdateResult> => {
     const opts = {
       ...defaultListOptions,
       ...options,
     }
-    const folder = path.join(links, providerKey)
-    const file = path.join(folder, 'tokenlist.json')
-    fs.mkdirSync(folder, {
-      recursive: true,
-    })
     const tokenList = {
-      name: providerKey,
-      timestamp: (new Date()).toISOString(),
+      timestamp: new Date().toISOString(),
       ...opts,
+      name: providerKey,
       tokens: tokens.sort(sortTokenEntry),
     } as types.TokenList
-    fs.writeFileSync(file, JSON.stringify(tokenList))
+    const fileData = JSON.stringify(tokenList)
+    const pathOpts = {
+      version: calculateHash(Buffer.from(fileData)),
+      ext: '.json',
+    }
+    const file = providerLink.path(providerKey, chainId, pathOpts)
+    fs.mkdirSync(path.dirname(file), {
+      recursive: true,
+    })
+    fs.writeFileSync(file, fileData)
     return {
       path: file,
+      ...pathOpts,
     }
   },
-}
-
-const entiresToMap = (entries: types.TokenEntry[]) => {
-  return _.reduce(entries, (accumulator, entry) => {
-    accumulator[`${entry.chainId}_${entry.address}`] = entry
-    return accumulator
-  }, {} as types.TokenMap)
-}
-
-export const toLinkPath = (chainId: ChainId, address?: string) => {
-  const fullChainId = viem.toHex(chainId, { size: 32 })
-  const addr = address && viem.getAddress(address)
-  return path.join(links, fullChainId, `${addr || 'index'}.json`)
 }
 
 export const calculateHash = (buffer: Buffer): string => {
   return crypto.createHash('sha256').update(buffer).digest('hex')
 }
 
-export const responseToBuffer = async (res: Response) => (
-  Buffer.from(await res.arrayBuffer())
-)
+export const responseToBuffer = async (res: Response) => Buffer.from(await res.arrayBuffer())
 
 export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
   return BigInt(a.address) < BigInt(b.address) ? -1 : 1
@@ -317,17 +317,15 @@ export const multicallRead = async <T>({
     allowFailure: call.allowFailure || false,
     target: (call.target || target) as viem.Hex,
   }))
-  const reads = await multicall.read.aggregate3([
-    arg
-  ])
+  const reads = await multicall.read.aggregate3([arg])
   // try {
-  return calls.map((call, i) => (
+  return calls.map((call, i) =>
     viem.decodeFunctionResult({
       abi: call.abi || abi,
       functionName: call.functionName,
       data: reads[i].returnData,
-    })
-  )) as T
+    }),
+  ) as T
   // } catch (err) {
   //   console.log(calls, reads, arg)
   //   throw err

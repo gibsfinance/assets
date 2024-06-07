@@ -23,7 +23,7 @@ const ipfsCompatableFetch: typeof fetch = async (
     }, 15_000)
     controllers.push([timeoutId, controller])
     return fetch(url, {
-      redirect: "follow",
+      redirect: 'follow',
       signal: controller.signal,
       ...options,
     }).then((res) => {
@@ -35,6 +35,4 @@ const ipfsCompatableFetch: typeof fetch = async (
   }
 }
 
-export {
-  ipfsCompatableFetch as fetch
-}
+export { ipfsCompatableFetch as fetch }

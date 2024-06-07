@@ -1,17 +1,15 @@
-import * as types from '../types'
+import * as types from '@/types'
 import * as path from 'path'
-import * as utils from '../utils'
+import * as utils from '@/utils'
 import { zeroAddress } from 'viem'
-import { fetch } from '../fetch'
+import { fetch } from '@/fetch'
 import _ from 'lodash'
 import { setTimeout } from 'timers/promises'
 
-export const collect = async (
-  providerKey: string,
-  tokenList: Omit<types.TokenList, 'tokenMap'>,
-) => {
+export const collect = async (providerKey: string, tokenList: Omit<types.TokenList, 'tokenMap'>) => {
   return utils.spinner(providerKey, async () => {
-    const listImage = await fetch(tokenList.logoURI).then(utils.responseToBuffer)
+    const listImage = await fetch(tokenList.logoURI)
+      .then(utils.responseToBuffer)
       .catch((err) => {
         console.log('%o -> %o', providerKey, tokenList.logoURI)
         console.log(err)
@@ -30,7 +28,8 @@ export const collect = async (
       }
       const image = await Promise.race([
         setTimeout(10_000),
-        fetch(entry.logoURI).then(utils.responseToBuffer)
+        fetch(entry.logoURI)
+          .then(utils.responseToBuffer)
           .catch(async () => {
             await setTimeout(3_000)
             return await fetch(entry.logoURI).then(utils.responseToBuffer)
@@ -62,18 +61,18 @@ export const collect = async (
       await utils.tokenImage.update(entry.chainId, address, image, {
         version,
         ext,
-        setLatest: false,
       })
       return {
         ...entry,
         logoURI: filePath,
       }
     })
-    const {
-      path: providerTokenlistPath,
-    } = await utils.providerLink.update(providerKey, _.compact(entries), {
-      logoURI: listLogoURI || '',
+    const byChainId = _.groupBy(entries, 'chainId')
+    return await utils.limit.map(Object.entries(byChainId), async ([chainId, scopedEntries]) => {
+      const { path: providerTokenlistPath } = await utils.providerLink.update(providerKey, +chainId, _.compact(scopedEntries), {
+        logoURI: listLogoURI || '',
+      })
+      return providerTokenlistPath
     })
-    return providerTokenlistPath
   })
 }

@@ -6,7 +6,7 @@ this repo relies on git submodules so you will need to be careful not to break l
 
 constrained assets metadata linking.
 
-* reduce rpc calls
-* images for each token
-* multiple data providers
-* all served on cdn's (github)
+- reduce rpc calls
+- images for each token
+- multiple data providers
+- all served on cdn's (github)
