@@ -14,8 +14,8 @@ export const makeConfig = (overrides: Partial<Knex.Config>): Knex.Config => ({
   acquireConnectionTimeout: 30_000,
   pool: {
     min: 0,
-    max: 100,
-    idleTimeoutMillis: 6_000,
+    max: 256,
+    idleTimeoutMillis: 60_000,
   },
   seeds: {
     extension: 'ts',
@@ -43,5 +43,6 @@ export const config = makeConfig({
     ssl: configuration.database.ssl ? {
       rejectUnauthorized: false,
     } : false,
+    requestTimeout: 60_000,
   },
 })

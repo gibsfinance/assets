@@ -31,7 +31,7 @@ export const collect = async () => {
   })
   await utils.limit.map(Object.entries(tokens).reverse(), async ([chainIdString, tokens]: [string, string[]]) => {
     const networksList = await db.insertList({
-      key: `${provider.key}/tokens`,
+      key: 'tokens',
       providerId: provider.providerId,
     })
     await utils.spinner(`${providerKey}/${chainIdString}`, async () => {
@@ -46,7 +46,7 @@ export const collect = async () => {
         transport: viem.http(chain.rpcUrls.default.http[0]),
       })
       const networkList = await db.insertList({
-        key: `${networksList.key}/${chainIdString}`,
+        key: `${networksList.key}-${chainIdString}`,
         providerId: provider.providerId,
       })
       await utils.limit.map(tokens, async (token: viem.Hex) => {
@@ -55,7 +55,7 @@ export const collect = async () => {
           ? zeroAddress
           : token)
         const list = await db.insertList({
-          key: `${networkList.key}/${address}`,
+          key: `${networkList.key}-${address}`,
           providerId: provider.providerId,
         })
         const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)

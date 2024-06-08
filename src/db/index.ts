@@ -29,7 +29,7 @@ export const transaction = async <T>(...a: Parameters<Transact<T>>) => (
 
 const getExt = async (image: Buffer) => {
   const e = await fileType.fileTypeFromBuffer(image)
-  const ext = e ? `.${e}` : null
+  const ext = e && e.ext ? `.${e.ext}` : null
   if (ext) return ext
   return image.toString().split('<').length > 2 ? '.svg' : null
 }
@@ -42,7 +42,7 @@ const missingInfoPath = ({
   providerKey: string;
   listId: string;
 }) => {
-  const hash = imageHash || viem.keccak256(viem.toBytes(originalUri))
+  const hash = imageHash || viem.keccak256(viem.toBytes(originalUri)).slice(2)
   return path.join(utils.root, 'missing', providerKey, listId, hash)
 }
 
@@ -81,6 +81,7 @@ const writeMissing = async ({
   await fs.promises.mkdir(folder, {
     recursive: true,
   })
+  utils.failureLog('ext missing %o', folder)
   await Promise.all([
     fs.promises.writeFile(path.join(folder, 'info.json'), JSON.stringify({
       imageHash,
@@ -97,7 +98,7 @@ export const insertImage = async ({
 }: {
   providerKey: string, originalUri: string, listId: string, image: Buffer
 }, t: Tx = db) => {
-  const imageHash = viem.keccak256(image)
+  const imageHash = viem.keccak256(image).slice(2)
   const ext = await getExt(image)
   if (!ext) {
     await writeMissing({
@@ -107,10 +108,9 @@ export const insertImage = async ({
       image,
       listId,
     })
-    utils.failureLog('ext missing %o', imageHash)
     return null
   }
-  await Promise.all([
+  const [, [inserted]] = await Promise.all([
     removeMissing({
       imageHash,
       originalUri,
@@ -120,12 +120,11 @@ export const insertImage = async ({
     t.from(tableNames.image).insert<Image[]>({
       content: image,
       ext,
-    }).onConflict(['imageHash']).ignore(),
+    }).onConflict(['imageHash'])
+      .merge(['imageHash'])
+      .returning(['ext', 'imageHash']),
   ])
-  return await t.select('*')
-    .from<Image>(tableNames.image)
-    .where('imageHash', imageHash)
-    .first() || null
+  return inserted
 }
 
 export const fetchImage = async (url: string | Buffer, providerKey: string | null = null) => {
@@ -169,6 +168,7 @@ export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'e
   const [network] = await t.from(tableNames.network).insert({
     type,
     chainId: chainId.toString(),
+    networkId: utils.toKeccakBytes(`${type}${chainId}`),
   })
     .onConflict(['networkId'])
     .merge(['networkId'])
@@ -217,19 +217,23 @@ export const fetchImageAndStoreForList = async ({
   }
 }
 
-export const fetchImageAndStoreForToken = async ({
-  listId,
-  uri,
-  token,
-  originalUri,
-  providerKey,
-}: {
+export const fetchImageAndStoreForToken = async (inputs: {
   listId: string;
   uri: string | Buffer;
   token: InsertableToken;
   originalUri: string;
   providerKey: string;
 }, t: Tx = db) => {
+  let {
+    listId,
+    uri,
+    token,
+    originalUri,
+    providerKey,
+  } = inputs
+  if (token.networkId === utils.chainIdToNetworkId(1) && token.providedId === viem.zeroAddress) {
+    console.log(inputs)
+  }
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
@@ -252,12 +256,16 @@ export const fetchImageAndStoreForToken = async ({
   if (!img) {
     return null
   }
+  const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
   const [insertedToken] = await t.from(tableNames.token)
-    .insert<InsertableToken[]>([token])
+    .insert<InsertableToken[]>([{
+      type: 'erc20',
+      ...token,
+      providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
+    }])
     .onConflict(['networkId', 'providedId'])
     .merge(['networkId', 'providedId'])
     .returning('*')
-  const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
   const [listToken] = await t.from(tableNames.listToken)
     .insert<InsertableListToken[]>([{
       networkId: token.networkId,
@@ -291,7 +299,10 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
 
 export const insertProvider = async (provider: InsertableProvider, t: Tx = db) => {
   const [inserted] = await t.from(tableNames.provider)
-    .insert<Provider[]>([provider])
+    .insert<Provider[]>([{
+      ...provider,
+      providerId: viem.keccak256(viem.toBytes(provider.key)).slice(2),
+    }])
     .onConflict(['providerId'])
     .merge(['providerId'])
     .returning('*')

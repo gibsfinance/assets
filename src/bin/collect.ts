@@ -8,3 +8,6 @@ collect
   .main(providers)
   .catch((err) => console.log(err))
   .then(cleanup)
+  .then(() => {
+    console.log('finished')
+  })

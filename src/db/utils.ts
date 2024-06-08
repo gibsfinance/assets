@@ -141,7 +141,7 @@ EXECUTE PROCEDURE autoupdate_timestamp()`
 }
 
 export const resultToCamelCase = <T>(obj: unknown): T | T[] => {
-  if (!_.isObject(obj) || _.isDate(obj)) {
+  if (_.isBuffer(obj) || !_.isObject(obj) || _.isDate(obj)) {
     return obj as T
   }
   if (_.isArray(obj)) {

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import createError from 'http-errors'
-import * as data from '@/data'
+import * as data from '@/server/data'
 import { request } from 'http'
 
 export const router = Router()

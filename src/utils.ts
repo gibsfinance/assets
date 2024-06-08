@@ -160,7 +160,7 @@ export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
 }
 
 export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => (
-  viem.keccak256(viem.toBytes(`${type}${chainId}`)).slice(2)
+  toKeccakBytes(`${type}${chainId}`)
 )
 
 export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: viem.Hex) => {
@@ -218,3 +218,7 @@ export const timeout = (ms: number) => {
     promise: p,
   }
 }
+
+export const toKeccakBytes = (s: string) => (
+  viem.keccak256(viem.toBytes(s)).slice(2)
+)

@@ -6,10 +6,10 @@ import { router as listRouter } from './list'
 export const router = Router()
 
 // gib.show/image
-router.get('/image', imageRouter)
+router.use('/image', imageRouter)
 
 // gib.show/link
-router.get('/link', linkRouter)
+router.use('/link', linkRouter)
 
 // gib.show/list
-router.get('/list', listRouter)
+router.use('/list', listRouter)

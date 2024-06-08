@@ -22,7 +22,7 @@ export const collect = async () => {
     }
   })
   await promiseLimit<any>(4).map(usable, async (info) => {
-    const providerKey = `uniswap/${info.machineName}`
+    const providerKey = `uniswap-${info.machineName}`
     await utils.spinner(providerKey, async () => {
       const result = await fetch(info.uri)
         .then(async (res) => (await res.json()) as types.TokenList)

@@ -67,7 +67,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   if (!chainId) {
     return
   }
-  const key = `${providerKey}/${blockchainKey}`
+  const key = `${providerKey}-${blockchainKey}`
   await utils.spinner(key, async () => {
     const network = await db.insertNetworkFromChainId(chainId)
     const provider = await db.insertProvider({
