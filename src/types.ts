@@ -53,3 +53,6 @@ export type Call = {
   abi?: viem.Abi
   args?: any[]
 }
+
+
+export type ChainId = number | bigint | viem.Hex

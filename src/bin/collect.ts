@@ -1,11 +1,10 @@
 import * as collect from '@/collect'
-import * as fetch from '@/fetch'
-import * as utils from '@/utils'
+import { cleanup } from '@/cleanup'
+import * as args from '@/args'
+
+const { providers } = args.collect()
 
 collect
-  .main()
+  .main(providers)
   .catch((err) => console.log(err))
-  .then(() => {
-    utils.printFailures()
-    fetch.cancelAllRequests()
-  })
+  .then(cleanup)

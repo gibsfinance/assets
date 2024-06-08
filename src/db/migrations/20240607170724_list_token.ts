@@ -5,6 +5,10 @@ import { log } from '../../logger'
 import * as utils from '../utils'
 import { tableNames } from '../tables'
 
+const compositeId = utils.compositeId(tableNames.listToken, 'listTokenId', [
+  'networkId', 'providedId', 'listId', 'imageHash',
+])
+
 export async function up(knex: Knex): Promise<void> {
   const exists = await knex.schema.withSchema(userConfig.database.schema)
     .hasTable(tableNames.listToken)
@@ -38,13 +42,16 @@ export async function up(knex: Knex): Promise<void> {
         t.text('imageHash').index().notNullable()
           .references('imageHash')
           .inTable(`${userConfig.database.schema}.${tableNames.image}`)
+        t.text('listTokenId').index().notNullable().primary()
         t.timestamps(true, true)
       })
+    await compositeId.up(knex)
     await knex.raw(utils.autoUpdateTimestamp([userConfig.database.schema, tableNames.listToken]))
   }
 }
 
 export async function down(knex: Knex): Promise<void> {
+  await compositeId.down(knex)
   await knex.schema.withSchema(userConfig.database.schema)
     .dropTableIfExists(tableNames.listToken)
 }

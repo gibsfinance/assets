@@ -1,30 +1,5 @@
-import * as utils from '@/utils'
-import * as fs from 'fs'
-import * as path from 'path'
-import * as internetmoney from './internetmoney'
-import * as remoteTokenList from './remote-tokenlist'
-import * as phux from './phux'
-import * as github from './github'
-import * as trustwallet from './trustwallet'
-import * as uniswapTokenlists from './uniswap-tokenlists'
-import _ from 'lodash'
+import { type Collectable, collectables } from './collectables'
 
-export const main = async () => {
-  const filePaths = await Promise.all([
-    trustwallet.collect(),
-    uniswapTokenlists.collect(),
-    remoteTokenList.collect({
-      providerKey: 'piteas',
-      tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
-    }),
-    remoteTokenList.collect({
-      providerKey: 'pulsex',
-      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
-    }),
-    internetmoney.collect(),
-    phux.collect(),
-    github.collect(),
-  ])
-  const relativePaths = _(filePaths).flatten().compact().map(utils.pathFromOutRoot).value()
-  fs.writeFileSync(path.join(utils.root, 'index.json'), JSON.stringify(relativePaths, null, 2))
+export const main = async (providers: Collectable[]) => {
+  await Promise.all(providers.map(provider => collectables[provider]()))
 }

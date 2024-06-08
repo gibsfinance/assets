@@ -1,24 +1,23 @@
 import * as chains from 'viem/chains'
-import * as path from 'path'
-import * as fileType from 'file-type'
 import * as fs from 'fs'
+import * as path from 'path'
 import * as crypto from 'crypto'
 import * as viem from 'viem'
 import { fileURLToPath } from 'url'
 import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
-import { setTimeout } from 'timers/promises'
 import { Spinner } from '@topcli/spinner'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export const root = path.join(__dirname, '..')
-const images = path.join(root, 'images')
-const links = path.join(root, 'links')
+export const outRoot = process.env.OUT_ROOT || ''
 
-const outRoot = process.env.OUT_ROOT || ''
+export const root = path.join(__dirname, '..')
+export const submodules = path.join(root, 'submodules')
+export const images = path.join(root, 'images')
+export const links = path.join(root, 'links')
 
 export const paths = {
   root,
@@ -26,71 +25,13 @@ export const paths = {
   links,
 }
 
-type ChainId = number | bigint | viem.Hex
-
-const defaultImageOptions = {
-  version: 'latest',
-  ext: '.svg',
-  outRoot: false,
-}
-
-type ImageOptions = Partial<typeof defaultImageOptions>
-
-const defaultListOptions = {
-  logoURI: '',
-  name: '',
-  version: {
-    major: 0,
-    minor: 0,
-    patch: 0,
-  },
-}
-
-type ListOptions = Partial<typeof defaultListOptions>
-
-enum ImageUpdateStatus {
-  MATCHES_SPECIFIC,
-  MATCHES_LATEST,
-  MATCHES_BOTH,
-  MATCHES_NEITHER,
-}
-
 export const pathFromOutRoot = (filePath: string) => {
   return filePath.split(root).join(outRoot)
 }
 
-export const updateImage = (specificPath: string, image: Buffer, writeLatest = false): ImageUpdateStatus => {
-  const newHash = calculateHash(image)
-  const folder = path.dirname(specificPath)
-  fs.mkdirSync(folder, {
-    recursive: true,
-  })
-  const ext = path.extname(specificPath)
-  const latestPath = path.join(folder, `latest${ext}`)
-  if (fs.existsSync(specificPath)) {
-    if (!writeLatest) {
-      return ImageUpdateStatus.MATCHES_SPECIFIC
-    }
-    const latestImage = fs.readFileSync(latestPath)
-    const latestHash = calculateHash(latestImage)
-    if (latestHash === newHash) {
-      // if it is latest, then we early return
-      // we have the latest
-      return ImageUpdateStatus.MATCHES_BOTH
-    }
-    fs.writeFileSync(latestPath, image)
-    return ImageUpdateStatus.MATCHES_SPECIFIC
-  }
-  fs.writeFileSync(specificPath, image)
-  if (writeLatest) {
-    fs.writeFileSync(latestPath, image)
-  }
-  return ImageUpdateStatus.MATCHES_NEITHER
-}
-
 type ConsoleLogParams = Parameters<typeof console.log>
 const failures: ConsoleLogParams[] = []
-const failureLog = (...a: ConsoleLogParams) => {
+export const failureLog = (...a: ConsoleLogParams) => {
   failures.push(a)
 }
 
@@ -100,176 +41,18 @@ export const printFailures = () => {
   }
 }
 
-export const getFullChainId = (chainId: ChainId) => viem.toHex(chainId, { size: 32 })
-
-export const networkImage = {
-  path: (chainId: ChainId, options: ImageOptions = {}) => {
-    const opts = {
-      ...defaultImageOptions,
-      ...options,
-    }
-    const fullChainId = getFullChainId(chainId)
-    return path.join(images, 'networks', fullChainId, `${opts.version}${opts.ext}`)
-  },
-  update: async (chainId: ChainId, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
-    const newHash = calculateHash(image)
-    const ext = await getExt(image)
-    if (!ext) {
-      failureLog('ext %o - %o', newHash, chainId)
-      return null
-    }
-    const opts = {
-      ...defaultImageOptions,
-      ext,
-      ...options,
-      version: newHash,
-    }
-    const specificPath = networkImage.path(chainId, opts)
-    return {
-      path: specificPath,
-      ext,
-      status: updateImage(specificPath, image),
-      version: newHash,
-    }
-  },
-}
-
-export const providerImage = {
-  path: (key: string, options: ImageOptions = {}) => {
-    const opts = {
-      ...defaultImageOptions,
-      ...options,
-    }
-    return path.join(images, 'providers', key, `${opts.version}${opts.ext}`)
-  },
-  update: async (key: string, image: Buffer, options: ImageOptions = {}): Promise<ImageUpdateResult | null> => {
-    const newHash = calculateHash(image)
-    const ext = await getExt(image)
-    if (!ext) {
-      failureLog('ext %o - %o', newHash, key)
-      return null
-    }
-    const opts = {
-      ...defaultImageOptions,
-      ext,
-      ...options,
-      version: newHash,
-    }
-    const specificPath = providerImage.path(key, opts)
-    return {
-      path: specificPath,
-      ext,
-      status: updateImage(specificPath, image),
-      version: newHash,
-    }
-  },
-}
-
-const getExt = async (image: Buffer) => {
-  const e = await fileType.fileTypeFromBuffer(image)
-  const ext = e ? `.${e}` : null
-  if (ext) return ext
-  return image.toString().split('<').length > 2 ? '.svg' : null
-}
-
-interface FileUpdateResult {
-  path: string
-  version: string
-  ext: string
-}
-
-interface ImageUpdateResult extends FileUpdateResult {
-  status: ImageUpdateStatus
-}
-
-export const tokenImage = {
-  path: (chainId: ChainId, address: string, options: ImageOptions = {}) => {
-    const opts = {
-      ...defaultImageOptions,
-      ...options,
-    }
-    const fullChainId = viem.toHex(chainId, { size: 32 })
-    const filePath = path.join(images, 'tokens', fullChainId, address, `${opts.version}${opts.ext}`)
-    if (opts.outRoot) {
-      return pathFromOutRoot(filePath)
-    }
-    return filePath
-  },
-  update: async (
-    chainId: ChainId,
-    address: viem.Hex,
-    image: Buffer,
-    options: ImageOptions = {},
-  ): Promise<ImageUpdateResult | null> => {
-    const newHash = calculateHash(image)
-    const ext = await getExt(image)
-    if (!ext) {
-      failureLog('ext %o - %o -> %o', newHash, address, chainId)
-      return null
-    }
-    const opts = {
-      ...defaultImageOptions,
-      ext,
-      ...options,
-      version: newHash,
-    }
-    const specificPath = tokenImage.path(chainId, address, opts)
-    return {
-      path: specificPath,
-      ext,
-      status: updateImage(specificPath, image),
-      version: newHash,
-    }
-  },
-}
-
-export const providerLink = {
-  path: (providerKey: string, chainId: ChainId, options = {}) => {
-    const opts = {
-      ...defaultImageOptions,
-      ...options,
-    }
-    const fullChainId = getFullChainId(chainId)
-    return path.join(links, 'providers', providerKey, fullChainId, `${opts.version}.${opts.ext}`)
-  },
-  update: async (
-    providerKey: string,
-    chainId: ChainId,
-    tokens: types.TokenEntry[],
-    options: ListOptions = {},
-  ): Promise<FileUpdateResult> => {
-    const opts = {
-      ...defaultListOptions,
-      ...options,
-    }
-    const tokenList = {
-      timestamp: new Date().toISOString(),
-      ...opts,
-      name: providerKey,
-      tokens: tokens.sort(sortTokenEntry),
-    } as types.TokenList
-    const fileData = JSON.stringify(tokenList)
-    const pathOpts = {
-      version: calculateHash(Buffer.from(fileData)),
-      ext: '.json',
-    }
-    const file = providerLink.path(providerKey, chainId, pathOpts)
-    fs.mkdirSync(path.dirname(file), {
-      recursive: true,
-    })
-    fs.writeFileSync(file, fileData)
-    return {
-      path: file,
-      ...pathOpts,
-    }
-  },
-}
+export const getFullChainId = (chainId: types.ChainId) => viem.toHex(chainId, { size: 32 })
 
 export const calculateHash = (buffer: Buffer): string => {
   return crypto.createHash('sha256').update(buffer).digest('hex')
 }
 
-export const responseToBuffer = async (res: Response) => Buffer.from(await res.arrayBuffer())
+export const responseToBuffer = async (res: Response) => {
+  if (!res.ok) {
+    return null
+  }
+  return Buffer.from(await res.arrayBuffer())
+}
 
 export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
   return BigInt(a.address) < BigInt(b.address) ? -1 : 1
@@ -318,7 +101,6 @@ export const multicallRead = async <T>({
     target: (call.target || target) as viem.Hex,
   }))
   const reads = await multicall.read.aggregate3([arg])
-  // try {
   return calls.map((call, i) =>
     viem.decodeFunctionResult({
       abi: call.abi || abi,
@@ -326,10 +108,6 @@ export const multicallRead = async <T>({
       data: reads[i].returnData,
     }),
   ) as T
-  // } catch (err) {
-  //   console.log(calls, reads, arg)
-  //   throw err
-  // }
 }
 
 const defaultRetryOpts = {
@@ -350,7 +128,7 @@ export const retry = async (fn: types.Todo, options = {}) => {
     }
     opts.attempts -= 1
     if (opts.attempts) {
-      await setTimeout(opts.delay)
+      await timeout(opts.delay).promise
     }
   } while (opts.attempts)
   throw new Error('unable to complete task')
@@ -365,13 +143,78 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-const spinnerLimit = promiseLimit<any>(4)
+const spinnerLimit = promiseLimit<any>(8)
 
 export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
   return spinnerLimit(async () => {
     const spinner = new Spinner().start(key)
-    const result = await fn()
-    spinner.succeed()
-    return result
+    return await fn().then((res) => {
+      spinner.succeed()
+      return res
+    }).catch((err) => {
+      console.log(err)
+      spinner.failed()
+      throw err
+    })
   })
+}
+
+export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => (
+  viem.keccak256(viem.toBytes(`${type}${chainId}`)).slice(2)
+)
+
+export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: viem.Hex) => {
+  const calls = [
+    { functionName: 'name' },
+    { functionName: 'symbol' },
+    { functionName: 'decimals' },
+  ]
+  return await multicallRead<[string, string, number]>({
+    chain,
+    client,
+    abi: viem.erc20Abi,
+    calls,
+    target,
+  })
+    .catch(async () => {
+      return await multicallRead<[viem.Hex, viem.Hex, number]>({
+        chain,
+        client,
+        abi: viem.erc20Abi_bytes32,
+        calls,
+        target,
+      })
+        .then(
+          ([name, symbol, decimals]) =>
+            [
+              viem.fromHex(name, 'string').split('\x00').join(''),
+              viem.fromHex(symbol, 'string').split('\x00').join(''),
+              decimals,
+            ] as const,
+        )
+    })
+    .catch(() => ['', '', 18] as const)
+}
+
+const folderAccessLimit = promiseLimit<any>(256)
+
+export const folderContents = async (folder: string, fn: (i: string) => any) => {
+  const blockchainFolders = removedUndesirable(await fs.promises.readdir(folder))
+  return await folderAccessLimit.map(blockchainFolders, async (f) => fn(f))
+}
+
+export type Timeout = {
+  timeoutId: () => NodeJS.Timeout;
+  promise: Promise<unknown>
+}
+
+export const timeout = (ms: number) => {
+  let timeoutId: NodeJS.Timeout
+  const p = new Promise((resolve) => {
+    timeoutId = setTimeout(resolve, ms)
+  })
+  return {
+    timeoutId: () => timeoutId,
+    promise: p,
+  }
 }

@@ -33,8 +33,6 @@ export async function up(knex: Knex): Promise<void> {
       })
     await compositeId.up(knex)
     await knex.raw(`REVOKE UPDATE ON ${tableNames.image} FROM ${userConfig.database.name}`)
-
-    // await knex.raw(utils.preventUpdateTrigger(tableNames.image))
   }
 }
 

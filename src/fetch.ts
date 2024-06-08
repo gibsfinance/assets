@@ -1,3 +1,5 @@
+import * as utils from './utils'
+
 const controllers: [NodeJS.Timeout, AbortController][] = []
 
 export const cancelAllRequests = () => {
@@ -18,17 +20,18 @@ const ipfsCompatableFetch: typeof fetch = async (
   }
   if (url.protocol?.startsWith('http')) {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, 15_000)
-    controllers.push([timeoutId, controller])
+    const timeout = utils.timeout(15_000)
+    controllers.push([timeout.timeoutId(), controller])
     return fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
       ...options,
     }).then((res) => {
-      clearTimeout(timeoutId)
+      clearTimeout(timeout.timeoutId())
       return res
+    }).catch((err) => {
+      clearTimeout(timeout.timeoutId())
+      throw err
     })
   } else {
     throw new Error('unrecognized protocol')

@@ -6,7 +6,7 @@ import * as utils from '../utils'
 import { tableNames } from '../tables'
 
 const compositeId = utils.compositeId(tableNames.metadata, 'metadataId',
-  ['networkId', 'listId', 'providedId'],
+  ['providerId', 'networkId', 'listId', 'providedId'],
 )
 
 export async function up(knex: Knex): Promise<void> {
@@ -19,6 +19,13 @@ export async function up(knex: Knex): Promise<void> {
     log('creating table %o', tableNames.metadata)
     await knex.schema.withSchema(userConfig.database.schema)
       .createTable(tableNames.metadata, (t) => {
+        t.text('providerId')
+          .index()
+          .notNullable()
+          .references('providerId')
+          .inTable(`${userConfig.database.schema}.${tableNames.provider}`)
+          .onDelete('CASCADE')
+          .onUpdate('CASCADE')
         t.text('networkId')
           .index()
           .nullable()

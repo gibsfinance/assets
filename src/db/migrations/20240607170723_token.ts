@@ -37,8 +37,7 @@ export async function up(knex: Knex): Promise<void> {
         }).defaultTo(knex.fn.now())
       })
 
-    await knex.raw(`REVOKE UPDATE ON ${tableNames.image} FROM ${userConfig.database.schema}`)
-    // await knex.raw(utils.preventUpdateTrigger(tableNames.token))
+    await knex.raw(`REVOKE UPDATE ON ${tableNames.token} FROM ${userConfig.database.schema}`)
   }
 }
 

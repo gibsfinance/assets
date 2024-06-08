@@ -4,3 +4,6 @@
 [submodule "submodules/pulsechain-assets"]
 	path = submodules/pulsechain-assets
 	url = https://github.com/PLS369/pulsechain-assets
+[submodule "submodules/smoldapp-tokenassets"]
+	path = submodules/smoldapp-tokenassets
+	url = https://github.com/SmolDapp/tokenAssets.git

@@ -18,8 +18,8 @@ export async function up(knex: Knex): Promise<void> {
         t.text('providerId').index().primary().notNullable()
         // a shorthand, usually not something you would put into a ui. something kebabcase'd
         t.text('key').notNullable().index().unique()
-        t.text('name')
-        t.text('description')
+        t.text('name').nullable().defaultTo('')
+        t.text('description').nullable().defaultTo('')
         t.timestamps(true, true)
       })
     await compositeId.up(knex)

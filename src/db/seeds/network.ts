@@ -7,8 +7,11 @@ import { zeroAddress } from 'viem'
 
 export async function seed(knex: Knex): Promise<void> {
   await knex.transaction(async (t) => {
-    const [network1] = await t(tableNames.network)
+    const [defaultNetwork, network1] = await t(tableNames.network)
       .insert([{
+        type: 'evm',
+        chainId: 0,
+      }, {
         type: 'evm',
         chainId: 1,
       }])
@@ -63,5 +66,9 @@ export async function seed(knex: Knex): Promise<void> {
       })
       .first()
     console.log('tknnwrk id %o -> %o', token.networkId, updatedToken.networkId)
+    await t(tableNames.network)
+      .update({
+        type: 'evm',
+      }).where('networkId', updatedNetwork1.networkId)
   })
 }

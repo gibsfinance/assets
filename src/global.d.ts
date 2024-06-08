@@ -3,16 +3,23 @@ declare module 'knex/types/tables' {
     createdAt: Date;
     updatedAt: Date;
   }
+  type TimestampKeys = keyof Timestamped
   interface Provider extends Timestamped {
     providerId: string;
     name: string;
+    key: string;
     description: string;
+  }
+  interface InsertableProvider extends Omit<Provider, TimestampKeys | 'providerId'> {
+    description?: string;
+    name?: string;
   }
   interface Network extends Timestamped {
     networkId: string;
     type: string;
     chainId: string;
   }
+  interface InsertableNetwork extends Omit<Network, 'createdAt' | 'updatedAt' | 'networkId'> { }
   interface Image {
     imageHash: string;
     content: Buffer;
@@ -21,11 +28,25 @@ declare module 'knex/types/tables' {
   }
   interface List extends Timestamped {
     providerId: string;
-    chainId: string;
+    networkId: string | null;
     name: string;
     description: string;
-    version: string;
+    key: string;
+    patch: number;
+    minor: number;
+    major: number;
     listId: string;
+    imageHash: string | null;
+  }
+  interface InsertableList extends Omit<List, 'createdAt' | 'updatedAt' | 'listId'> {
+    networkId?: T;
+    patch?: T;
+    minor?: T;
+    major?: T;
+    imageHash?: T;
+    name?: T;
+    description?: T;
+    key?: string;
   }
   interface Tag extends Timestamped {
     providerId: string;
@@ -40,6 +61,7 @@ declare module 'knex/types/tables' {
   interface Metadata extends Timestamped {
     networkId: string;
     listId: string;
+    providerId: string;
     providedId: string;
     metadataId: string;
     value: string;
@@ -52,12 +74,15 @@ declare module 'knex/types/tables' {
     decimals: number;
     type: string;
   }
+  interface InsertableToken extends Omit<Token, 'createdAt' | 'updatedAt' | 'type'> { }
   interface ListToken extends Timestamped {
     networkId: string;
     providedId: string;
     listId: string;
     imageHash: string;
+    listTokenId: string;
   }
+  interface InsertableListToken extends Omit<ListToken, 'createdAt' | 'updatedAt'> { }
   interface Tables {
     provider: Provider;
     network: Network;

@@ -38,7 +38,7 @@ $$ LANGUAGE plpgsql`
 }
 
 export const generateIdFunction = (t: TableNames, key: string, sCols: string[]) => {
-  return `CREATE OR REPLACE FUNCTION generate_composite_id_${t}_${key}_${sCols.join('_')}()
+  return `CREATE OR REPLACE FUNCTION gcid_${t}_${key}_${sCols.map(c => c.split('_').join('')).join('_')}()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.${key} := keccak256(${sCols.map((col) => `NEW.${col}::text`).join(' || ')});
@@ -51,7 +51,7 @@ export const generateIdTrigger = (t: TableNames, key: string, sCols: string[]) =
   return `CREATE TRIGGER set_composite_id_${t}
 BEFORE INSERT OR UPDATE OF ${sCols.join(', ')} ON ${t}
 FOR EACH ROW
-EXECUTE FUNCTION generate_composite_id_${t}_${key}_${sCols.join('_')}()`
+EXECUTE FUNCTION gcid_${t}_${key}_${sCols.map(c => c.split('_').join('')).join('_')}()`
 }
 
 export const dropFunction = (name: string) => (
@@ -86,7 +86,7 @@ export const compositeId = (t: TableNames, k: string, cols: string[]) => ({
 })
 
 // export const generateIdWithDelimiterFunction = (t: TableNames, key: string, sCols: string[], delimiter: string) => {
-//   return `CREATE OR REPLACE FUNCTION generate_composite_id_${t}_${key}_${sCols.join('_')}()
+//   return `CREATE OR REPLACE FUNCTION gcid_${t}_${key}_${sCols.join('_')}()
 // RETURNS TRIGGER AS $$
 // BEGIN
 //     NEW.${key} := ${sCols.map((col) => `NEW.${col}::text`).join(` || "${delimiter}" || `)};
@@ -99,7 +99,7 @@ export const compositeId = (t: TableNames, k: string, cols: string[]) => ({
 //   return `CREATE TRIGGER set_composite_id_${t}
 // BEFORE INSERT OR UPDATE OF ${sCols.join(', ')} ON ${t}
 // FOR EACH ROW
-// EXECUTE FUNCTION generate_composite_id_${t}_${key}_${sCols.join('_')}()`
+// EXECUTE FUNCTION gcid_${t}_${key}_${sCols.join('_')}()`
 // }
 
 // export const generateIdWithDelimiter = async (knex: Knex, t: TableNames, key: string, cols: string[], delimiter = '.') => {

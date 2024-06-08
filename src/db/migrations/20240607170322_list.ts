@@ -6,7 +6,7 @@ import * as utils from '../utils'
 import { tableNames } from '../tables'
 
 const compositeId = utils.compositeId(tableNames.list, 'listId', [
-  'providerId', 'networkId', 'major', 'minor', 'patch',
+  'providerId', 'key', 'major', 'minor', 'patch',
 ])
 
 export async function up(knex: Knex): Promise<void> {
@@ -27,11 +27,12 @@ export async function up(knex: Knex): Promise<void> {
           .onDelete('CASCADE')
           .onUpdate('CASCADE')
         // for evm this is relevant for others less so
-        t.text('networkId').index().notNullable()
+        t.text('networkId').index().nullable()
           .references('networkId')
           .inTable(`${userConfig.database.schema}.${tableNames.network}`)
           .onDelete('CASCADE')
           .onUpdate('CASCADE')
+        t.text('key').index().notNullable().defaultTo('default')
         // controlled by the provider
         t.text('name').nullable()
         t.text('description').nullable()
@@ -39,6 +40,12 @@ export async function up(knex: Knex): Promise<void> {
         t.smallint('patch').notNullable().defaultTo(0)
         t.smallint('minor').notNullable().defaultTo(0)
         t.smallint('major').notNullable().defaultTo(0)
+        t.text('imageHash').nullable()
+          .index()
+          .references('imageHash')
+          .inTable(`${userConfig.database.schema}.${tableNames.image}`)
+          .onDelete('CASCADE')
+          .onUpdate('CASCADE')
         // generation at creation time
         t.text('listId').index().primary().notNullable()
         t.timestamps(true, true)
