@@ -16,6 +16,7 @@ export const outRoot = process.env.OUT_ROOT || ''
 
 export const root = path.join(__dirname, '..')
 export const submodules = path.join(root, 'submodules')
+console.log('submodules %o', submodules)
 export const images = path.join(root, 'images')
 export const links = path.join(root, 'links')
 
@@ -145,9 +146,32 @@ export const removedUndesirable = (names: string[]) => {
 
 const spinnerLimit = promiseLimit<any>(8)
 
+const print = (key: string) => {
+  const log = (w: string) => {
+    console.log(`${w} %o`, key)
+  }
+  const runner = () => {
+    log('running')
+  }
+  log('starting')
+  const id = setInterval(runner, 10_000)
+  return {
+    succeed() {
+      clearInterval(id)
+      log('success')
+    },
+    failed() {
+      clearInterval(id)
+      log('failed')
+    },
+  }
+}
+
 export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
   return spinnerLimit(async () => {
-    const spinner = new Spinner().start(key)
+    const spinner = process.env.FAKE_SPINNER
+      ? print(key)
+      : new Spinner().start(key)
     return await fn().then((res) => {
       spinner.succeed()
       return res

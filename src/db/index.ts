@@ -1,17 +1,20 @@
 import knex, { type Knex } from 'knex'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 import * as types from '../types'
 import * as viem from 'viem'
 import { config } from './config'
 import * as fileType from 'file-type'
 import * as utils from '../utils'
 import { Tx, tableNames } from './tables'
-import { Image, InsertableList, InsertableListToken, InsertableProvider, InsertableToken, List, Network, Provider, Token } from 'knex/types/tables'
-import { setTimeout } from 'timers/promises'
+import type { Image, InsertableList, InsertableListToken, InsertableProvider, InsertableToken, Link, List, ListToken, Network, Provider, ListOrder, ListOrderItem, InsertableListOrder, InsertableListOrderItem, BackfillableInsertableListOrderItem, Token } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
+import promiseLimit from 'promise-limit'
+
+export const ids = {
+  provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2)
+}
 
 let db = knex(config)
 
@@ -46,6 +49,8 @@ const missingInfoPath = ({
   return path.join(utils.root, 'missing', providerKey, listId, hash)
 }
 
+const limit1 = promiseLimit(1)
+
 const removeMissing = async ({
   imageHash, originalUri, providerKey, listId,
 }: {
@@ -58,10 +63,12 @@ const removeMissing = async ({
     recursive: true,
     force: true,
   }
-  await Promise.all([
-    fs.promises.rm(missingInfoPath({ imageHash, originalUri, providerKey, listId, }), rf),
-    fs.promises.rm(missingInfoPath({ originalUri, providerKey, listId, }), rf),
-  ])
+  await limit1(async () => (
+    await Promise.all([
+      fs.promises.rm(missingInfoPath({ imageHash, originalUri, providerKey, listId, }), rf),
+      fs.promises.rm(missingInfoPath({ originalUri, providerKey, listId, }), rf),
+    ])
+  ))
 }
 
 const writeMissing = async ({
@@ -77,20 +84,23 @@ const writeMissing = async ({
   imageHash?: string;
   image?: Buffer
 }) => {
+  if (process.env.PREVENT_WRITE_MISSING) return
   const folder = missingInfoPath({ imageHash, originalUri, providerKey, listId })
-  await fs.promises.mkdir(folder, {
-    recursive: true,
+  await limit1(async () => {
+    await fs.promises.mkdir(folder, {
+      recursive: true,
+    })
+    utils.failureLog('ext missing %o', folder)
+    await Promise.all([
+      fs.promises.writeFile(path.join(folder, 'info.json'), JSON.stringify({
+        imageHash,
+        originalUri,
+        providerKey,
+        listId,
+      })),
+      image && fs.promises.writeFile(path.join(folder, 'icon'), image),
+    ])
   })
-  utils.failureLog('ext missing %o', folder)
-  await Promise.all([
-    fs.promises.writeFile(path.join(folder, 'info.json'), JSON.stringify({
-      imageHash,
-      originalUri,
-      providerKey,
-      listId,
-    })),
-    image && fs.promises.writeFile(path.join(folder, 'icon'), image),
-  ])
 }
 
 export const insertImage = async ({
@@ -101,6 +111,7 @@ export const insertImage = async ({
   const imageHash = viem.keccak256(image).slice(2)
   const ext = await getExt(image)
   if (!ext) {
+    console.log('no ext %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -117,14 +128,21 @@ export const insertImage = async ({
       providerKey,
       listId,
     }),
-    t.from(tableNames.image).insert<Image[]>({
+    t.from(tableNames.image).insert({
       content: image,
       ext,
     }).onConflict(['imageHash'])
       .merge(['imageHash'])
-      .returning(['ext', 'imageHash']),
+      .returning<Image[]>(['ext', 'imageHash']),
   ])
-  return inserted
+  const [link] = await t.from(tableNames.link).insert([{
+    uri: originalUri,
+    imageHash: inserted.imageHash,
+  }]).onConflict(['uri']).merge(['uri']).returning<Link[]>('*')
+  return {
+    image: inserted,
+    link,
+  }
 }
 
 export const fetchImage = async (url: string | Buffer, providerKey: string | null = null) => {
@@ -134,8 +152,11 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   if (!url) {
     return null
   }
-  if (url.startsWith(os.homedir())) {
-    return fs.promises.readFile(url)
+  if (url.startsWith(utils.submodules)) {
+    return fs.promises.readFile(url).catch((err) => {
+      console.log('read file failed %o -> %o', providerKey, url)
+      return null
+    })
   }
   let innerTimeout!: utils.Timeout
   const outerTimeout = utils.timeout(10_000)
@@ -172,12 +193,41 @@ export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'e
   const [network] = await t.from(tableNames.network).insert({
     type,
     chainId: chainId.toString(),
-    networkId: utils.toKeccakBytes(`${type}${chainId}`),
   })
     .onConflict(['networkId'])
     .merge(['networkId'])
     .returning<Network[]>('*')
   return network
+}
+
+export const insertToken = async (token: InsertableToken, t: Tx = db) => {
+  const [inserted] = await t.from(tableNames.token)
+    .insert({
+      ...token,
+      name: token.name.split('\x00').join(''),
+      symbol: token.symbol.split('\x00').join(''),
+    })
+    .onConflict(['networkId', 'providedId'])
+    .merge(['networkId', 'providedId'])
+    .returning<Token[]>('*')
+  return inserted
+}
+
+export const getImageFromLink = async (uri: string, t: Tx = db) => {
+  const link = await t.from(tableNames.link)
+    .select('*')
+    .where('uri', uri)
+    .first<Link>()
+  if (!link) return null
+  const image = await t.from(tableNames.image)
+    .select('*')
+    .where('imageHash', link.imageHash)
+    .first<Image>()
+  if (!image) return null
+  return {
+    link,
+    image,
+  }
 }
 
 export const fetchImageAndStoreForList = async ({
@@ -194,8 +244,22 @@ export const fetchImageAndStoreForList = async ({
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
+  if (_.isString(uri)) {
+    const existing = await getImageFromLink(uri)
+    if (existing) {
+      const list = await t(tableNames.list)
+        .select<List>('*')
+        .where('listId', listId)
+        .first() as List
+      return {
+        ...existing,
+        list,
+      }
+    }
+  }
   const image = await fetchImage(uri, providerKey)
   if (!image) {
+    console.log('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -212,12 +276,13 @@ export const fetchImageAndStoreForList = async ({
   if (!img) {
     return
   }
-  const list = await t.from(tableNames.list)
-    .update('imageHash', img.imageHash)
+  const [list] = await t.from(tableNames.list)
+    .update('imageHash', img.image.imageHash)
     .where('listId', listId)
+    .returning<List[]>('*')
   return {
     list,
-    img,
+    ...img,
   }
 }
 
@@ -238,6 +303,28 @@ export const fetchImageAndStoreForToken = async (inputs: {
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
+  const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
+  if (_.isString(uri)) {
+    const existing = await getImageFromLink(uri)
+    if (existing) {
+      const listToken = await t(tableNames.listToken)
+        .select<ListToken>('*')
+        .where({
+          networkId: token.networkId,
+          providedId,
+          listId,
+          imageHash: existing.image.imageHash,
+        })
+        .first() as ListToken
+      if (listToken) {
+        return {
+          ...existing,
+          listToken,
+          token,
+        }
+      }
+    }
+  }
   // list must have already been inserted to db by this point
   const image = await fetchImage(uri, providerKey)
   if (!image) {
@@ -257,31 +344,31 @@ export const fetchImageAndStoreForToken = async (inputs: {
   if (!img) {
     return null
   }
-  const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
-  const [insertedToken] = await t.from(tableNames.token)
-    .insert<InsertableToken[]>([{
-      type: 'erc20',
-      ...token,
-      providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
-    }])
-    .onConflict(['networkId', 'providedId'])
-    .merge(['networkId', 'providedId'])
-    .returning('*')
-  const [listToken] = await t.from(tableNames.listToken)
-    .insert<InsertableListToken[]>([{
-      networkId: token.networkId,
-      providedId,
-      listId,
-      imageHash: img.imageHash,
-    }])
-    .onConflict(['listTokenId'])
-    .merge(['listTokenId'])
-    .returning('*')
+  const insertedToken = await insertToken({
+    type: 'erc20',
+    ...token,
+    providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
+  })
+  const listToken = await insertListToken({
+    networkId: token.networkId,
+    providedId,
+    listId,
+    imageHash: img.image.imageHash,
+  })
   return {
     token: insertedToken,
     listToken,
-    img,
+    ...img,
   }
+}
+
+export const insertListToken = async (listToken: InsertableListToken, t: Tx = db) => {
+  const [inserted] = await t.from(tableNames.listToken)
+    .insert([listToken])
+    .onConflict(['listTokenId'])
+    .merge(['listTokenId'])
+    .returning<InsertableListToken[]>('*')
+  return inserted
 }
 
 export const insertList = async (list: InsertableList, t: Tx = db) => {
@@ -293,19 +380,62 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
       ...list,
     })
     .onConflict(['listId'])
-    .merge(['listId'])
+    .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch'])
     .returning('*')
   return insertedList
 }
 
 export const insertProvider = async (provider: InsertableProvider, t: Tx = db) => {
   const [inserted] = await t.from(tableNames.provider)
-    .insert<Provider[]>([{
-      ...provider,
-      providerId: viem.keccak256(viem.toBytes(provider.key)).slice(2),
-    }])
+    .insert<Provider[]>([provider])
     .onConflict(['providerId'])
     .merge(['providerId'])
     .returning('*')
   return inserted
+}
+
+export const insertOrder = async (order: InsertableListOrder, orderItems: BackfillableInsertableListOrderItem[], t: Tx = db) => {
+  return t.transaction(async (tx) => {
+    const [o] = await tx(tableNames.listOrder)
+      .insert([order])
+      .onConflict(['listOrderId'])
+      .merge(['listOrderId'])
+      .returning<ListOrder[]>('*')
+    const items = await tx(tableNames.listOrderItem)
+      .insert(orderItems.map((i) => ({
+        ...i,
+        listOrderId: o.listOrderId,
+      })))
+      .onConflict(['listOrderId', 'ranking'])
+      .merge(['listOrderId', 'ranking'])
+      .returning<ListOrderItem[]>('*')
+    return {
+      order: o,
+      listOrderItems: items,
+    }
+  })
+}
+
+export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
+  return t.select([
+    db.raw(`${tableNames.network}.chain_id`),
+    db.raw(`${tableNames.token}.provided_id as address`),
+    db.raw(`${tableNames.token}.decimals as decimals`),
+    db.raw(`${tableNames.token}.symbol as symbol`),
+    db.raw(`${tableNames.token}.name as name`),
+    db.raw(`${tableNames.image}.image_hash as image_hash`),
+    db.raw(`${tableNames.image}.ext as ext`),
+  ])
+    .from(tableNames.listToken)
+    .where(`${tableNames.listToken}.listId`, listId)
+    .join(tableNames.image, {
+      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
+    })
+    .join(tableNames.token, {
+      [`${tableNames.token}.networkId`]: `${tableNames.listToken}.networkId`,
+      [`${tableNames.token}.providedId`]: `${tableNames.listToken}.providedId`,
+    })
+    .join(tableNames.network, {
+      [`${tableNames.network}.networkId`]: `${tableNames.listToken}.networkId`,
+    })
 }

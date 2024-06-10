@@ -18,10 +18,12 @@ type Info = {
 
 export const collect = async () => {
   const root = path.join(utils.submodules, 'smoldapp-tokenassets')
-  const chainsPath = path.join(root, 'chains')
+  // const chainsPath = path.join(root, 'chains')
   const tokensPath = path.join(root, 'tokens')
   const providerKey = 'smoldapp'
   const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json'))
+    .catch(() => null)
+  if (!infoBuff) return
   const info = JSON.parse(infoBuff.toString()) as Info
   const { tokens } = info
   const provider = await db.insertProvider({
@@ -29,12 +31,16 @@ export const collect = async () => {
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
   })
-  await utils.limit.map(Object.entries(tokens).reverse(), async ([chainIdString, tokens]: [string, string[]]) => {
+  const reverseOrderTokens = Object.entries(tokens).reverse()
+  for (const [chainIdString, tokens] of reverseOrderTokens) {
+    let completed = 0
+    let total = 0
     const networksList = await db.insertList({
       key: 'tokens',
       providerId: provider.providerId,
     })
-    await utils.spinner(`${providerKey}/${chainIdString}`, async () => {
+    const k = `${providerKey}/${chainIdString}`
+    await utils.spinner(k, async () => {
       const network = await db.insertNetworkFromChainId(+chainIdString)
       const chain = utils.findChain(+chainIdString)
       if (!chain) {
@@ -49,6 +55,7 @@ export const collect = async () => {
         key: `${networksList.key}-${chainIdString}`,
         providerId: provider.providerId,
       })
+      total += tokens.length
       await utils.limit.map(tokens, async (token: viem.Hex) => {
         const tokenFolder = path.join(tokensPath, chainIdString, token)
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
@@ -73,22 +80,26 @@ export const collect = async () => {
               decimals,
             },
           }
-          await Promise.all([
-            db.fetchImageAndStoreForToken({
-              listId: list.listId,
-              ...baseInput,
-            }),
-            db.fetchImageAndStoreForToken({
-              listId: networkList.listId,
-              ...baseInput,
-            }),
-            db.fetchImageAndStoreForToken({
-              listId: networksList.listId,
-              ...baseInput,
-            }),
-          ])
-        })
-      })
-    })
-  })
+          await db.getDB().transaction(async (tx) => {
+            await Promise.all([
+              db.fetchImageAndStoreForToken({
+                listId: list.listId,
+                ...baseInput,
+              }, tx),
+              db.fetchImageAndStoreForToken({
+                listId: networkList.listId,
+                ...baseInput,
+              }, tx),
+              db.fetchImageAndStoreForToken({
+                listId: networksList.listId,
+                ...baseInput,
+              }, tx),
+            ])
+          })
+        }).catch(() => null)
+        completed++
+      }).catch(() => null)
+    }).catch(() => null)
+    console.log('completed %o %o/%o', k, completed, total)
+  }
 }

@@ -23,13 +23,13 @@ export async function up(knex: Knex): Promise<void> {
         t.timestamps(true, true)
       })
     await compositeId.up(knex)
-    await knex.raw(utils.autoUpdateTimestamp([userConfig.database.schema, tableNames.provider]))
+    await utils.autoUpdateTimestamp.up(knex, tableNames.provider)
   }
 }
 
 export async function down(knex: Knex): Promise<void> {
-  await utils.dropGenerateCompositeIdAndTrigger(knex, tableNames.provider, 'providerId', ['key'])
   await compositeId.down(knex)
+  await utils.autoUpdateTimestamp.down(knex, tableNames.provider)
   await knex.schema.withSchema(userConfig.database.schema)
     .dropTableIfExists(tableNames.provider)
 }

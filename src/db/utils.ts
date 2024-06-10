@@ -1,7 +1,7 @@
 import _ from 'lodash'
 import type * as pg from 'pg'
 import type { Knex } from 'knex'
-import type { TableNames, Tx } from './tables'
+import { tableNames, type TableNames, type Tx } from './tables'
 
 import userConfig from '../../config'
 
@@ -129,7 +129,7 @@ export const compositeId = (t: TableNames, k: string, cols: string[]) => ({
 // ' LANGUAGE PLPGSQL`
 // }
 
-export const autoUpdateTimestamp = (tableName: string | string[]) => {
+const autoupdateTimestamp = (tableName: string | string[]) => {
   const tableNameParts = (_.isArray(tableName) ? tableName : [tableName])
     .map((a) => _.snakeCase(a))
   return `
@@ -138,6 +138,12 @@ BEFORE UPDATE ON ${tableNameParts.map((word) => `"${word}"`).join('.')}
 FOR EACH ROW
 WHEN (OLD.* IS DISTINCT FROM NEW.*)
 EXECUTE PROCEDURE autoupdate_timestamp()`
+}
+
+const dropAutoupdateTimestamp = (t: string | string[]) => {
+  const tableNameParts = (_.isArray(t) ? t : [t])
+    .map((a) => _.snakeCase(a))
+  return dropFunction(`autoupdate_$${tableNameParts.join('_')}_timestamp`)
 }
 
 export const resultToCamelCase = <T>(obj: unknown): T | T[] => {
@@ -166,6 +172,11 @@ export const ignoreValues: {
   [key: string]: boolean;
 } = {
   '*': true,
+}
+
+export const autoUpdateTimestamp = {
+  up: (knex: Knex, t: TableNames) => knex.raw(autoupdateTimestamp([userConfig.database.schema, t])),
+  down: (knex: Knex, t: TableNames) => knex.raw(dropAutoupdateTimestamp([userConfig.database.schema, t])),
 }
 
 export const addCheckIn = (knex: Knex, schema: string, tableName: TableNames, name: string, list: string[]) => (

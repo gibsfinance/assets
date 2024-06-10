@@ -29,6 +29,9 @@ const ipfsCompatableFetch: typeof fetch = async (
     const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : url.host
     url = new URL(`https://ipfs.io/ipfs/${cid}`)
   }
+  if (url.protocol.startsWith('hhttp')) {
+    url.protocol = url.protocol.slice(1)
+  }
   // support both http+https
   if (url.protocol?.startsWith('http')) {
     const limiter = getLimiter(url)
@@ -49,7 +52,7 @@ const ipfsCompatableFetch: typeof fetch = async (
       })
     })
   } else {
-    console.log(url)
+    console.log(url.toString())
     throw new Error('unrecognized protocol')
   }
 }

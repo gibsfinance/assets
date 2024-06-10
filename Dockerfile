@@ -5,6 +5,8 @@ WORKDIR /usr/src/app
 
 ARG NODE_ENV
 ENV NODE_ENV $NODE_ENV
+ARG ROOT_URI
+ENV ROOT_URI $ROOT_URI
 
 FROM base as build
 COPY package-lock.json /usr/src/app/package-lock.json

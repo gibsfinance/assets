@@ -10,6 +10,9 @@ export const tableNames = {
   token: 'token',
   metadata: 'metadata',
   listToken: 'list_token',
+  link: 'link',
+  listOrder: 'list_order',
+  listOrderItem: 'list_order_item',
 } as const
 
 const tn = Object.values(tableNames)

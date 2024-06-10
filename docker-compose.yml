@@ -1,17 +1,16 @@
 services:
-  gibassets-postgres-rw:
-    container_name: gibassets-postgres-rw
-    # image: postgres:16
+  gibassets-postgres:
+    container_name: gibassets-postgres
+    # image: postgres:13
     build:
       context: .
       dockerfile: Dockerfile.postgres
     shm_size: 16g
-    command: postgres -c /usr/share/postgresql/postgresql.conf
+    command: ["postgres"]
     ports:
       - 5876:5432
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
-      - ./postgresql.conf:/usr/share/postgresql/postgresql.conf
+      - ./postgres-data:/var/lib/postgresql/data
     networks:
       - gibassets
     environment:
@@ -26,7 +25,40 @@ services:
       - gibassets
     environment:
       DEBUG: "${DEBUG:-📷*}"
-      DATABASE_URL: "${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres-rw:5432/gibassets}"
+      DATABASE_URL: "${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres:5432/gibassets}"
+  gibassets-collect:
+    container_name: gibassets-collect
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: ["npm", "run", "collect"]
+    volumes:
+      - ./missing:/usr/src/app/missing
+      - ./src:/usr/src/app/src
+    depends_on:
+      - gibassets-postgres
+    networks:
+      - gibassets
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres:5432/gibassets}"
+      FAKE_SPINNER: "true"
+  gibassets-server:
+    depends_on:
+      - gibassets-postgres
+    container_name: gibassets-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["npm", "run", "server"]
+    volumes:
+      - ./src:/usr/src/app/src
+    networks:
+      - gibassets
+    environment:
+      ROOT_URI: "http://localhost:3456"
+      DATABASE_URL: "${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres:5432/gibassets}"
+    ports:
+      - 3456:3000
 
 networks:
   gibassets:

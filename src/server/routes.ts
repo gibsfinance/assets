@@ -5,6 +5,10 @@ import { router as listRouter } from './list'
 
 export const router = Router()
 
+router.use('/health', (_req, res) => {
+  res.send('ok')
+})
+
 // gib.show/image
 router.use('/image', imageRouter)
 

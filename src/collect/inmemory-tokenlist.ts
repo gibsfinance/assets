@@ -3,7 +3,8 @@ import * as db from '@/db'
 import * as utils from '@/utils'
 
 export const collect = async (providerKey: string, tokenList: types.TokenList) => {
-  return utils.spinner(providerKey, async () => {
+  let completed = 0
+  await utils.spinner(providerKey, async () => {
     const provider = await db.insertProvider({
       key: providerKey,
     })
@@ -13,6 +14,7 @@ export const collect = async (providerKey: string, tokenList: types.TokenList) =
       networkId: utils.chainIdToNetworkId(0),
       name: tokenList.name,
       description: '',
+      ...(tokenList.version || {}),
     })
     await db.fetchImageAndStoreForList({
       listId: list.listId,
@@ -21,23 +23,32 @@ export const collect = async (providerKey: string, tokenList: types.TokenList) =
       providerKey,
     })
     await utils.limit.map(tokenList.tokens, async (entry: types.TokenEntry) => {
+      const network = await db.insertNetworkFromChainId(entry.chainId)
+      const token = {
+        name: entry.name,
+        symbol: entry.symbol,
+        decimals: entry.decimals,
+        networkId: network.networkId,
+        providedId: entry.address,
+      }
       if (!entry.logoURI) {
+        await db.insertToken(token).catch((err) => {
+          console.log(provider, list.listId, token)
+          throw err
+        })
         return entry
       }
-      const network = await db.insertNetworkFromChainId(entry.chainId)
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
         uri: entry.logoURI,
         originalUri: entry.logoURI,
         providerKey,
-        token: {
-          name: entry.name,
-          symbol: entry.symbol,
-          decimals: entry.decimals,
-          networkId: network.networkId,
-          providedId: entry.address,
-        }
+        token,
       })
+      completed++
     })
   })
+  console.log('completed %o %o/%o',
+    providerKey, completed, tokenList.tokens.length,
+  )
 }

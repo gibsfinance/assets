@@ -12,21 +12,25 @@ const blockchainsRoot = path.join(utils.root, 'submodules', 'trustwallet', 'bloc
 const assetsFolder = 'assets'
 
 export const collect = async () => {
-  const blockchainFolders = utils.removedUndesirable(fs.readdirSync(blockchainsRoot))
-  await utils.limit.map(blockchainFolders, async (folder) => {
+  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
+  for (const folder of blockchainFolders) {
     try {
-      const assets = await fs.promises.readdir(path.join(blockchainsRoot, folder, assetsFolder))
-      await entriesFromAssets(folder, utils.removedUndesirable(assets))
+      const f = path.join(blockchainsRoot, folder, assetsFolder)
+      await fs.promises.readdir(f).then(async (assets) => {
+        await entriesFromAssets(folder, utils.removedUndesirable(assets))
+      }).catch((err) => {
+        // return null
+      })
     } catch (err) {
-      return ''
+      console.log(err)
     }
-  })
+  }
 }
 
 const load = async (p: string) => {
   return await Promise.all([
     fs.promises.readFile(path.join(p, 'info.json')).then((info) => JSON.parse(info.toString()) as Info),
-    fs.promises.readFile(path.join(p, 'logo.png')),
+    path.join(p, 'logo.png'),
   ])
 }
 
@@ -52,11 +56,15 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   // const cdnPrefix = 'https://assets-cdn.trustwallet.com/blockchains'
   // const pathPrefix = `${cdnPrefix}/${blockchainKey}/${assetsFolder}/`
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
-  const [networkInfo, networkLogo] = await load(info)
-  const tokenList = JSON.parse(
-    (await fs.promises.readFile(path.join(blockchainsRoot, blockchainKey, 'tokenlist.json'))).toString(),
-  ) as types.TokenList
-  let chainId = networkInfo.coin_type || tokenList.tokens[0].chainId
+  const [networkInfo, networkLogoPath] = await load(info)
+  const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
+  const list = await fs.promises.readFile(tokenlistPath).catch((_err) => {
+    // console.log(err)
+    return null
+  })
+  if (!list) return
+  const tokenList = JSON.parse(list.toString()) as types.TokenList
+  let chainId = networkInfo.coin_type || tokenList.tokens?.[0]?.chainId
   if (!chainId && networkInfo.rpc_url) {
     // check the chain itself
     const client = viem.createPublicClient({
@@ -82,7 +90,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     })
     await db.fetchImageAndStoreForList({
       listId: list.listId,
-      uri: networkLogo,
+      uri: networkLogoPath,
       originalUri: info,
       providerKey,
     })
@@ -92,11 +100,11 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       if (!assets) {
         return
       }
-      const [info, logo] = assets
+      const [info, logoPath] = assets
       const address = asset as viem.Hex
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
-        uri: logo,
+        uri: logoPath,
         originalUri: folder,
         providerKey,
         token: {
@@ -109,27 +117,4 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       })
     })
   })
-  // return {
-  //   logoURI: networkInfo.logoURI || '',
-  //   chainId,
-  //   entries: await utils.limit.map(assets, async (asset) => {
-  //     const [info, logo] = await load(path.join(blockchainsRoot, blockchainKey, assetsFolder, asset))
-  //     const address = asset as viem.Hex
-  //     const writeResult = await utils.tokenImage.update(chainId, address, logo)
-  //     if (!writeResult) return null
-  //     const entry: types.TokenEntry = {
-  //       name: info.name,
-  //       decimals: info.decimals,
-  //       symbol: info.symbol,
-  //       chainId,
-  //       address,
-  //       logoURI: utils.tokenImage.path(chainId, address, {
-  //         outRoot: true,
-  //         version: writeResult.version,
-  //         ext: path.extname(writeResult.path),
-  //       }),
-  //     }
-  //     return entry
-  //   }),
-  // }
 }

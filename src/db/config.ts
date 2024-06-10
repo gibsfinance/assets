@@ -11,12 +11,18 @@ import {
 export const makeConfig = (overrides: Partial<Knex.Config>): Knex.Config => ({
   client: 'pg',
   asyncStackTraces: true,
-  acquireConnectionTimeout: 30_000,
+  acquireConnectionTimeout: 1_000_000,
   pool: {
     min: 0,
-    max: 256,
-    idleTimeoutMillis: 60_000,
+    max: 40,
+    // idleTimeoutMillis: 60_000,
+    // reapIntervalMillis: 500,
+    // acquireTimeoutMillis: 300_000,
+    // createTimeoutMillis: 300_000,
+    // destroyTimeoutMillis: 300_000,
+    // createRetryIntervalMillis: 2_000,
   },
+  // debug: true,
   seeds: {
     extension: 'ts',
     directory: './src/db/seeds',

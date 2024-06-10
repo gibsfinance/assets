@@ -51,12 +51,13 @@ export async function up(knex: Knex): Promise<void> {
         t.timestamps(true, true)
       })
     await compositeId.up(knex)
-    await knex.raw(utils.autoUpdateTimestamp([userConfig.database.schema, tableNames.list]))
+    await utils.autoUpdateTimestamp.up(knex, tableNames.list)
   }
 }
 
 export async function down(knex: Knex): Promise<void> {
   await compositeId.down(knex)
+  await utils.autoUpdateTimestamp.down(knex, tableNames.list)
   await knex.schema.withSchema(userConfig.database.schema)
     .dropTableIfExists(tableNames.list)
 }

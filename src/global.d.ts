@@ -19,7 +19,7 @@ declare module 'knex/types/tables' {
     type: string;
     chainId: string;
   }
-  interface InsertableNetwork extends Omit<Network, 'createdAt' | 'updatedAt' | 'networkId'> { }
+  interface InsertableNetwork extends Omit<Network, TimestampKeys | 'networkId'> { }
   interface Image {
     imageHash: string;
     content: Buffer;
@@ -38,7 +38,7 @@ declare module 'knex/types/tables' {
     listId: string;
     imageHash: string | null;
   }
-  interface InsertableList extends Omit<List, 'createdAt' | 'updatedAt' | 'listId'> {
+  interface InsertableList extends Omit<List, TimestampKeys | 'listId'> {
     networkId?: T;
     patch?: T;
     minor?: T;
@@ -74,7 +74,9 @@ declare module 'knex/types/tables' {
     decimals: number;
     type: string;
   }
-  interface InsertableToken extends Omit<Token, 'createdAt' | 'updatedAt' | 'type'> { }
+  interface InsertableToken extends Omit<Token, TimestampKeys> {
+    type?: string;
+  }
   interface ListToken extends Timestamped {
     networkId: string;
     providedId: string;
@@ -82,7 +84,35 @@ declare module 'knex/types/tables' {
     imageHash: string;
     listTokenId: string;
   }
-  interface InsertableListToken extends Omit<ListToken, 'createdAt' | 'updatedAt'> { }
+  interface InsertableListToken extends Omit<ListToken, TimestampKeys | 'listTokenId'> { }
+  interface Link extends Timestamped {
+    uri: string;
+    imageHash: string;
+  }
+  interface InsertableLink extends Omit<Link, TimestampKeys> { }
+  interface ListOrder extends Timestamped {
+    providerId: string;
+    key: string;
+    type: string;
+    name: string | null;
+    description: string | null;
+    listOrderId: string;
+  }
+  interface InsertableListOrder extends Omit<ListOrder, TimestampKeys | 'listOrderId'> {
+    name?: string | null;
+    description?: string | null;
+  }
+  interface ListOrderItem extends Timestamped {
+    providerId: string;
+    listKey: string;
+    ranking: number;
+    listOrderId: string;
+    listId: string | null;
+  }
+  interface InsertableListOrderItem extends Omit<ListOrderItem, TimestampKeys> {
+    listId?: string;
+  }
+  interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> { }
   interface Tables {
     provider: Provider;
     network: Network;

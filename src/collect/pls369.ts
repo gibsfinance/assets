@@ -5,12 +5,14 @@ import * as utils from '@/utils'
 import _ from 'lodash'
 import { pulsechain } from 'viem/chains'
 import * as db from '@/db'
+import promiseLimit from 'promise-limit'
 
-type Walker = (target: string, doWalk: () => string[]) => string[]
+type Walker = (target: string, doWalk: () => Promise<string[]>) => Promise<string[]>
 
-const walkFor = (start: string, fn: Walker): string[] => {
-  const stats = fs.readdirSync(start)
-  const filtered = stats.map((file) => {
+const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
+  const stats = await fs.promises.readdir(start)
+  const limiter = promiseLimit<string>(8)
+  const filtered = await limiter.map(stats, (file) => {
     const f = path.join(start, file)
     return fn(f, () => walkFor(f, fn))
   })
@@ -19,8 +21,8 @@ const walkFor = (start: string, fn: Walker): string[] => {
 
 export const collect = async () => {
   const walkPath = path.join(utils.root, 'submodules', 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
-  const infoFiles = walkFor(walkPath, (file, walker) => {
-    const stat = fs.statSync(file)
+  const infoFiles = await walkFor(walkPath, async (file, walker) => {
+    const stat = await fs.promises.stat(file)
     if (stat.isDirectory()) {
       return walker()
     }
