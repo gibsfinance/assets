@@ -150,7 +150,11 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
       })
       .catch((err: Error) => {
         console.log('fetch failure %o -> %o', providerKey, url)
-        if (err.toString().includes('This operation was abort')) {
+        const errStr = err.toString()
+        if (errStr.includes('This operation was abort')) {
+          return null
+        }
+        if (errStr.includes('Invalid URL')) {
           return null
         }
         console.log(err)
@@ -231,9 +235,6 @@ export const fetchImageAndStoreForToken = async (inputs: {
     originalUri,
     providerKey,
   } = inputs
-  if (token.networkId === utils.chainIdToNetworkId(1) && token.providedId === viem.zeroAddress) {
-    console.log(inputs)
-  }
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }

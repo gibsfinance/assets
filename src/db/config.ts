@@ -43,6 +43,6 @@ export const config = makeConfig({
     ssl: configuration.database.ssl ? {
       rejectUnauthorized: false,
     } : false,
-    requestTimeout: 60_000,
+    // requestTimeout: 60_000,
   },
 })

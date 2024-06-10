@@ -27,7 +27,7 @@ export async function up(knex: Knex): Promise<void> {
       })
     await compositeId.up(knex)
     await knex.raw(`REVOKE UPDATE ON ${tableNames.network} FROM ${userConfig.database.name}`)
-    await knex.raw(utils.autoUpdateTimestamp([userConfig.database.schema, tableNames.network]))
+    // await knex.raw(utils.autoUpdateTimestamp([userConfig.database.schema, tableNames.network]))
   }
 }
 

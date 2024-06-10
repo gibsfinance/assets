@@ -3,6 +3,7 @@ import * as fetch from '@/fetch'
 import * as utils from '@/utils'
 
 export const cleanup = async () => {
+  console.log('cleanup')
   await db.getDB().destroy()
   utils.printFailures()
   fetch.cancelAllRequests()
