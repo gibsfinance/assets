@@ -138,7 +138,24 @@ export const getListOrderId = async (orderParam: string) => {
   return listOrderId
 }
 
-export const getImage: RequestHandler = async (req, res, next) => {
+export const getImage = (parseOrder: boolean): RequestHandler => async (req, res, next) => {
+  const { chainId, address: addressParam, orderParam } = req.params
+  if (!+chainId) {
+    return next(httpErrors.BadRequest('chainId'))
+  }
+  const { filename: address, exts } = splitExt(addressParam)
+  if (!viem.isAddress(address)) {
+    return next(httpErrors.BadRequest('address'))
+  }
+  const listOrderId = parseOrder ? await getListOrderId(orderParam) : null
+  const { img } = await getListTokens(+chainId, address, listOrderId, exts)
+  if (!img) {
+    return next(httpErrors.NotFound())
+  }
+  sendImage(res, img)
+}
+
+export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const { chainId, address: addressParam, order: orderParam } = req.params
   if (!+chainId) {
     return next(httpErrors.BadRequest('chainId'))
@@ -150,7 +167,10 @@ export const getImage: RequestHandler = async (req, res, next) => {
   const listOrderId = await getListOrderId(orderParam)
   const { img } = await getListTokens(+chainId, address, listOrderId, exts)
   if (!img) {
-    return next(httpErrors.NotFound())
+    // console.log(path.join(req.baseUrl, '..'), path.join(req.baseUrl, '.'))
+    // req.originalUrl = req.originalUrl.split('/fallback/').join('/')
+    return getImage(false)(req, res, next)
+    // return next(httpErrors.NotFound())
   }
   sendImage(res, img)
 }
@@ -171,6 +191,7 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
   const { chainId: chainIdParam } = req.params
   const { filename: chainId, exts } = splitExt(chainIdParam)
+  console.log(chainIdParam, exts)
   if (!+chainId) {
     return next(httpErrors.BadRequest('chainId'))
   }
