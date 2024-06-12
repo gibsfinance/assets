@@ -1,4 +1,5 @@
 import * as chains from 'viem/chains'
+import config from 'config'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
@@ -245,4 +246,8 @@ export const timeout = (ms: number) => {
 
 export const toKeccakBytes = (s: string) => (
   viem.keccak256(viem.toBytes(s)).slice(2)
+)
+
+export const directUri = ({ imageHash, ext }: { imageHash: string; ext: string }) => (
+  imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
 )

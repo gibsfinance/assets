@@ -6,7 +6,12 @@ const database = {
   ssl: false,
 }
 const rootURI = process.env.ROOT_URI || 'http://localhost:3000'
+let cacheSeconds = process.env.CACHE_SECONDS
+if (!(+(cacheSeconds as string))) {
+  cacheSeconds = `${60 * 60}`
+}
 export default {
   database,
   rootURI,
+  cacheSeconds,
 }

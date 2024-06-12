@@ -1,86 +1,116 @@
-import { Router } from 'express'
+import { Response, Router } from 'express'
 import * as db from '@/db'
 import createError from 'http-errors'
-import * as data from '@/server/data'
-import { request } from 'http'
+import * as utils from '@/utils'
 import { tableNames } from '@/db/tables'
-import config from 'config'
-import { List } from 'knex/types/tables'
+import { Image, List, ListToken, Provider } from 'knex/types/tables'
+import { Knex } from 'knex'
+import * as semver from 'semver'
 
 export const router = Router()
 
-router.get('/all', async (_req, res, _next) => {
-  res.json(data.allTokenLists)
-})
+const parsePiece = (piece: string) => {
+  const operators = ['>=', '<=', '>', '<', '~', '^']
+  const any = piece === 'x' || piece === '*'
+  if (any) {
+    return {
+      valid: true,
+      value: piece,
+      any: true,
+      operator: null,
+    }
+  }
+  let short!: string
+  let operator!: string
+  for (const o of operators) {
+    const split = piece.split(o)
+    if (split.length > 1) {
+      const [a, b] = split
+      operator = o
+      if (operator === a) {
+        short = b
+      } else {
+        short = a
+      }
+      break
+    }
+  }
+  return {
+    valid: !(+short === +short),
+    any: false,
+    value: +short,
+    operator,
+  }
+}
 
-// router.get('/:providerKey', async (req, res, next) => {
-//   // const listLink = data.providerToListLink().get(req.params.providerKey)
-//   // if (!listLink) {
-//   //   return next(createError.NotFound())
-//   // }
-//   // req.pipe(request(listLink)).pipe(res)
-// })
+const parseVersion = (version: string) => {
+  const noV = version.split('v').join('')
+  const pieces = noV.split('.')
+  if (pieces.length > 3) {
+    return
+  }
+  return pieces.map((piece) => {
+    const asNum = +piece
+    if (asNum === asNum) return (q: Knex.QueryBuilder, k: string) => q.where(k, asNum)
+    const parsed = parsePiece(piece)
+    return (q: Knex.QueryBuilder, k: string) => {
+      if (!parsed.valid || parsed.any) return q
+      if (parsed.operator) return q.where(k, parsed.operator, parsed.value)
+      return q.where(k, parsed.value)
+    }
+  })
+}
 
-router.get('/:providerKey/:listKey?', async (req, res, next) => {
-  const list = await db.getDB().from(tableNames.provider)
-    .select<List[]>('*')
-    .join(tableNames.list, {
-      [`${tableNames.list}.providerId`]: `${tableNames.provider}.providerId`,
-    })
-    .join(tableNames.listToken, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .where({
-      [`${tableNames.provider}.key`]: req.params.providerKey,
-      [`${tableNames.list}.key`]: req.params.listKey || 'default',
-    })
-    .orderBy('major', 'desc')
-    .orderBy('minor', 'desc')
-    .orderBy('patch', 'desc')
-    .first()
+const applyVersion = (version: string, db: Knex.QueryBuilder) => {
+  const [major, minor, patch] = version.split('.')
+  return db.where('major', major)
+    .where('minor', minor)
+    .where('patch', patch)
+}
+
+router.get('/:providerKey/:listKey/:version', async (req, res, next) => {
+  const list = await applyVersion(req.params.version, db.getList(
+    req.params.providerKey,
+    req.params.listKey
+  ))
   if (!list) {
     return next(createError.NotFound())
   }
+  await respondWithList(res, list)
+})
+
+router.get('/:providerKey/:listKey?', async (req, res, next) => {
+  const list = await db.getList(
+    req.params.providerKey,
+    req.params.listKey
+  )
+  if (!list) {
+    return next(createError.NotFound())
+  }
+  await respondWithList(res, list)
+})
+
+const respondWithList = async (res: Response, list: List & Image) => {
   const tokens = await db.getTokensUnderListId(list.listId)
 
-  // .groupBy([
-  //   `${tableNames.list}.listId`,
-  // ])
-  /*
-
-  .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
-  .denseRank('rank', function denseRankByConfiged() {
-    return this.orderBy(`${tableNames.listOrderItem}.ranking`, 'asc')
-      .orderBy(`${tableNames.list}.major`, 'desc')
-      .orderBy(`${tableNames.list}.minor`, 'desc')
-      .orderBy(`${tableNames.list}.patch`, 'desc')
-      .partitionBy([
-        `${tableNames.listToken}.networkId`,
-        `${tableNames.listToken}.providedId`,
-      ])
-  })
-return t('ls')
-  .with('ls', qSub)
-  .select('ls.*')
-  .where('ls.rank', 1)
-   */
+  // could possibly be turned into a query
   res.json({
     name: list.name,
     description: list.description,
-    // logoURI: list.logoURI,
+    logoURI: utils.directUri(list),
+    timestamp: list.updatedAt,
     version: {
       major: list.major,
       minor: list.minor,
       patch: list.patch,
     },
-    timestamp: list.updatedAt,
     tokens: tokens.map((tkn) => ({
       chainId: tkn.chainId,
       address: tkn.address,
       name: tkn.name,
       symbol: tkn.symbol,
       decimals: tkn.decimals,
-      logoURI: `${config.rootURI}/image/direct/${tkn.imageHash}${tkn.ext}`,
+      logoURI: utils.directUri(tkn),
     }))
   })
-})
+}

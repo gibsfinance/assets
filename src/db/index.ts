@@ -439,3 +439,28 @@ export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
       [`${tableNames.network}.networkId`]: `${tableNames.listToken}.networkId`,
     })
 }
+
+export const getList = (providerKey: string, listKey = 'default', t: Tx = db) => (
+  t.from(tableNames.provider)
+    .select<(Provider & List & ListToken & Image)[]>([
+      '*',
+      'image.ext',
+    ])
+    .join(tableNames.list, {
+      [`${tableNames.list}.providerId`]: `${tableNames.provider}.providerId`,
+    })
+    .join(tableNames.listToken, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .outerJoin(tableNames.image, {
+      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
+    })
+    .where({
+      [`${tableNames.provider}.key`]: providerKey,
+      [`${tableNames.list}.key`]: listKey,
+    })
+    .orderBy('major', 'desc')
+    .orderBy('minor', 'desc')
+    .orderBy('patch', 'desc')
+    .first()
+)
