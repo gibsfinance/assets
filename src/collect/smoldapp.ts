@@ -37,18 +37,27 @@ export const collect = async () => {
     providerId: provider.providerId,
   })
   await utils.spinner(`smoldapp/chains`, async () => {
-    await utils.folderContents(chainsPath, async (chainId) => {
+    const chains = await utils.folderContents(chainsPath)
+    for (const chainId of chains) {
+      // await utils.folderContents(chainsPath, async (chainId) => {
       if (path.extname(chainId) === '.json') return
       const networkList = await db.insertList({
         key: `${networksList.key}-${chainId}`,
         providerId: provider.providerId,
       })
       const chainFolder = path.join(chainsPath, chainId)
-      await utils.folderContents(chainFolder, async (file: string) => {
+      const folders = await utils.folderContents(chainFolder)
+      for (const file of folders) {
         await Promise.all([networksList, networkList].map(async (list) => {
           const originalUri = path.join(chainFolder, file)
           if (path.extname(file) === '.svg') {
             await db.transaction(async (tx) => {
+              await db.fetchImageAndStoreForNetwork({
+                chainId: +chainId,
+                uri: originalUri,
+                originalUri,
+                providerKey,
+              }, tx)
               await db.fetchImageAndStoreForList({
                 listId: list.listId,
                 providerKey,
@@ -58,8 +67,8 @@ export const collect = async () => {
             })
           } else {
             const img = await db.fetchImage(originalUri, providerKey)
+            if (!img) return
             await db.transaction(async (tx) => {
-              if (!img) return
               await db.insertImage({
                 providerKey,
                 image: img,
@@ -69,8 +78,8 @@ export const collect = async () => {
             })
           }
         }))
-      })
-    })
+      }
+    }
   })
   const reverseOrderTokens = Object.entries(tokens).reverse()
   for (const [chainIdString, tokens] of reverseOrderTokens) {
@@ -99,13 +108,13 @@ export const collect = async () => {
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
           ? zeroAddress
           : token)
-        // console.log('inserting list %o', networkList.key, address)
         const list = await db.insertList({
           key: `${networkList.key}-${address}`,
           providerId: provider.providerId,
         })
         const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
-        await utils.folderContents(tokenFolder, async (imageName) => {
+        const tokenImages = await utils.folderContents(tokenFolder)
+        for (const imageName of tokenImages) {
           const uri = path.join(tokensPath, chainIdString, token, imageName)
           const baseInput = {
             uri,
@@ -138,10 +147,7 @@ export const collect = async () => {
               ...baseInput,
             }, tx)
           })
-        }).catch((err) => {
-          console.log(err)
-          return null
-        })
+        }
         completed++
       }).catch(() => {
         console.log('each token')

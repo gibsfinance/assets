@@ -73,8 +73,8 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
   }
   let q = db.getDB().select<Image>('*')
     .from(tableNames.image)
-    .join(`${config.database.schema}.${tableNames.list}`, {
-      [`${tableNames.list}.imageHash`]: `${tableNames.image}.imageHash`,
+    .join(`${config.database.schema}.${tableNames.network}`, {
+      [`${tableNames.network}.imageHash`]: `${tableNames.image}.imageHash`,
     })
     .where(filter)
   if (exts?.length) {

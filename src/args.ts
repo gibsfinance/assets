@@ -15,3 +15,22 @@ export const collect = () => {
     providers,
   }
 }
+
+export const exportImage = () => {
+  const argv = yargs(hideBin(process.argv)).options({
+    token: {
+      type: 'string',
+      describe: 'the hash of the token',
+      required: true,
+    },
+    chainId: {
+      type: 'number',
+      describe: 'the chain id to check',
+      required: true,
+    },
+  }).parseSync()
+  return {
+    token: argv.token,
+    chainId: argv.chainId,
+  }
+}

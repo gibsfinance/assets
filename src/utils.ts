@@ -222,8 +222,9 @@ export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: 
 
 const folderAccessLimit = promiseLimit<any>(256)
 
-export const folderContents = async (folder: string, fn: (i: string) => any) => {
+export const folderContents = async (folder: string, fn?: (i: string) => any) => {
   const blockchainFolders = removedUndesirable(await fs.promises.readdir(folder))
+  if (!fn) return blockchainFolders
   return await folderAccessLimit.map(blockchainFolders, async (f) => fn(f))
 }
 

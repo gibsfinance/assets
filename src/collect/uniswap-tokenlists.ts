@@ -21,6 +21,8 @@ export const collect = async () => {
     }
   })
   await promiseLimit<typeof usable[number]>(4).map(usable, async (info) => {
+    if (info.machineName === 'kleros-t-2-cr') return false
+    if (info.machineName === 'testnet-tokens') return false
     const providerKey = `uniswap-${info.machineName}`
     const result = await fetch(info.uri)
       .then(async (res) => (await res.json()) as types.TokenList)
@@ -28,7 +30,6 @@ export const collect = async () => {
     if (!result) {
       return false
     }
-    if (info.machineName === 'testnet-tokens') return false
     // custom domain replacement logic
     result.tokens.forEach((token) => {
       const replacing = 'ethereum-optimism.github.io'

@@ -17,6 +17,14 @@ export const collectables = {
   pulsex: remoteTokenList.collect({
     providerKey: 'pulsex',
     tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
+    extension: [{
+      address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+      logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+      network: {
+        id: 369,
+        isNetworkImage: true,
+      },
+    }],
   }),
   balancer: remoteTokenList.collect({
     providerKey: 'balancer',

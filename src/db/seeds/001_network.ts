@@ -21,7 +21,7 @@ export async function seed(knex: Knex): Promise<void> {
   //       chainId: 0,
   //     }, {
   //       type: 'evm',
-  //       chainId: 1,
+  //  network     chainId: 1,
   //     }])
   //     .returning('*')
   //   const [providerGibs] = await t(tableNames.provider)

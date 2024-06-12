@@ -48,10 +48,10 @@ const missingInfoPath = ({
   imageHash?: string;
   originalUri: string;
   providerKey: string;
-  listId: string;
+  listId: string | null;
 }) => {
   const hash = imageHash || viem.keccak256(viem.toBytes(originalUri)).slice(2)
-  return path.join(utils.root, 'missing', providerKey, listId, hash)
+  return path.join(utils.root, 'missing', providerKey, `${listId}`, hash)
 }
 
 const limit1 = promiseLimit(1)
@@ -62,7 +62,7 @@ const removeMissing = async ({
   imageHash: string;
   originalUri: string;
   providerKey: string;
-  listId: string;
+  listId: string | null;
 }) => {
   const rf = {
     recursive: true,
@@ -85,7 +85,7 @@ const writeMissing = async ({
 }: {
   providerKey: string;
   originalUri: string;
-  listId: string;
+  listId: string | null;
   imageHash?: string;
   image?: Buffer
 }) => {
@@ -111,7 +111,7 @@ const writeMissing = async ({
 export const insertImage = async ({
   providerKey, originalUri, image, listId
 }: {
-  providerKey: string, originalUri: string, listId: string, image: Buffer
+  providerKey: string, originalUri: string, listId: string | null, image: Buffer
 }, t: Tx = db) => {
   const imageHash = viem.keccak256(image).slice(2)
   const ext = await getExt(image, path.extname(originalUri))
@@ -250,7 +250,7 @@ export const fetchImageAndStoreForList = async ({
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getImageFromLink(uri)
+    const existing = await getImageFromLink(uri, t)
     if (existing) {
       const list = await t(tableNames.list)
         .select<List>('*')
@@ -293,8 +293,54 @@ export const fetchImageAndStoreForList = async ({
   }
 }
 
+export const fetchImageAndStoreForNetwork = async ({
+  chainId, uri,
+  originalUri,
+  providerKey,
+}: {
+  chainId: number;
+  uri: string | Buffer;
+  originalUri: string;
+  providerKey: string;
+}, t: Tx = db,
+) => {
+  if (!originalUri && _.isString(uri)) {
+    originalUri = uri
+  }
+  const image = await fetchImage(uri, providerKey)
+  if (!image) {
+    console.log('no img %o -> %o', providerKey, originalUri)
+    await writeMissing({
+      providerKey,
+      originalUri,
+      listId: `${chainId}`,
+    })
+    return
+  }
+  return t.transaction(async (tx) => {
+    await insertNetworkFromChainId(chainId, undefined, tx)
+    const img = await insertImage({
+      originalUri,
+      image,
+      providerKey,
+      listId: `${chainId}`,
+    }, tx)
+    if (!img) {
+      return
+    }
+    const [network] = await tx.from(tableNames.network)
+      .update('imageHash', img.image.imageHash)
+      .where('chainId', chainId)
+      .returning<Network[]>('*')
+    return {
+      network,
+      ...img,
+    }
+  })
+}
+
 export const fetchImageAndStoreForToken = async (inputs: {
-  listId: string;
+  listId: string | null;
   uri: string | Buffer;
   token: InsertableToken;
   originalUri: string;
@@ -314,6 +360,12 @@ export const fetchImageAndStoreForToken = async (inputs: {
   if (_.isString(uri)) {
     const existing = await getImageFromLink(uri, t)
     if (existing) {
+      if (!listId) {
+        return {
+          ...existing,
+          token,
+        }
+      }
       const listToken = await t(tableNames.listToken)
         .select<ListToken>('*')
         .where({
@@ -357,6 +409,12 @@ export const fetchImageAndStoreForToken = async (inputs: {
     providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
   }, t)
   // console.log(img.image)
+  if (!listId) {
+    return {
+      token: insertedToken,
+      ...img,
+    }
+  }
   const listToken = await insertListToken({
     networkId: token.networkId,
     providedId,
