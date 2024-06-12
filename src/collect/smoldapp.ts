@@ -149,12 +149,12 @@ export const collect = async () => {
           })
         }
         completed++
-      }).catch(() => {
-        console.log('each token')
+      }).catch((err) => {
+        console.log('each token', err)
         return null
       })
-    }).catch(() => {
-      console.log('spinner')
+    }).catch((err) => {
+      console.log('spinner', err)
       return null
     })
     // console.log('completed %o %o/%o', k, completed, total)
