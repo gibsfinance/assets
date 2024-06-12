@@ -452,7 +452,7 @@ export const getList = (providerKey: string, listKey = 'default', t: Tx = db) =>
     .join(tableNames.listToken, {
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
     })
-    .outerJoin(tableNames.image, {
+    .fullOuterJoin(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
     .where({
