@@ -104,7 +104,7 @@ export const collect = async () => {
       total += tokens.length
       const limit = promiseLimit<viem.Hex>(4)
       await limit.map(tokens as viem.Hex[], async (token) => {
-        const tokenFolder = path.join(tokensPath, chainIdString, token)
+        const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
           ? zeroAddress
           : token)
@@ -115,7 +115,7 @@ export const collect = async () => {
         const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
         const tokenImages = await utils.folderContents(tokenFolder)
         for (const imageName of tokenImages) {
-          const uri = path.join(tokensPath, chainIdString, token, imageName)
+          const uri = path.join(tokenFolder, imageName)
           const baseInput = {
             uri,
             originalUri: uri,
