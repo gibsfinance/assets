@@ -33,11 +33,12 @@ export const collect = async () => {
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
   })
+  const baseNetwork = await db.insertNetworkFromChainId(0)
   const networksList = await db.insertList({
     key: 'tokens',
     default: true,
     providerId: provider.providerId,
-    networkId: utils.chainIdToNetworkId(0),
+    networkId: baseNetwork.networkId,
   })
   const chainIdToNetworkId = new Map<number, List>()
   await utils.spinner(`smoldapp/chains`, async () => {

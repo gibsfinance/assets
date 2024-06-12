@@ -13,8 +13,8 @@ if [[ "${DATABASE_URL}" != *":password@"* ]]; then
   exit 1
 fi
 
-tsx ./node_modules/.bin/knex migrate:rollback --all
+tsx "./node_modules/.bin/knex" migrate:rollback --all
 
-tsx ./node_modules/.bin/knex migrate:latest
+tsx "./node_modules/.bin/knex" migrate:latest
 
-tsx ./node_modules/.bin/knex seed:run
+tsx "./node_modules/.bin/knex" seed:run
