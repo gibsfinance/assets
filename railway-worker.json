@@ -7,7 +7,7 @@
   "deploy": {
     "runtime": "V2",
     "numReplicas": 1,
-    "cronSchedule": "0 * * * *",
+    "cronSchedule": "*/6 * * * *",
     "startCommand": "npm run collect",
     "sleepApplication": false,
     "restartPolicyType": "ON_FAILURE",
