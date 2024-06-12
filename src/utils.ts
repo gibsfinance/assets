@@ -17,7 +17,6 @@ export const outRoot = process.env.OUT_ROOT || ''
 
 export const root = path.join(__dirname, '..')
 export const submodules = path.join(root, 'submodules')
-console.log('submodules %o', submodules)
 export const images = path.join(root, 'images')
 export const links = path.join(root, 'links')
 

@@ -30,10 +30,15 @@ export const transaction = async <T>(...a: Parameters<Transact<T>>) => (
   db.transaction(...a)
 )
 
-const getExt = async (image: Buffer) => {
+const getExt = async (image: Buffer, providedExt: string) => {
   const e = await fileType.fileTypeFromBuffer(image)
-  const ext = e && e.ext ? `.${e.ext}` : null
-  if (ext) return ext
+  let ext = e && e.ext ? `.${e.ext}` : null
+  if (ext) {
+    if (ext === '.xml' && providedExt !== ext) {
+      ext = providedExt
+    }
+    return ext
+  }
   return image.toString().split('<').length > 2 ? '.svg' : null
 }
 
@@ -109,7 +114,7 @@ export const insertImage = async ({
   providerKey: string, originalUri: string, listId: string, image: Buffer
 }, t: Tx = db) => {
   const imageHash = viem.keccak256(image).slice(2)
-  const ext = await getExt(image)
+  const ext = await getExt(image, path.extname(originalUri))
   if (!ext) {
     console.log('no ext %o -> %o', providerKey, originalUri)
     await writeMissing({
@@ -251,9 +256,11 @@ export const fetchImageAndStoreForList = async ({
         .select<List>('*')
         .where('listId', listId)
         .first() as List
-      return {
-        ...existing,
-        list,
+      if (list && list.imageHash && list.imageHash === existing.image.imageHash) {
+        return {
+          ...existing,
+          list,
+        }
       }
     }
   }
@@ -453,7 +460,7 @@ export const getList = (providerKey: string, listKey = 'default', t: Tx = db) =>
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
     })
     .fullOuterJoin(tableNames.image, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
+      [`${tableNames.image}.imageHash`]: `${tableNames.list}.imageHash`,
     })
     .where({
       [`${tableNames.provider}.key`]: providerKey,
