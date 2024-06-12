@@ -8,7 +8,7 @@ import { tableNames } from "@/db/tables"
 import { Image, List, ListToken, Network, Provider, Token } from "knex/types/tables"
 
 main().then(cleanup).catch((err) => {
-  console.log(err)
+  utils.failureLog(err)
   return cleanup()
 })
 

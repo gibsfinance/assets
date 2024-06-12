@@ -1,5 +1,10 @@
 import * as server from '@/server'
+import * as db from '@/db'
+import { cleanup } from '@/cleanup'
 
-server.main().catch((err) => {
-  console.error(err)
-})
+db.getDB().migrate.latest()
+  .then(() => server.main())
+  .catch((err) => {
+    console.error(err)
+  })
+  .then(cleanup)

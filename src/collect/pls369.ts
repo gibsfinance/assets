@@ -60,15 +60,18 @@ export const collect = async () => {
     const list = await db.insertList({
       providerId: provider.providerId,
       networkId: network.networkId,
+      default: true,
+      key: 'repo',
       name: 'pls369',
       description: 'a grass roots list curated by pulsechain users',
     })
     for (const piece of pieces) {
       const [name, symbol, decimals] = await utils.erc20Read(pulsechain, client, piece.address)
+      const path = piece.fullPath.replace('hhttps://', 'https://')
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
-        uri: piece.fullPath,
-        originalUri: piece.fullPath,
+        uri: path,
+        originalUri: path,
         providerKey: provider.key,
         token: {
           name, symbol, decimals,

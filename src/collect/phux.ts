@@ -10,7 +10,7 @@ export const collect = async () => {
         token.logoURI = `${domain}${token.logoURI}`
       }
     })
-    return await inmemoryTokenlist.collect('phux', l)
+    return await inmemoryTokenlist.collect('phux', 'exchange', l)
   }
   throw new Error('should never get here')
 }

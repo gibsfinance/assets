@@ -52,7 +52,7 @@ const ipfsCompatableFetch: typeof fetch = async (
       })
     })
   } else {
-    console.log(url.toString())
+    utils.failureLog(url.toString())
     throw new Error('unrecognized protocol')
   }
 }

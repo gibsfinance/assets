@@ -13,6 +13,8 @@ export async function seed(knex: Knex): Promise<void> {
       key: 'gibs',
       description: 'a memetic company',
     }])
+    .onConflict(['providerId'])
+    .merge(['providerId'])
     .returning('*')
   // await knex.transaction(async (t) => {
   //   const [defaultNetwork, network1] = await t(tableNames.network)

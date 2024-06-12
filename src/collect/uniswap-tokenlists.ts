@@ -23,7 +23,7 @@ export const collect = async () => {
   await promiseLimit<typeof usable[number]>(4).map(usable, async (info) => {
     if (info.machineName === 'kleros-t-2-cr') return false
     if (info.machineName === 'testnet-tokens') return false
-    const providerKey = `uniswap-${info.machineName}`
+    // const providerKey = `uniswap-${info.machineName}`
     const result = await fetch(info.uri)
       .then(async (res) => (await res.json()) as types.TokenList)
       .catch(() => null)
@@ -42,11 +42,12 @@ export const collect = async () => {
       }
       if (token.logoURI) {
         token.logoURI = token.logoURI.split('?')[0]
+        token.logoURI = token.logoURI.replace('hhttps://', 'https://')
+      }
+      if (token.logoURI === 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH') {
+        token.logoURI = ''
       }
     })
-    result.tokens = result.tokens.filter((token) => (
-      token.logoURI !== 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH'
-    ))
-    return await inmemoryTokenlist.collect(providerKey, result)
+    return await inmemoryTokenlist.collect(`uniswap-${info.machineName}`, 'hosted', result)
   })
 }

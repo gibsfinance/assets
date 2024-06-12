@@ -5,6 +5,7 @@ import * as fs from 'fs'
 import * as db from '@/db'
 import { zeroAddress } from 'viem';
 import promiseLimit from 'promise-limit'
+import { List, Network } from 'knex/types/tables'
 
 type Version = {
   major: number;
@@ -34,17 +35,22 @@ export const collect = async () => {
   })
   const networksList = await db.insertList({
     key: 'tokens',
+    default: true,
     providerId: provider.providerId,
+    networkId: utils.chainIdToNetworkId(0),
   })
+  const chainIdToNetworkId = new Map<number, List>()
   await utils.spinner(`smoldapp/chains`, async () => {
     const chains = await utils.folderContents(chainsPath)
     for (const chainId of chains) {
-      // await utils.folderContents(chainsPath, async (chainId) => {
       if (path.extname(chainId) === '.json') return
+      await db.insertNetworkFromChainId(+chainId)
       const networkList = await db.insertList({
         key: `${networksList.key}-${chainId}`,
         providerId: provider.providerId,
+        networkId: utils.chainIdToNetworkId(+chainId),
       })
+      chainIdToNetworkId.set(+chainId, networkList)
       const chainFolder = path.join(chainsPath, chainId)
       const folders = await utils.folderContents(chainFolder)
       for (const file of folders) {
@@ -87,19 +93,19 @@ export const collect = async () => {
     let total = 0
     const k = `${providerKey}/${chainIdString}`
     await utils.spinner(k, async () => {
-      const network = await db.insertNetworkFromChainId(+chainIdString)
       const chain = utils.findChain(+chainIdString)
       if (!chain) {
-        console.log('unable to find chain %o/%o', 'smoldapp', +chainIdString)
+        utils.failureLog('unable to find chain %o/%o', 'smoldapp', +chainIdString)
         return
       }
       const client = viem.createPublicClient({
         chain,
         transport: viem.http(),
       })
-      const networkList = await db.insertList({
-        key: `${networksList.key}-${chainIdString}`,
+      const networkList = chainIdToNetworkId.get(chain.id) || await db.insertList({
+        key: `${networksList.key}-${chain.id}`,
         providerId: provider.providerId,
+        networkId: utils.chainIdToNetworkId(chain.id),
       })
       total += tokens.length
       const limit = promiseLimit<viem.Hex>(4)
@@ -122,13 +128,12 @@ export const collect = async () => {
             providerKey: provider.key,
             token: {
               providedId: address,
-              networkId: network.networkId,
+              networkId: networkList.networkId!,
               name,
               symbol,
               decimals,
             },
           }
-          // console.log('inserting %o %o', provider.key, uri)
           await db.transaction(async (tx) => {
             await db.fetchImageAndStoreForToken({
               listId: list.listId,
@@ -150,11 +155,11 @@ export const collect = async () => {
         }
         completed++
       }).catch((err) => {
-        console.log('each token', err)
+        utils.failureLog('each token', err)
         return null
       })
     }).catch((err) => {
-      console.log('spinner', err)
+      utils.failureLog('spinner', err)
       return null
     })
     // console.log('completed %o %o/%o', k, completed, total)

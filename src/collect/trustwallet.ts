@@ -23,7 +23,7 @@ export const collect = async () => {
         // return null
       })
     } catch (err) {
-      console.log(err)
+      utils.failureLog(err)
     }
   }
 }
@@ -76,27 +76,39 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   if (!chainId) {
     return
   }
-  const key = `${providerKey}-${blockchainKey}`
+  const provider = await db.insertProvider({
+    key: providerKey,
+    name: 'Trust Wallet',
+  })
+  const trustwalletList = await db.insertList({
+    key: 'wallet',
+    default: true,
+    providerId: provider.providerId,
+  })
+  const key = `wallet-${blockchainKey}`
   await utils.spinner(key, async () => {
     const network = await db.insertNetworkFromChainId(chainId)
-    const provider = await db.insertProvider({
-      key: providerKey,
-      name: 'Trust Wallet',
-    })
-    const list = await db.insertList({
+    const networkList = await db.insertList({
       providerId: provider.providerId,
       networkId: network.networkId,
       name: key,
       key,
     })
-    await db.fetchImageAndStoreForList({
-      listId: list.listId,
+    const res = await db.fetchImageAndStoreForList({
+      listId: networkList.listId,
       uri: networkLogoPath,
       originalUri: networkLogoPath,
       providerKey,
     })
-    const limit = promiseLimit<string>(4)
-    await limit.map(assets, async (asset) => {
+    if (res) {
+      await db.fetchImageAndStoreForList({
+        listId: trustwalletList.listId,
+        uri: res.image.content,
+        originalUri: networkLogoPath,
+        providerKey,
+      })
+    }
+    for (const asset of assets) {
       const folder = path.join(blockchainsRoot, blockchainKey, assetsFolder, asset)
       const assets = await load(folder).catch(() => null)
       if (!assets) {
@@ -104,19 +116,23 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       }
       const [info, logoPath] = assets
       const address = asset as viem.Hex
-      await db.fetchImageAndStoreForToken({
-        listId: list.listId,
-        uri: logoPath,
-        originalUri: logoPath,
-        providerKey,
-        token: {
-          providedId: address,
-          networkId: network.networkId,
-          name: info.name,
-          symbol: info.symbol,
-          decimals: info.decimals,
-        },
-      })
-    })
+      for (const list of [networkList, trustwalletList]) {
+        const file = await db.fetchImage(logoPath, networkList.key)
+        if (!file) continue
+        await db.fetchImageAndStoreForToken({
+          listId: list.listId,
+          uri: file,
+          originalUri: logoPath,
+          providerKey,
+          token: {
+            providedId: address,
+            networkId: network.networkId,
+            name: info.name,
+            symbol: info.symbol,
+            decimals: info.decimals,
+          },
+        })
+      }
+    }
   })
 }

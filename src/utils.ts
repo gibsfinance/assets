@@ -33,7 +33,11 @@ export const pathFromOutRoot = (filePath: string) => {
 type ConsoleLogParams = Parameters<typeof console.log>
 const failures: ConsoleLogParams[] = []
 export const failureLog = (...a: ConsoleLogParams) => {
-  failures.push(a)
+  if (process.env.FAKE_SPINNER) {
+    console.log(...a)
+  } else {
+    failures.push(a)
+  }
 }
 
 export const printFailures = () => {
@@ -125,7 +129,7 @@ export const retry = async (fn: types.Todo, options = {}) => {
     try {
       return await fn()
     } catch (err) {
-      console.log(err)
+      failureLog(err)
     }
     opts.attempts -= 1
     if (opts.attempts) {
@@ -176,7 +180,7 @@ export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
       spinner.succeed()
       return res
     }).catch((err) => {
-      console.log(err)
+      failureLog(err)
       spinner.failed()
       throw err
     })

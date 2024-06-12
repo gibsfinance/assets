@@ -31,6 +31,7 @@ declare module 'knex/types/tables' {
     networkId: string | null;
     name: string;
     description: string;
+    default: boolean;
     key: string;
     patch: number;
     minor: number;
@@ -47,6 +48,7 @@ declare module 'knex/types/tables' {
     name?: T;
     description?: T;
     key?: string;
+    default?: boolean;
   }
   interface Tag extends Timestamped {
     providerId: string;

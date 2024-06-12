@@ -95,7 +95,7 @@ const writeMissing = async ({
     await fs.promises.mkdir(folder, {
       recursive: true,
     })
-    utils.failureLog('ext missing %o', folder)
+    utils.failureLog('ext missing %o %o', originalUri, folder)
     await Promise.all([
       fs.promises.writeFile(path.join(folder, 'info.json'), JSON.stringify({
         imageHash,
@@ -116,7 +116,7 @@ export const insertImage = async ({
   const imageHash = viem.keccak256(image).slice(2)
   const ext = await getExt(image, path.extname(originalUri))
   if (!ext) {
-    console.log('no ext %o -> %o', providerKey, originalUri)
+    utils.failureLog('no ext %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -158,8 +158,8 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
     return null
   }
   if (url.startsWith(utils.submodules)) {
-    return fs.promises.readFile(url).catch((err) => {
-      console.log('read file failed %o -> %o', providerKey, url)
+    return fs.promises.readFile(url).catch(() => {
+      utils.failureLog('read file failed %o -> %o', providerKey, url)
       return null
     })
   }
@@ -175,7 +175,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
         return await fetch(url).then(utils.responseToBuffer)
       })
       .catch((err: Error) => {
-        console.log('fetch failure %o -> %o', providerKey, url)
+        utils.failureLog('fetch failure %o -> %o', providerKey, url)
         const errStr = err.toString()
         if (errStr.includes('This operation was abort')) {
           return null
@@ -183,7 +183,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
         if (errStr.includes('Invalid URL')) {
           return null
         }
-        console.log(err)
+        utils.failureLog(err)
         return null
       }),
   ])
@@ -266,7 +266,7 @@ export const fetchImageAndStoreForList = async ({
   }
   const image = await fetchImage(uri, providerKey)
   if (!image) {
-    console.log('no img %o -> %o', providerKey, originalUri)
+    utils.failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -309,7 +309,7 @@ export const fetchImageAndStoreForNetwork = async ({
   }
   const image = await fetchImage(uri, providerKey)
   if (!image) {
-    console.log('no img %o -> %o', providerKey, originalUri)
+    utils.failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -408,7 +408,7 @@ export const fetchImageAndStoreForToken = async (inputs: {
     ...token,
     providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
   }, t)
-  // console.log(img.image)
+  // utils.failureLog(img.image)
   if (!listId) {
     return {
       token: insertedToken,
@@ -446,7 +446,7 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
       ...list,
     })
     .onConflict(['listId'])
-    .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch'])
+    .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch', 'default'])
     .returning('*')
   return insertedList
 }
@@ -506,7 +506,7 @@ export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
     })
 }
 
-export const getList = (providerKey: string, listKey = 'default', t: Tx = db) => (
+export const getList = (providerKey: string, listKey?: string, t: Tx = db) => (
   t.from(tableNames.provider)
     .select<(Provider & List & ListToken & Image)[]>([
       '*',
@@ -521,9 +521,12 @@ export const getList = (providerKey: string, listKey = 'default', t: Tx = db) =>
     .fullOuterJoin(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.list}.imageHash`,
     })
-    .where({
+    .where(listKey ? {
       [`${tableNames.provider}.key`]: providerKey,
       [`${tableNames.list}.key`]: listKey,
+    } : {
+      [`${tableNames.provider}.key`]: providerKey,
+      [`${tableNames.list}.default`]: true,
     })
     .orderBy('major', 'desc')
     .orderBy('minor', 'desc')

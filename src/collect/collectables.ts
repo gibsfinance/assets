@@ -5,17 +5,18 @@ import * as internetmoney from './internetmoney'
 import * as uniswapTokenlists from './uniswap-tokenlists'
 import * as remoteTokenList from './remote-tokenlist'
 import * as smoldapp from './smoldapp'
-import * as balancer from './balancer'
 
 export const collectables = {
   trustwallet: trustwallet.collect,
   'uniswap-tokenlists': uniswapTokenlists.collect,
   piteas: remoteTokenList.collect({
     providerKey: 'piteas',
+    listKey: 'exchange',
     tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
   }),
   pulsex: remoteTokenList.collect({
     providerKey: 'pulsex',
+    listKey: 'exchange',
     tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
     extension: [{
       address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
@@ -28,6 +29,7 @@ export const collectables = {
   }),
   balancer: remoteTokenList.collect({
     providerKey: 'balancer',
+    listKey: 'exchange',
     tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
   }),
   internetmoney: internetmoney.collect,

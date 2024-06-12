@@ -191,7 +191,6 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
   const { chainId: chainIdParam } = req.params
   const { filename: chainId, exts } = splitExt(chainIdParam)
-  console.log(chainIdParam, exts)
   if (!+chainId) {
     return next(httpErrors.BadRequest('chainId'))
   }

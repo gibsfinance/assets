@@ -18,9 +18,10 @@ type Input = {
   extension?: Extension[];
   providerKey: string;
   tokenList: string
+  listKey: string
 }
 
-export const collect = ({ providerKey, tokenList: tokenListUrl, extension }: Input) => async () => {
+export const collect = ({ providerKey, listKey, tokenList: tokenListUrl, extension }: Input) => async () => {
   const tokenList = await fetch(tokenListUrl)
     .then((res): Promise<types.TokenList> => res.json())
   await Promise.all((extension || []).map(async (item) => {
@@ -60,5 +61,5 @@ export const collect = ({ providerKey, tokenList: tokenListUrl, extension }: Inp
       },
     })
   }))
-  return inmemoryTokenlist.collect(providerKey, tokenList)
+  return inmemoryTokenlist.collect(providerKey, listKey, tokenList)
 }
