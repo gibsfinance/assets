@@ -21,7 +21,7 @@ export const exportImage = () => {
     token: {
       type: 'string',
       describe: 'the hash of the token',
-      required: true,
+      required: false,
     },
     chainId: {
       type: 'number',

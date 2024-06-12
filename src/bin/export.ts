@@ -14,6 +14,27 @@ main().then(cleanup).catch((err) => {
 
 async function main() {
   const { token, chainId } = exportImage()
+  const imgExportDir = path.join(utils.root, 'image-export')
+  await fs.promises.rm(imgExportDir, {
+    force: true,
+    recursive: true,
+  })
+  if (!token) {
+    const match = await db.getDB().select('*')
+      .from(tableNames.network)
+      .join(tableNames.image, {
+        [`${tableNames.image}.imageHash`]: `${tableNames.network}.imageHash`,
+      })
+      .where({
+        chainId,
+      })
+      .first()
+    await fs.promises.mkdir(imgExportDir, {
+      recursive: true,
+    })
+    await fs.promises.writeFile(path.join(imgExportDir, `${chainId}${match.ext}`), match.content)
+    return
+  }
   console.log('%o@%o', chainId, token)
   const matches = await db.getDB().from(tableNames.network)
     .select<(Network & Token & List & Provider & Image & ListToken & {
@@ -44,11 +65,6 @@ async function main() {
     .join(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
-  const imgExportDir = path.join(utils.root, 'image-export')
-  await fs.promises.rm(imgExportDir, {
-    force: true,
-    recursive: true,
-  })
   await Promise.all(matches.map(async (res) => {
     const dirname = path.join(imgExportDir, res.providerKey, res.listKey)
     const filepath = path.join(dirname, `${res.imageHash}${res.ext}`)
