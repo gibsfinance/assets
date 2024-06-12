@@ -5,6 +5,7 @@ import * as utils from '@/utils'
 import * as types from '@/types'
 import * as viem from 'viem'
 import _ from 'lodash'
+import promiseLimit from 'promise-limit'
 
 const providerKey = 'trustwallet'
 
@@ -94,7 +95,8 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       originalUri: networkLogoPath,
       providerKey,
     })
-    await utils.limit.map(assets, async (asset) => {
+    const limit = promiseLimit<string>(4)
+    await limit.map(assets, async (asset) => {
       const folder = path.join(blockchainsRoot, blockchainKey, assetsFolder, asset)
       const assets = await load(folder).catch(() => null)
       if (!assets) {

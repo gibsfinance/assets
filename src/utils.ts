@@ -59,7 +59,7 @@ export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
   return BigInt(a.address) < BigInt(b.address) ? -1 : 1
 }
 
-export const limit = promiseLimit<any>(256)
+export const limit = promiseLimit<any>(16)
 
 export const findChain = (chainId: number) => {
   const chain = Object.values(chains).find((chain) => chain.id === chainId) as viem.Chain
@@ -144,7 +144,7 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-const spinnerLimit = promiseLimit<any>(8)
+const spinnerLimit = promiseLimit<any>(4)
 
 const print = (key: string) => {
   const log = (w: string) => {

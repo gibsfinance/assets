@@ -4,6 +4,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as db from '@/db'
 import { zeroAddress } from 'viem';
+import promiseLimit from 'promise-limit'
 
 type Version = {
   major: number;
@@ -44,17 +45,30 @@ export const collect = async () => {
       })
       const chainFolder = path.join(chainsPath, chainId)
       await utils.folderContents(chainFolder, async (file: string) => {
-        const originalUri = path.join(chainFolder, file)
-        if (path.extname(file) === '.svg') {
-          await db.fetchImageAndStoreForList({
-            listId: networkList.listId,
-            providerKey,
-            uri: originalUri,
-            originalUri,
-          })
-        } else {
-          await db.fetchImage(originalUri, providerKey)
-        }
+        await Promise.all([networksList, networkList].map(async (list) => {
+          const originalUri = path.join(chainFolder, file)
+          if (path.extname(file) === '.svg') {
+            await db.transaction(async (tx) => {
+              await db.fetchImageAndStoreForList({
+                listId: list.listId,
+                providerKey,
+                uri: originalUri,
+                originalUri,
+              }, tx)
+            })
+          } else {
+            const img = await db.fetchImage(originalUri, providerKey)
+            await db.transaction(async (tx) => {
+              if (!img) return
+              await db.insertImage({
+                providerKey,
+                image: img,
+                originalUri,
+                listId: list.listId,
+              }, tx)
+            })
+          }
+        }))
       })
     })
   })
@@ -79,7 +93,8 @@ export const collect = async () => {
         providerId: provider.providerId,
       })
       total += tokens.length
-      await utils.limit.map(tokens, async (token: viem.Hex) => {
+      const limit = promiseLimit<viem.Hex>(4)
+      await limit.map(tokens as viem.Hex[], async (token) => {
         const tokenFolder = path.join(tokensPath, chainIdString, token)
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
           ? zeroAddress

@@ -63,7 +63,7 @@ export const collect = async () => {
       name: 'pls369',
       description: 'a grass roots list curated by pulsechain users',
     })
-    await utils.limit.map(pieces, async (piece: { fullPath: string; address: viem.Hex }) => {
+    for (const piece of pieces) {
       const [name, symbol, decimals] = await utils.erc20Read(pulsechain, client, piece.address)
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
@@ -76,6 +76,6 @@ export const collect = async () => {
           providedId: piece.address,
         },
       })
-    })
+    }
   })
 }
