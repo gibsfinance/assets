@@ -5,5 +5,6 @@ export const router = Router()
 
 router.use(`/direct/:imageHash`, handlers.getImageByHash)
 router.use(`/:order/:chainId/:address`, handlers.getImage)
+router.use(`/:chainId/:address`, handlers.getImage)
 // best guess
 router.use('/:chainId', handlers.bestGuessNetworkImageFromOnOnChainInfo)
