@@ -48,7 +48,7 @@ export const collect = async (providerKey: string, tokenList: types.TokenList) =
       completed++
     })
   })
-  console.log('completed %o %o/%o',
-    providerKey, completed, tokenList.tokens.length,
-  )
+  // console.log('completed %o %o/%o',
+  //   providerKey, completed, tokenList.tokens.length,
+  // )
 }
