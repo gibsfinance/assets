@@ -91,7 +91,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     await db.fetchImageAndStoreForList({
       listId: list.listId,
       uri: networkLogoPath,
-      originalUri: info,
+      originalUri: networkLogoPath,
       providerKey,
     })
     await utils.limit.map(assets, async (asset) => {
@@ -105,7 +105,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
         uri: logoPath,
-        originalUri: folder,
+        originalUri: logoPath,
         providerKey,
         token: {
           providedId: address,

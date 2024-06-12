@@ -48,7 +48,7 @@ export const collect = async () => {
     .value()
   const client = viem.createClient({
     chain: pulsechain,
-    transport: viem.http(pulsechain.rpcUrls.default.http[0]),
+    transport: viem.http(),
   })
   const provider = await db.insertProvider({
     key: 'pls369',

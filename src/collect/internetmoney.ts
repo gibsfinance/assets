@@ -49,7 +49,7 @@ export const collect = async () => {
       await db.insertNetworkFromChainId(chain.id);
       ; ((network) => {
         const client = viem.createClient({
-          transport: viem.http(chain.rpcUrls.default.http[0]),
+          transport: viem.http(),
           chain,
         })
         encounteredChainIds.add(BigInt(chain.id))

@@ -18,8 +18,8 @@ type Info = {
 
 export const collect = async () => {
   const root = path.join(utils.submodules, 'smoldapp-tokenassets')
-  // const chainsPath = path.join(root, 'chains')
   const tokensPath = path.join(root, 'tokens')
+  const chainsPath = path.join(root, 'chains')
   const providerKey = 'smoldapp'
   const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json'))
     .catch(() => null)
@@ -31,14 +31,37 @@ export const collect = async () => {
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
   })
+  const networksList = await db.insertList({
+    key: 'tokens',
+    providerId: provider.providerId,
+  })
+  await utils.spinner(`smoldapp/chains`, async () => {
+    await utils.folderContents(chainsPath, async (chainId) => {
+      if (path.extname(chainId) === '.json') return
+      const networkList = await db.insertList({
+        key: `${networksList.key}-${chainId}`,
+        providerId: provider.providerId,
+      })
+      const chainFolder = path.join(chainsPath, chainId)
+      await utils.folderContents(chainFolder, async (file: string) => {
+        const originalUri = path.join(chainFolder, file)
+        if (path.extname(file) === '.svg') {
+          await db.fetchImageAndStoreForList({
+            listId: networkList.listId,
+            providerKey,
+            uri: originalUri,
+            originalUri,
+          })
+        } else {
+          await db.fetchImage(originalUri, providerKey)
+        }
+      })
+    })
+  })
   const reverseOrderTokens = Object.entries(tokens).reverse()
   for (const [chainIdString, tokens] of reverseOrderTokens) {
     let completed = 0
     let total = 0
-    const networksList = await db.insertList({
-      key: 'tokens',
-      providerId: provider.providerId,
-    })
     const k = `${providerKey}/${chainIdString}`
     await utils.spinner(k, async () => {
       const network = await db.insertNetworkFromChainId(+chainIdString)
@@ -49,7 +72,7 @@ export const collect = async () => {
       }
       const client = viem.createPublicClient({
         chain,
-        transport: viem.http(chain.rpcUrls.default.http[0]),
+        transport: viem.http(),
       })
       const networkList = await db.insertList({
         key: `${networksList.key}-${chainIdString}`,
@@ -61,6 +84,7 @@ export const collect = async () => {
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
           ? zeroAddress
           : token)
+        // console.log('inserting list %o', networkList.key, address)
         const list = await db.insertList({
           key: `${networkList.key}-${address}`,
           providerId: provider.providerId,
@@ -80,26 +104,38 @@ export const collect = async () => {
               decimals,
             },
           }
-          await db.getDB().transaction(async (tx) => {
-            await Promise.all([
-              db.fetchImageAndStoreForToken({
-                listId: list.listId,
-                ...baseInput,
-              }, tx),
-              db.fetchImageAndStoreForToken({
-                listId: networkList.listId,
-                ...baseInput,
-              }, tx),
-              db.fetchImageAndStoreForToken({
-                listId: networksList.listId,
-                ...baseInput,
-              }, tx),
-            ])
+          // console.log('inserting %o %o', provider.key, uri)
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForToken({
+              listId: list.listId,
+              ...baseInput,
+            }, tx)
           })
-        }).catch(() => null)
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForToken({
+              listId: networkList.listId,
+              ...baseInput,
+            }, tx)
+          })
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForToken({
+              listId: networksList.listId,
+              ...baseInput,
+            }, tx)
+          })
+        }).catch((err) => {
+          console.log(err)
+          return null
+        })
         completed++
-      }).catch(() => null)
-    }).catch(() => null)
-    console.log('completed %o %o/%o', k, completed, total)
+      }).catch(() => {
+        console.log('each token')
+        return null
+      })
+    }).catch(() => {
+      console.log('spinner')
+      return null
+    })
+    // console.log('completed %o %o/%o', k, completed, total)
   }
 }

@@ -7,7 +7,7 @@ import { config } from './config'
 import * as fileType from 'file-type'
 import * as utils from '../utils'
 import { Tx, tableNames } from './tables'
-import type { Image, InsertableList, InsertableListToken, InsertableProvider, InsertableToken, Link, List, ListToken, Network, Provider, ListOrder, ListOrderItem, InsertableListOrder, InsertableListOrderItem, BackfillableInsertableListOrderItem, Token } from 'knex/types/tables'
+import type { Image, InsertableList, InsertableListToken, InsertableProvider, InsertableToken, Link, List, ListToken, Network, Provider, ListOrder, ListOrderItem, InsertableListOrder, BackfillableInsertableListOrderItem, Token } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
@@ -312,7 +312,7 @@ export const fetchImageAndStoreForToken = async (inputs: {
   }
   const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
   if (_.isString(uri)) {
-    const existing = await getImageFromLink(uri)
+    const existing = await getImageFromLink(uri, t)
     if (existing) {
       const listToken = await t(tableNames.listToken)
         .select<ListToken>('*')
@@ -355,13 +355,14 @@ export const fetchImageAndStoreForToken = async (inputs: {
     type: 'erc20',
     ...token,
     providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
-  })
+  }, t)
+  // console.log(img.image)
   const listToken = await insertListToken({
     networkId: token.networkId,
     providedId,
     listId,
     imageHash: img.image.imageHash,
-  })
+  }, t)
   return {
     token: insertedToken,
     listToken,
@@ -374,7 +375,7 @@ export const insertListToken = async (listToken: InsertableListToken, t: Tx = db
     .insert([listToken])
     .onConflict(['listTokenId'])
     .merge(['listTokenId'])
-    .returning<InsertableListToken[]>('*')
+    .returning<ListToken[]>('*')
   return inserted
 }
 
@@ -425,17 +426,17 @@ export const insertOrder = async (order: InsertableListOrder, orderItems: Backfi
 
 export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
   return t.select([
-    db.raw(`${tableNames.network}.chain_id`),
-    db.raw(`${tableNames.token}.provided_id as address`),
-    db.raw(`${tableNames.token}.decimals as decimals`),
-    db.raw(`${tableNames.token}.symbol as symbol`),
-    db.raw(`${tableNames.token}.name as name`),
-    db.raw(`${tableNames.image}.image_hash as image_hash`),
-    db.raw(`${tableNames.image}.ext as ext`),
+    t.raw(`${tableNames.network}.chain_id`),
+    t.raw(`${tableNames.token}.provided_id as address`),
+    t.raw(`${tableNames.token}.decimals as decimals`),
+    t.raw(`${tableNames.token}.symbol as symbol`),
+    t.raw(`${tableNames.token}.name as name`),
+    t.raw(`${tableNames.image}.image_hash as image_hash`),
+    t.raw(`${tableNames.image}.ext as ext`),
   ])
     .from(tableNames.listToken)
     .where(`${tableNames.listToken}.listId`, listId)
-    .join(tableNames.image, {
+    .fullOuterJoin(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
     .join(tableNames.token, {
