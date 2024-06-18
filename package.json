@@ -53,6 +53,7 @@
     "@types/lodash": "^4.17.4",
     "@types/node": "^20.14.2",
     "@types/pg": "^8.11.6",
+    "@types/response-time": "^2.3.8",
     "@types/supertest": "^6.0.2",
     "@types/yargs": "^17.0.32",
     "@uniswap/token-lists": "^1.0.0-beta.34",
@@ -81,6 +82,7 @@
   "dependencies": {
     "@types/semver": "^7.5.8",
     "express-urlrewrite": "^2.0.2",
+    "response-time": "^2.3.2",
     "semver": "^7.6.2"
   }
 }

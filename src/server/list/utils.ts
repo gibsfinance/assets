@@ -63,7 +63,6 @@ export const tokenFilters = (q: ParsedQs) => {
   if (q.chainId) {
     const chainIdsQs = _.toArray(q.chainId as string | string[]).map((cId) => `${cId}`)
     const chainIds = new Set<string>(chainIdsQs)
-    console.log(chainIds)
     filters.push((a) => chainIds.has(`${a.chainId}`))
   }
   if (q.decimals) {
