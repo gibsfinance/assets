@@ -26,17 +26,16 @@ export const respondWithList = async (
   // could possibly be turned into a query
   const tkns = normalizeTokens(tokens, filters)
   res.json({
-    name: list.name,
-    description: list.description,
+    name: list.name || '',
     logoURI: utils.directUri(list),
-    timestamp: list.updatedAt,
+    timestamp: list.updatedAt.toISOString(),
     version: {
       major: list.major || 0,
       minor: list.minor || 0,
       patch: list.patch || 0,
     },
     tokens: tkns,
-  })
+  } as TokenList)
 }
 
 export const normalizeTokens = (
@@ -60,11 +59,9 @@ type Filter<T> = (a: T) => boolean
 
 export const tokenFilters = (q: ParsedQs) => {
   const filters: Filter<Token & Network>[] = []
-  console.log(q)
   if (q.chainId) {
     const chainIdsQs = (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => `${cId}`)
     const chainIds = new Set<string>(chainIdsQs)
-    console.log(chainIds)
     filters.push((a) => chainIds.has(`${a.chainId}`))
   }
   if (q.decimals) {
