@@ -495,7 +495,7 @@ export const insertOrder = async (order: InsertableListOrder, orderItems: Backfi
       ...i,
       listOrderId: o.listOrderId,
     }))
-    console.log(o, insertableItems)
+    // console.log(o, insertableItems)
     const items = await tx(tableNames.listOrderItem)
       .insert(insertableItems)
       .onConflict(['listOrderId', 'ranking'])

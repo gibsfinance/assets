@@ -27,12 +27,13 @@ test('/list', async (t) => {
       providerId: provider.providerId,
       key: 'list-abc2',
     })
+    await db.insertNetworkFromChainId(10_001)
     const token = await db.insertToken({
       providedId: zeroAddress,
       symbol: 'ETH',
       name: 'Ether',
       decimals: 18,
-      networkId: utils.chainIdToNetworkId(0),
+      networkId: utils.chainIdToNetworkId(10_001),
     })
     await db.insertListToken({
       providedId: token.providedId,
@@ -51,8 +52,13 @@ test('/list', async (t) => {
     await t.test('/:listKey?', async (t) => {
       const res = await supertest(app).get(`/list/${provider.key}/${list.key}`)
         .expect(200)
-      console.log(res)
+      // console.log(res)
       assert.strictEqual(true, true)
     })
+  })
+  await t.test('filter by chain id', async () => {
+    const res = await supertest(app).get(`/list/${provider.key}/${list.key}?chainId=10001`)
+      .expect(200)
+    console.log(res.body)
   })
 })
