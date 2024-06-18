@@ -61,9 +61,10 @@ type Filter<T> = (a: T) => boolean
 export const tokenFilters = (q: ParsedQs) => {
   const filters: Filter<Token & Network>[] = []
   if (q.chainId) {
-    const chainIdsQs = _.toArray(q.chainId as string | string[])
+    const chainIdsQs = _.toArray(q.chainId as string | string[]).map((cId) => `${cId}`)
     const chainIds = new Set<string>(chainIdsQs)
-    filters.push((a) => chainIds.has(a.chainId))
+    console.log(chainIds)
+    filters.push((a) => chainIds.has(`${a.chainId}`))
   }
   if (q.decimals) {
     const decimalsQs = _.toArray(q.decimals as string | string[])
