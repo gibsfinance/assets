@@ -511,14 +511,14 @@ export const insertOrder = async (order: InsertableListOrder, orderItems: Backfi
 export const getTokensUnderListId = (t: Tx = db) => {
   return t.select([
     t.raw(`${tableNames.network}.chain_id`),
-    t.raw(`${tableNames.token}.provided_id as address`),
-    t.raw(`${tableNames.token}.decimals as decimals`),
-    t.raw(`${tableNames.token}.symbol as symbol`),
-    t.raw(`${tableNames.token}.name as name`),
-    t.raw(`${tableNames.image}.image_hash as image_hash`),
-    t.raw(`${tableNames.image}.ext as ext`),
+    t.raw(`${tableNames.token}.provided_id`),
+    t.raw(`${tableNames.token}.decimals`),
+    t.raw(`${tableNames.token}.symbol`),
+    t.raw(`${tableNames.token}.name`),
+    t.raw(`${tableNames.image}.image_hash`),
+    t.raw(`${tableNames.image}.ext`),
   ])
-    // .from<types.TokenInfo>(tableNames.listToken)
+    .from<types.TokenInfo>(tableNames.listToken)
     .fullOuterJoin(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
