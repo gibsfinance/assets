@@ -5,7 +5,7 @@ import * as utils from '@/utils'
 import * as types from '@/types'
 import * as viem from 'viem'
 import _ from 'lodash'
-import promiseLimit from 'promise-limit'
+import { Image } from 'knex/types/tables'
 
 const providerKey = 'trustwallet'
 
@@ -101,9 +101,10 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
       providerKey,
     })
     if (res) {
+      const resWImage = res as { image: Image }
       await db.fetchImageAndStoreForList({
         listId: trustwalletList.listId,
-        uri: res.image.content,
+        uri: resWImage.image ? resWImage.image.content : null,
         originalUri: networkLogoPath,
         providerKey,
       })

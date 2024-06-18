@@ -56,3 +56,14 @@ export type Call = {
 
 
 export type ChainId = number | bigint | viem.Hex
+
+export type TokenInfo = {
+  chainId: number;
+  providedId?: string;
+  address: string;
+  decimals: string;
+  symbol: string;
+  name: string;
+  imageHash: string;
+  ext: string;
+}

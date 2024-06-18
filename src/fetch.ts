@@ -26,11 +26,8 @@ const ipfsCompatableFetch: typeof fetch = async (
 ) => {
   url = new URL(url as string | URL)
   if (url.protocol === 'ipfs:') {
-    const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : url.host
+    const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : `${url.host}${url.pathname}`
     url = new URL(`https://ipfs.io/ipfs/${cid}`)
-  }
-  if (url.protocol.startsWith('hhttp')) {
-    url.protocol = url.protocol.slice(1)
   }
   // support both http+https
   if (url.protocol?.startsWith('http')) {

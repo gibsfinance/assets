@@ -34,14 +34,12 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
         description: '',
         ...(tokenList.version || {}),
       }, tx)
-      if (tokenList.logoURI) {
-        await db.fetchImageAndStoreForList({
-          listId: list.listId,
-          uri: tokenList.logoURI,
-          originalUri: tokenList.logoURI,
-          providerKey,
-        }, tx)
-      }
+      await db.fetchImageAndStoreForList({
+        listId: list.listId,
+        uri: tokenList.logoURI,
+        originalUri: tokenList.logoURI,
+        providerKey,
+      }, tx)
     })
     for (const entry of tokenList.tokens) {
       const network = networks.get(entry.chainId)!
@@ -52,12 +50,15 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
         networkId: network.networkId,
         providedId: entry.address,
       }
+      const blacklist = new Set<string>([
+        'missing_large.png',
+        'missing_thumb.png',
+      ])
       await db.transaction(async (tx) => {
-        if (!entry.logoURI || entry.logoURI === 'missing_large.png' || entry.logoURI === 'missing_thumb.png') {
-          await db.insertToken(token, tx)
-          return entry
+        if (blacklist.has(entry.logoURI)) {
+          entry.logoURI = ''
         }
-        const path = entry.logoURI.replace('hhttps://', 'https://')
+        const path = entry.logoURI?.replace('hhttps://', 'https://') || null
         await db.fetchImageAndStoreForToken({
           listId: list.listId,
           uri: path,

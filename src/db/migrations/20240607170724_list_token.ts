@@ -6,7 +6,7 @@ import * as utils from '../utils'
 import { tableNames } from '../tables'
 
 const compositeId = utils.compositeId(tableNames.listToken, 'listTokenId', [
-  'networkId', 'providedId', 'listId', 'imageHash',
+  'networkId', 'providedId', 'listId',
 ])
 
 export async function up(knex: Knex): Promise<void> {
@@ -39,7 +39,7 @@ export async function up(knex: Knex): Promise<void> {
         // how "they" as a data provider, categorizes the collection
         // this will be 0x00 or some other null value for
         // images that are not categorized under a hash/key that comes from that network
-        t.text('imageHash').index().notNullable()
+        t.text('imageHash').index().nullable()
           .references('imageHash')
           .inTable(`${userConfig.database.schema}.${tableNames.image}`)
         t.text('listTokenId').index().notNullable().primary()

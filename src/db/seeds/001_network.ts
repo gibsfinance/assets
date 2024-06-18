@@ -1,21 +1,13 @@
 import { Knex } from 'knex'
-import { tableNames } from '../tables'
-
-// import { tableNames } from '../tables'
-
-// import type { } from 'knex/types/tables'
-// import { zeroAddress } from 'viem'
+import * as db from '../'
 
 export async function seed(knex: Knex): Promise<void> {
-  const [providerGibs] = await knex(tableNames.provider)
-    .insert([{
-      name: 'Gibs',
-      key: 'gibs',
-      description: 'a memetic company',
-    }])
-    .onConflict(['providerId'])
-    .merge(['providerId'])
-    .returning('*')
+  // const providerGibs =
+  await db.insertProvider({
+    name: 'Gibs',
+    key: 'gibs',
+    description: 'a memetic company',
+  }, knex)
   // await knex.transaction(async (t) => {
   //   const [defaultNetwork, network1] = await t(tableNames.network)
   //     .insert([{

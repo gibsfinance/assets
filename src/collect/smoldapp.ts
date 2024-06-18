@@ -18,6 +18,16 @@ type Info = {
   tokens: Record<string, string[]>;
 }
 
+const filenameToListKey = (filename: string) => {
+  const extname = path.extname(filename)
+  if (extname === '.svg') {
+    return 'svg'
+  }
+  const noExt = filename.split(extname).join('')
+  const noPrefix = noExt.split('logo-').join('')
+  return `png${noPrefix}`
+}
+
 export const collect = async () => {
   const root = path.join(utils.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
@@ -33,58 +43,63 @@ export const collect = async () => {
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
   })
-  const baseNetwork = await db.insertNetworkFromChainId(0)
-  const networksList = await db.insertList({
-    key: 'tokens',
-    default: true,
-    providerId: provider.providerId,
-    networkId: baseNetwork.networkId,
-  })
-  const chainIdToNetworkId = new Map<number, List>()
+  // const baseNetwork = await db.insertNetworkFromChainId(0)
+  // const networksList = await db.insertList({
+  //   key: 'tokens',
+  //   // default: true,
+  //   providerId: provider.providerId,
+  //   networkId: baseNetwork.networkId,
+  // })
+  const chainIdToNetworkId = new Map<string, List>()
   await utils.spinner(`smoldapp/chains`, async () => {
     const chains = await utils.folderContents(chainsPath)
     for (const chainId of chains) {
       if (path.extname(chainId) === '.json') return
       await db.insertNetworkFromChainId(+chainId)
-      const networkList = await db.insertList({
-        key: `${networksList.key}-${chainId}`,
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(+chainId),
-      })
-      chainIdToNetworkId.set(+chainId, networkList)
       const chainFolder = path.join(chainsPath, chainId)
       const folders = await utils.folderContents(chainFolder)
       for (const file of folders) {
-        await Promise.all([networksList, networkList].map(async (list) => {
-          const originalUri = path.join(chainFolder, file)
-          if (path.extname(file) === '.svg') {
-            await db.transaction(async (tx) => {
-              await db.fetchImageAndStoreForNetwork({
-                chainId: +chainId,
-                uri: originalUri,
-                originalUri,
-                providerKey,
-              }, tx)
-              await db.fetchImageAndStoreForList({
-                listId: list.listId,
-                providerKey,
-                uri: originalUri,
-                originalUri,
-              }, tx)
-            })
-          } else {
-            const img = await db.fetchImage(originalUri, providerKey)
+        const listKey = filenameToListKey(file)
+        const networkList = await db.insertList({
+          key: `tokens-${chainId}-${listKey}`,
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(+chainId),
+        })
+        const originalUri = path.join(chainFolder, file)
+        chainIdToNetworkId.set(networkList.key, networkList)
+        if (listKey === 'svg') {
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForNetwork({
+              chainId: +chainId,
+              uri: originalUri,
+              originalUri,
+              providerKey,
+            }, tx)
+            await db.fetchImageAndStoreForList({
+              listId: networkList.listId,
+              providerKey,
+              uri: originalUri,
+              originalUri,
+            }, tx)
+          })
+        } else {
+          const img = await db.fetchImage(originalUri, providerKey)
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForList({
+              listId: networkList.listId,
+              providerKey,
+              uri: img,
+              originalUri,
+            }, tx)
             if (!img) return
-            await db.transaction(async (tx) => {
-              await db.insertImage({
-                providerKey,
-                image: img,
-                originalUri,
-                listId: list.listId,
-              }, tx)
-            })
-          }
-        }))
+            await db.insertImage({
+              providerKey,
+              image: img,
+              originalUri,
+              listId: networkList.listId,
+            }, tx)
+          })
+        }
       }
     }
   })
@@ -103,11 +118,6 @@ export const collect = async () => {
         chain,
         transport: viem.http(),
       })
-      const networkList = chainIdToNetworkId.get(chain.id) || await db.insertList({
-        key: `${networksList.key}-${chain.id}`,
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(chain.id),
-      })
       total += tokens.length
       const limit = promiseLimit<viem.Hex>(4)
       await limit.map(tokens as viem.Hex[], async (token) => {
@@ -115,13 +125,16 @@ export const collect = async () => {
         const address = viem.getAddress(utils.commonNativeNames.has(token.toLowerCase() as viem.Hex)
           ? zeroAddress
           : token)
-        const list = await db.insertList({
-          key: `${networkList.key}-${address}`,
-          providerId: provider.providerId,
-        })
         const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
         const tokenImages = await utils.folderContents(tokenFolder)
         for (const imageName of tokenImages) {
+          const listKey = filenameToListKey(imageName)
+          const networkKey = `tokens-${chain.id}-${listKey}`
+          const networkList = chainIdToNetworkId.get(networkKey) || await db.insertList({
+            key: networkKey,
+            providerId: provider.providerId,
+            networkId: utils.chainIdToNetworkId(chain.id),
+          })
           const uri = path.join(tokenFolder, imageName)
           const baseInput = {
             uri,
@@ -136,22 +149,23 @@ export const collect = async () => {
             },
           }
           await db.transaction(async (tx) => {
+            const list = await db.insertList({
+              providerId: provider.providerId,
+              key: `tokens-${listKey}`,
+              default: listKey === 'svg',
+            }, tx)
             await db.fetchImageAndStoreForToken({
               listId: list.listId,
               ...baseInput,
             }, tx)
-          })
-          await db.transaction(async (tx) => {
             await db.fetchImageAndStoreForToken({
               listId: networkList.listId,
               ...baseInput,
             }, tx)
-          })
-          await db.transaction(async (tx) => {
-            await db.fetchImageAndStoreForToken({
-              listId: networksList.listId,
-              ...baseInput,
-            }, tx)
+            // await db.fetchImageAndStoreForToken({
+            //   listId: networksList.listId,
+            //   ...baseInput,
+            // }, tx)
           })
         }
         completed++

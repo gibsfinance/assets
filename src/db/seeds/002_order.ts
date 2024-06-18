@@ -3,6 +3,18 @@ import { tableNames } from "../tables";
 import * as db from '@/db'
 
 export async function seed(knex: Knex): Promise<void> {
+  const providers = await db.getDB().select('*')
+    .from(tableNames.provider)
+    .whereIn('providerId', [
+      db.ids.provider('gibs'),
+      db.ids.provider('balancer'),
+      db.ids.provider('piteas'),
+      db.ids.provider('internetmoney'),
+    ])
+  if (providers.length !== 4) {
+    console.log('skip order seed')
+    return
+  }
   await db.insertOrder({
     providerId: db.ids.provider('gibs'),
     type: 'default',

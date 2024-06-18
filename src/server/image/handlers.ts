@@ -1,13 +1,12 @@
 import * as viem from 'viem'
 import httpErrors from 'http-errors'
 import * as path from 'path'
-import { Tx, tableNames } from "@/db/tables"
+import { tableNames } from "@/db/tables"
 import { ChainId } from "@/types"
 import * as utils from '@/utils'
 import * as db from '@/db'
 import config from 'config'
-import { Image, ListOrder, ListToken } from 'knex/types/tables'
-import { Knex } from 'knex'
+import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
 import { RequestHandler, Response } from 'express'
 
 export const getListTokens = async (
@@ -18,7 +17,7 @@ export const getListTokens = async (
     [`${tableNames.listToken}.networkId`]: utils.chainIdToNetworkId(chainId),
     [`${tableNames.listToken}.providedId`]: viem.getAddress(address),
   }
-  let q = db.getDB().select<ListToken & Image>('*')
+  let q = db.getDB().select('*')
     .from(tableNames.listToken)
     .join(`${config.database.schema}.${tableNames.image}`, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
@@ -28,43 +27,12 @@ export const getListTokens = async (
     q = q.whereIn('ext', exts)
   }
   if (listOrderId) {
-    q = applyOrder(q, listOrderId)
+    q = db.applyOrder(q, listOrderId)
   }
   return {
     filter,
-    img: await q.first(),
+    img: await q.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
   }
-}
-
-export const applyOrder = (
-  q: Knex.QueryBuilder, listOrderId: viem.Hex,
-  t: Tx = db.getDB(),
-): Knex.QueryBuilder => {
-  const qSub = q.join(tableNames.list, {
-    [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-  })
-    .fullOuterJoin(tableNames.listOrderItem, {
-      [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
-      [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
-    })
-    .join(tableNames.listOrder, {
-      [`${tableNames.listOrder}.listOrderId`]: `${tableNames.listOrderItem}.listOrderId`,
-    })
-    .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
-    .denseRank('rank', function denseRankByConfiged() {
-      return this.orderBy(`${tableNames.listOrderItem}.ranking`, 'asc')
-        .orderBy(`${tableNames.list}.major`, 'desc')
-        .orderBy(`${tableNames.list}.minor`, 'desc')
-        .orderBy(`${tableNames.list}.patch`, 'desc')
-        .partitionBy([
-          `${tableNames.listToken}.networkId`,
-          `${tableNames.listToken}.providedId`,
-        ])
-    })
-  return t('ls')
-    .with('ls', qSub)
-    .select('ls.*')
-    .where('ls.rank', 1)
 }
 
 export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
@@ -112,32 +80,6 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
-export const getListOrderId = async (orderParam: string) => {
-  let listOrderId: viem.Hex | null = null
-  if (orderParam) {
-    if (viem.isHex(orderParam)) {
-      // presume that this is the list order id
-      orderParam = orderParam as viem.Hex
-    } else if (viem.isHex(`0x${orderParam}`)) {
-      orderParam = `0x${orderParam}` as viem.Hex
-      // presume that it is the list order key
-    }
-    if (orderParam && viem.toHex(viem.toBytes(orderParam), { size: 32 }).slice(2) !== orderParam) {
-      // assume only a fragment is being given
-      const listOrder = await db.getDB().select<ListOrder>('*')
-        .from(tableNames.listOrder)
-        .whereILike('listOrderId', `%${orderParam.slice(2)}%`)
-        .first()
-      if (listOrder) {
-        listOrderId = listOrder.listOrderId as viem.Hex
-      }
-    } else {
-      listOrderId = orderParam as viem.Hex
-    }
-  }
-  return listOrderId
-}
-
 export const getImage = (parseOrder: boolean): RequestHandler => async (req, res, next) => {
   const { chainId, address: addressParam, orderParam } = req.params
   if (!+chainId) {
@@ -147,7 +89,7 @@ export const getImage = (parseOrder: boolean): RequestHandler => async (req, res
   if (!viem.isAddress(address)) {
     return next(httpErrors.BadRequest('address'))
   }
-  const listOrderId = parseOrder ? await getListOrderId(orderParam) : null
+  const listOrderId = parseOrder ? await db.getListOrderId(orderParam) : null
   const { img } = await getListTokens(+chainId, address, listOrderId, exts)
   if (!img) {
     return next(httpErrors.NotFound())
@@ -164,13 +106,10 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   if (!viem.isAddress(address)) {
     return next(httpErrors.BadRequest('address'))
   }
-  const listOrderId = await getListOrderId(orderParam)
+  const listOrderId = await db.getListOrderId(orderParam)
   const { img } = await getListTokens(+chainId, address, listOrderId, exts)
   if (!img) {
-    // console.log(path.join(req.baseUrl, '..'), path.join(req.baseUrl, '.'))
-    // req.originalUrl = req.originalUrl.split('/fallback/').join('/')
     return getImage(false)(req, res, next)
-    // return next(httpErrors.NotFound())
   }
   sendImage(res, img)
 }

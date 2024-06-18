@@ -1,4 +1,5 @@
 import knex, { type Knex } from 'knex'
+import conf from 'config'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as types from '../types'
@@ -13,7 +14,20 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 
 export const ids = {
-  provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2)
+  provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
+  list: ({
+    providerId,
+    key,
+    major,
+    minor,
+    patch,
+  }: {
+    providerId: string;
+    key: string;
+    major: number;
+    minor: number;
+    patch: number;
+  }) => utils.toKeccakBytes(`${providerId}${key}${major}${minor}${patch}`),
 }
 
 let db = knex(config)
@@ -241,8 +255,8 @@ export const fetchImageAndStoreForList = async ({
   providerKey,
 }: {
   listId: string;
-  uri: string | Buffer;
-  originalUri: string;
+  uri: string | Buffer | null;
+  originalUri: string | null;
   providerKey: string;
 }, t: Tx = db,
 ) => {
@@ -252,16 +266,19 @@ export const fetchImageAndStoreForList = async ({
   if (_.isString(uri)) {
     const existing = await getImageFromLink(uri, t)
     if (existing) {
-      const list = await t(tableNames.list)
-        .select<List>('*')
-        .where('listId', listId)
-        .first() as List
+      const list = await getListFromId(listId, t)
       if (list && list.imageHash && list.imageHash === existing.image.imageHash) {
         return {
           ...existing,
           list,
         }
       }
+    }
+  }
+  if (!uri || !originalUri) {
+    const list = await getListFromId(listId, t)
+    return {
+      list
     }
   }
   const image = await fetchImage(uri, providerKey)
@@ -292,6 +309,13 @@ export const fetchImageAndStoreForList = async ({
     ...img,
   }
 }
+
+export const getListFromId = (listId: string, t: Tx = db) => (
+  t(tableNames.list)
+    .select('*')
+    .where('listId', listId)
+    .first<List>()
+)
 
 export const fetchImageAndStoreForNetwork = async ({
   chainId, uri,
@@ -341,9 +365,9 @@ export const fetchImageAndStoreForNetwork = async ({
 
 export const fetchImageAndStoreForToken = async (inputs: {
   listId: string | null;
-  uri: string | Buffer;
+  uri: string | Buffer | null;
   token: InsertableToken;
-  originalUri: string;
+  originalUri: string | null;
   providerKey: string;
 }, t: Tx = db) => {
   let {
@@ -385,30 +409,30 @@ export const fetchImageAndStoreForToken = async (inputs: {
     }
   }
   // list must have already been inserted to db by this point
-  const image = await fetchImage(uri, providerKey)
-  if (!image) {
-    await writeMissing({
-      providerKey,
-      originalUri,
-      listId,
-    })
-    return null
-  }
-  const img = await insertImage({
-    providerKey,
-    originalUri,
-    image,
-    listId,
-  }, t)
-  if (!img) {
-    return null
+  let img!: Awaited<ReturnType<typeof insertImage>>
+  if (uri && originalUri) {
+    const image = await fetchImage(uri, providerKey)
+    if (!image) {
+      await writeMissing({
+        providerKey,
+        originalUri,
+        listId,
+      })
+      // return null
+    } else {
+      img = await insertImage({
+        providerKey,
+        originalUri,
+        image,
+        listId,
+      }, t)
+    }
   }
   const insertedToken = await insertToken({
     type: 'erc20',
     ...token,
-    providedId: viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId,
+    providedId,
   }, t)
-  // utils.failureLog(img.image)
   if (!listId) {
     return {
       token: insertedToken,
@@ -419,12 +443,12 @@ export const fetchImageAndStoreForToken = async (inputs: {
     networkId: token.networkId,
     providedId,
     listId,
-    imageHash: img.image.imageHash,
+    imageHash: img?.image.imageHash,
   }, t)
   return {
     token: insertedToken,
     listToken,
-    ...img,
+    ...(img || {}),
   }
 }
 
@@ -467,11 +491,13 @@ export const insertOrder = async (order: InsertableListOrder, orderItems: Backfi
       .onConflict(['listOrderId'])
       .merge(['listOrderId'])
       .returning<ListOrder[]>('*')
+    const insertableItems = orderItems.map((i) => ({
+      ...i,
+      listOrderId: o.listOrderId,
+    }))
+    console.log(o, insertableItems)
     const items = await tx(tableNames.listOrderItem)
-      .insert(orderItems.map((i) => ({
-        ...i,
-        listOrderId: o.listOrderId,
-      })))
+      .insert(insertableItems)
       .onConflict(['listOrderId', 'ranking'])
       .merge(['listOrderId', 'ranking'])
       .returning<ListOrderItem[]>('*')
@@ -482,7 +508,7 @@ export const insertOrder = async (order: InsertableListOrder, orderItems: Backfi
   })
 }
 
-export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
+export const getTokensUnderListId = (t: Tx = db) => {
   return t.select([
     t.raw(`${tableNames.network}.chain_id`),
     t.raw(`${tableNames.token}.provided_id as address`),
@@ -492,8 +518,7 @@ export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
     t.raw(`${tableNames.image}.image_hash as image_hash`),
     t.raw(`${tableNames.image}.ext as ext`),
   ])
-    .from(tableNames.listToken)
-    .where(`${tableNames.listToken}.listId`, listId)
+    // .from<types.TokenInfo>(tableNames.listToken)
     .fullOuterJoin(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
@@ -506,7 +531,7 @@ export const getTokensUnderListId = async (listId: string, t: Tx = db) => {
     })
 }
 
-export const getList = (providerKey: string, listKey?: string, t: Tx = db) => (
+export const getLists = (providerKey: string, listKey?: string, t: Tx = db) => (
   t.from(tableNames.provider)
     .select<(Provider & List & ListToken & Image)[]>([
       '*',
@@ -531,5 +556,61 @@ export const getList = (providerKey: string, listKey?: string, t: Tx = db) => (
     .orderBy('major', 'desc')
     .orderBy('minor', 'desc')
     .orderBy('patch', 'desc')
-    .first()
 )
+
+export const getListOrderId = async (orderParam: string) => {
+  let listOrderId: viem.Hex | null = null
+  if (orderParam) {
+    if (viem.isHex(orderParam)) {
+      // presume that this is the list order id
+      orderParam = orderParam as viem.Hex
+    } else if (viem.isHex(`0x${orderParam}`)) {
+      orderParam = `0x${orderParam}` as viem.Hex
+      // presume that it is the list order key
+    }
+    if (orderParam && viem.toHex(viem.toBytes(orderParam), { size: 32 }).slice(2) !== orderParam) {
+      // assume only a fragment is being given
+      const listOrder = await getDB().select<ListOrder>('*')
+        .from(tableNames.listOrder)
+        .whereILike('listOrderId', `%${orderParam.slice(2)}%`)
+        .first()
+      if (listOrder) {
+        listOrderId = listOrder.listOrderId as viem.Hex
+      }
+    } else {
+      listOrderId = orderParam as viem.Hex
+    }
+  }
+  return listOrderId
+}
+
+export const applyOrder = (
+  q: Knex.QueryBuilder, listOrderId: viem.Hex,
+  t: Tx = getDB(),
+) => {
+  const qSub = q.join(tableNames.list, {
+    [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+  })
+    .fullOuterJoin(tableNames.listOrderItem, {
+      [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
+      [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
+    })
+    .join(tableNames.listOrder, {
+      [`${tableNames.listOrder}.listOrderId`]: `${tableNames.listOrderItem}.listOrderId`,
+    })
+    .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
+    .denseRank('rank', function denseRankByConfiged() {
+      return this.orderBy(`${tableNames.listOrderItem}.ranking`, 'asc')
+        .orderBy(`${tableNames.list}.major`, 'desc')
+        .orderBy(`${tableNames.list}.minor`, 'desc')
+        .orderBy(`${tableNames.list}.patch`, 'desc')
+        .partitionBy([
+          `${tableNames.listToken}.networkId`,
+          `${tableNames.listToken}.providedId`,
+        ])
+    })
+  return t('ls')
+    .with('ls', qSub)
+    .select('ls.*')
+    .where('ls.rank', 1)
+}

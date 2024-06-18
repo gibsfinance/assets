@@ -86,7 +86,9 @@ declare module 'knex/types/tables' {
     imageHash: string;
     listTokenId: string;
   }
-  interface InsertableListToken extends Omit<ListToken, TimestampKeys | 'listTokenId'> { }
+  interface InsertableListToken extends Omit<ListToken, TimestampKeys | 'listTokenId'> {
+    imageHash?: string;
+  }
   interface Link extends Timestamped {
     uri: string;
     imageHash: string;
