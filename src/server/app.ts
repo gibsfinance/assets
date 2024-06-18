@@ -6,8 +6,8 @@ import cors from 'cors'
 
 export const app = express.default()
 
-app.use(cors())
 app.use(responseTime())
+app.use(cors())
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 
