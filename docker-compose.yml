@@ -19,7 +19,7 @@ services:
       - POSTGRES_PASSWORD=password
   gibassets-postgres-migrate:
     container_name: gibassets-postgres-migrate
-    image: registry.gitlab.com/pulsechaincom/gibassets:latest
+    image: gibsfinance/assets:latest
     command: sh -cx "npm run db:migrate-latest && npm run db:seed"
     networks:
       - gibassets

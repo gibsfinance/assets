@@ -4,8 +4,8 @@
   "description": "a repo for tokens, networks, and data providers",
   "main": "src/index.ts",
   "scripts": {
-    "docker:build": "docker build -t registry.gitlab.com/pulsechaincom/bridgevalidator:latest .",
-    "docker:push": "docker push registry.gitlab.com/pulsechaincom/bridgevalidator:latest",
+    "docker:build": "docker build -t gibsfinance/assets:latest .",
+    "docker:push": "docker push gibsfinance/assets:latest",
     "db:prepare": "npm run db:start && npm run db:migrate-up",
     "db:start": "docker compose up -d gibassets-postgres",
     "db:stop": "docker compose down",
