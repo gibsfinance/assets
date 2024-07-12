@@ -55,7 +55,7 @@ BEGIN
   RETURN result;
 END;
 $$ LANGUAGE plpgsql;`)
-  await knex.raw('SET enable_seqscan = \'OFF\';')
+  await knex.raw("SET enable_seqscan = 'OFF';")
   await knex.raw(`ALTER DATABASE ${config.database.name} SET statement_timeout = '60s';`)
 }
 
@@ -70,5 +70,5 @@ export async function down(knex: Knex): Promise<void> {
   await knex.raw('DROP FUNCTION IF EXISTS autoupdate_timestamp()')
   await knex.raw('DROP FUNCTION IF EXISTS count_rows(text,text)')
   await knex.raw('DROP FUNCTION IF EXISTS numeric_to_bit(numeric)')
-  await knex.raw('SET enable_seqscan = \'ON\';')
+  await knex.raw("SET enable_seqscan = 'ON';")
 }

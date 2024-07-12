@@ -21,28 +21,29 @@ describe('/list', async (t) => {
   await describe('/:providerKey', async () => {
     let baseline!: TokenList
     beforeEach(async () => {
-      const res = await supertest(app).get(`/list/${provider.key}/${list.key}`)
-        .expect(200)
+      const res = await supertest(app).get(`/list/${provider.key}/${list.key}`).expect(200)
       baseline = res.body
     })
     await test('/:listKey?', async () => {
       assert.ok(baseline.tokens.length > 0)
     })
     await test('filter by chain id', async () => {
-      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?chainId=1`)
-        .expect(200)
+      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?chainId=1`).expect(200)
       assert.ok(baseline.tokens.length > res.body.tokens.length)
-      assert.ok(_.every(res.body.tokens, {
-        chainId: 1,
-      }))
+      assert.ok(
+        _.every(res.body.tokens, {
+          chainId: 1,
+        }),
+      )
     })
     await test('filter by decimals', async () => {
-      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?decimals=8`)
-        .expect(200)
+      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?decimals=8`).expect(200)
       assert.ok(baseline.tokens.length > res.body.tokens.length)
-      assert.ok(_.every(res.body.tokens, {
-        decimals: 8,
-      }))
+      assert.ok(
+        _.every(res.body.tokens, {
+          decimals: 8,
+        }),
+      )
     })
   })
 })

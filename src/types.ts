@@ -55,7 +55,6 @@ export type Call = {
   args?: any[]
 }
 
-
 export type ChainId = number | bigint | viem.Hex
 
 export type TokenInfo = Network & Token & Image

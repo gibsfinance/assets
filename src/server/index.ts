@@ -12,9 +12,12 @@ export const main = async () => {
 
 export const listen = async (port = +(process.env.PORT || 3000)) => {
   return new Promise((resolve, reject) => {
-    app.listen(port).once('listening', () => {
-      console.log('Listening on %o', port)
-      resolve(null)
-    }).once('error', reject)
+    app
+      .listen(port)
+      .once('listening', () => {
+        console.log('Listening on %o', port)
+        resolve(null)
+      })
+      .once('error', reject)
   })
 }

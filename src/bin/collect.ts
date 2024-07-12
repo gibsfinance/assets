@@ -5,7 +5,8 @@ import * as args from '@/args'
 
 const { providers } = args.collect()
 
-db.getDB().migrate.latest()
+db.getDB()
+  .migrate.latest()
   .then(() => collect.main(providers))
   .catch((err) => console.log(err))
   .then(cleanup)

@@ -3,11 +3,14 @@ import * as db from '../'
 
 export async function seed(knex: Knex): Promise<void> {
   // const providerGibs =
-  await db.insertProvider({
-    name: 'Gibs',
-    key: 'gibs',
-    description: 'a memetic company',
-  }, knex)
+  await db.insertProvider(
+    {
+      name: 'Gibs',
+      key: 'gibs',
+      description: 'a memetic company',
+    },
+    knex,
+  )
   // await knex.transaction(async (t) => {
   //   const [defaultNetwork, network1] = await t(tableNames.network)
   //     .insert([{

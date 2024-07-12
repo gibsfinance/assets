@@ -11,17 +11,11 @@ import _ from 'lodash'
 
 export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
   const [major, minor, patch] = version.split('.')
-  return db.where('major', major)
-    .where('minor', minor)
-    .where('patch', patch)
+  return db.where('major', major).where('minor', minor).where('patch', patch)
 }
 
-export const respondWithList = async (
-  res: Response, list: List & Image,
-  filters: Filter<Network & Token>[] = [],
-) => {
-  const tokens = await db.getTokensUnderListId()
-    .where(`${tableNames.listToken}.listId`, list.listId)
+export const respondWithList = async (res: Response, list: List & Image, filters: Filter<Network & Token>[] = []) => {
+  const tokens = await db.getTokensUnderListId().where(`${tableNames.listToken}.listId`, list.listId)
 
   // could possibly be turned into a query
   const tkns = normalizeTokens(tokens, filters)
@@ -38,9 +32,7 @@ export const respondWithList = async (
   } as TokenList)
 }
 
-export const normalizeTokens = (
-  tokens: TokenInfo[], filters: Filter<Network & Token>[] = [],
-): TokenEntry[] => {
+export const normalizeTokens = (tokens: TokenInfo[], filters: Filter<Network & Token>[] = []): TokenEntry[] => {
   const over = _.overEvery(filters)
   return _(tokens)
     .filter((a) => over(a))
@@ -75,7 +67,7 @@ export const tokenFilters = (q: ParsedQs) => {
 export const minimalList = (tokens: TokenEntry[]): TokenList => {
   return {
     name: '',
-    timestamp: (new Date()).toISOString(),
+    timestamp: new Date().toISOString(),
     version: {
       major: 0,
       minor: 0,

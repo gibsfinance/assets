@@ -4,7 +4,7 @@ import * as utils from '@/utils'
 import type { List, Network, Provider } from 'knex/types/tables'
 
 export const collect = async (providerKey: string, listKey: string, tokenList: types.TokenList) => {
-  let completed = 0
+  // let completed = 0
   const chainIdSet = new Set<number>()
   for (const entry of tokenList.tokens) {
     chainIdSet.add(+entry.chainId)
@@ -22,24 +22,33 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
           networks.set(chainId, network)
         }
       }
-      provider = await db.insertProvider({
-        key: providerKey,
-      }, tx)
-      list = await db.insertList({
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
-        name: tokenList.name,
-        key: listKey,
-        default: true,
-        description: '',
-        ...(tokenList.version || {}),
-      }, tx)
-      await db.fetchImageAndStoreForList({
-        listId: list.listId,
-        uri: tokenList.logoURI,
-        originalUri: tokenList.logoURI,
-        providerKey,
-      }, tx)
+      provider = await db.insertProvider(
+        {
+          key: providerKey,
+        },
+        tx,
+      )
+      list = await db.insertList(
+        {
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
+          name: tokenList.name,
+          key: listKey,
+          default: true,
+          description: '',
+          ...(tokenList.version || {}),
+        },
+        tx,
+      )
+      await db.fetchImageAndStoreForList(
+        {
+          listId: list.listId,
+          uri: tokenList.logoURI || null,
+          originalUri: tokenList.logoURI || null,
+          providerKey,
+        },
+        tx,
+      )
     })
     for (const entry of tokenList.tokens) {
       const network = networks.get(entry.chainId)!
@@ -50,23 +59,23 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
         networkId: network.networkId,
         providedId: entry.address,
       }
-      const blacklist = new Set<string>([
-        'missing_large.png',
-        'missing_thumb.png',
-      ])
+      const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
       await db.transaction(async (tx) => {
-        if (blacklist.has(entry.logoURI)) {
+        if (blacklist.has(entry.logoURI as string)) {
           entry.logoURI = ''
         }
         const path = entry.logoURI?.replace('hhttps://', 'https://') || null
-        await db.fetchImageAndStoreForToken({
-          listId: list.listId,
-          uri: path,
-          originalUri: path,
-          providerKey,
-          token,
-        }, tx)
-        completed++
+        await db.fetchImageAndStoreForToken(
+          {
+            listId: list.listId,
+            uri: path,
+            originalUri: path,
+            providerKey,
+            token,
+          },
+          tx,
+        )
+        // completed++
       })
     }
   })

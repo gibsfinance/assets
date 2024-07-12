@@ -1,6 +1,6 @@
 import createError from 'http-errors'
 import * as db from '@/db'
-import { RequestHandler } from "express"
+import { RequestHandler } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, ListToken } from 'knex/types/tables'
@@ -10,15 +10,14 @@ export const merged: RequestHandler = async (req, res, next) => {
   if (!orderId) {
     return next(createError.NotFound())
   }
-  const listTokens = db.getDB().select<ListToken & Image>('*')
-    .from(tableNames.listToken)
-  const tokens = await db.applyOrder(listTokens, orderId)
+  const listTokens = db.getDB().select<ListToken & Image>('*').from(tableNames.listToken)
+  const tokens = await db
+    .applyOrder(listTokens, orderId)
     .join(tableNames.token, {
-      [`${tableNames.token}.network_id`]: `${tableNames.listToken}.network_id`,
-      [`${tableNames.token}.provided_id`]: `${tableNames.listToken}.provided_id`,
+      [`${tableNames.token}.token_id`]: `${tableNames.listToken}.token_id`,
     })
     .join(tableNames.network, {
-      [`${tableNames.network}.network_id`]: `${tableNames.listToken}.network_id`,
+      [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
     })
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens, filters)
@@ -26,10 +25,9 @@ export const merged: RequestHandler = async (req, res, next) => {
 }
 
 export const versioned: RequestHandler = async (req, res, next) => {
-  const list = await utils.applyVersion(req.params.version, db.getLists(
-    req.params.providerKey,
-    req.params.listKey
-  )).first()
+  const list = await utils
+    .applyVersion(req.params.version, db.getLists(req.params.providerKey, req.params.listKey))
+    .first()
   if (!list) {
     return next(createError.NotFound())
   }
@@ -38,10 +36,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
-  const list = await db.getLists(
-    req.params.providerKey,
-    req.params.listKey
-  ).first()
+  const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
   if (!list) {
     return next(createError.NotFound())
   }

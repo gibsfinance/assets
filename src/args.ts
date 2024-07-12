@@ -3,13 +3,15 @@ import { collectables, Collectable } from '@/collect/collectables'
 import yargs from 'yargs'
 
 export const collect = () => {
-  const argv = yargs(hideBin(process.argv)).options({
-    providers: {
-      type: 'array',
-      describe: 'a list of providers to collect',
-      required: false,
-    },
-  }).parseSync()
+  const argv = yargs(hideBin(process.argv))
+    .options({
+      providers: {
+        type: 'array',
+        describe: 'a list of providers to collect',
+        required: false,
+      },
+    })
+    .parseSync()
   const providers = (argv.providers?.length ? argv.providers : Object.keys(collectables)) as Collectable[]
   return {
     providers,
@@ -17,18 +19,20 @@ export const collect = () => {
 }
 
 export const exportImage = () => {
-  const argv = yargs(hideBin(process.argv)).options({
-    token: {
-      type: 'string',
-      describe: 'the hash of the token',
-      required: false,
-    },
-    chainId: {
-      type: 'number',
-      describe: 'the chain id to check',
-      required: true,
-    },
-  }).parseSync()
+  const argv = yargs(hideBin(process.argv))
+    .options({
+      token: {
+        type: 'string',
+        describe: 'the hash of the token',
+        required: false,
+      },
+      chainId: {
+        type: 'number',
+        describe: 'the chain id to check',
+        required: true,
+      },
+    })
+    .parseSync()
   return {
     token: argv.token,
     chainId: argv.chainId,

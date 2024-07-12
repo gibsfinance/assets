@@ -13,10 +13,12 @@ export const tableNames = {
   link: 'link',
   listOrder: 'list_order',
   listOrderItem: 'list_order_item',
+  bridge: 'bridge',
+  bridgeLink: 'bridge_link',
 } as const
 
 const tn = Object.values(tableNames)
 
-export type TableNames = typeof tn[number]
+export type TableNames = (typeof tn)[number]
 
 export type Tx = Knex | Knex.Transaction

@@ -1,16 +1,18 @@
-import { exportImage } from "@/args"
+import { exportImage } from '@/args'
 import * as utils from '@/utils'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as db from '@/db'
-import { cleanup } from "@/cleanup"
-import { tableNames } from "@/db/tables"
-import { Image, List, ListToken, Network, Provider, Token } from "knex/types/tables"
+import { cleanup } from '@/cleanup'
+import { tableNames } from '@/db/tables'
+import { Image, List, ListToken, Network, Provider, Token } from 'knex/types/tables'
 
-main().then(cleanup).catch((err) => {
-  utils.failureLog(err)
-  return cleanup()
-})
+main()
+  .then(cleanup)
+  .catch((err) => {
+    utils.failureLog(err)
+    return cleanup()
+  })
 
 async function main() {
   const { token, chainId } = exportImage()
@@ -20,7 +22,9 @@ async function main() {
     recursive: true,
   })
   if (!token) {
-    const match = await db.getDB().select('*')
+    const match = await db
+      .getDB()
+      .select('*')
       .from(tableNames.network)
       .join(tableNames.image, {
         [`${tableNames.image}.imageHash`]: `${tableNames.network}.imageHash`,
@@ -36,11 +40,20 @@ async function main() {
     return
   }
   console.log('%o@%o', chainId, token)
-  const matches = await db.getDB().from(tableNames.network)
-    .select<(Network & Token & List & Provider & Image & ListToken & {
-      providerKey: string;
-      listKey: string;
-    })[]>([
+  const matches = await db
+    .getDB()
+    .from(tableNames.network)
+    .select<
+      (Network &
+        Token &
+        List &
+        Provider &
+        Image &
+        ListToken & {
+          providerKey: string
+          listKey: string
+        })[]
+    >([
       '*',
       db.getDB().raw(`${tableNames.provider}.key as provider_key`),
       db.getDB().raw(`${tableNames.list}.key as list_key`),
@@ -65,12 +78,14 @@ async function main() {
     .join(tableNames.image, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
-  await Promise.all(matches.map(async (res) => {
-    const dirname = path.join(imgExportDir, res.providerKey, res.listKey)
-    const filepath = path.join(dirname, `${res.imageHash}${res.ext}`)
-    await fs.promises.mkdir(dirname, {
-      recursive: true,
-    })
-    await fs.promises.writeFile(filepath, res.content)
-  }))
+  await Promise.all(
+    matches.map(async (res) => {
+      const dirname = path.join(imgExportDir, res.providerKey, res.listKey)
+      const filepath = path.join(dirname, `${res.imageHash}${res.ext}`)
+      await fs.promises.mkdir(dirname, {
+        recursive: true,
+      })
+      await fs.promises.writeFile(filepath, res.content)
+    }),
+  )
 }

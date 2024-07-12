@@ -40,13 +40,15 @@ const ipfsCompatableFetch: typeof fetch = async (
         redirect: 'follow',
         signal: controller.signal,
         ...options,
-      }).then((res) => {
-        clearTimeout(timeout.timeoutId())
-        return res
-      }).catch((err) => {
-        clearTimeout(timeout.timeoutId())
-        throw err
       })
+        .then((res) => {
+          clearTimeout(timeout.timeoutId())
+          return res
+        })
+        .catch((err) => {
+          clearTimeout(timeout.timeoutId())
+          throw err
+        })
     })
   } else {
     utils.failureLog(url.toString())

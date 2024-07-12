@@ -4,7 +4,6 @@ import * as path from 'path'
 import * as utils from '@/utils'
 import * as types from '@/types'
 import * as viem from 'viem'
-import _ from 'lodash'
 import { Image } from 'knex/types/tables'
 
 const providerKey = 'trustwallet'
@@ -17,11 +16,8 @@ export const collect = async () => {
   for (const folder of blockchainFolders) {
     try {
       const f = path.join(blockchainsRoot, folder, assetsFolder)
-      await fs.promises.readdir(f).then(async (assets) => {
-        await entriesFromAssets(folder, utils.removedUndesirable(assets))
-      }).catch((err) => {
-        // return null
-      })
+      const assets = await fs.promises.readdir(f).catch(() => [])
+      await entriesFromAssets(folder, utils.removedUndesirable(assets))
     } catch (err) {
       utils.failureLog(err)
     }
@@ -59,11 +55,13 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [networkInfo, networkLogoPath] = await load(info)
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
-  const list = await fs.promises.readFile(tokenlistPath).catch((_err) => {
+  const list = await fs.promises.readFile(tokenlistPath).catch(() => {
     // console.log(err)
     return null
   })
-  if (!list) return
+  if (!list) {
+    return
+  }
   const tokenList = JSON.parse(list.toString()) as types.TokenList
   let chainId = networkInfo.coin_type || tokenList.tokens?.[0]?.chainId
   if (!chainId && networkInfo.rpc_url) {

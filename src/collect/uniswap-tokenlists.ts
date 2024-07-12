@@ -20,12 +20,8 @@ export const collect = async () => {
       homepage: item.homepage,
     }
   })
-  const listBlacklist = new Set<string>([
-    'kleros-t-2-cr',
-    'testnet-tokens',
-    'coingecko',
-  ])
-  await promiseLimit<typeof usable[number]>(4).map(usable, async (info) => {
+  const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
+  await promiseLimit<(typeof usable)[number]>(4).map(usable, async (info) => {
     if (listBlacklist.has(info.machineName)) return false
     const result = await fetch(info.uri)
       .then(async (res) => (await res.json()) as types.TokenList)

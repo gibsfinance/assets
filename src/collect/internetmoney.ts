@@ -18,18 +18,24 @@ export const collect = async () => {
     let provider!: Provider
     let insertedList!: List
     await db.transaction(async (tx) => {
-      provider = await db.insertProvider({
-        name: 'Internet Money',
-        key: 'internetmoney',
-      }, tx)
+      provider = await db.insertProvider(
+        {
+          name: 'Internet Money',
+          key: 'internetmoney',
+        },
+        tx,
+      )
       await db.insertNetworkFromChainId(0, undefined, tx)
-      insertedList = await db.insertList({
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(0),
-        key: 'wallet',
-        name: 'default wallet list',
-        description: 'the list that loads by default in the wallet',
-      }, tx)
+      insertedList = await db.insertList(
+        {
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(0),
+          key: 'wallet',
+          name: 'default wallet list',
+          description: 'the list that loads by default in the wallet',
+        },
+        tx,
+      )
     })
     for (const network of json) {
       let chain = utils.findChain(network.chainId)
@@ -44,31 +50,37 @@ export const collect = async () => {
           },
         } as unknown as viem.Chain
       }
-      await db.insertNetworkFromChainId(chain.id);
-      ; ((network) => {
+      await db.insertNetworkFromChainId(chain.id)
+      ;((network) => {
         const client = viem.createClient({
           transport: viem.http(),
           chain,
         })
         encounteredChainIds.add(BigInt(chain.id))
         const insertAndGetNetworkList = (t: Tx) => {
-          return db.insertList({
-            providerId: provider.providerId,
-            networkId: utils.chainIdToNetworkId(chain.id),
-            key: `wallet-${chain.id}`,
-            name: `default wallet list for chain ${chain.id}`,
-            description: `the list that loads by default in the wallet for ${chain.id}`,
-          }, t)
+          return db.insertList(
+            {
+              providerId: provider.providerId,
+              networkId: utils.chainIdToNetworkId(chain.id),
+              key: `wallet-${chain.id}`,
+              name: `default wallet list for chain ${chain.id}`,
+              description: `the list that loads by default in the wallet for ${chain.id}`,
+            },
+            t,
+          )
         }
         todos.push(async () => {
           await db.transaction(async (tx) => {
             const networkList = await insertAndGetNetworkList(tx)
-            await db.fetchImageAndStoreForList({
-              listId: networkList.listId,
-              uri: network.icon,
-              originalUri: network.icon,
-              providerKey: provider.key,
-            }, tx)
+            await db.fetchImageAndStoreForList(
+              {
+                listId: networkList.listId,
+                uri: network.icon,
+                originalUri: network.icon,
+                providerKey: provider.key,
+              },
+              tx,
+            )
           })
         })
         todos.push(
@@ -89,14 +101,20 @@ export const collect = async () => {
                   providedId: address,
                 },
               }
-              await db.fetchImageAndStoreForToken({
-                ...insertion,
-                listId: networkList.listId,
-              }, tx)
-              await db.fetchImageAndStoreForToken({
-                ...insertion,
-                listId: insertedList.listId,
-              }, tx)
+              await db.fetchImageAndStoreForToken(
+                {
+                  ...insertion,
+                  listId: networkList.listId,
+                },
+                tx,
+              )
+              await db.fetchImageAndStoreForToken(
+                {
+                  ...insertion,
+                  listId: insertedList.listId,
+                },
+                tx,
+              )
             })
           }),
         )

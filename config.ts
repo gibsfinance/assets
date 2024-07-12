@@ -7,7 +7,7 @@ const database = {
 }
 const rootURI = process.env.ROOT_URI || 'http://localhost:3000'
 let cacheSeconds = process.env.CACHE_SECONDS
-if (!(+(cacheSeconds as string))) {
+if (!+(cacheSeconds as string)) {
   cacheSeconds = `${60 * 60}`
 }
 export default {

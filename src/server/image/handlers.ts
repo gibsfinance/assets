@@ -1,8 +1,8 @@
 import * as viem from 'viem'
 import httpErrors from 'http-errors'
 import * as path from 'path'
-import { tableNames } from "@/db/tables"
-import { ChainId } from "@/types"
+import { tableNames } from '@/db/tables'
+import { ChainId } from '@/types'
 import * as utils from '@/utils'
 import * as db from '@/db'
 import config from 'config'
@@ -10,15 +10,22 @@ import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/ty
 import { RequestHandler, Response } from 'express'
 
 export const getListTokens = async (
-  chainId: ChainId, address: viem.Hex,
-  listOrderId?: viem.Hex | null, exts?: string[],
+  chainId: ChainId,
+  address: viem.Hex,
+  listOrderId?: viem.Hex | null,
+  exts?: string[],
 ) => {
   const filter = {
-    [`${tableNames.listToken}.networkId`]: utils.chainIdToNetworkId(chainId),
-    [`${tableNames.listToken}.providedId`]: viem.getAddress(address),
+    [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
+    [`${tableNames.token}.providedId`]: viem.getAddress(address),
   }
-  let q = db.getDB().select('*')
+  let q = db
+    .getDB()
+    .select('*')
     .from(tableNames.listToken)
+    .join(`${config.database.schema}.${tableNames.token}`, {
+      [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
+    })
     .join(`${config.database.schema}.${tableNames.image}`, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
@@ -39,7 +46,9 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
   const filter = {
     networkId: utils.chainIdToNetworkId(chainId),
   }
-  let q = db.getDB().select<Image>('*')
+  let q = db
+    .getDB()
+    .select<Image>('*')
     .from(tableNames.image)
     .join(`${config.database.schema}.${tableNames.network}`, {
       [`${tableNames.network}.imageHash`]: `${tableNames.image}.imageHash`,
@@ -80,22 +89,24 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
-export const getImage = (parseOrder: boolean): RequestHandler => async (req, res, next) => {
-  const { chainId, address: addressParam, orderParam } = req.params
-  if (!+chainId) {
-    return next(httpErrors.BadRequest('chainId'))
-  }
-  const { filename: address, exts } = splitExt(addressParam)
-  if (!viem.isAddress(address)) {
-    return next(httpErrors.BadRequest('address'))
-  }
-  const listOrderId = parseOrder ? await db.getListOrderId(orderParam) : null
-  const { img } = await getListTokens(+chainId, address, listOrderId, exts)
-  if (!img) {
-    return next(httpErrors.NotFound())
-  }
-  sendImage(res, img)
-}
+export const getImage =
+  (parseOrder: boolean): RequestHandler =>
+    async (req, res, next) => {
+      const { chainId, address: addressParam, orderParam } = req.params
+      if (!+chainId) {
+        return next(httpErrors.BadRequest('chainId'))
+      }
+      const { filename: address, exts } = splitExt(addressParam)
+      if (!viem.isAddress(address)) {
+        return next(httpErrors.BadRequest('address'))
+      }
+      const listOrderId = parseOrder ? await db.getListOrderId(orderParam) : null
+      const { img } = await getListTokens(+chainId, address, listOrderId, exts)
+      if (!img) {
+        return next(httpErrors.NotFound())
+      }
+      sendImage(res, img)
+    }
 
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const { chainId, address: addressParam, order: orderParam } = req.params
@@ -116,7 +127,9 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   const { filename, exts } = splitExt(req.params.imageHash)
-  const img = await db.getDB().select('*')
+  const img = await db
+    .getDB()
+    .select('*')
     .from(tableNames.image)
     .where('imageHash', filename)
     .whereIn('ext', exts as string[])
@@ -141,7 +154,5 @@ export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req
 }
 
 export const sendImage = (res: Response, img: Image) => {
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-    .contentType(img.ext)
-    .send(img.content)
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`).contentType(img.ext).send(img.content)
 }

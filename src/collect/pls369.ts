@@ -74,7 +74,9 @@ export const collect = async () => {
         originalUri: path,
         providerKey: provider.key,
         token: {
-          name, symbol, decimals,
+          name,
+          symbol,
+          decimals,
           networkId: network.networkId,
           providedId: piece.address,
         },

@@ -9,7 +9,6 @@ import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { Spinner } from '@topcli/spinner'
-import { Network, Token } from 'knex/types/tables'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -174,30 +173,24 @@ const print = (key: string) => {
 
 export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
   return spinnerLimit(async () => {
-    const spinner = process.env.FAKE_SPINNER
-      ? print(key)
-      : new Spinner().start(key)
-    return await fn().then((res) => {
-      spinner.succeed()
-      return res
-    }).catch((err) => {
-      failureLog(err)
-      spinner.failed()
-      throw err
-    })
+    const spinner = process.env.FAKE_SPINNER ? print(key) : new Spinner().start(key)
+    return await fn()
+      .then((res) => {
+        spinner.succeed()
+        return res
+      })
+      .catch((err) => {
+        failureLog(err)
+        spinner.failed()
+        throw err
+      })
   })
 }
 
-export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => (
-  toKeccakBytes(`${type}${chainId}`)
-)
+export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => toKeccakBytes(`${type}${chainId}`)
 
 export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: viem.Hex) => {
-  const calls = [
-    { functionName: 'name' },
-    { functionName: 'symbol' },
-    { functionName: 'decimals' },
-  ]
+  const calls = [{ functionName: 'name' }, { functionName: 'symbol' }, { functionName: 'decimals' }]
   return await multicallRead<[string, string, number]>({
     chain,
     client,
@@ -212,15 +205,14 @@ export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: 
         abi: viem.erc20Abi_bytes32,
         calls,
         target,
-      })
-        .then(
-          ([name, symbol, decimals]) =>
-            [
-              viem.fromHex(name, 'string').split('\x00').join(''),
-              viem.fromHex(symbol, 'string').split('\x00').join(''),
-              decimals,
-            ] as const,
-        )
+      }).then(
+        ([name, symbol, decimals]) =>
+          [
+            viem.fromHex(name, 'string').split('\x00').join(''),
+            viem.fromHex(symbol, 'string').split('\x00').join(''),
+            decimals,
+          ] as const,
+      )
     })
     .catch(() => ['', '', 18] as const)
 }
@@ -234,7 +226,7 @@ export const folderContents = async (folder: string, fn?: (i: string) => any) =>
 }
 
 export type Timeout = {
-  timeoutId: () => NodeJS.Timeout;
+  timeoutId: () => NodeJS.Timeout
   promise: Promise<unknown>
 }
 
@@ -249,10 +241,7 @@ export const timeout = (ms: number) => {
   }
 }
 
-export const toKeccakBytes = (s: string) => (
-  viem.keccak256(viem.toBytes(s)).slice(2)
-)
+export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)
 
-export const directUri = ({ imageHash, ext }: { imageHash: string; ext: string }) => (
+export const directUri = ({ imageHash, ext }: { imageHash: string; ext: string }) =>
   imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
-)

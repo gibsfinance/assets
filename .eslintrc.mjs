@@ -42,6 +42,7 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/consistent-type-definitions': 'off',
+      '@typescript-eslint/no-empty-interface': 'off',
     },
   },
 )

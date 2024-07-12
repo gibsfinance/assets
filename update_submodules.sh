@@ -8,6 +8,7 @@ clone_submodule_with_retry() {
   local count=0
 
   until [ "$count" -ge "$retries" ]; do
+    rm -rf $submodule_path
     git clone "$submodule_url" "$submodule_path" && break
     count=$((count + 1))
     echo "Clone failed. Attempt $count/$retries..."
