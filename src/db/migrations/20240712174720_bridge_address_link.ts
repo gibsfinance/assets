@@ -7,7 +7,7 @@ import { tableNames } from '../tables'
 
 const bridgeCompositeId = utils.compositeId(tableNames.bridge, 'bridgeId', [
   'type',
-  'provider',
+  'providerId',
   'homeNetworkId',
   'homeAddress',
   'foreignNetworkId',
@@ -15,8 +15,8 @@ const bridgeCompositeId = utils.compositeId(tableNames.bridge, 'bridgeId', [
 ])
 
 const bridgeLinkCompositeId = utils.compositeId(tableNames.bridgeLink, 'bridgeLinkId', [
-  'foreignTokenId',
-  'homeTokenId',
+  'nativeTokenId',
+  'bridgedTokenId',
   'bridgeId',
 ])
 
@@ -27,12 +27,17 @@ export async function up(knex: Knex): Promise<void> {
     await utils.schema(knex).createTable(tableNames.bridge, (t) => {
       // type of bridge (omnibridge, other)
       t.text('type').index().notNullable()
-      t.text('provider').index().notNullable()
+      utils.foreignColumn(t.text('providerId').index().notNullable(), 'providerId', tableNames.provider)
+      // "home" and "foreign" are arbitrary distinctions defined by the network itself
+      // often having to do with where validators are running transactions vs where users have to run
       utils.foreignColumn(t.text('homeNetworkId').index().notNullable(), 'networkId', tableNames.network)
       t.specificType('homeAddress', 'citext').index().notNullable()
       utils.foreignColumn(t.text('foreignNetworkId').index().notNullable(), 'networkId', tableNames.network)
       t.specificType('foreignAddress', 'citext').index().notNullable()
       t.text('bridgeId').primary().notNullable().index()
+      t.bigint('currentForeignBlockNumber').notNullable().index().defaultTo(0)
+      t.bigint('currentHomeBlockNumber').notNullable().index().defaultTo(0)
+      t.timestamps(true, true)
     })
     await bridgeCompositeId.up(knex)
   }
@@ -44,9 +49,11 @@ export async function up(knex: Knex): Promise<void> {
     log('creating table %o', tableNames.bridgeLink)
     await utils.schema(knex).createTable(tableNames.bridgeLink, (t) => {
       t.text('bridgeLinkId').primary().index().notNullable()
-      utils.foreignColumn(t.text('foreignTokenId').index().notNullable(), 'tokenId', tableNames.token)
-      utils.foreignColumn(t.text('homeTokenId').index().notNullable(), 'tokenId', tableNames.token)
+      // token id holds both network id + hash from network in provided id
+      utils.foreignColumn(t.text('nativeTokenId').index().notNullable(), 'tokenId', tableNames.token)
+      utils.foreignColumn(t.text('bridgedTokenId').index().notNullable(), 'tokenId', tableNames.token)
       utils.foreignColumn(t.text('bridgeId').index().notNullable(), 'bridgeId', tableNames.bridge)
+      t.text('transactionHash').index().notNullable()
     })
     await bridgeLinkCompositeId.up(knex)
 

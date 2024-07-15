@@ -6,7 +6,7 @@ import * as uniswapTokenlists from './uniswap-tokenlists'
 import * as remoteTokenList from './remote-tokenlist'
 import * as smoldapp from './smoldapp'
 import * as omnibridge from './omnibridge'
-import { bsc, mainnet, pulsechain } from 'viem/chains'
+import { bsc, mainnet, pulsechain } from '@/chains'
 
 export const collectables = {
   trustwallet: trustwallet.collect,
@@ -42,14 +42,14 @@ export const collectables = {
   smoldapp: smoldapp.collect,
   omnibridge: omnibridge.collect([
     {
-      provider: 'pulsechain',
-      foreign: { chain: mainnet, address: '0xd0764FAe29E0a6a96fF685f71CfC685456D5636c', startBlock: 17_264_119 },
-      home: { chain: pulsechain, address: '0x6ef79FD6f9f840264332884240539Ed7A2dA8b2b', startBlock: 17_268_302 },
+      providerPrefix: 'pulsechain',
+      foreign: { chain: mainnet, address: '0x1715a3E4A142d8b698131108995174F37aEBA10D', startBlock: 17_264_119 },
+      home: { chain: pulsechain, address: '0x4fD0aaa7506f3d9cB8274bdB946Ec42A1b8751Ef', startBlock: 17_268_302 },
     },
     {
-      provider: 'tokensex',
-      foreign: { chain: bsc, address: '0x8C0Db248E87F53e53f7D19A8Bd1CFAB16f5B69E7', startBlock: 28_987_322 },
-      home: { chain: pulsechain, address: '0xa3177000d645c599e45f946240f9c2f46d26718b', startBlock: 17_494_240 },
+      providerPrefix: 'tokensex',
+      foreign: { chain: bsc, address: '0xb4005881e81a6ecd2c1f75d58e8e41f28d59c6b1', startBlock: 28_987_322 },
+      home: { chain: pulsechain, address: '0xf1DFc63e10fF01b8c3d307529b47AefaD2154C0e', startBlock: 17_494_240 },
     },
   ]),
 }

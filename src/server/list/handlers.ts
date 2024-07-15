@@ -43,3 +43,12 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   const filters = utils.tokenFilters(req.query)
   await utils.respondWithList(res, list, filters)
 }
+
+export const bridgeProviderKeyed: RequestHandler = async (req, res, next) => {
+  const list = await db.getLists(`${req.params.providerKey}-bridge`, req.params.listKey).first()
+  if (!list) {
+    return next(createError.NotFound())
+  }
+  const filters = utils.tokenFilters(req.query)
+  await utils.respondWithList(res, list, filters)
+}

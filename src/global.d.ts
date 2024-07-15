@@ -1,3 +1,5 @@
+import { tableNames } from "./db/tables"
+
 declare module 'knex/types/tables' {
   interface Timestamped {
     createdAt: Date
@@ -117,15 +119,41 @@ declare module 'knex/types/tables' {
     listId?: string
   }
   interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> { }
+  interface Bridge extends Timestamped {
+    bridgeId: string;
+    foreignAddress: string;
+    foreignNetworkId: string;
+    homeAddress: string;
+    homeNetworkId: string;
+    type: string;
+    providerId: string;
+    currentForeignBlockNumber: string;
+    currentHomeBlockNumber: string;
+  }
+  interface InsertableBridge extends Omit<Bridge, TimestampKeys | 'bridgeId'> {
+    currentHomeBlockNumber?: string;
+    currentForeignBlockNumber?: string;
+  }
+  interface BridgeLink {
+    bridgeLinkId: string;
+    nativeTokenId: string;
+    bridgedTokenId: string;
+    bridgeId: string;
+    transactionHash: string;
+  }
+  interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> {
+  }
   interface Tables {
-    provider: Provider
-    network: Network
-    image: Image
-    list: List
-    tag: Tag
-    listTag: ListTag
-    metadata: Metadata
-    token: Token
-    listToken: ListToken
+    [tableNames.provider]: Provider
+    [tableNames.network]: Network
+    [tableNames.image]: Image
+    [tableNames.list]: List
+    [tableNames.tag]: Tag
+    [tableNames.listTag]: ListTag
+    [tableNames.metadata]: Metadata
+    [tableNames.token]: Token
+    [tableNames.listToken]: ListToken
+    [tableNames.bridge]: Bridge
+    [tableNames.bridgeLink]: BridgeLink;
   }
 }

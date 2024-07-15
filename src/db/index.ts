@@ -23,6 +23,10 @@ import type {
   InsertableListOrder,
   BackfillableInsertableListOrderItem,
   Token,
+  InsertableBridge,
+  Bridge,
+  InsertableBridgeLink,
+  BridgeLink,
 } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
@@ -427,14 +431,25 @@ export const fetchImageAndStoreForToken = async (
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
-  const providedId = viem.isAddress(token.providedId) ? viem.getAddress(token.providedId) : token.providedId
+  let providedId = token.providedId
+  if (viem.isAddress(providedId)) {
+    providedId = viem.getAddress(token.providedId)
+  }
   if (_.isString(uri)) {
     const existing = await getImageFromLink(uri, t)
     if (existing) {
+      const insertedToken = await insertToken(
+        {
+          type: 'erc20',
+          ...token,
+          providedId,
+        },
+        t,
+      ) as Token
       if (!listId) {
         return {
           ...existing,
-          token,
+          token: insertedToken,
         }
       }
       const listToken = await t(tableNames.listToken)
@@ -455,7 +470,7 @@ export const fetchImageAndStoreForToken = async (
         return {
           ...existing,
           listToken,
-          token,
+          token: insertedToken,
         }
       }
     }
@@ -540,10 +555,10 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
 export const insertProvider = async (provider: InsertableProvider, t: Tx = db) => {
   const [inserted] = await t
     .from(tableNames.provider)
-    .insert<Provider[]>([provider])
+    .insert([provider])
     .onConflict(['providerId'])
     .merge(['providerId'])
-    .returning('*')
+    .returning<Provider[]>('*')
   return inserted
 }
 
@@ -675,3 +690,30 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
     })
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
 }
+
+export const insertBridge = async (bridge: InsertableBridge, t: Tx = getDB()) => {
+  const [b] = await t.insert(bridge)
+    .into(tableNames.bridge)
+    .onConflict(['bridgeId'])
+    .merge(['bridgeId'])
+    .returning<Bridge[]>('*')
+  return b
+}
+
+export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx = getDB()) => {
+  const [bl] = await t.insert(bridgeLink)
+    .into(tableNames.bridgeLink)
+    .onConflict(['bridgeLinkId'])
+    .merge(['bridgeLinkId'])
+    .returning<BridgeLink[]>('*')
+  return bl
+}
+
+export const updateBridgeBlockProgress = (
+  bridgeId: string, updates: Partial<Bridge>,
+  tx: Tx = getDB(),
+) => (
+  tx(tableNames.bridge)
+    .update(updates)
+    .where('bridgeId', bridgeId)
+)
