@@ -1,4 +1,4 @@
-FROM node:20.11.1 as base
+FROM node:20.11.1 AS base
 
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
@@ -8,7 +8,7 @@ ENV NODE_ENV $NODE_ENV
 ARG ROOT_URI
 ENV ROOT_URI $ROOT_URI
 
-FROM base as build
+FROM base AS build
 COPY package-lock.json /usr/src/app/package-lock.json
 COPY package.json /usr/src/app/package.json
 RUN npm i
