@@ -31,6 +31,7 @@ import type {
 import { fetch } from '@/fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
+import { join } from './utils'
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
@@ -598,6 +599,7 @@ export const getTokensUnderListId = (t: Tx = db) => {
       t.raw(`${tableNames.token}.decimals`),
       t.raw(`${tableNames.token}.symbol`),
       t.raw(`${tableNames.token}.name`),
+      t.raw(`${tableNames.token}.token_id`),
       t.raw(`${tableNames.image}.image_hash`),
       t.raw(`${tableNames.image}.ext`),
     ])
@@ -613,19 +615,13 @@ export const getTokensUnderListId = (t: Tx = db) => {
     })
 }
 
-export const getLists = (providerKey: string, listKey?: string, t: Tx = db) =>
-  t
-    .from(tableNames.provider)
+export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
+  let q = t.from(tableNames.provider)
     .select<(Provider & List & ListToken & Image)[]>(['*', 'image.ext'])
-    .join(tableNames.list, {
-      [`${tableNames.list}.providerId`]: `${tableNames.provider}.providerId`,
-    })
-    .join(tableNames.listToken, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .fullOuterJoin(tableNames.image, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.list}.imageHash`,
-    })
+    .join(...join(tableNames.list, tableNames.provider, [['providerId']]))
+    .join(...join(tableNames.listToken, tableNames.list, [['listId']]))
+    // .join(...join(tableNames.token, tableNames.listToken, [['tokenId']]))
+    .fullOuterJoin(...join(tableNames.image, tableNames.list, [['imageHash']]))
     .where(
       listKey
         ? {
@@ -640,6 +636,29 @@ export const getLists = (providerKey: string, listKey?: string, t: Tx = db) =>
     .orderBy('major', 'desc')
     .orderBy('minor', 'desc')
     .orderBy('patch', 'desc')
+  return q
+}
+
+export const addBridgeExtensions = (q: Knex.QueryBuilder) => {
+  return q.select([
+    db.raw(`row_to_json(${tableNames.bridge}.*) as bridge`),
+    db.raw(`row_to_json(${tableNames.bridgeLink}.*) as bridge_link`),
+    db.raw(`row_to_json(network_a.*) as network_a`),
+    db.raw(`row_to_json(network_b.*) as network_b`),
+    db.raw(`row_to_json(native_token.*) as native_token`),
+    db.raw(`row_to_json(bridged_token.*) as bridged_token`),
+  ])
+    .fullOuterJoin(tableNames.bridgeLink, function joinBridgeInfo() {
+      this.on(`${tableNames.bridgeLink}.nativeTokenId`, '=', `${tableNames.token}.tokenId`)
+        .orOn(`${tableNames.bridgeLink}.bridgedTokenId`, '=', `${tableNames.token}.tokenId`)
+    })
+    .join(...join(tableNames.bridge, tableNames.bridgeLink, [['bridgeId']]))
+    .join(...join(tableNames.network, tableNames.bridge, [['networkId', 'homeNetworkId']], 'network_a'))
+    .join(...join(tableNames.network, tableNames.bridge, [['networkId', 'foreignNetworkId']], 'network_b'))
+    .join(...join(tableNames.token, tableNames.bridgeLink, [['tokenId', 'nativeTokenId']], 'native_token'))
+    .join(...join(tableNames.token, tableNames.bridgeLink, [['tokenId', 'bridgedTokenId']], 'bridged_token'))
+  // .join(...join(tableNames.bridge, tableNames.bridgeLink, [['bridgeId']]))
+}
 
 export const getListOrderId = async (orderParam: string) => {
   let listOrderId: viem.Hex | null = null

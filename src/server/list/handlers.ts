@@ -1,11 +1,13 @@
 import createError from 'http-errors'
 import * as db from '@/db'
-import { RequestHandler } from 'express'
+import { Request, RequestHandler } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, ListToken } from 'knex/types/tables'
+import _ from 'lodash'
 
 export const merged: RequestHandler = async (req, res, next) => {
+  const extensions = getExtensions(req)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {
     return next(createError.NotFound())
@@ -20,35 +22,36 @@ export const merged: RequestHandler = async (req, res, next) => {
       [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
     })
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens, filters)
+  const entries = utils.normalizeTokens(tokens, filters, extensions)
   res.json(utils.minimalList(entries))
 }
 
+const getExtensions = (req: Request) => {
+  const extensions = req.query.extensions
+  if (!extensions) return new Set<string>()
+  if (_.isArray(extensions)) return new Set(extensions as string[])
+  return new Set([extensions as string])
+}
+
 export const versioned: RequestHandler = async (req, res, next) => {
+  const extensions = getExtensions(req)
+  const unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
   const list = await utils
-    .applyVersion(req.params.version, db.getLists(req.params.providerKey, req.params.listKey))
+    .applyVersion(req.params.version, unversionedList)
     .first()
   if (!list) {
     return next(createError.NotFound())
   }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters)
+  await utils.respondWithList(res, list, filters, extensions)
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
+  const extensions = getExtensions(req)
   const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
   if (!list) {
     return next(createError.NotFound())
   }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters)
-}
-
-export const bridgeProviderKeyed: RequestHandler = async (req, res, next) => {
-  const list = await db.getLists(`${req.params.providerKey}-bridge`, req.params.listKey).first()
-  if (!list) {
-    return next(createError.NotFound())
-  }
-  const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters)
+  await utils.respondWithList(res, list, filters, extensions)
 }
