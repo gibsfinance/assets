@@ -21,6 +21,7 @@
     "build": "hardhat compile && npm run lint && tsc",
     "collect": "tsx src/bin/collect",
     "server": "tsx src/bin/server",
+    "dev": "tsx --watch src/bin/server",
     "lint": "prettier --check . && ESLINT_USE_FLAT_CONFIG=true eslint \"./src/**/*.ts\" -c .eslintrc.mjs",
     "format": "prettier --write .",
     "test": "NODE_ENV=test tsx --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts"
