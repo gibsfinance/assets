@@ -46,4 +46,15 @@ describe('/list', async (t) => {
       )
     })
   })
+  await describe('include=bridgeInfo', async () => {
+    let baseline!: TokenList
+    beforeEach(async () => {
+      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?include=bridgeInfo`).expect(200)
+      baseline = res.body
+    })
+    await test('bridge', async () => {
+      assert.ok(baseline.tokens.length > 0)
+      assert.ok(!_.isEmpty(baseline.tokens[0].extensions))
+    })
+  })
 })

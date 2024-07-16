@@ -10,6 +10,9 @@ export type TokenEntry = {
   symbol: string
   decimals: number
   logoURI?: string
+  extensions?: {
+    bridgeInfo?: Record<number, PerNetworkBridgeLink>
+  }
 }
 
 export type InternetMoneyToken = {
@@ -39,6 +42,11 @@ export type TokenListVersion = {
   patch: number
 }
 export type TokenMap = Record<`${number}_${viem.Hex}`, TokenEntry>
+export type PerNetworkBridgeLink = {
+  tokenAddress: viem.Hex;
+  originationBridgeAddress: viem.Hex;
+  destinationBridgeAddress: viem.Hex;
+}
 export type TokenList = {
   logoURI?: string
   name: string
