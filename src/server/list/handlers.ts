@@ -7,6 +7,7 @@ import type { Image, ListToken } from 'knex/types/tables'
 import _ from 'lodash'
 
 export const merged: RequestHandler = async (req, res, next) => {
+  const extensions = getExtensions(req)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {
     return next(createError.NotFound())
@@ -21,7 +22,7 @@ export const merged: RequestHandler = async (req, res, next) => {
       [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
     })
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens, filters)
+  const entries = utils.normalizeTokens(tokens, filters, extensions)
   res.json(utils.minimalList(entries))
 }
 
@@ -34,10 +35,7 @@ const getExtensions = (req: Request) => {
 
 export const versioned: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
-  let unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
-  if (extensions.has('bridgeInfo')) {
-    unversionedList = db.addBridgeExtensions(unversionedList) as any
-  }
+  const unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
   const list = await utils
     .applyVersion(req.params.version, unversionedList)
     .first()
@@ -45,19 +43,15 @@ export const versioned: RequestHandler = async (req, res, next) => {
     return next(createError.NotFound())
   }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters)
+  await utils.respondWithList(res, list, filters, extensions)
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
-  let unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
-  if (extensions.has('bridgeInfo')) {
-    unversionedList = db.addBridgeExtensions(unversionedList) as any
-  }
-  const list = await unversionedList.first()
+  const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
   if (!list) {
     return next(createError.NotFound())
   }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters)
+  await utils.respondWithList(res, list, filters, extensions)
 }

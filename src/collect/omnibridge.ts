@@ -51,6 +51,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
         // bridge suffix is code controlled
         key: `${config.providerPrefix}-bridge`,
       }, tx)
+      await db.insertNetworkFromChainId(fromConfig.chain.id, undefined, tx)
+      await db.insertNetworkFromChainId(toConfig.chain.id, undefined, tx)
       const fromList = await db.insertList({
         providerId: provider.providerId,
         key: fromHome ? 'home' : 'foreign',

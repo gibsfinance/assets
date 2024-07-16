@@ -1,7 +1,11 @@
-import { Image, Network, Token } from 'knex/types/tables'
+import { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
 import * as viem from 'viem'
 
 export type Todo = () => Promise<void>
+
+export type Extensions = {
+  bridgeInfo?: Record<number, PerNetworkBridgeLink>
+}
 
 export type TokenEntry = {
   chainId: number
@@ -10,9 +14,7 @@ export type TokenEntry = {
   symbol: string
   decimals: number
   logoURI?: string
-  extensions?: {
-    bridgeInfo?: Record<number, PerNetworkBridgeLink>
-  }
+  extensions?: Extensions;
 }
 
 export type InternetMoneyToken = {
@@ -65,4 +67,11 @@ export type Call = {
 
 export type ChainId = number | bigint | viem.Hex
 
-export type TokenInfo = Network & Token & Image
+export type TokenInfo = Network & Token & Image & {
+  bridge: Bridge
+  bridgeLink: BridgeLink
+  networkA: Network
+  networkB: Network
+  nativeToken: Token
+  bridgedToken: Token
+}

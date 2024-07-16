@@ -225,13 +225,14 @@ export const foreignColumn = (
 
 export const schema = (knex: Knex) => knex.schema.withSchema(userConfig.database.schema)
 
-export const join = (t1: TableNames, t2: TableNames, cols: ([string] | [string, string])[]) => {
+export const join = (t1: TableNames, t2: TableNames, cols: ([string] | [string, string])[], alias?: string) => {
+  const t0 = alias ? alias : t1
   return [
-    t1,
+    alias ? `${t1} as ${alias}` : t1,
     _.reduce(
       cols,
       (matches, [a, b]) => {
-        matches[`${t1}.${a}`] = `${t2}.${b || a}`
+        matches[`${t0}.${a}`] = `${t2}.${b || a}`
         return matches
       },
       {} as Record<string, string>,
