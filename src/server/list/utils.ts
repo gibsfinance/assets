@@ -47,7 +47,7 @@ export const normalizeTokens = (
   const over = _.overEvery(filters)
   const bridgeInfoExtension = extensions.has('bridgeInfo')
   const showExtensions = bridgeInfoExtension
-  // console.log(tokens[0])
+  // console.log(tokens.filter((t) => t.chainId === '369' && t.providedId === '0xE41d2489571d322189246DaFA5ebDe1F4699F498' || t.providedId === '0x8B6d72bc8E218747b6C18ed2dd4200414CfE137c')[0])
   return [..._(tokens)
     .filter((a) => over(a))
     .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
@@ -73,11 +73,11 @@ export const normalizeTokens = (
               const tokenNotSelf = viem.getAddress(tkn.providedId) === viem.getAddress(tkn.nativeToken.providedId)
                 ? tkn.bridgedToken
                 : tkn.nativeToken
-              const notSelfIsHome = tkn.bridge.homeNetworkId === networkNotSelf.networkId
+              const tokenIsNative = tokenNotSelf === tkn.nativeToken
               ext.bridgeInfo![+networkNotSelf.chainId] = {
                 tokenAddress: tokenNotSelf.providedId as viem.Hex,
-                originationBridgeAddress: (notSelfIsHome ? tkn.bridge.homeAddress : tkn.bridge.foreignAddress) as viem.Hex,
-                destinationBridgeAddress: (notSelfIsHome ? tkn.bridge.foreignAddress : tkn.bridge.homeAddress) as viem.Hex,
+                originationBridgeAddress: (tokenIsNative ? tkn.bridge.foreignAddress : tkn.bridge.homeAddress) as viem.Hex,
+                destinationBridgeAddress: (tokenIsNative ? tkn.bridge.homeAddress : tkn.bridge.foreignAddress) as viem.Hex,
               }
             }
           }

@@ -3,6 +3,11 @@ import * as viem from 'viem'
 
 export type Todo = () => Promise<void>
 
+export type PerNetworkBridgeLink = {
+  tokenAddress: viem.Hex;
+  originationBridgeAddress: viem.Hex;
+  destinationBridgeAddress: viem.Hex;
+}
 export type Extensions = {
   bridgeInfo?: Record<number, PerNetworkBridgeLink>
 }
@@ -44,11 +49,6 @@ export type TokenListVersion = {
   patch: number
 }
 export type TokenMap = Record<`${number}_${viem.Hex}`, TokenEntry>
-export type PerNetworkBridgeLink = {
-  tokenAddress: viem.Hex;
-  originationBridgeAddress: viem.Hex;
-  destinationBridgeAddress: viem.Hex;
-}
 export type TokenList = {
   logoURI?: string
   name: string
