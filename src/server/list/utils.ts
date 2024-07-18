@@ -47,7 +47,6 @@ export const normalizeTokens = (
   const over = _.overEvery(filters)
   const bridgeInfoExtension = extensions.has('bridgeInfo')
   const showExtensions = bridgeInfoExtension
-  // console.log(tokens.filter((t) => t.chainId === '369' && t.providedId === '0xE41d2489571d322189246DaFA5ebDe1F4699F498' || t.providedId === '0x8B6d72bc8E218747b6C18ed2dd4200414CfE137c')[0])
   return [..._(tokens)
     .filter((a) => over(a))
     .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
