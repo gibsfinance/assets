@@ -1,13 +1,13 @@
 import supertest from 'supertest'
-import { afterEach, beforeEach, describe, test } from 'node:test'
+import { test } from 'node:test'
 import { app } from '../src/server/app'
 import * as testUtils from './utils'
 import { tableNames } from '../src/db/tables'
 
-describe('middleware', async () => {
-  beforeEach(async () => testUtils.setup())
-  afterEach(async () => testUtils.teardown())
-  test('it responds with a response time', async () => {
+test('middleware', async (t) => {
+  t.beforeEach(async () => testUtils.setup())
+  t.afterEach(async () => testUtils.teardown())
+  await t.test('it responds with a response time', async () => {
     const provider = testUtils.get(tableNames.provider)
     const list = testUtils.get(tableNames.list)
     await supertest(app)

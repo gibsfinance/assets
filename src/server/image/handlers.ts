@@ -1,5 +1,5 @@
 import * as viem from 'viem'
-import httpErrors from 'http-errors'
+import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
 import { tableNames } from '@/db/tables'
 import { ChainId } from '@/types'
@@ -8,6 +8,8 @@ import * as db from '@/db'
 import config from 'config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
 import { RequestHandler, Response } from 'express'
+import * as core from "express-serve-static-core";
+import _ from 'lodash'
 
 export const getListTokens = async (
   chainId: ChainId,
@@ -89,40 +91,61 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
-export const getImage =
-  (parseOrder: boolean): RequestHandler =>
-    async (req, res, next) => {
-      const { chainId, address: addressParam, orderParam } = req.params
-      if (!+chainId) {
-        return next(httpErrors.BadRequest('chainId'))
-      }
-      const { filename: address, exts } = splitExt(addressParam)
-      if (!viem.isAddress(address)) {
-        return next(httpErrors.BadRequest('address'))
-      }
-      const listOrderId = parseOrder ? await db.getListOrderId(orderParam) : null
-      const { img } = await getListTokens(+chainId, address, listOrderId, exts)
-      if (!img) {
-        return next(httpErrors.NotFound())
-      }
-      sendImage(res, img)
-    }
-
-export const getImageAndFallback: RequestHandler = async (req, res, next) => {
-  const { chainId, address: addressParam, order: orderParam } = req.params
+const getListImage = (parseOrder: boolean) => async ({
+  chainId,
+  address: addressParam,
+  order: orderParam,
+}: {
+  chainId: number;
+  address: string;
+  order?: string;
+}) => {
   if (!+chainId) {
-    return next(httpErrors.BadRequest('chainId'))
+    throw httpErrors.BadRequest('chainId')
   }
   const { filename: address, exts } = splitExt(addressParam)
   if (!viem.isAddress(address)) {
-    return next(httpErrors.BadRequest('address'))
+    throw httpErrors.BadRequest('address')
   }
-  const listOrderId = await db.getListOrderId(orderParam)
+  const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
   const { img } = await getListTokens(+chainId, address, listOrderId, exts)
   if (!img) {
-    return getImage(false)(req, res, next)
+    throw httpErrors.NotFound()
   }
-  sendImage(res, img)
+  return img
+}
+
+export const getImage = (parseOrder: boolean): RequestHandler =>
+  async (req, res, next) => {
+    try {
+      const img = await getListImage(parseOrder)({
+        chainId: Number(req.params.chainId),
+        address: req.params.address as viem.Hex,
+        order: req.params.order,
+      })
+      sendImage(res, img)
+    } catch (err) {
+      return next(err)
+    }
+  }
+
+export const getImageAndFallback: RequestHandler = async (req, res, next) => {
+  try {
+    let img = await getListImage(true)({
+      chainId: Number(req.params.chainId),
+      address: req.params.address as viem.Hex,
+      order: req.params.order,
+    }).catch(ignoreNotFound)
+    if (!img) {
+      img = await getListImage(false)({
+        chainId: Number(req.params.chainId),
+        address: req.params.address as viem.Hex,
+      })
+    }
+    sendImage(res, img)
+  } catch (err) {
+    return next(err)
+  }
 }
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
@@ -140,19 +163,72 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
   sendImage(res, img)
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
-  const { chainId: chainIdParam } = req.params
+const bestGuessNeworkImage = async (chainIdParam: string) => {
   const { filename: chainId, exts } = splitExt(chainIdParam)
   if (!+chainId) {
-    return next(httpErrors.BadRequest('chainId'))
+    throw httpErrors.BadRequest('chainId')
   }
   const { img } = await getNetworkIcon(+chainId, exts)
   if (!img) {
-    return next(httpErrors.NotFound())
+    throw httpErrors.NotFound()
   }
-  sendImage(res, img)
+  return img
+}
+
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
+  try {
+    const img = await bestGuessNeworkImage(req.params.chainId)
+    sendImage(res, img)
+  } catch (err) {
+    return next(err)
+  }
+}
+
+const ignoreNotFound = (err: HttpError) => {
+  if (err.status === 404) {
+    return null
+  }
+  throw err
+}
+
+export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: string | string[] }> = async (req, res, next) => {
+  const { i } = req.query
+  let images!: string[]
+  if (Array.isArray(i)) images = i
+  else images = [i]
+  for (const i of images) {
+    if (!_.isString(i)) {
+      return next(httpErrors.NotAcceptable('invalid i'))
+    }
+    let [chainId, address, order] = i.split('/')
+    if (!address) {
+      const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
+      if (!img) continue
+      return sendImage(res, img)
+    }
+    if (order && order.length !== 64 /* check if hex */) {
+      return next(httpErrors.NotAcceptable('invalid order'))
+    }
+    let img = await getListImage(true)({
+      chainId: Number(chainId),
+      address,
+      order,
+    }).catch(ignoreNotFound)
+    if (!img) {
+      img = await getListImage(false)({
+        chainId: Number(chainId),
+        address,
+      }).catch(ignoreNotFound)
+    }
+    if (img) {
+      return sendImage(res, img)
+    }
+  }
+  return next(httpErrors.NotFound('image not found from list'))
 }
 
 export const sendImage = (res: Response, img: Image) => {
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`).contentType(img.ext).send(img.content)
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    .contentType(img.ext)
+    .send(img.content)
 }

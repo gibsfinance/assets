@@ -528,18 +528,17 @@ export const fetchImageAndStoreForToken = async (
   }
 }
 
-export const insertListToken = async (listToken: InsertableListToken, t: Tx = db) => {
-  const [inserted] = await t
+export const insertListToken = async (listToken: InsertableListToken | InsertableListToken[], t: Tx = db) => {
+  return await t
     .from(tableNames.listToken)
-    .insert([listToken])
+    .insert(listToken)
     .onConflict(['listTokenId'])
     .merge(['listTokenId'])
     .returning<ListToken[]>('*')
-  return inserted
 }
 
 export const insertList = async (list: InsertableList, t: Tx = db) => {
-  const [insertedList] = await t
+  return await t
     .from<List>(tableNames.list)
     .insert({
       patch: 0,
@@ -550,17 +549,15 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
     .onConflict(['listId'])
     .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch', 'default'])
     .returning('*')
-  return insertedList
 }
 
-export const insertProvider = async (provider: InsertableProvider, t: Tx = db) => {
-  const [inserted] = await t
+export const insertProvider = async (provider: InsertableProvider | InsertableProvider[], t: Tx = db) => {
+  return await t
     .from(tableNames.provider)
-    .insert([provider])
+    .insert(provider)
     .onConflict(['providerId'])
     .merge(['providerId'])
     .returning<Provider[]>('*')
-  return inserted
 }
 
 export const insertOrder = async (

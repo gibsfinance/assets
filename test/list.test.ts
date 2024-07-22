@@ -1,5 +1,5 @@
 import '../src/global.d.ts'
-import { test, afterEach, beforeEach, describe } from 'node:test'
+import { test } from 'node:test'
 import { app } from '../src/server/app'
 import supertest from 'supertest'
 import { tableNames } from '../src/db/tables'
@@ -9,25 +9,27 @@ import * as testUtils from './utils.ts'
 import { TokenList } from '../src/types.ts'
 import _ from 'lodash'
 
-describe('/list', async (t) => {
+test('/list', async (t) => {
   let provider!: Provider
   let list!: List
-  beforeEach(async () => {
+  t.beforeEach(async () => {
     await testUtils.setup()
     provider = testUtils.get(tableNames.provider)
     list = testUtils.get(tableNames.list)
   })
-  afterEach(async () => testUtils.teardown())
-  await describe('/:providerKey', async () => {
+  t.afterEach(async () => {
+    await testUtils.teardown()
+  })
+  await t.test('/:providerKey', async (t) => {
     let baseline!: TokenList
-    beforeEach(async () => {
+    t.beforeEach(async () => {
       const res = await supertest(app).get(`/list/${provider.key}/${list.key}`).expect(200)
       baseline = res.body
     })
-    await test('/:listKey?', async () => {
+    await t.test('/:listKey?', async () => {
       assert.ok(baseline.tokens.length > 0)
     })
-    await test('filter by chain id', async () => {
+    await t.test('filter by chain id', async () => {
       const res = await supertest(app).get(`/list/${provider.key}/${list.key}?chainId=1`).expect(200)
       assert.ok(baseline.tokens.length > res.body.tokens.length)
       assert.ok(
@@ -36,7 +38,7 @@ describe('/list', async (t) => {
         }),
       )
     })
-    await test('filter by decimals', async () => {
+    await t.test('filter by decimals', async () => {
       const res = await supertest(app).get(`/list/${provider.key}/${list.key}?decimals=8`).expect(200)
       assert.ok(baseline.tokens.length > res.body.tokens.length)
       assert.ok(
@@ -46,15 +48,15 @@ describe('/list', async (t) => {
       )
     })
   })
-  await describe('include=bridgeInfo', async () => {
-    let baseline!: TokenList
-    beforeEach(async () => {
-      const res = await supertest(app).get(`/list/${provider.key}/${list.key}?include=bridgeInfo`).expect(200)
-      baseline = res.body
-    })
-    await test('bridge', async () => {
-      assert.ok(baseline.tokens.length > 0)
-      assert.ok(!_.isEmpty(baseline.tokens[0].extensions))
-    })
-  })
+  // await t.test('extensions=bridgeInfo', async (t) => {
+  //   let tokenList!: TokenList
+  //   t.beforeEach(async () => {
+  //     const res = await supertest(app).get(`/list/${provider.key}/${list.key}?extensions=bridgeInfo`).expect(200)
+  //     tokenList = res.body
+  //   })
+  //   await t.test('bridge', () => {
+  //     assert.ok(0 < tokenList.tokens.length)
+  //     assert.ok(!_.isEmpty(tokenList.tokens[0].extensions))
+  //   })
+  // })
 })

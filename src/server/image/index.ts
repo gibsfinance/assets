@@ -9,3 +9,4 @@ router.use('/:order/:chainId/:address', handlers.getImage(true))
 router.use('/:chainId/:address', handlers.getImage(false))
 // best guess
 router.use('/:chainId', handlers.bestGuessNetworkImageFromOnOnChainInfo)
+router.use('/', handlers.tryMultiple)
