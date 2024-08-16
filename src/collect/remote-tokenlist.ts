@@ -75,6 +75,7 @@ export const collect =
           }
         }),
       )
+      console.log(extras)
       tokenList.tokens.push(..._.compact(extras))
       return inmemoryTokenlist.collect(providerKey, listKey, tokenList, isDefault)
     }
