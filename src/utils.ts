@@ -189,9 +189,11 @@ export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
 
 export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => toKeccakBytes(`${type}${chainId}`)
 
+type TokenChainInfo = [string, string, number]
+
 export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: viem.Hex) => {
   const calls = [{ functionName: 'name' }, { functionName: 'symbol' }, { functionName: 'decimals' }]
-  return await multicallRead<[string, string, number]>({
+  return await multicallRead<TokenChainInfo>({
     chain,
     client,
     abi: viem.erc20Abi,
@@ -211,10 +213,10 @@ export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: 
             viem.fromHex(name, 'string').split('\x00').join(''),
             viem.fromHex(symbol, 'string').split('\x00').join(''),
             decimals,
-          ] as const,
+          ] as TokenChainInfo,
       )
     })
-    .catch(() => ['', '', 18] as const)
+    .catch(() => ['', '', 18] as TokenChainInfo)
 }
 
 const folderAccessLimit = promiseLimit<any>(256)

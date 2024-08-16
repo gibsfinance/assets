@@ -74,11 +74,11 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   if (!chainId) {
     return
   }
-  const provider = await db.insertProvider({
+  const [provider] = await db.insertProvider({
     key: providerKey,
     name: 'Trust Wallet',
   })
-  const trustwalletList = await db.insertList({
+  const [trustwalletList] = await db.insertList({
     key: 'wallet',
     default: true,
     providerId: provider.providerId,
@@ -86,7 +86,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
   const key = `wallet-${blockchainKey}`
   await utils.spinner(key, async () => {
     const network = await db.insertNetworkFromChainId(chainId)
-    const networkList = await db.insertList({
+    const [networkList] = await db.insertList({
       providerId: provider.providerId,
       networkId: network.networkId,
       name: key,

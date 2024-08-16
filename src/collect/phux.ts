@@ -6,7 +6,7 @@ export const collect = async () => {
   for (const [domain, list] of Object.entries(tokenList)) {
     const l = list as unknown as types.TokenList
     l.tokens.forEach((token) => {
-      if (token.logoURI.startsWith('/')) {
+      if (token.logoURI?.startsWith('/')) {
         token.logoURI = `${domain}${token.logoURI}`
       }
     })

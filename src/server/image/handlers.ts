@@ -8,7 +8,7 @@ import * as db from '@/db'
 import config from 'config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
 import { RequestHandler, Response } from 'express'
-import * as core from "express-serve-static-core";
+import * as core from 'express-serve-static-core'
 import _ from 'lodash'
 
 export const getListTokens = async (
@@ -91,31 +91,34 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
-const getListImage = (parseOrder: boolean) => async ({
-  chainId,
-  address: addressParam,
-  order: orderParam,
-}: {
-  chainId: number;
-  address: string;
-  order?: string;
-}) => {
-  if (!+chainId) {
-    throw httpErrors.BadRequest('chainId')
+const getListImage =
+  (parseOrder: boolean) =>
+  async ({
+    chainId,
+    address: addressParam,
+    order: orderParam,
+  }: {
+    chainId: number
+    address: string
+    order?: string
+  }) => {
+    if (!+chainId) {
+      throw httpErrors.BadRequest('chainId')
+    }
+    const { filename: address, exts } = splitExt(addressParam)
+    if (!viem.isAddress(address)) {
+      throw httpErrors.BadRequest('address')
+    }
+    const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
+    const { img } = await getListTokens(+chainId, address, listOrderId, exts)
+    if (!img) {
+      throw httpErrors.NotFound()
+    }
+    return img
   }
-  const { filename: address, exts } = splitExt(addressParam)
-  if (!viem.isAddress(address)) {
-    throw httpErrors.BadRequest('address')
-  }
-  const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
-  const { img } = await getListTokens(+chainId, address, listOrderId, exts)
-  if (!img) {
-    throw httpErrors.NotFound()
-  }
-  return img
-}
 
-export const getImage = (parseOrder: boolean): RequestHandler =>
+export const getImage =
+  (parseOrder: boolean): RequestHandler =>
   async (req, res, next) => {
     try {
       const img = await getListImage(parseOrder)({
@@ -191,7 +194,11 @@ const ignoreNotFound = (err: HttpError) => {
   throw err
 }
 
-export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: string | string[] }> = async (req, res, next) => {
+export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: string | string[] }> = async (
+  req,
+  res,
+  next,
+) => {
   const { i } = req.query
   let images!: string[]
   if (Array.isArray(i)) images = i
@@ -200,7 +207,7 @@ export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: s
     if (!_.isString(i)) {
       return next(httpErrors.NotAcceptable('invalid i'))
     }
-    let [chainId, address, order] = i.split('/')
+    const [chainId, address, order] = i.split('/')
     if (!address) {
       const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
       if (!img) continue
@@ -228,7 +235,5 @@ export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: s
 }
 
 export const sendImage = (res: Response, img: Image) => {
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-    .contentType(img.ext)
-    .send(img.content)
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`).contentType(img.ext).send(img.content)
 }

@@ -39,45 +39,54 @@ const insert = async <T = any>(list: T[], count: number, fn: (i: number, tx: Tx)
 
 export const setup = async () => {
   await db.transaction(async (t) => {
-    const providers = await insert(inserted.provider!, 4, (i, tx) =>
-      db.insertProvider(
-        {
-          name: 'Provider ABC' + i,
-          key: 'provider-abc' + i,
-        },
-        tx,
-      ),
+    const providers = await insert(
+      inserted.provider!,
+      4,
+      (i, tx) =>
+        db.insertProvider(
+          {
+            name: 'Provider ABC' + i,
+            key: 'provider-abc' + i,
+          },
+          tx,
+        ),
       t,
     )
     const networks = await insert(inserted.network!, 3, (i, tx) => db.insertNetworkFromChainId(i, 'test', tx), t)
     const providerToList = new Map<string, List[]>()
     for (const [pI, provider] of Object.entries(providers)) {
-      const lists = await insert(inserted.list!, 3, (i, tx) =>
-        db.insertList(
-          {
-            providerId: provider.providerId,
-            key: 'list-abc' + i,
-            default: +pI === i,
-          },
-          tx,
-        ),
+      const lists = await insert(
+        inserted.list!,
+        3,
+        (i, tx) =>
+          db.insertList(
+            {
+              providerId: provider.providerId,
+              key: 'list-abc' + i,
+              default: +pI === i,
+            },
+            tx,
+          ),
         t,
       )
       providerToList.set(provider.providerId, lists)
     }
     const tokensUnderNetworkId = new Map<string, Token[]>()
     for (const network of networks) {
-      const tokens = await insert(inserted.token!, 5, (i, tx) =>
-        db.insertToken(
-          {
-            providedId: providedId(network.chainId, i),
-            symbol: 'ETH' + i,
-            name: 'Ether' + i,
-            decimals: i % 3 === 1 ? 8 : 18,
-            networkId: network.networkId,
-          },
-          tx,
-        ),
+      const tokens = await insert(
+        inserted.token!,
+        5,
+        (i, tx) =>
+          db.insertToken(
+            {
+              providedId: providedId(network.chainId, i),
+              symbol: 'ETH' + i,
+              name: 'Ether' + i,
+              decimals: i % 3 === 1 ? 8 : 18,
+              networkId: network.networkId,
+            },
+            tx,
+          ),
         t,
       )
       tokensUnderNetworkId.set(network.networkId, tokens)
@@ -95,9 +104,7 @@ export const setup = async () => {
         }
       }
     }
-    await insert(inserted.list_token!, 1, (_i, tx) => (
-      db.insertListToken(listTokens, tx)
-    ), t)
+    await insert(inserted.list_token!, 1, (_i, tx) => db.insertListToken(listTokens, tx), t)
     // await db.insertListToken({
     //   providedId: token0.providedId,
     //   networkId: token0.networkId,

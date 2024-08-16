@@ -4,6 +4,7 @@ import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { fetch } from '@/fetch'
 import * as db from '@/db'
 import * as utils from '@/utils'
+import _ from 'lodash'
 
 type Extension = {
   address: viem.Hex
@@ -19,14 +20,16 @@ type Input = {
   providerKey: string
   tokenList: string
   listKey: string
+  isDefault?: boolean
 }
 
 export const collect =
-  ({ providerKey, listKey, tokenList: tokenListUrl, extension }: Input) =>
+  ({ providerKey, listKey, tokenList: tokenListUrl, extension, isDefault = true }: Input) =>
   async () => {
     const tokenList = await fetch(tokenListUrl).then((res): Promise<types.TokenList> => res.json())
-    await Promise.all(
-      (extension || []).map(async (item) => {
+    const extra = extension || []
+    const extras = await Promise.all(
+      extra.map(async (item) => {
         // extension
         const chain = utils.findChain(item.network.id) as viem.Chain
         const client = viem.createPublicClient({
@@ -62,7 +65,16 @@ export const collect =
             networkId: network.networkId,
           },
         })
+        return {
+          chainId: item.network.id,
+          uri: item.logoURI,
+          name,
+          symbol,
+          decimals,
+          address: item.address,
+        }
       }),
     )
-    return inmemoryTokenlist.collect(providerKey, listKey, tokenList)
+    tokenList.tokens.push(..._.compact(extras))
+    return inmemoryTokenlist.collect(providerKey, listKey, tokenList, isDefault)
   }

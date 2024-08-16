@@ -1,9 +1,4 @@
-import {
-  mainnet as viemMainnet,
-  pulsechain as viemPulsechain,
-  bsc as viemBSC,
-  type Chain,
-} from "viem/chains"
+import { mainnet as viemMainnet, pulsechain as viemPulsechain, bsc as viemBSC, type Chain } from 'viem/chains'
 
 export const mainnet = {
   ...viemMainnet,

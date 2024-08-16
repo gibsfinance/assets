@@ -36,9 +36,7 @@ const getExtensions = (req: Request) => {
 export const versioned: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
-  const list = await utils
-    .applyVersion(req.params.version, unversionedList)
-    .first()
+  const list = await utils.applyVersion(req.params.version, unversionedList).first()
   if (!list) {
     return next(createError.NotFound())
   }

@@ -439,14 +439,14 @@ export const fetchImageAndStoreForToken = async (
   if (_.isString(uri)) {
     const existing = await getImageFromLink(uri, t)
     if (existing) {
-      const insertedToken = await insertToken(
+      const insertedToken = (await insertToken(
         {
           type: 'erc20',
           ...token,
           providedId,
         },
         t,
-      ) as Token
+      )) as Token
       if (!listId) {
         return {
           ...existing,
@@ -613,41 +613,47 @@ export const getTokensUnderListId = (t: Tx = db) => {
 }
 
 export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
-  let q = t.from(tableNames.provider)
-    .select<(Provider & List & ListToken & Image)[]>(['*', 'image.ext'])
-    .join(...join(tableNames.list, tableNames.provider, [['providerId']]))
-    .join(...join(tableNames.listToken, tableNames.list, [['listId']]))
-    // .join(...join(tableNames.token, tableNames.listToken, [['tokenId']]))
-    .fullOuterJoin(...join(tableNames.image, tableNames.list, [['imageHash']]))
-    .where(
-      listKey
-        ? {
-          [`${tableNames.provider}.key`]: providerKey,
-          [`${tableNames.list}.key`]: listKey,
-        }
-        : {
-          [`${tableNames.provider}.key`]: providerKey,
-          [`${tableNames.list}.default`]: true,
-        },
-    )
-    .orderBy('major', 'desc')
-    .orderBy('minor', 'desc')
-    .orderBy('patch', 'desc')
-  return q
+  return (
+    t
+      .from(tableNames.provider)
+      .select<(Provider & List & ListToken & Image)[]>(['*', 'image.ext'])
+      .join(...join(tableNames.list, tableNames.provider, [['providerId']]))
+      .join(...join(tableNames.listToken, tableNames.list, [['listId']]))
+      // .join(...join(tableNames.token, tableNames.listToken, [['tokenId']]))
+      .fullOuterJoin(...join(tableNames.image, tableNames.list, [['imageHash']]))
+      .where(
+        listKey
+          ? {
+              [`${tableNames.provider}.key`]: providerKey,
+              [`${tableNames.list}.key`]: listKey,
+            }
+          : {
+              [`${tableNames.provider}.key`]: providerKey,
+              [`${tableNames.list}.default`]: true,
+            },
+      )
+      .orderBy('major', 'desc')
+      .orderBy('minor', 'desc')
+      .orderBy('patch', 'desc')
+  )
 }
 
 export const addBridgeExtensions = (q: Knex.QueryBuilder) => {
-  return q.select([
-    db.raw(`row_to_json(${tableNames.bridge}.*) as bridge`),
-    db.raw(`row_to_json(${tableNames.bridgeLink}.*) as bridge_link`),
-    db.raw(`row_to_json(network_a.*) as network_a`),
-    db.raw(`row_to_json(network_b.*) as network_b`),
-    db.raw(`row_to_json(native_token.*) as native_token`),
-    db.raw(`row_to_json(bridged_token.*) as bridged_token`),
-  ])
+  return q
+    .select([
+      db.raw(`row_to_json(${tableNames.bridge}.*) as bridge`),
+      db.raw(`row_to_json(${tableNames.bridgeLink}.*) as bridge_link`),
+      db.raw(`row_to_json(network_a.*) as network_a`),
+      db.raw(`row_to_json(network_b.*) as network_b`),
+      db.raw(`row_to_json(native_token.*) as native_token`),
+      db.raw(`row_to_json(bridged_token.*) as bridged_token`),
+    ])
     .fullOuterJoin(tableNames.bridgeLink, function joinBridgeInfo() {
-      this.on(`${tableNames.bridgeLink}.nativeTokenId`, '=', `${tableNames.token}.tokenId`)
-        .orOn(`${tableNames.bridgeLink}.bridgedTokenId`, '=', `${tableNames.token}.tokenId`)
+      this.on(`${tableNames.bridgeLink}.nativeTokenId`, '=', `${tableNames.token}.tokenId`).orOn(
+        `${tableNames.bridgeLink}.bridgedTokenId`,
+        '=',
+        `${tableNames.token}.tokenId`,
+      )
     })
     .join(...join(tableNames.bridge, tableNames.bridgeLink, [['bridgeId']]))
     .join(...join(tableNames.network, tableNames.bridge, [['networkId', 'homeNetworkId']], 'network_a'))
@@ -708,7 +714,8 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
 }
 
 export const insertBridge = async (bridge: InsertableBridge, t: Tx = getDB()) => {
-  const [b] = await t.insert(bridge)
+  const [b] = await t
+    .insert(bridge)
     .into(tableNames.bridge)
     .onConflict(['bridgeId'])
     .merge(['bridgeId'])
@@ -717,7 +724,8 @@ export const insertBridge = async (bridge: InsertableBridge, t: Tx = getDB()) =>
 }
 
 export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx = getDB()) => {
-  const [bl] = await t.insert(bridgeLink)
+  const [bl] = await t
+    .insert(bridgeLink)
     .into(tableNames.bridgeLink)
     .onConflict(['bridgeLinkId'])
     .merge(['bridgeLinkId'])
@@ -725,11 +733,5 @@ export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx =
   return bl
 }
 
-export const updateBridgeBlockProgress = (
-  bridgeId: string, updates: Partial<Bridge>,
-  tx: Tx = getDB(),
-) => (
-  tx(tableNames.bridge)
-    .update(updates)
-    .where('bridgeId', bridgeId)
-)
+export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx: Tx = getDB()) =>
+  tx(tableNames.bridge).update(updates).where('bridgeId', bridgeId)

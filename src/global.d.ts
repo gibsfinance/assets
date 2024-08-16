@@ -1,4 +1,4 @@
-import { tableNames } from "./db/tables"
+import { tableNames } from './db/tables'
 
 declare module 'knex/types/tables' {
   interface Timestamped {
@@ -21,7 +21,7 @@ declare module 'knex/types/tables' {
     type: string
     chainId: string
   }
-  interface InsertableNetwork extends Omit<Network, TimestampKeys | 'networkId'> { }
+  interface InsertableNetwork extends Omit<Network, TimestampKeys | 'networkId'> {}
   interface Image {
     imageHash: string
     content: Buffer
@@ -95,7 +95,7 @@ declare module 'knex/types/tables' {
     uri: string
     imageHash: string
   }
-  interface InsertableLink extends Omit<Link, TimestampKeys> { }
+  interface InsertableLink extends Omit<Link, TimestampKeys> {}
   interface ListOrder extends Timestamped {
     providerId: string
     key: string
@@ -118,31 +118,30 @@ declare module 'knex/types/tables' {
   interface InsertableListOrderItem extends Omit<ListOrderItem, TimestampKeys> {
     listId?: string
   }
-  interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> { }
+  interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> {}
   interface Bridge extends Timestamped {
-    bridgeId: string;
-    foreignAddress: string;
-    foreignNetworkId: string;
-    homeAddress: string;
-    homeNetworkId: string;
-    type: string;
-    providerId: string;
-    currentForeignBlockNumber: string;
-    currentHomeBlockNumber: string;
+    bridgeId: string
+    foreignAddress: string
+    foreignNetworkId: string
+    homeAddress: string
+    homeNetworkId: string
+    type: string
+    providerId: string
+    currentForeignBlockNumber: string
+    currentHomeBlockNumber: string
   }
   interface InsertableBridge extends Omit<Bridge, TimestampKeys | 'bridgeId'> {
-    currentHomeBlockNumber?: string;
-    currentForeignBlockNumber?: string;
+    currentHomeBlockNumber?: string
+    currentForeignBlockNumber?: string
   }
   interface BridgeLink {
-    bridgeLinkId: string;
-    nativeTokenId: string;
-    bridgedTokenId: string;
-    bridgeId: string;
-    transactionHash: string;
+    bridgeLinkId: string
+    nativeTokenId: string
+    bridgedTokenId: string
+    bridgeId: string
+    transactionHash: string
   }
-  interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> {
-  }
+  interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> {}
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network
@@ -154,6 +153,6 @@ declare module 'knex/types/tables' {
     [tableNames.token]: Token
     [tableNames.listToken]: ListToken
     [tableNames.bridge]: Bridge
-    [tableNames.bridgeLink]: BridgeLink;
+    [tableNames.bridgeLink]: BridgeLink
   }
 }

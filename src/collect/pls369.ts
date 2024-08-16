@@ -50,14 +50,14 @@ export const collect = async () => {
     chain: pulsechain,
     transport: viem.http(),
   })
-  const provider = await db.insertProvider({
+  const [provider] = await db.insertProvider({
     key: 'pls369',
     name: 'PLS369',
     description: 'a grass roots list curated by pulsechain users',
   })
   await utils.spinner(provider.key, async () => {
     const network = await db.insertNetworkFromChainId(pulsechain.id)
-    const list = await db.insertList({
+    const [list] = await db.insertList({
       providerId: provider.providerId,
       networkId: network.networkId,
       default: true,

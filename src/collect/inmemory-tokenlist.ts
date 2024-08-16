@@ -3,7 +3,7 @@ import * as db from '@/db'
 import * as utils from '@/utils'
 import type { List, Network, Provider } from 'knex/types/tables'
 
-export const collect = async (providerKey: string, listKey: string, tokenList: types.TokenList) => {
+export const collect = async (providerKey: string, listKey: string, tokenList: types.TokenList, isDefault = true) => {
   // let completed = 0
   const chainIdSet = new Set<number>()
   for (const entry of tokenList.tokens) {
@@ -22,19 +22,19 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
           networks.set(chainId, network)
         }
       }
-      provider = await db.insertProvider(
+      ;[provider] = await db.insertProvider(
         {
           key: providerKey,
         },
         tx,
       )
-      list = await db.insertList(
+      ;[list] = await db.insertList(
         {
           providerId: provider.providerId,
           networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
           name: tokenList.name,
           key: listKey,
-          default: true,
+          default: isDefault,
           description: '',
           ...(tokenList.version || {}),
         },

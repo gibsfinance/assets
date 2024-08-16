@@ -4,9 +4,9 @@ import * as viem from 'viem'
 export type Todo = () => Promise<void>
 
 export type PerNetworkBridgeLink = {
-  tokenAddress: viem.Hex;
-  originationBridgeAddress: viem.Hex;
-  destinationBridgeAddress: viem.Hex;
+  tokenAddress: viem.Hex
+  originationBridgeAddress: viem.Hex
+  destinationBridgeAddress: viem.Hex
 }
 export type Extensions = {
   bridgeInfo?: Record<number, PerNetworkBridgeLink>
@@ -19,7 +19,7 @@ export type TokenEntry = {
   symbol: string
   decimals: number
   logoURI?: string
-  extensions?: Extensions;
+  extensions?: Extensions
 }
 
 export type InternetMoneyToken = {
@@ -67,11 +67,13 @@ export type Call = {
 
 export type ChainId = number | bigint | viem.Hex
 
-export type TokenInfo = Network & Token & Image & {
-  bridge: Bridge
-  bridgeLink: BridgeLink
-  networkA: Network
-  networkB: Network
-  nativeToken: Token
-  bridgedToken: Token
-}
+export type TokenInfo = Network &
+  Token &
+  Image & {
+    bridge: Bridge
+    bridgeLink: BridgeLink
+    networkA: Network
+    networkB: Network
+    nativeToken: Token
+    bridgedToken: Token
+  }

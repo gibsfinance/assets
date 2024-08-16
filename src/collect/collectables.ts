@@ -1,4 +1,5 @@
 import * as trustwallet from './trustwallet'
+import * as pulsex from './pulsex'
 import * as phux from './phux'
 import * as pls369 from './pls369'
 import * as internetmoney from './internetmoney'
@@ -16,21 +17,7 @@ export const collectables = {
     listKey: 'exchange',
     tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
   }),
-  pulsex: remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'exchange',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
-    extension: [
-      {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: 369,
-          isNetworkImage: true,
-        },
-      },
-    ],
-  }),
+  pulsex: pulsex.collect,
   balancer: remoteTokenList.collect({
     providerKey: 'balancer',
     listKey: 'exchange',

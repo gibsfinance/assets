@@ -37,7 +37,7 @@ export const collect = async () => {
   if (!infoBuff) return
   const info = JSON.parse(infoBuff.toString()) as Info
   const { tokens } = info
-  const provider = await db.insertProvider({
+  const [provider] = await db.insertProvider({
     key: providerKey,
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
@@ -59,7 +59,7 @@ export const collect = async () => {
       const folders = await utils.folderContents(chainFolder)
       for (const file of folders) {
         const listKey = filenameToListKey(file)
-        const networkList = await db.insertList({
+        const [networkList] = await db.insertList({
           key: `tokens-${chainId}-${listKey}`,
           providerId: provider.providerId,
           networkId: utils.chainIdToNetworkId(+chainId),
@@ -145,11 +145,13 @@ export const collect = async () => {
               const networkKey = `tokens-${chain.id}-${listKey}`
               const networkList =
                 chainIdToNetworkId.get(networkKey) ||
-                (await db.insertList({
-                  key: networkKey,
-                  providerId: provider.providerId,
-                  networkId: utils.chainIdToNetworkId(chain.id),
-                }))
+                (await db
+                  .insertList({
+                    key: networkKey,
+                    providerId: provider.providerId,
+                    networkId: utils.chainIdToNetworkId(chain.id),
+                  })
+                  .then((list) => list?.[0] as List))!
               const uri = path.join(tokenFolder, imageName)
               const baseInput = {
                 uri,
@@ -164,7 +166,7 @@ export const collect = async () => {
                 },
               }
               await db.transaction(async (tx) => {
-                const list = await db.insertList(
+                const [list] = await db.insertList(
                   {
                     providerId: provider.providerId,
                     key: `tokens-${listKey}`,
