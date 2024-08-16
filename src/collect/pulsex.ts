@@ -9,7 +9,7 @@ import { tableNames } from '@/db/tables'
 
 const remoteList = remoteTokenList.collect({
   providerKey: 'pulsex',
-  listKey: 'exchange',
+  listKey: 'extended',
   tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
   isDefault: false,
   extension: [
