@@ -4,6 +4,8 @@ import { pulsechain } from 'viem/chains'
 import * as utils from '../utils'
 import { minimalList } from '@/server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
+import { getDB } from '@/db'
+import { tableNames } from '@/db/tables'
 
 const remoteList = remoteTokenList.collect({
   providerKey: 'pulsex',
@@ -57,6 +59,18 @@ export const collect = async () => {
       logoURI: `https://tokens.app.pulsex.com/images/tokens/${targets[index]}.png`,
     }
   })
+  const [provider] = await getDB().select('*')
+    .from(tableNames.provider)
+    .where('key', 'pulsex')
+  if (provider) {
+    await getDB().update({
+      default: false,
+    }).from(tableNames.list)
+      .where({
+        providerId: provider.providerId,
+      })
+      .whereNotIn('listKey', ['inline'])
+  }
   await inmemory.collect('pulsex', 'inline', minimalList(list))
   await remoteList()
 }
