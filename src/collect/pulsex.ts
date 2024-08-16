@@ -69,7 +69,7 @@ export const collect = async () => {
       .where({
         providerId: provider.providerId,
       })
-      .whereNotIn('listKey', ['inline'])
+      .whereNotIn('key', ['inline'])
   }
   await inmemory.collect('pulsex', 'inline', minimalList(list))
   await remoteList()
