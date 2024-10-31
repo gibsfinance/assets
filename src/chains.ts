@@ -1,4 +1,11 @@
-import { mainnet as viemMainnet, pulsechain as viemPulsechain, bsc as viemBSC, type Chain } from 'viem/chains'
+import {
+  mainnet as viemMainnet,
+  pulsechain as viemPulsechain,
+  bsc as viemBSC,
+  sepolia as viemSepolia,
+  pulsechainV4 as viemPulsechainV4,
+  type Chain,
+} from 'viem/chains'
 
 export const mainnet = {
   ...viemMainnet,
@@ -23,4 +30,10 @@ export const bsc = {
       http: [process.env.RPC_56 || 'https://bsc-pokt.nodies.app'],
     },
   },
+} as Chain
+export const sepolia = {
+  ...viemSepolia,
+} as Chain
+export const pulsechainV4 = {
+  ...viemPulsechainV4,
 } as Chain

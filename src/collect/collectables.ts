@@ -7,7 +7,7 @@ import * as uniswapTokenlists from './uniswap-tokenlists'
 import * as remoteTokenList from './remote-tokenlist'
 import * as smoldapp from './smoldapp'
 import * as omnibridge from './omnibridge'
-import { bsc, mainnet, pulsechain } from '@/chains'
+import { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } from '@/chains'
 
 export const collectables = {
   trustwallet: trustwallet.collect,
@@ -37,6 +37,12 @@ export const collectables = {
       providerPrefix: 'tokensex',
       foreign: { chain: bsc, address: '0xb4005881e81a6ecd2c1f75d58e8e41f28d59c6b1', startBlock: 28_987_322 },
       home: { chain: pulsechain, address: '0xf1DFc63e10fF01b8c3d307529b47AefaD2154C0e', startBlock: 17_494_240 },
+    },
+    {
+      providerPrefix: 'pulsechain',
+      testnetPrefix: 'v4',
+      foreign: { chain: sepolia, address: '0x546e37DAA15cdb82fd1a717E5dEEa4AF08D4349A', startBlock: 3_332_081 },
+      home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
     },
   ]),
 }

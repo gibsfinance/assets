@@ -11,6 +11,7 @@ type BridgeSideConfig = {
 }
 type BridgeConfig = {
   providerPrefix: string
+  testnetPrefix?: string
   home: BridgeSideConfig
   foreign: BridgeSideConfig
 }
@@ -23,6 +24,10 @@ const abi = viem.parseAbi(['event NewTokenRegistered(address indexed native, add
 export const collectByBridgeConfig = async (config: BridgeConfig) => {
   await Promise.all(
     [config.home, config.foreign].map(async (fromConfig) => {
+      let key = `${config.providerPrefix}-bridge`
+      if (config.testnetPrefix) {
+        key = `testnet-${config.testnetPrefix}-${key}`
+      }
       const fromHome = fromConfig === config.home
       const toConfig = fromHome ? config.foreign : config.home
       // console.log('todo: %o from=%o to=%o', config.providerPrefix, fromConfig.chain.id, toConfig.chain.id)
@@ -44,14 +49,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
         blockTag: 'latest',
       })
       const { provider, fromList, toList, bridge } = await db.transaction(async (tx) => {
-        const [provider] = await db.insertProvider(
-          {
-            // other services may be held by the provider
-            // bridge suffix is code controlled
-            key: `${config.providerPrefix}-bridge`,
-          },
-          tx,
-        )
+        // other services may be held by the provider
+        // bridge suffix is code controlled
+        const [provider] = await db.insertProvider({ key }, tx)
         await db.insertNetworkFromChainId(fromConfig.chain.id, undefined, tx)
         await db.insertNetworkFromChainId(toConfig.chain.id, undefined, tx)
         const [fromList] = await db.insertList(
