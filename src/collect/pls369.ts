@@ -140,6 +140,19 @@ export const collect = async () => {
               providedId: '0x70499adEBB11Efd915E3b69E700c331778628707',
             },
           })
+          await db.fetchImageAndStoreForToken({
+            listId: dbList2.listId,
+            uri: path,
+            originalUri: path,
+            providerKey: provider.key,
+            token: {
+              name,
+              symbol,
+              decimals,
+              networkId: ntwrk.networkId,
+              providedId: viem.zeroAddress,
+            },
+          })
           await db.fetchImageAndStoreForNetwork({
             chainId: pulsechainV4.id,
             uri: path,
