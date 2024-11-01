@@ -3,13 +3,42 @@ import * as viem from 'viem'
 import * as fs from 'fs'
 import * as utils from '@/utils'
 import _ from 'lodash'
-import { pulsechain } from 'viem/chains'
+import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as db from '@/db'
 import promiseLimit from 'promise-limit'
 
+const configs = [
+  {
+    list: {
+      default: true,
+      key: 'repo',
+      name: 'pls369',
+      description: 'a grass roots list curated by pulsechain users',
+    },
+    fetchConfig: {
+      mustExist: true,
+      skipBytes32: false,
+    },
+    chain: pulsechain,
+  },
+  {
+    list: {
+      default: false,
+      key: 'repo-testnet',
+      name: 'v4pls943',
+      description: 'a grass roots list curated by pulsechainV4 users',
+    },
+    fetchConfig: {
+      mustExist: true,
+      skipBytes32: true,
+    },
+    chain: pulsechainV4,
+  },
+] as const
+
 type Walker = (target: string, doWalk: () => Promise<string[]>) => Promise<string[]>
 
-const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
+export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
   const stats = await fs.promises.readdir(start)
   const limiter = promiseLimit<string>(8)
   const filtered = await limiter.map(stats, (file) => {
@@ -46,41 +75,46 @@ export const collect = async () => {
     })
     .compact()
     .value()
-  const client = viem.createClient({
-    chain: pulsechain,
-    transport: viem.http(),
-  })
   const [provider] = await db.insertProvider({
     key: 'pls369',
     name: 'PLS369',
     description: 'a grass roots list curated by pulsechain users',
   })
-  await utils.spinner(provider.key, async () => {
-    const network = await db.insertNetworkFromChainId(pulsechain.id)
-    const [list] = await db.insertList({
-      providerId: provider.providerId,
-      networkId: network.networkId,
-      default: true,
-      key: 'repo',
-      name: 'pls369',
-      description: 'a grass roots list curated by pulsechain users',
-    })
-    for (const piece of pieces) {
-      const [name, symbol, decimals] = await utils.erc20Read(pulsechain, client, piece.address)
-      const path = piece.fullPath.replace('hhttps://', 'https://')
-      await db.fetchImageAndStoreForToken({
-        listId: list.listId,
-        uri: path,
-        originalUri: path,
-        providerKey: provider.key,
-        token: {
-          name,
-          symbol,
-          decimals,
-          networkId: network.networkId,
-          providedId: piece.address,
-        },
+  await Promise.all(
+    configs.map(async ({ list, chain, fetchConfig }) => {
+      const client = viem.createClient({
+        chain: pulsechainV4,
+        transport: viem.http(),
       })
-    }
-  })
+      await utils.spinner(provider.key, async () => {
+        const network = await db.insertNetworkFromChainId(chain.id)
+        const [dbList] = await db.insertList({
+          providerId: provider.providerId,
+          networkId: network.networkId,
+          ...list,
+        })
+        for (const piece of pieces) {
+          const response = await utils
+            .erc20Read(chain, client, piece.address, fetchConfig) // ignore errors that get to here
+            .catch(() => null)
+          if (!response) continue
+          const [name, symbol, decimals] = response
+          const path = piece.fullPath.replace('hhttps://', 'https://')
+          await db.fetchImageAndStoreForToken({
+            listId: dbList.listId,
+            uri: path,
+            originalUri: path,
+            providerKey: provider.key,
+            token: {
+              name,
+              symbol,
+              decimals,
+              networkId: network.networkId,
+              providedId: piece.address,
+            },
+          })
+        }
+      })
+    }),
+  )
 }

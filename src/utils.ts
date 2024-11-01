@@ -49,7 +49,7 @@ export const printFailures = () => {
 export const getFullChainId = (chainId: types.ChainId) => viem.toHex(chainId, { size: 32 })
 
 export const calculateHash = (buffer: Buffer): string => {
-  return crypto.createHash('sha256').update(buffer).digest('hex')
+  return crypto.createHash('sha256').update(Uint8Array.from(buffer)).digest('hex')
 }
 
 export const responseToBuffer = async (res: Response) => {
@@ -191,7 +191,12 @@ export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => toKe
 
 type TokenChainInfo = [string, string, number]
 
-export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: viem.Hex) => {
+export const erc20Read = async (
+  chain: viem.Chain,
+  client: viem.Client,
+  target: viem.Hex,
+  { skipBytes32 = false, mustExist = false }: { skipBytes32?: boolean; mustExist?: boolean } = {},
+) => {
   const calls = [{ functionName: 'name' }, { functionName: 'symbol' }, { functionName: 'decimals' }]
   return await multicallRead<TokenChainInfo>({
     chain,
@@ -200,7 +205,10 @@ export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: 
     calls,
     target,
   })
-    .catch(async () => {
+    .catch(async (err) => {
+      if (skipBytes32) {
+        throw err
+      }
       return await multicallRead<[viem.Hex, viem.Hex, number]>({
         chain,
         client,
@@ -216,7 +224,12 @@ export const erc20Read = async (chain: viem.Chain, client: viem.Client, target: 
           ] as TokenChainInfo,
       )
     })
-    .catch(() => ['', '', 18] as TokenChainInfo)
+    .catch(() => {
+      if (mustExist) {
+        throw new Error('unable to read token')
+      }
+      return ['', '', 18] as TokenChainInfo
+    })
 }
 
 const folderAccessLimit = promiseLimit<any>(256)
