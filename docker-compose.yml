@@ -25,7 +25,7 @@ services:
       - gibassets
     environment:
       DEBUG: '${DEBUG:-📷*}'
-      DATABASE_URL: '${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres:5432/gibassets}'
+      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
   gibassets-collect:
     container_name: gibassets-collect
     build:
@@ -40,8 +40,9 @@ services:
     networks:
       - gibassets
     environment:
-      DATABASE_URL: '${DATABASE_URL:-postgres://gibassets:password@gibassets-postgres:5432/gibassets}'
+      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
       FAKE_SPINNER: 'true'
+      RPC_56: $RPC_56
   gibassets-server:
     depends_on:
       - gibassets-postgres
@@ -57,6 +58,7 @@ services:
     environment:
       ROOT_URI: 'http://localhost:3456'
       DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
+      RPC_56: $RPC_56
     ports:
       - 3456:3000
 

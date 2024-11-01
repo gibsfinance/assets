@@ -6,6 +6,8 @@ import _ from 'lodash'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as db from '@/db'
 import promiseLimit from 'promise-limit'
+import { tableNames } from '@/db/tables'
+import { Network } from 'knex/types/tables'
 
 const configs = [
   {
@@ -66,6 +68,9 @@ export const collect = async () => {
   const pieces = _(paths)
     .map((p) => {
       const addr = p.slice(1, 43)
+      if (addr !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
+        return null
+      }
       if (!viem.isAddress(addr)) return null
       return {
         address: viem.getAddress(addr),
@@ -83,16 +88,16 @@ export const collect = async () => {
   await Promise.all(
     configs.map(async ({ list, chain, fetchConfig }) => {
       const client = viem.createClient({
-        chain: pulsechainV4,
+        chain: chain,
         transport: viem.http(),
       })
+      const network = await db.insertNetworkFromChainId(chain.id)
+      const [dbList] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: network.networkId,
+        ...list,
+      })
       await utils.spinner(provider.key, async () => {
-        const network = await db.insertNetworkFromChainId(chain.id)
-        const [dbList] = await db.insertList({
-          providerId: provider.providerId,
-          networkId: network.networkId,
-          ...list,
-        })
         for (const piece of pieces) {
           const response = await utils
             .erc20Read(chain, client, piece.address, fetchConfig) // ignore errors that get to here
@@ -113,8 +118,53 @@ export const collect = async () => {
               providedId: piece.address,
             },
           })
+          if (chain.id === 369 && piece.address === '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
+            const network = await db.insertNetworkFromChainId(pulsechainV4.id)
+            const [dbList] = await db.insertList({
+              providerId: provider.providerId,
+              networkId: network.networkId,
+              ...list,
+            })
+            await db.fetchImageAndStoreForToken({
+              listId: dbList.listId,
+              uri: path,
+              originalUri: path,
+              providerKey: provider.key,
+              token: {
+                name,
+                symbol,
+                decimals,
+                networkId: network.networkId,
+                providedId: '0x70499adEBB11Efd915E3b69E700c331778628707',
+              },
+            })
+            await db.fetchImageAndStoreForNetwork({
+              chainId: pulsechainV4.id,
+              uri: path,
+              originalUri: path,
+              providerKey: provider.key,
+            })
+          }
         }
       })
+      if (chain.id === 943) {
+        // 0x70499adEBB11Efd915E3b69E700c331778628707
+        // await db.fetchImageAndStoreForNetwork({
+        //   chainId: chain.id,
+        //   providerKey: provider.key,
+        // })
+        // const img = await db.getImageFromLink(``)
+        // const image = await db.getImage({
+        //   chainId: chain.id,
+        //   providerKey: provider.key,
+        // })
+        // const [network] = await db
+        //   .getDB()
+        //   .from(tableNames.network)
+        //   .update('imageHash', img.image.imageHash)
+        //   .where('chainId', chain.id)
+        //   .returning<Network[]>('*')
+      }
     }),
   )
 }

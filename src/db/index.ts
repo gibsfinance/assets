@@ -27,6 +27,7 @@ import type {
   Bridge,
   InsertableBridgeLink,
   BridgeLink,
+  Metadata,
 } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
@@ -63,7 +64,7 @@ type Transact<T> = typeof db.transaction<T>
 export const transaction = async <T>(...a: Parameters<Transact<T>>) => db.transaction(...a)
 
 const getExt = async (image: Buffer, providedExt: string) => {
-  const e = await fileType.fileTypeFromBuffer(image)
+  const e = await fileType.fileTypeFromBuffer(Uint8Array.from(image))
   let ext = e && e.ext ? `.${e.ext}` : null
   if (ext) {
     if (ext === '.xml' && providedExt !== ext) {
@@ -145,7 +146,7 @@ const writeMissing = async ({
           listId,
         }),
       ),
-      image && fs.promises.writeFile(path.join(folder, 'icon'), image),
+      image && fs.promises.writeFile(path.join(folder, 'icon'), Uint8Array.from(image)),
     ])
   })
 }
@@ -164,7 +165,7 @@ export const insertImage = async (
   },
   t: Tx = db,
 ) => {
-  const imageHash = viem.keccak256(image).slice(2)
+  const imageHash = viem.keccak256(Uint8Array.from(image)).slice(2)
   const ext = await getExt(image, path.extname(originalUri))
   if (!ext) {
     utils.failureLog('no ext %o -> %o', providerKey, originalUri)
@@ -291,6 +292,29 @@ export const getImageFromLink = async (uri: string, t: Tx = db) => {
     link,
     image,
   }
+}
+
+export const getImageByAddress = async (
+  { chainId, address, providerId }: { chainId: number; address: string; providerId?: string },
+  t: Tx = db,
+) => {
+  const network = await t.from(tableNames.network).select('*').where('chainId', chainId).first<Network>()
+  if (!network) return null
+  const token = await t
+    .from(tableNames.token)
+    .select('*')
+    .where('providedId', address)
+    .where('networkId', network.networkId)
+    .first<Token>()
+  const listTokens = await t(tableNames.listToken)
+    .select('*')
+    .join(tableNames.list, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .where('tokenId', token.tokenId)
+    .where(`${tableNames.list}.providerId`, providerId)
+    .first<ListToken & List>()
+  return { token, listTokens }
 }
 
 export const fetchImageAndStoreForList = async (
