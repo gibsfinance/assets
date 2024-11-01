@@ -118,33 +118,34 @@ export const collect = async () => {
               providedId: piece.address,
             },
           })
-          if (chain.id === 369 && piece.address === '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
-            const network = await db.insertNetworkFromChainId(pulsechainV4.id)
-            const [dbList] = await db.insertList({
-              providerId: provider.providerId,
-              networkId: network.networkId,
-              ...list,
-            })
-            await db.fetchImageAndStoreForToken({
-              listId: dbList.listId,
-              uri: path,
-              originalUri: path,
-              providerKey: provider.key,
-              token: {
-                name,
-                symbol,
-                decimals,
-                networkId: network.networkId,
-                providedId: '0x70499adEBB11Efd915E3b69E700c331778628707',
-              },
-            })
-            await db.fetchImageAndStoreForNetwork({
-              chainId: pulsechainV4.id,
-              uri: path,
-              originalUri: path,
-              providerKey: provider.key,
-            })
+          if (chain.id !== 369 || piece.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
+            return
           }
+          const ntwrk = await db.insertNetworkFromChainId(pulsechainV4.id)
+          const [dbList2] = await db.insertList({
+            providerId: provider.providerId,
+            networkId: ntwrk.networkId,
+            ...list,
+          })
+          await db.fetchImageAndStoreForToken({
+            listId: dbList2.listId,
+            uri: path,
+            originalUri: path,
+            providerKey: provider.key,
+            token: {
+              name,
+              symbol,
+              decimals,
+              networkId: ntwrk.networkId,
+              providedId: '0x70499adEBB11Efd915E3b69E700c331778628707',
+            },
+          })
+          await db.fetchImageAndStoreForNetwork({
+            chainId: pulsechainV4.id,
+            uri: path,
+            originalUri: path,
+            providerKey: provider.key,
+          })
         }
       })
       if (chain.id === 943) {
