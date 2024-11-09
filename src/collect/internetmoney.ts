@@ -8,7 +8,7 @@ import type { List, Provider } from 'knex/types/tables'
 import promiseLimit from 'promise-limit'
 import { Tx } from '@/db/tables'
 
-const baseUrl = 'https://im-wallet.herokuapp.com/api/v1/networks'
+const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 
 export const collect = async () => {
   return await utils.spinner('internetmoney', async () => {
