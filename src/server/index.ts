@@ -1,7 +1,7 @@
 import { app } from './app'
 
 export const main = async () => {
-  return listen().then(() => {
+  return listen().then(async () => {
     return new Promise((resolve, reject) => {
       app.once('close', resolve).once('error', reject)
     }).then(() => {

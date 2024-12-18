@@ -575,6 +575,10 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
     .returning('*')
 }
 
+export const updateList = (list: Partial<List>, t: Tx = db) => {
+  return t.from(tableNames.list).update(list).returning('*')
+}
+
 export const insertProvider = async (provider: InsertableProvider | InsertableProvider[], t: Tx = db) => {
   return await t
     .from(tableNames.provider)
