@@ -25,6 +25,8 @@ export type TokenEntry = SansMetadataTokenEntry & {
   decimals: number
 }
 
+export type TokenEntryMetadataOptional = SansMetadataTokenEntry | TokenEntry
+
 export type InternetMoneyToken = {
   address: string
   icon: string
@@ -57,7 +59,7 @@ export type TokenList = {
   name: string
   timestamp: string
   version: TokenListVersion
-  tokens: (SansMetadataTokenEntry | TokenEntry)[]
+  tokens: TokenEntryMetadataOptional[]
 }
 
 export type Call = {

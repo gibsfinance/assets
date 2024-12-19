@@ -4,7 +4,7 @@ import { Response } from 'express'
 import * as viem from 'viem'
 import type { Image, List, Network, Token } from 'knex/types/tables'
 import { Knex } from 'knex'
-import { Extensions, SansMetadataTokenEntry, TokenEntry, TokenInfo, TokenList } from '@/types'
+import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '@/types'
 import { tableNames } from '@/db/tables'
 import type { ParsedQs } from 'qs'
 import _ from 'lodash'
@@ -44,7 +44,7 @@ export const normalizeTokens = (
   tokens: TokenInfo[],
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string> = new Set(),
-): (SansMetadataTokenEntry | TokenEntry)[] => {
+): TokenEntryMetadataOptional[] => {
   const over = _.overEvery(filters)
   const bridgeInfoExtension = extensions.has('bridgeInfo')
   const showExtensions = bridgeInfoExtension
@@ -54,7 +54,7 @@ export const normalizeTokens = (
       .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
-        let baseline: SansMetadataTokenEntry | TokenEntry = {
+        let baseline: TokenEntryMetadataOptional = {
           chainId: +tkn.chainId,
           address: tkn.providedId as viem.Hex,
           logoURI: utils.directUri(tkn),
@@ -126,7 +126,7 @@ export const tokenFilters = (q: ParsedQs) => {
   return filters
 }
 
-export const minimalList = (tokens: (SansMetadataTokenEntry | TokenEntry)[]): TokenList => {
+export const minimalList = (tokens: (TokenEntryMetadataOptional)[]): TokenList => {
   return {
     name: '',
     timestamp: new Date().toISOString(),
