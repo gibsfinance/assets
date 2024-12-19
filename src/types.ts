@@ -12,14 +12,17 @@ export type Extensions = {
   bridgeInfo?: Record<number, PerNetworkBridgeLink>
 }
 
-export type TokenEntry = {
+export type SansMetadataTokenEntry = {
   chainId: number
   address: viem.Hex
+  logoURI?: string
+  extensions?: Extensions
+}
+
+export type TokenEntry = SansMetadataTokenEntry & {
   name: string
   symbol: string
   decimals: number
-  logoURI?: string
-  extensions?: Extensions
 }
 
 export type InternetMoneyToken = {
@@ -54,7 +57,7 @@ export type TokenList = {
   name: string
   timestamp: string
   version: TokenListVersion
-  tokens: TokenEntry[]
+  tokens: (SansMetadataTokenEntry | TokenEntry)[]
 }
 
 export type Call = {
