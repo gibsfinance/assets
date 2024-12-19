@@ -9,9 +9,10 @@ ARG ROOT_URI
 ENV ROOT_URI $ROOT_URI
 
 FROM base AS build
-COPY package-lock.json /usr/src/app/package-lock.json
+COPY bun.lockb /usr/src/app/bun.lockb
 COPY package.json /usr/src/app/package.json
-RUN npm i
+RUN npm i -g bun
+RUN bun i
 
 COPY src /usr/src/app/src
 COPY config.ts /usr/src/app/config.ts
@@ -22,4 +23,4 @@ COPY .prettierrc /usr/src/app/.prettierrc
 
 COPY ./config.ts /usr/src/app/config.ts
 
-CMD ["npm", "run", "serve"]
+CMD ["bun", "run", "serve"]

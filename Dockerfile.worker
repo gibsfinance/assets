@@ -15,16 +15,17 @@ ENV PREVENT_WRITE_MISSING $PREVENT_WRITE_MISSING
 # RUN git pull --recurse-submodules
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
 COPY package.json package.json
-COPY package-lock.json package-lock.json
+COPY bun.lockb bun.lockb
 COPY .gitmodules .gitmodules
 RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
 RUN /usr/local/bin/update_submodules.sh
-RUN npm i
+RUN npm i -g bun
+RUN bun i
 
 COPY src src
 COPY tsconfig.json tsconfig.json
 COPY knexfile.ts knexfile.ts
 COPY config.ts config.ts
 
-CMD ["npm", "run", "serve"]
+CMD ["bun", "run", "serve"]

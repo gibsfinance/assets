@@ -54,7 +54,7 @@ export const normalizeTokens = (
       .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
-        let baseline: TokenEntryMetadataOptional = {
+        const baseline: TokenEntryMetadataOptional = {
           chainId: +tkn.chainId,
           address: tkn.providedId as viem.Hex,
           logoURI: utils.directUri(tkn),

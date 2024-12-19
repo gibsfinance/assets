@@ -18,9 +18,6 @@ export default tseslint.config(
       'package',
       '.env*',
       '!.env.example',
-      'pnpm-lock.yaml',
-      'package-lock.yaml',
-      'yarn.lock',
     ],
     rules: {
       'no-plusplus': 'off',
