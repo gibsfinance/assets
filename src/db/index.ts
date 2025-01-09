@@ -723,9 +723,6 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
     .join(tableNames.list, {
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
     })
-    // .join(tableNames.listToken, {
-    //   [`${tableNames.listToken}.listId`]: `${tableNames.list}.listId`,
-    // })
     .fullOuterJoin(tableNames.listOrderItem, {
       [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
       [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
@@ -740,11 +737,12 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
         .orderBy(`${tableNames.list}.minor`, 'desc')
         .orderBy(`${tableNames.list}.patch`, 'desc')
         .partitionBy([
-          `${tableNames.listToken}.tokenId`,
-          `${tableNames.listToken}.listId`,
-          `${tableNames.listOrderItem}.listOrderId`,
+          `${tableNames.token}.token_id`,
+          `${tableNames.token}.network_id`,
+          `${tableNames.listOrderItem}.ranking`,
         ])
     })
+  // console.log(qSub.toSQL().toNative())
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
 }
 

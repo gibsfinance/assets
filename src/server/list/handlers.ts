@@ -12,18 +12,17 @@ export const merged: RequestHandler = async (req, res, next) => {
   if (!orderId) {
     return next(createError.NotFound())
   }
-  const listTokens = db.getDB().select<ListToken & Image>('*').from(tableNames.listToken)
-  const tokens = await db
-    .applyOrder(listTokens, orderId)
+  const listTokens = db
+    .getDB()
+    .select<ListToken & Image>(['*', `${tableNames.token}.provided_id`, `${tableNames.token}.name`])
+    .from(tableNames.listToken)
     .join(tableNames.token, {
-      [`${tableNames.token}.token_id`]: `ls.token_id`,
+      [`${tableNames.token}.token_id`]: `${tableNames.listToken}.token_id`,
     })
     .join(tableNames.network, {
-      [`${tableNames.network}.network_id`]: `ls.network_id`,
+      [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
     })
-    .select(['ls.*', `${tableNames.network}.*`, `${tableNames.token}.*`])
-    .where(`${tableNames.network}.chain_id`, '!=', 0)
-  console.log(tokens)
+  const tokens = await db.applyOrder(listTokens, orderId).where(`chain_id`, '!=', 0)
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens, filters, extensions)
   res.json(utils.minimalList(entries))
