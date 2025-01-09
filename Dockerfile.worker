@@ -15,7 +15,7 @@ ENV PREVENT_WRITE_MISSING=$PREVENT_WRITE_MISSING
 # RUN git pull --recurse-submodules
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
 COPY package.json package.json
-COPY pnpm.lockb pnpm.lockb
+COPY pnpm-lock.yaml pnpm-lock.yaml
 COPY .gitmodules .gitmodules
 RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
