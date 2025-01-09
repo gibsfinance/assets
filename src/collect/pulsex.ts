@@ -5,7 +5,6 @@ import * as utils from '../utils'
 import { minimalList } from '@/server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
 import * as db from '@/db'
-import { tableNames } from '@/db/tables'
 
 const remoteList = remoteTokenList.collect({
   providerKey: 'pulsex',

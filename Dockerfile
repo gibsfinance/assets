@@ -4,15 +4,15 @@ RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
 ARG NODE_ENV
-ENV NODE_ENV $NODE_ENV
+ENV NODE_ENV=$NODE_ENV
 ARG ROOT_URI
-ENV ROOT_URI $ROOT_URI
+ENV ROOT_URI=$ROOT_URI
 
 FROM base AS build
-COPY bun.lockb /usr/src/app/bun.lockb
+COPY pnpm-lock.yaml /usr/src/app/pnpm-lock.yaml
 COPY package.json /usr/src/app/package.json
-RUN npm i -g bun
-RUN bun i
+RUN npm i -g pnpm
+RUN pnpm i
 
 COPY src /usr/src/app/src
 COPY config.ts /usr/src/app/config.ts
@@ -23,4 +23,4 @@ COPY .prettierrc /usr/src/app/.prettierrc
 
 COPY ./config.ts /usr/src/app/config.ts
 
-CMD ["bun", "run", "serve"]
+CMD ["pnpm", "run", "serve"]

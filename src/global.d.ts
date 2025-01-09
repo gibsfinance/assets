@@ -1,6 +1,6 @@
 import { tableNames } from './db/tables'
 
-declare module 'knex/types/tables' {
+declare module 'knex/types/tables.js' {
   interface Timestamped {
     createdAt: Date
     updatedAt: Date
