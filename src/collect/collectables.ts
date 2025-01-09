@@ -7,9 +7,11 @@ import * as uniswapTokenlists from './uniswap-tokenlists'
 import * as remoteTokenList from './remote-tokenlist'
 import * as smoldapp from './smoldapp'
 import * as omnibridge from './omnibridge'
+import * as pulsechainCollector from './pulsechain'
 import { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } from '@/chains'
 
 export const collectables = {
+  pulsechain: pulsechainCollector.collect,
   trustwallet: trustwallet.collect,
   'uniswap-tokenlists': uniswapTokenlists.collect,
   piteas: remoteTokenList.collect({
