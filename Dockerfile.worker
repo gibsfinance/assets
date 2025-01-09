@@ -28,4 +28,4 @@ COPY tsconfig.json tsconfig.json
 COPY knexfile.ts knexfile.ts
 COPY config.ts config.ts
 
-CMD ["pnpm", "run", "serve"]
+CMD ["pnpm", "run", "collect"]
