@@ -21,11 +21,10 @@ RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
 RUN /usr/local/bin/update_submodules.sh
 RUN npm i -g pnpm
-RUN pnpm i
-
 COPY src src
 COPY tsconfig.json tsconfig.json
 COPY knexfile.ts knexfile.ts
 COPY config.ts config.ts
+RUN pnpm i
 
 CMD ["pnpm", "run", "collect"]

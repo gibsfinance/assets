@@ -16,11 +16,14 @@ export const merged: RequestHandler = async (req, res, next) => {
   const tokens = await db
     .applyOrder(listTokens, orderId)
     .join(tableNames.token, {
-      [`${tableNames.token}.token_id`]: `${tableNames.listToken}.token_id`,
+      [`${tableNames.token}.token_id`]: `ls.token_id`,
     })
     .join(tableNames.network, {
-      [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
+      [`${tableNames.network}.network_id`]: `ls.network_id`,
     })
+    .select(['ls.*', `${tableNames.network}.*`, `${tableNames.token}.*`])
+    .where(`${tableNames.network}.chain_id`, '!=', 0)
+  console.log(tokens)
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens, filters, extensions)
   res.json(utils.minimalList(entries))

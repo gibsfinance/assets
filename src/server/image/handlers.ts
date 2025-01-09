@@ -36,7 +36,10 @@ export const getListTokens = async (
     q = q.whereIn('ext', exts)
   }
   if (listOrderId) {
-    q = db.applyOrder(q, listOrderId)
+    q = db.applyOrder(q, listOrderId) //
+    // .join(tableNames.list, {
+    //   [`${tableNames.listToken}.listId`]: `${tableNames.list}.listId`,
+    // })
   }
   return {
     filter,
