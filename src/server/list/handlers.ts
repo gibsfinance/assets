@@ -14,13 +14,24 @@ export const merged: RequestHandler = async (req, res, next) => {
   }
   const listTokens = db
     .getDB()
-    .select<ListToken & Image>(['*', `${tableNames.token}.provided_id`, `${tableNames.token}.name`])
+    .select<ListToken & Image>([
+      `${tableNames.token}.provided_id`,
+      `${tableNames.token}.name`,
+      `${tableNames.token}.symbol`,
+      `${tableNames.token}.decimals`,
+      `${tableNames.network}.chain_id`,
+      `${tableNames.image}.image_hash`,
+      `${tableNames.image}.ext`,
+    ])
     .from(tableNames.listToken)
     .join(tableNames.token, {
       [`${tableNames.token}.token_id`]: `${tableNames.listToken}.token_id`,
     })
     .join(tableNames.network, {
       [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
+    })
+    .join(tableNames.image, {
+      [`${tableNames.image}.image_hash`]: `${tableNames.listToken}.image_hash`,
     })
   const tokens = await db.applyOrder(listTokens, orderId).where(`chain_id`, '!=', 0)
   const filters = utils.tokenFilters(req.query)
