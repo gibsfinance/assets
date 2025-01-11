@@ -53,7 +53,11 @@ get only the pulsechain assets under the 9mm list
 
 ```sh
 https://gib.show/list/9mm?chainId=369
+```
 
+or only pulsechain assets from the home side of the pulsechain bridge
+
+```sh
 https://gib.show/list/pulsechain-bridge/home?chainId=369
 ```
 
