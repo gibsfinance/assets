@@ -35,6 +35,7 @@ services:
     volumes:
       - ./missing:/usr/src/app/missing
       - ./src:/usr/src/app/src
+      - ./submodules:/usr/src/app/submodules
     depends_on:
       - gibassets-postgres
     networks:
