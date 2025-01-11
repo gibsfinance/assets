@@ -1,3 +1,4 @@
+import { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } from '@/chains'
 import * as trustwallet from './trustwallet'
 import * as pulsex from './pulsex'
 import * as phux from './phux'
@@ -8,7 +9,21 @@ import * as remoteTokenList from './remote-tokenlist'
 import * as smoldapp from './smoldapp'
 import * as omnibridge from './omnibridge'
 import * as pulsechainCollector from './pulsechain'
-import { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } from '@/chains'
+import * as nineMM from './9mm'
+import * as levinswap from './levinswap'
+import * as honeyswap from './honeyswap'
+import * as pancake from './pancake'
+import * as quickswap from './quickswap'
+import * as roll from './roll'
+import * as scroll from './scroll'
+import * as set from './set'
+import * as kleros from './kleros'
+import * as dfyn from './dfyn'
+import * as coingecko from './coingecko'
+import * as uma from './uma'
+import * as baofinance from './baofinance'
+import * as compound from './compound'
+import * as optimism from './optimism'
 
 export const collectables = {
   pulsechain: pulsechainCollector.collect,
@@ -47,6 +62,21 @@ export const collectables = {
       home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
     },
   ]),
+  levinswap: levinswap.collect,
+  honeyswap: honeyswap.collect,
+  pancake: pancake.collect,
+  quickswap: quickswap.collect,
+  roll: roll.collect,
+  scroll: scroll.collect,
+  set: set.collect,
+  kleros: kleros.collect,
+  dfyn: dfyn.collect,
+  coingecko: coingecko.collect,
+  '9mm': nineMM.collect,
+  uma: uma.collect,
+  baofinance: baofinance.collect,
+  compound: compound.collect,
+  optimism: optimism.collect,
 }
 
 export type Collectable = keyof typeof collectables

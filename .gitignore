@@ -1,5 +1,5 @@
 node_modules
-postgres-data
+postgres-data*
 .env
 missing
 image-export
