@@ -14,4 +14,4 @@ export function handleFetch({ request, fetch }) {
 		request = new Request(base + request.url, request);
 	}
 	return fetch(request);
-} 
+}

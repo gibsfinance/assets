@@ -104,10 +104,10 @@
 			chainId: network.chainId,
 			size: random(20, 30),      // Random size between 20-30px (smaller)
 			speed: random(80, 90),     // Random animation duration 80-90s (slower)
-			delay: random(0, 15),      // Random start delay 0-15s
-			direction: Math.random() > 0.5 ? 1 : -1,  // 50% chance left or right
-			layer: 'back',             // Always in background
-			startPos: random(0, 100)   // Random starting position 0-100% of viewport width
+			delay: random(0, 30),      // Increased delay range to 0-30s
+			direction: Math.random() > 0.5 ? 1 : -1,
+			layer: 'back',
+			startPos: random(0, 100)
 		}));
 
 		// Generate random token images
@@ -117,10 +117,10 @@
 			address: token.address,
 			size: random(40, 80),      // Random size between 40-80px (larger)
 			speed: random(55, 75),     // Random animation duration 55-75s (faster)
-			delay: random(0, 20),      // Random start delay 0-20s
-			direction: Math.random() > 0.5 ? 1 : -1,  // 50% chance left or right
-			layer: random(0, 1) > 0.5 ? 'middle' : 'front',  // Random layer
-			startPos: random(0, 100)   // Random starting position 0-100% of viewport width
+			delay: random(0, 45),      // Increased delay range to 0-45s
+			direction: Math.random() > 0.5 ? 1 : -1,
+			layer: random(0, 1) > 0.5 ? 'middle' : 'front',
+			startPos: random(0, 100)
 		}));
 
 		// Combine all images
@@ -129,6 +129,7 @@
 			...randomTokens,
 			// Add monster with small chance
 			...(Math.random() < 0.04 ? [{  // 4% chance to appear
+				address: '',
 				size: 168,                 // Fixed large size
 				speed: 65,                 // Fixed speed
 				delay: 18,                 // Fixed delay
@@ -157,9 +158,9 @@
 
 <div class="min-h-screen flex flex-col overflow-x-hidden">
 	<div class="relative z-10 flex-1">
-		<div class="container mx-auto space-y-8 p-8">
+		<div class="container mx-auto space-y-6 p-4 sm:p-6 md:p-8">
 			<!-- Hero Section -->
-			<section class="relative space-y-6 py-8">
+			<section class="relative space-y-4 sm:space-y-6 py-4 sm:py-6 md:py-8">
 				<div class="absolute inset-0 -z-10 overflow-hidden">
 					<div class="absolute -top-4 -right-4 w-72 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
 					<div class="absolute -bottom-4 -left-4 w-72 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
@@ -169,12 +170,12 @@
 					<p class="text-lg font-space-grotesk text-gray-600 dark:text-gray-400 font-medium tracking-wide">
 						Welcome to
 					</p>
-					<h1 class="font-space-grotesk text-6xl font-bold bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent tracking-tight">
-						The Gib<span class="text-[#00DC82]">.Show</span>
+					<h1 class="font-space-grotesk text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight">
+						<span class="bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">The Gib</span><span class="text-[#00DC82]">.Show</span>
 					</h1>
 				</div>
 				
-				<p class="mx-auto max-w-3xl text-xl font-medium text-gray-600 dark:text-gray-400">
+				<p class="mx-auto max-w-3xl text-base sm:text-lg md:text-xl font-medium text-gray-600 dark:text-gray-400">
 					A decentralized solution for token metadata and assets across multiple blockchains. Stop
 					struggling with missing logos, broken images, and inconsistent token data. One API to handle
 					all your token asset needs.
@@ -182,11 +183,11 @@
 			</section>
 
 			<!-- Features Grid -->
-			<section class="space-y-8 py-8">
-				<h2 class="h2 text-center text-3xl font-bold">Why Use Gib Assets?</h2>
-				<div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+			<section class="space-y-6 py-4 sm:py-6 md:py-8">
+				<h2 class="h2 text-center text-2xl sm:text-3xl font-bold">Why Use Gib Assets?</h2>
+				<div class="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-3">
 					{#each features as feature}
-						<div class="feature-card group">
+						<div class="feature-card group h-full p-4 sm:p-6">
 							<div class="relative">
 								<div class="absolute inset-0 bg-[#00DC82]/5 group-hover:bg-[#00DC82]/10 rounded-lg transition-colors -z-10"></div>
 								<i class="fas {feature.icon} text-[#00DC82] mb-4 text-4xl group-hover:scale-110 transition-transform"></i>
@@ -199,8 +200,8 @@
 			</section>
 
 			<!-- Integration Examples -->
-			<section class="space-y-8 py-8">
-				<h2 class="h2 text-center text-3xl font-bold">Simple Integration</h2>
+			<section class="space-y-6 py-4 sm:py-6 md:py-8">
+				<h2 class="h2 text-center text-2xl sm:text-3xl font-bold">Simple Integration</h2>
 				<div class="grid gap-6">
 					{#each examples as example}
 						<div class="card p-6 hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all">
@@ -279,8 +280,8 @@
 			</section>
 
 			<!-- Metrics -->
-			<section class="space-y-8 py-8">
-				<h2 class="h2 text-center text-3xl font-bold">Platform Metrics</h2>
+			<section class="space-y-6 py-4 sm:py-6 md:py-8">
+				<h2 class="h2 text-center text-2xl sm:text-3xl font-bold">Platform Metrics</h2>
 				<div class="grid grid-cols-1 gap-6 md:grid-cols-2">
 					<div class="metric-card group hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all">
 						{#if $metrics}
@@ -339,9 +340,9 @@
 			</section>
 
 			<!-- CTA -->
-			<section class="card space-y-4 p-8 text-center mb-8">
+			<section class="card space-y-4 p-4 sm:p-6 md:p-8 text-center mb-4 sm:mb-6 md:mb-8">
 				<h2 class="h2">Ready to Get Started?</h2>
-				<p class="text-lg">Try our URL wizard to generate the perfect integration for your needs.</p>
+				<p class="text-base sm:text-lg">Try our URL wizard to generate the perfect integration for your needs.</p>
 				<a href="./wizard" class="btn bg-[#00DC82] text-black hover:bg-[#00DC82]/80">
 					<i class="fas fa-hat-wizard mr-2"></i>
 					Wizard
@@ -374,6 +375,13 @@
 					class="w-full h-full rounded-full opacity-10"
 					on:error={(e) => {
 						const target = e.target as HTMLImageElement;
+						const originalSrc = target.src;
+						console.warn(`Fallback icon used for: ${originalSrc}`);
+						if (image.type === 'network') {
+							console.warn(`Network chainId: ${image.chainId}`);
+						} else {
+							console.warn(`Token: chainId=${image.chainId}, address=${image.address}`);
+						}
 						target.src = fallbackIcon;
 					}}
 				/>
