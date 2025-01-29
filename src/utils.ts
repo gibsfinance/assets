@@ -260,3 +260,24 @@ export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slic
 
 export const directUri = ({ imageHash, ext }: { imageHash: string; ext: string }) =>
   imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
+
+export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
+  let cached: null | {
+    timestamp: number
+    result: Promise<T>
+  } = null
+
+  return _.wrap(worker, (fn) => {
+    if (cached) {
+      const { timestamp, result } = cached
+      if (timestamp > Date.now() - duration) {
+        return result
+      }
+    }
+    cached = {
+      timestamp: Date.now(),
+      result: fn(),
+    }
+    return cached.result
+  })
+}

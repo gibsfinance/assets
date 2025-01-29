@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { router as imageRouter } from './image'
 import { router as listRouter } from './list'
 import { router as networksRouter } from './networks'
+import { router as statsRouter } from './stats'
 
 export const router = Router()
 
@@ -16,3 +17,6 @@ router.use('/image', imageRouter)
 router.use('/list', listRouter)
 
 router.use('/networks', networksRouter)
+
+// gib.show/stats
+router.use('/stats', statsRouter)
