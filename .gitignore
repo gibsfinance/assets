@@ -3,3 +3,7 @@ postgres-data*
 .env
 missing
 image-export
+frontend/build/
+frontend/.svelte-kit/
+frontend/package/
+frontend/.env.*

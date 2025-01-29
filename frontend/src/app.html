@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="./favicon.png" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+		/>
+		<!-- Add Space Grotesk font -->
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+		%sveltekit.head%
+	</head>
+	<body data-theme="skeleton" data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			%sveltekit.body%
+		</div>
+		<script>
+			(function() {
+				// Get IPFS base path
+				const getBasePath = () => {
+					const path = window.location.pathname;
+					return path.endsWith('/') ? path : path + '/';
+				};
+
+				window.__ipfsBase = getBasePath();
+
+				// Fix script paths
+				const fixScriptPaths = () => {
+					document.querySelectorAll('script[src^="./_app/"]').forEach(script => {
+						const src = script.getAttribute('src');
+						if (src && !src.startsWith('http')) {
+							script.src = window.__ipfsBase + src.substring(2);
+						}
+					});
+				};
+
+				// Fix dynamic imports
+				window.__vite_is_modern_browser = true;
+				window.__vite_fix_dynamic_import = (path) => {
+					if (!path.startsWith('http')) {
+						return window.__ipfsBase + path.substring(2);
+					}
+					return path;
+				};
+
+				document.addEventListener('DOMContentLoaded', fixScriptPaths);
+			})();
+		</script>
+	</body>
+</html>
