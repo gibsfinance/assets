@@ -64,37 +64,83 @@
 		}
 	];
 
-	// Update the floating images data
-	const shouldShowMonster = Math.random() < 0.04; // 4% chance (1 in 25)
-
-	const floatingImages = [
-		// Far background (small and slow)
-		{ type: 'network', chainId: 1, size: 24, speed: 80, delay: 0, direction: 1, layer: 'back', startPos: Math.random() * 100 }, // Ethereum
-		{ type: 'network', chainId: 56, size: 20, speed: 90, delay: 15, direction: 1, layer: 'back', startPos: Math.random() * 100 },
-		{ type: 'network', chainId: 369, size: 28, speed: 85, delay: 8, direction: 1, layer: 'back', startPos: Math.random() * 100 }, // PulseChain
-		
-		// Middle layer
-		{ type: 'token', chainId: 369, address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', size: 48, speed: 70, delay: 5, direction: -1, layer: 'middle', startPos: Math.random() * 100 },
-		{ type: 'network', chainId: 324, size: 44, speed: 75, delay: 12, direction: 1, layer: 'middle', startPos: Math.random() * 100 }, // zkSync
-		{ type: 'network', chainId: 137, size: 40, speed: 70, delay: 10, direction: 1, layer: 'middle', startPos: Math.random() * 100 }, // Ethereum
-		
-		// Foreground (large and faster)
-		{ type: 'token', chainId: 369, address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', size: 72, speed: 60, delay: 10, direction: 1, layer: 'front', startPos: Math.random() * 100 },
-		{ type: 'network', chainId: 1, size: 68, speed: 65, delay: 18, direction: 1, layer: 'front', startPos: Math.random() * 100 }, // Ethereum
-		{ type: 'network', chainId: 42161, size: 55, speed: 55, delay: 25, direction: 1, layer: 'front', startPos: Math.random() * 100 }, // Arbitrum
-
-		// Monster Foreground (only added sometimes)
-		...(shouldShowMonster ? [{
-			type: 'network',
-			chainId: 1,
-			size: 168,
-			speed: 65,
-			delay: 18,
-			direction: -1,
-			layer: 'front',
-			startPos: Math.random() * 125
-		}] : [])
+	// Define token list
+	const tokenList = [
+		{ chainId: 1, address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' }, // WBTC
+		{ chainId: 1, address: '0x6B175474E89094C44Da98b954EedeAC495271d0F' }, // DAI
+		{ chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }, // USDC
+		{ chainId: 1, address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }, // USDT
+		{ chainId: 369, address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' }, // PLS WBTC
+		{ chainId: 369, address: '0x6B175474E89094C44Da98b954EedeAC495271d0F' },  // PLS DAI
+		{ chainId: 369, address: '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39' }, // PLS HEX
+		{ chainId: 369, address: '0x2fa878Ab3F87CC1C9737Fc071108F904c0B0C95d' }, // INC
+		{ chainId: 369, address: '0x95B303987A60C71504D99Aa1b13B4DA07b0790ab' }, // PLSX
+		{ chainId: 56, address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82' }, // BSC PancakeSwap
 	];
+
+	// Add fallback icon definition
+	const fallbackIcon = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PHBhdGggZD0iTTggMTRzMS41IDIgNCAyIDQtMiA0LTIiLz48bGluZSB4MT0iOSIgeTE9IjkiIHgyPSI5LjAxIiB5Mj0iOSIvPjxsaW5lIHgxPSIxNSIgeTE9IjkiIHgyPSIxNS4wMSIgeTI9IjkiLz48L3N2Zz4=";
+
+	// Function to generate random floating images
+	function generateFloatingImages() {
+		const networkImages = [
+			{ chainId: 1 },    // Ethereum
+			{ chainId: 10 },   // Optimism
+			{ chainId: 56 },   // BSC
+			{ chainId: 100 }, // Gnosis
+			{ chainId: 137 },  // Polygon
+			{ chainId: 324 },  // zkSync
+			{ chainId: 369 },  // PulseChain
+			{ chainId: 42161 }, // Arbitrum
+			{ chainId: 534352 } // Scroll
+		];
+
+		// Helper function to get random value in range
+		const random = (min: number, max: number) => Math.random() * (max - min) + min;
+
+		// Generate network images (background and middle)
+		const backgroundNetworks = networkImages.map(network => ({
+			type: 'network' as const,
+			chainId: network.chainId,
+			size: random(20, 30),      // Random size between 20-30px (smaller)
+			speed: random(80, 90),     // Random animation duration 80-90s (slower)
+			delay: random(0, 15),      // Random start delay 0-15s
+			direction: Math.random() > 0.5 ? 1 : -1,  // 50% chance left or right
+			layer: 'back',             // Always in background
+			startPos: random(0, 100)   // Random starting position 0-100% of viewport width
+		}));
+
+		// Generate random token images
+		const randomTokens = tokenList.map(token => ({
+			type: 'token' as const,
+			chainId: token.chainId,
+			address: token.address,
+			size: random(40, 80),      // Random size between 40-80px (larger)
+			speed: random(55, 75),     // Random animation duration 55-75s (faster)
+			delay: random(0, 20),      // Random start delay 0-20s
+			direction: Math.random() > 0.5 ? 1 : -1,  // 50% chance left or right
+			layer: random(0, 1) > 0.5 ? 'middle' : 'front',  // Random layer
+			startPos: random(0, 100)   // Random starting position 0-100% of viewport width
+		}));
+
+		// Combine all images
+		return [
+			...backgroundNetworks,
+			...randomTokens,
+			// Add monster with small chance
+			...(Math.random() < 0.04 ? [{  // 4% chance to appear
+				size: 168,                 // Fixed large size
+				speed: 65,                 // Fixed speed
+				delay: 18,                 // Fixed delay
+				direction: -1,             // Always moves left
+				layer: 'front',            // Always in front
+				startPos: random(0, 125)   // Random start position, can start slightly off-screen
+			}] : [])
+		];
+	}
+
+	// Generate the floating images
+	const floatingImages = generateFloatingImages();
 
 	function handleAddressInput(event: Event) {
 		const input = event.target as HTMLInputElement;
@@ -109,7 +155,7 @@
 	}
 </script>
 
-<div class="min-h-screen flex flex-col">
+<div class="min-h-screen flex flex-col overflow-x-hidden">
 	<div class="relative z-10 flex-1">
 		<div class="container mx-auto space-y-8 p-8">
 			<!-- Hero Section -->
@@ -304,19 +350,20 @@
 		</div>
 	</div>
 
-	<!-- Replace the floating images container -->
-	<div class="absolute inset-0 pointer-events-none" style="z-index: 1; height: {pageHeight}px;">
+	<!-- Update the floating images container -->
+	<div class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index: 1; height: {pageHeight}px;">
 		{#each floatingImages as image}
 			<div
 				class="absolute rounded-full animate-float"
 				style="
 					width: {image.size}px;
 					height: {image.size}px;
-					animation-duration: {image.speed}s;
+					--duration: {image.speed}s;
 					animation-delay: {image.delay}s;
 					top: {Math.random() * pageHeight}px;
-					left: {Math.random() * 100}vw;
+					left: {image.direction === 1 ? '-100px' : '100vw'};
 					opacity: 0;
+					--direction: {image.direction};
 				"
 			>
 				<img
@@ -343,7 +390,7 @@
 	@keyframes float-right {
 		0% {
 			opacity: 0;
-			transform: translate(-50vw, 0) rotate(0deg);
+			transform: translateX(-100px) rotate(0deg);
 		}
 		5% {
 			opacity: 1;
@@ -353,14 +400,14 @@
 		}
 		100% {
 			opacity: 0;
-			transform: translate(150vw, 0) rotate(360deg);
+			transform: translateX(100vw) rotate(360deg);
 		}
 	}
 
 	@keyframes float-left {
 		0% {
 			opacity: 0;
-			transform: translate(150vw, 0) rotate(360deg);
+			transform: translateX(0) rotate(360deg);
 		}
 		5% {
 			opacity: 1;
@@ -370,17 +417,17 @@
 		}
 		100% {
 			opacity: 0;
-			transform: translate(-50vw, 0) rotate(0deg);
+			transform: translateX(-100vw) rotate(0deg);
 		}
 	}
 
 	.animate-float {
-		animation: float-right var(--duration, 20s) linear infinite;
+		animation: float-right var(--duration) linear infinite;
 		will-change: transform, opacity;
 	}
 
-	.animate-float[style*="direction: -1"] {
-		animation-name: float-left;
+	.animate-float[style*="--direction: -1"] {
+		animation: float-left var(--duration) linear infinite !important;
 	}
 
 	/* Update depth and opacity based on layers */

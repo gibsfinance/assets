@@ -3,7 +3,7 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 </script>
 
-<div class="app min-h-full bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#1a1f2b] dark:to-[#151821]">
+<div class="app min-h-full overflow-x-hidden bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#1a1f2b] dark:to-[#151821]">
 	<header class="sticky top-0 z-50 backdrop-blur-lg bg-white/70 dark:bg-[#1a1f2b]/70 border-b border-gray-200/50 dark:border-surface-700/20">
 		<nav class="container mx-auto p-4">
 			<div class="flex items-center justify-between">
