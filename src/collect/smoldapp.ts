@@ -53,12 +53,16 @@ export const collect = async () => {
   await utils.spinner(`smoldapp/chains`, async () => {
     const chains = await utils.folderContents(chainsPath)
     for (const chainId of chains) {
-      if (path.extname(chainId) === '.json') return
+      if (path.extname(chainId) === '.json') {
+        // handles the _info.json file (not a chain)
+        continue
+      }
       await db.insertNetworkFromChainId(+chainId)
       const chainFolder = path.join(chainsPath, chainId)
       const folders = await utils.folderContents(chainFolder)
       for (const file of folders) {
         const listKey = filenameToListKey(file)
+        console.log(`tokens-${chainId}-${listKey}`)
         const [networkList] = await db.insertList({
           key: `tokens-${chainId}-${listKey}`,
           providerId: provider.providerId,
@@ -120,18 +124,24 @@ export const collect = async () => {
     // let total = 0
     const k = `${providerKey}/${chainIdString}`
     await utils
-      .spinner(k, async () => {
+      .spinner(k, async (l) => {
         const chain = utils.findChain(+chainIdString)
         if (!chain) {
+          // viem does not have this chain, can't collect
           utils.failureLog('unable to find chain %o/%o', 'smoldapp', +chainIdString)
           return
         }
+        const network = await db.insertNetworkFromChainId(+chainIdString)
+        if (!network) {
+          utils.failureLog('unable to find network %o/%o', 'smoldapp', +chainIdString)
+        }
+        l.incrementMax(tokens.length)
         const client = viem.createPublicClient({
           chain,
           transport: viem.http(),
         })
         // total += tokens.length
-        const limit = promiseLimit<viem.Hex>(4)
+        const limit = promiseLimit<viem.Hex>(256)
         await limit
           .map(tokens as viem.Hex[], async (token) => {
             const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
@@ -200,6 +210,7 @@ export const collect = async () => {
             utils.failureLog('each token', err)
             return null
           })
+        l.incrementCurrent()
       })
       .catch((err) => {
         utils.failureLog('spinner', err)

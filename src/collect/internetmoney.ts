@@ -11,7 +11,7 @@ import { Tx } from '@/db/tables'
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 
 export const collect = async () => {
-  return await utils.spinner('internetmoney', async () => {
+  return await utils.spinner('internetmoney', async (l) => {
     const json = await fetch(baseUrl)
       .then((res): Promise<InternetMoneyNetwork[]> => res.json())
       .then((res) => (Array.isArray(res) ? res : []))
@@ -85,6 +85,7 @@ export const collect = async () => {
             )
           })
         })
+        l.incrementMax(network.tokens.length)
         todos.push(
           ...network.tokens.map((token) => async () => {
             const address = token.address as viem.Hex
@@ -118,6 +119,7 @@ export const collect = async () => {
                 tx,
               )
             })
+            l.incrementCurrent()
           }),
         )
       })(network)

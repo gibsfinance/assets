@@ -84,7 +84,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     providerId: provider.providerId,
   })
   const key = `wallet-${blockchainKey}`
-  await utils.spinner(key, async () => {
+  await utils.spinner(key, async (l) => {
     const network = await db.insertNetworkFromChainId(chainId)
     const [networkList] = await db.insertList({
       providerId: provider.providerId,
@@ -107,9 +107,11 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
         providerKey,
       })
     }
+    l.incrementMax(assets.length)
     for (const asset of assets) {
       const folder = path.join(blockchainsRoot, blockchainKey, assetsFolder, asset)
       const assets = await load(folder).catch(() => null)
+      l.incrementCurrent()
       if (!assets) {
         return
       }

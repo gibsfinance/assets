@@ -573,6 +573,10 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
     .onConflict(['listId'])
     .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch', 'default'])
     .returning('*')
+    .catch((err) => {
+      console.log('failed to insert list', list)
+      throw err
+    })
 }
 
 export const updateList = (list: Partial<List>, t: Tx = db) => {

@@ -110,7 +110,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           })
           return
         }
-        log('provider=%o events=%o from=%o to=%o', provider.key, events.length, fromBlock, toBlock)
+        log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
         const collectedData = await Promise.all(
           events.map(async (event) => {
             const native = event.args.native as viem.Hex

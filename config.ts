@@ -10,6 +10,9 @@ let cacheSeconds = process.env.CACHE_SECONDS
 if (!+(cacheSeconds as string)) {
   cacheSeconds = `${60 * 60}`
 }
+
+Error.stackTraceLimit = Infinity
+
 export default {
   database,
   rootURI,

@@ -151,8 +151,10 @@ export const removedUndesirable = (names: string[]) => {
 const spinnerLimit = promiseLimit<any>(4)
 
 const print = (key: string) => {
+  let current = 0
+  let max = 0
   const log = (w: string) => {
-    console.log(`${w} %o`, key)
+    console.log(`${w} %o %o/%o`, key, current, max)
   }
   const runner = () => {
     log('running')
@@ -168,13 +170,34 @@ const print = (key: string) => {
       clearInterval(id)
       log('failed')
     },
+    incrementMax(amount = 1) {
+      max += amount
+    },
+    incrementCurrent(amount = 1) {
+      current += amount
+    },
   }
 }
 
-export const spinner = async <T>(key: string, fn: () => Promise<T>) => {
+type Incrementer = {
+  incrementMax: (amount?: number) => void
+  incrementCurrent: (amount?: number) => void
+}
+
+export const spinner = async <T>(key: string, fn: ({ incrementMax, incrementCurrent }: Incrementer) => Promise<T>) => {
   return spinnerLimit(async () => {
-    const spinner = process.env.FAKE_SPINNER ? print(key) : new Spinner().start(key)
-    return await fn()
+    const fakeSpinner = process.env.FAKE_SPINNER
+    const spinner = fakeSpinner ? print(key) : new Spinner().start(key)
+    return await fn({
+      incrementMax: (amount = 1) => {
+        if (!fakeSpinner) return
+        ;(spinner as Incrementer).incrementMax(amount)
+      },
+      incrementCurrent: (amount = 1) => {
+        if (!fakeSpinner) return
+        ;(spinner as Incrementer).incrementCurrent(amount)
+      },
+    })
       .then((res) => {
         spinner.succeed()
         return res
