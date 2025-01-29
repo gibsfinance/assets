@@ -15,7 +15,7 @@ const limiters = new Map<string, ReturnType<typeof promiseLimit<Response>>>()
 export const getLimiter = (url: URL) => {
   let limiter = limiters.get(url.host)
   if (limiter) return limiter
-  limiter = promiseLimit(16)
+  limiter = promiseLimit(256)
   limiters.set(url.host, limiter)
   return limiter
 }
@@ -39,6 +39,10 @@ const ipfsCompatableFetch: typeof fetch = async (
       return fetch(url, {
         redirect: 'follow',
         signal: controller.signal,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
         ...options,
       })
         .then((res) => {

@@ -95,11 +95,14 @@ export const collect = async () => {
         networkId: network.networkId,
         ...list,
       })
-      await utils.spinner(provider.key, async () => {
+
+      await utils.spinner(provider.key, async (l) => {
+        l.incrementMax(pieces.length)
         for (const piece of pieces) {
           const response = await utils
             .erc20Read(chain, client, piece.address, fetchConfig) // ignore errors that get to here
             .catch(() => null)
+          l.incrementCurrent()
           if (!response) continue
           const [name, symbol, decimals] = response
           const path = piece.fullPath.replace('hhttps://', 'https://')

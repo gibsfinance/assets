@@ -11,7 +11,7 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
   }
   const chainIds = [...chainIdSet.values()]
   const networks = new Map<number, Network>()
-  await utils.spinner(providerKey, async () => {
+  await utils.spinner(providerKey, async (l) => {
     let provider!: Provider
     let list!: List
     await db.transaction(async (tx) => {
@@ -50,6 +50,7 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
         tx,
       )
     })
+    l.incrementMax(tokenList.tokens.length)
     for (const entry of tokenList.tokens) {
       const network = networks.get(entry.chainId)!
       const token = {
@@ -77,6 +78,7 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
         )
         // completed++
       })
+      l.incrementCurrent()
     }
   })
   // console.log('completed %o %o/%o',
