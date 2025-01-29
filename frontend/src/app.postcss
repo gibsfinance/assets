@@ -1,0 +1,133 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+	@apply h-full;
+}
+
+body {
+	@apply overflow-y-auto bg-gray-50 dark:bg-[#1a1f2b] text-gray-900 dark:text-white;
+}
+
+/* Card styles */
+.card {
+	@apply bg-white border border-gray-200;
+	@apply dark:bg-[#202633] dark:border-surface-700/20;
+	@apply shadow-sm;
+}
+
+/* Button styles */
+.btn-primary {
+	@apply bg-[#00DC82] text-black hover:bg-[#00DC82]/80;
+}
+
+/* Input and select styles */
+.input, 
+.select {
+	@apply bg-white border border-gray-300;
+	@apply dark:bg-[#202633] dark:border-surface-700/20;
+}
+
+.input:focus,
+.select:focus {
+	@apply border-[#00DC82] ring-2 ring-[#00DC82]/20;
+}
+
+/* Code block styles */
+pre {
+	@apply bg-gray-100 dark:bg-[#151821];
+	@apply border border-gray-200 dark:border-surface-700/20;
+}
+
+/* Chart text colors */
+.dark .text-surface-600-300-token {
+	@apply text-gray-600 dark:text-gray-300;
+}
+
+/* Feature cards */
+.feature-card {
+	@apply p-6 rounded-lg transition-all duration-200;
+	@apply hover:shadow-lg hover:scale-[1.02];
+	@apply bg-white dark:bg-[#202633];
+	@apply border border-gray-200 dark:border-surface-700/20;
+}
+
+/* Metrics cards */
+.metric-card {
+	@apply p-6 rounded-lg;
+	@apply bg-white dark:bg-[#202633];
+	@apply border border-gray-200 dark:border-surface-700/20;
+}
+
+/* Bar chart styles */
+.chart-bar {
+	@apply bg-[#00DC82]/80 hover:bg-[#00DC82];
+	@apply rounded-sm h-8 transition-all duration-300;
+}
+
+/* Icon colors */
+.feature-icon {
+	@apply text-[#00DC82];
+}
+
+/* Update select/dropdown styles */
+.select {
+	@apply bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 rounded-lg;
+	@apply text-gray-900 dark:text-white;
+}
+
+/* Dropdown options */
+.select option {
+	@apply bg-white dark:bg-[#202633] text-gray-900 dark:text-white;
+}
+
+/* Option hover state - using a custom color that matches theme */
+.select option:hover,
+.select option:focus,
+.select option:active,
+.select option:checked {
+	@apply bg-[#00DC82]/10 dark:bg-[#00DC82]/20;
+	color: inherit;
+}
+
+/* Focus state */
+.select:focus {
+	@apply ring-2 ring-[#00DC82]/20 border-[#00DC82] dark:border-[#00DC82] outline-none;
+}
+
+/* Hover state */
+.select:hover {
+	@apply border-[#00DC82]/50 dark:border-[#00DC82]/50;
+}
+
+/* Selected option */
+.select option:checked {
+	@apply bg-[#00DC82]/20 dark:bg-[#00DC82]/30;
+}
+
+/* Disabled state */
+.select:disabled {
+	@apply bg-gray-100 dark:bg-surface-700/20 cursor-not-allowed;
+}
+
+/* Handle browser autofill styling */
+:global(input:-webkit-autofill),
+:global(input:-webkit-autofill:hover),
+:global(input:-webkit-autofill:focus) {
+    -webkit-text-fill-color: rgb(156 163 175) !important;
+    -webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+:global(.dark) :global(input:-webkit-autofill),
+:global(.dark) :global(input:-webkit-autofill:hover),
+:global(.dark) :global(input:-webkit-autofill:focus) {
+    -webkit-text-fill-color: rgb(156 163 175) !important;
+    -webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
+} 
