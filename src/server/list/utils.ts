@@ -135,6 +135,6 @@ export const minimalList = (tokens: (TokenEntryMetadataOptional)[]): TokenList =
       minor: 0,
       patch: 0,
     },
-    tokens,
+    tokens: tokens as TokenEntry[],
   }
 }

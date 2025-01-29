@@ -12,7 +12,7 @@ export const cancelAllRequests = () => {
 
 const limiters = new Map<string, ReturnType<typeof promiseLimit<Response>>>()
 
-export const getLimiter = (url: URL) => {
+export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> => {
   let limiter = limiters.get(url.host)
   if (limiter) return limiter
   limiter = promiseLimit(16)

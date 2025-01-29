@@ -1,6 +1,6 @@
 # Gibs Assets
 
-based off of schema available here: https://raw.githubusercontent.com/Uniswap/token-lists/main/src/tokenlist.schema.json
+based off of [available schema](https://raw.githubusercontent.com/Uniswap/token-lists/main/src/tokenlist.schema.json)
 
 this repo relies on git submodules so you will need to be careful not to break links and regularly update
 
@@ -75,4 +75,12 @@ resolve through specific lists, first by seeding the db with your configuration,
 
 ```sh
 https://gib.show/list/merged/5ff74ffa222c6c435c9432ad937c5d95e3327ebbe3eb9ff9f62a4d940d5790f9?chainId=369
+```
+
+### building
+
+run the following command to check for any typescript issues
+
+```sh
+npx tsc -p tsconfig.json
 ```
