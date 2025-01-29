@@ -1,4 +1,3 @@
-import '../src/global.d.ts'
 import { test } from 'node:test'
 import { app } from '../src/server/app'
 import supertest from 'supertest'
