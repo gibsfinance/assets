@@ -1,3 +1,12 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+
+html,
+body {
+	@apply h-full;
+}
+
+body {
+	@apply overflow-y-auto bg-gray-50 dark:bg-[#1a1f2b] text-gray-900 dark:text-white;
+}

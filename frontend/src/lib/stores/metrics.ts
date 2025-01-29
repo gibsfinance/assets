@@ -95,33 +95,31 @@ function createMetricsStore() {
 					}
 				};
 
-				set(metrics);
-				console.log('Metrics fetched:', metrics);
-			} catch (error) {
-				console.error('Failed to fetch metrics:', error);
-				set({
-					tokenList: {
-						total: 0,
-						byChain: DISPLAY_CHAIN_INFO.reduce(
-							(acc, chain) => {
-								acc[chain.chainId] = 0;
-								return acc;
-							},
-							{} as Record<number, number>
-						)
-					},
-					networks: {
-						supported: DISPLAY_CHAIN_INFO.map((chain) => ({
-							chainId: chain.chainId,
-							name: chain.name,
-							isActive: chain.chainId === 369
-						})),
-						active: 'PulseChain'
-					}
-				});
-			}
-		}
-	};
+                set(metrics);
+                console.log('Metrics fetched:', metrics);
+
+            } catch (error) {
+                console.error('Failed to fetch metrics:', error);
+                set({
+                    tokenList: {
+                        total: 0,
+                        byChain: DISPLAY_CHAIN_INFO.reduce((acc, chain) => {
+                            acc[chain.chainId] = 0;
+                            return acc;
+                        }, {} as Record<number, number>)
+                    },
+                    networks: {
+                        supported: DISPLAY_CHAIN_INFO.map(chain => ({
+                            chainId: chain.chainId,
+                            name: chain.name,
+                            isActive: chain.chainId === 369
+                        })),
+                        active: 'PulseChain'
+                    }
+                });
+            }
+        }
+    };
 }
 
 export const metrics = createMetricsStore();
