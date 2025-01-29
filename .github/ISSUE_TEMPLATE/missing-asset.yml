@@ -1,0 +1,60 @@
+name: Missing Asset Report
+description: Report a missing token or network icon
+title: '[Missing Asset]: '
+labels: ['missing-asset']
+body:
+  - type: dropdown
+    id: asset-type
+    attributes:
+      label: Asset Type
+      description: What type of asset is missing?
+      options:
+        - Token Icon
+        - Network Icon
+    validations:
+      required: true
+
+  - type: input
+    id: network-name
+    attributes:
+      label: Network Name
+      description: The name of the network (e.g. Ethereum, PulseChain, etc.)
+      placeholder: Ethereum
+    validations:
+      required: true
+
+  - type: input
+    id: chain-id
+    attributes:
+      label: Chain ID
+      description: The numeric chain ID
+      placeholder: '1'
+    validations:
+      required: true
+
+  - type: input
+    id: token-address
+    attributes:
+      label: Token Address
+      description: The contract address of the token (if applicable)
+      placeholder: '0x...'
+    validations:
+      required: false
+
+  - type: input
+    id: attempted-url
+    attributes:
+      label: Attempted URL
+      description: The URL you tried to access
+      placeholder: 'https://gib.show/image/...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: Additional Information
+      description: Any additional information that might be helpful
+      placeholder: 'Add any other context about the missing asset here.'
+    validations:
+      required: false
