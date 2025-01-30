@@ -83,6 +83,8 @@
     "yargs": "^17.7.2"
   },
   "dependencies": {
+    "@types/body-parser": "^1.19.5",
+    "@types/http-errors": "^2.0.4",
     "@types/semver": "^7.5.8",
     "compression": "^1.7.4",
     "cors": "^2.8.5",

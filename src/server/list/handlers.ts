@@ -1,12 +1,12 @@
 import createError from 'http-errors'
 import * as db from '@/db'
-import { Request, RequestHandler } from 'express'
+import type { Request, RequestHandler, Response, NextFunction } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, ListToken } from 'knex/types/tables'
 import _ from 'lodash'
 
-export const merged: RequestHandler = async (req, res, next) => {
+export const merged = async (req: Request<{ order: string }>, res: Response, next: NextFunction) => {
   const extensions = getExtensions(req)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {

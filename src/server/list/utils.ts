@@ -6,7 +6,6 @@ import type { Image, List, Network, Token } from 'knex/types/tables'
 import { Knex } from 'knex'
 import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '@/types'
 import { tableNames } from '@/db/tables'
-import type { ParsedQs } from 'qs'
 import _ from 'lodash'
 
 export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
@@ -111,7 +110,7 @@ const uniqueTokenKey = (info: { chainId: number; address: viem.Hex }) => `${info
 
 type Filter<T> = (a: T) => boolean
 
-export const tokenFilters = (q: ParsedQs) => {
+export const tokenFilters = (q: { chainId?: number | string | string[]; decimals?: number | string | string[] }) => {
   const filters: Filter<Token & Network>[] = []
   if (q.chainId) {
     const chainIdsQs = (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => `${cId}`)
@@ -126,7 +125,7 @@ export const tokenFilters = (q: ParsedQs) => {
   return filters
 }
 
-export const minimalList = (tokens: (TokenEntryMetadataOptional)[]): TokenList => {
+export const minimalList = (tokens: TokenEntryMetadataOptional[]): TokenList => {
   return {
     name: '',
     timestamp: new Date().toISOString(),

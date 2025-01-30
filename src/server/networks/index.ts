@@ -5,7 +5,7 @@ import { tableNames } from '@/db/tables'
 import { Network } from 'knex/types/tables.js'
 import { cacheResult } from '@/utils'
 
-export const router = Router()
+export const router = Router() as Router
 
 const getNetworks = cacheResult<string[]>(async () => {
   const networks = await getDB().select<Network[]>(['chainId']).from(tableNames.network)

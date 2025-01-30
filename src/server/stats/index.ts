@@ -6,7 +6,7 @@ import _ from 'lodash'
 
 const db = getDB()
 
-export const router = Router()
+export const router = Router() as Router
 
 type Result = {
   chainId: string
