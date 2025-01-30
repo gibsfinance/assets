@@ -10,7 +10,7 @@ const remoteList = remoteTokenList.collect({
   providerKey: 'pulsex',
   listKey: 'extended',
   tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
-  isDefault: false,
+  isDefault: true,
   extension: [
     {
       address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
