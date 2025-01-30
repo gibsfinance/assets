@@ -2,6 +2,8 @@
     import { metrics } from '$lib/stores/metrics';
     import { onMount } from 'svelte';
     import { getApiUrl } from '$lib/utils';
+    import { hljs } from '$lib/stores/highlight';
+    import { highlightElement } from '$lib/utils/highlight';
     
     type ApiType = 'token' | 'network' | 'list';
     
@@ -131,37 +133,38 @@
     }
 
     function getFormattedResponse(url: string) {
-        let baseUrl = typeof window !== 'undefined' 
-            ? ((window as any).__ipfsPath || '') 
-            : '';
-        
-        if (window.location.hostname === 'localhost') {
-            baseUrl = 'https://gib.show';
+        return `// GET ${url}
+{
+    "name": "Gib Assets Token List",
+    "timestamp": "${new Date().toISOString()}",
+    "version": {
+        "major": 1,
+        "minor": 0,
+        "patch": 0
+    },
+    "tokens": [
+        {
+            "chainId": 1,
+            "address": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+            "name": "Wrapped Bitcoin",
+            "symbol": "WBTC",
+            "decimals": 8,
+            "logoURI": "https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+        },
+        // ... more tokens
+    ],
+    "keywords": [
+        "gib",
+        "tokens",
+        "trusted"
+    ],
+    "tags": {
+        "stablecoin": {
+            "name": "Stablecoin",
+            "description": "Tokens that are fixed to an external asset"
         }
-
-        // Ensure the URL starts with the base URL
-        if (!url.startsWith('http')) {
-            url = `${baseUrl}${url}`;
-        }
-
-        return [
-            `// GET ${url}`,
-            '',
-            '{',
-            '  "name": "Token List",',
-            '  "tokens": [',
-            '    {',
-            '      "chainId": number,',
-            '      "address": string,',
-            '      "name": string,',
-            '      "symbol": string,',
-            '      "decimals": number,',
-            '      "logoURI": string',
-            '    },',
-            '    ...',
-            '  ]',
-            '}'
-        ].join('\n');
+    }
+}`;
     }
 
     function handleWheel(event: WheelEvent) {
@@ -252,19 +255,28 @@
     function getTokenUrl(token: Token): string {
         return getApiUrl(`/image/${token.chainId}/${token.address}`);
     }
+
+    $: if (generatedUrl) {
+        setTimeout(() => {
+            document.querySelectorAll('pre code').forEach((block) => {
+                highlightElement(block as HTMLElement);
+            });
+        }, 0);
+    }
 </script>
 
-<div class="container mx-auto p-8 max-w-4xl space-y-8">
-    <div class="text-center space-y-4">
-        <h1 class="h1">URL Wizard</h1>
-        <p class="text-lg">Generate URLs for the Gib Assets API</p>
+<div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-4xl space-y-6 sm:space-y-8">
+    <!-- Header -->
+    <div class="text-center space-y-3 sm:space-y-4">
+        <h1 class="h1 text-3xl sm:text-4xl md:text-5xl">URL Wizard</h1>
+        <p class="text-base sm:text-lg">Generate URLs for the Gib Assets API</p>
     </div>
 
-    <div class="card p-6 space-y-6">
+    <div class="card p-4 sm:p-6 space-y-4 sm:space-y-6">
         <!-- API Type Selection -->
-        <div class="space-y-2">
+        <div class="space-y-2 sm:space-y-3">
             <span class="label">What are you looking for?</span>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                 <button 
                     class="btn {urlType === 'token' ? 'variant-filled-primary' : 'variant-ghost'}"
                     on:click={() => {
@@ -322,7 +334,7 @@
         {/if}
 
         <!-- Network Selection -->
-        <div class="space-y-2">
+        <div class="space-y-2 sm:space-y-3">
             <label class="label">
                 {urlType === 'list' ? 'Filter by Network (Optional)' : 'Select Network'}
             </label>
@@ -348,7 +360,7 @@
                     >
                         {#if urlType === 'list'}
                             <button
-                                class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
+                                class="w-full px-3 py-1.5 sm:px-4 sm:py-2 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
                                 on:click={() => {
                                     selectedChain = null;
                                     selectedNetwork = null;
@@ -362,7 +374,7 @@
                         {#if $metrics}
                             {#each $metrics.networks.supported as network}
                                 <button
-                                    class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
+                                    class="w-full px-3 py-1.5 sm:px-4 sm:py-2 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
                                     class:selected={selectedChain === network.chainId}
                                     on:click={() => selectNetwork(network)}
                                 >
@@ -412,7 +424,7 @@
 
         <!-- Generated URL Display (only show if URL exists and icon is found for image types) -->
         {#if generatedUrl && (urlType === 'list' || iconExists)}
-            <div class="card variant-ghost p-4 space-y-2">
+            <div class="card variant-ghost p-3 sm:p-4 space-y-2 sm:space-y-3">
                 <div class="flex justify-between items-center">
                     <span class="label">Generated URL</span>
                     <button 
@@ -433,7 +445,7 @@
 
             <!-- Preview (only for token and network icons) -->
             {#if urlType !== 'list'}
-                <div class="card variant-ghost p-4 space-y-2">
+                <div class="card variant-ghost p-3 sm:p-4 space-y-2 sm:space-y-3">
                     <span class="label">Preview</span>
                     <div class="flex justify-center p-4">
                         {#if previewError}
@@ -474,7 +486,7 @@
                     <!-- Always show formatted response for default list -->
                     {#if listName === 'default' || !showTokenList}
                         <div class="card variant-soft p-4">
-                            <pre class="text-xs overflow-x-auto font-mono"><code class="block whitespace-pre text-surface-900-50-token">{getFormattedResponse(generatedUrl)}</code></pre>
+                            <pre><code class="language-javascript">{getFormattedResponse(generatedUrl)}</code></pre>
                         </div>
                     {:else}
                         <!-- Token list preview content -->

@@ -5,9 +5,9 @@ function createThemeStore() {
 
 	return {
 		subscribe,
-		toggle: () => update(n => !n),
+		toggle: () => update((n) => !n),
 		set: (value: boolean) => set(value)
 	};
 }
 
-export const isDark = createThemeStore(); 
+export const isDark = createThemeStore();

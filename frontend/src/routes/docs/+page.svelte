@@ -1,4 +1,8 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
+    import { hljs } from '$lib/stores/highlight';
+    import { highlightElement } from '$lib/utils/highlight';
+
     const endpoints = {
         tokenInfo: [
             {
@@ -38,47 +42,82 @@
         ]
     };
 
-    const codeExamples = `// Get a token image (e.g. WBTC on Ethereum)
-const baseUrl = window.location.hostname === 'localhost' ? 'https://gib.show' : '';
-fetch(\`\${baseUrl}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
-    .then(response => response.blob())
-    .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
-        // Use the image URL in an <img> tag
-        // <img src={imageUrl} alt="Token logo" />
-    });
+    const codeExamples = `// Example 1: Get a token image with error handling
+async function getTokenImage(chainId: number, address: string) {
+    try {
+        const baseUrl = 'https://gib.show';
+        const response = await fetch(\`\${baseUrl}/image/\${chainId}/\${address}\`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch token image');
+        }
+        
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+    } catch (error) {
+        console.error('Error:', error);
+        return fallbackImage; // Return a default image
+    }
+}
 
-// Get a network's token list (e.g. PulseChain tokens)
-fetch(\`\${baseUrl}/list/default?chainId=369\`)
-    .then(response => response.json())
-    .then(data => {
-        // Process the token list
-        // data.tokens = [{ chainId, address, name, symbol, decimals, logoURI }, ...]
-    });
+// Example 2: Get network tokens with filtering
+async function getNetworkTokens(chainId: number) {
+    const tokens = await fetch(\`https://gib.show/list/default?chainId=\${chainId}\`)
+        .then(res => res.json())
+        .then(data => data.tokens)
+        .catch(error => {
+            console.error('Failed to fetch tokens:', error);
+            return [];
+        });
 
-// Get a specific network icon (e.g. Ethereum)
-fetch(\`\${baseUrl}/image/1\`)
-    .then(response => response.blob())
-    .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
-        // Use the network logo
-        // <img src={imageUrl} alt="Network logo" />
-    });`;
+    // Filter and map the results
+    return tokens
+        .filter(token => token.chainId === chainId)
+        .map(({ address, symbol, name }) => ({
+            address,
+            symbol,
+            name,
+            imageUrl: \`https://gib.show/image/\${chainId}/\${address}\`
+        }));
+}
+
+// Example 3: React/Svelte Component Usage
+function TokenDisplay({ chainId, address }) {
+    const [imageUrl, setImageUrl] = useState(null);
+    
+    useEffect(() => {
+        getTokenImage(chainId, address)
+            .then(setImageUrl)
+            .catch(console.error);
+    }, [chainId, address]);
+
+    return imageUrl ? (
+        <img src={imageUrl} alt="Token Logo" className="w-8 h-8 rounded-full" />
+    ) : (
+        <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+    );
+}`;
+
+    onMount(() => {
+        document.querySelectorAll('pre code').forEach((block) => {
+            highlightElement(block as HTMLElement);
+        });
+    });
 </script>
 
-<div class="container mx-auto p-8 max-w-4xl space-y-12">
-    <div class="text-center space-y-4">
-        <h1 class="h1">API Documentation</h1>
-        <p class="text-lg">Complete reference for the Gib Assets API</p>
+<div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-4xl space-y-8 sm:space-y-12">
+    <div class="text-center space-y-3 sm:space-y-4">
+        <h1 class="h1 text-3xl sm:text-4xl md:text-5xl">API Documentation</h1>
+        <p class="text-base sm:text-lg">Complete reference for the Gib Assets API</p>
     </div>
 
     <!-- Token Information Endpoints -->
-    <section class="space-y-6">
+    <section class="space-y-4 sm:space-y-6">
         <h2 class="h2">Token Information Endpoints</h2>
         <div class="card variant-ghost">
-            <div class="p-4 space-y-4">
+            <div class="p-3 sm:p-4 space-y-3 sm:space-y-4">
                 {#each endpoints.tokenInfo as endpoint}
-                    <div class="card variant-soft p-4">
+                    <div class="card variant-soft p-3 sm:p-4">
                         <div class="flex flex-col gap-2">
                             <code class="text-primary-500 font-mono text-lg">
                                 {endpoint.path}
@@ -92,12 +131,12 @@ fetch(\`\${baseUrl}/image/1\`)
     </section>
 
     <!-- Image Endpoints -->
-    <section class="space-y-6">
+    <section class="space-y-4 sm:space-y-6">
         <h2 class="h2">Image Endpoints</h2>
         <div class="card variant-ghost">
-            <div class="p-4 space-y-4">
+            <div class="p-3 sm:p-4 space-y-3 sm:space-y-4">
                 {#each endpoints.imageEndpoints as endpoint}
-                    <div class="card variant-soft p-4">
+                    <div class="card variant-soft p-3 sm:p-4">
                         <div class="flex flex-col gap-2">
                             <code class="text-primary-500 font-mono text-lg">
                                 {endpoint.path}
@@ -111,7 +150,7 @@ fetch(\`\${baseUrl}/image/1\`)
     </section>
 
     <!-- Features -->
-    <section class="space-y-6">
+    <section class="space-y-4 sm:space-y-6">
         <h2 class="h2">Features</h2>
         <div class="grid md:grid-cols-2 gap-4">
             <div class="card variant-soft p-4">
@@ -150,10 +189,10 @@ fetch(\`\${baseUrl}/image/1\`)
     </section>
 
     <!-- Example Usage -->
-    <section class="space-y-6">
+    <section class="space-y-4 sm:space-y-6">
         <h2 class="h2">Example Usage</h2>
-        <div class="card variant-ghost p-6">
-            <pre class="text-sm overflow-x-auto"><code>{codeExamples}</code></pre>
+        <div class="card variant-ghost p-4 sm:p-6">
+            <pre><code class="language-javascript">{codeExamples}</code></pre>
         </div>
     </section>
 

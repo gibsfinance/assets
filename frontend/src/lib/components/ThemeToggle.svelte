@@ -46,8 +46,8 @@
 	}
 </script>
 
-<button 
-	class="btn-icon variant-ghost-surface" 
+<button
+	class="variant-ghost-surface btn-icon"
 	on:click={toggleTheme}
 	title={getRandomMessage($isDark ? lightModeMessages : darkModeMessages)}
 >
@@ -62,4 +62,4 @@
 	.btn-icon {
 		@apply h-10 w-10 rounded-full;
 	}
-</style> 
+</style>

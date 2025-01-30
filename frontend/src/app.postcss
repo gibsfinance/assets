@@ -1,6 +1,7 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+@import 'highlight.js/styles/github-dark.css';
 
 @tailwind base;
 @tailwind components;
@@ -12,13 +13,13 @@ body {
 }
 
 body {
-	@apply overflow-y-auto bg-gray-50 dark:bg-[#1a1f2b] text-gray-900 dark:text-white;
+	@apply overflow-y-auto bg-gray-50 text-gray-900 dark:bg-[#1a1f2b] dark:text-white;
 }
 
 /* Card styles */
 .card {
-	@apply bg-white border border-gray-200;
-	@apply dark:bg-[#202633] dark:border-surface-700/20;
+	@apply border border-gray-200 bg-white;
+	@apply dark:border-surface-700/20 dark:bg-[#202633];
 	@apply shadow-sm;
 }
 
@@ -28,10 +29,10 @@ body {
 }
 
 /* Input and select styles */
-.input, 
+.input,
 .select {
-	@apply bg-white border border-gray-300;
-	@apply dark:bg-[#202633] dark:border-surface-700/20;
+	@apply border border-gray-300 bg-white;
+	@apply dark:border-surface-700/20 dark:bg-[#202633];
 }
 
 .input:focus,
@@ -52,15 +53,15 @@ pre {
 
 /* Feature cards */
 .feature-card {
-	@apply p-6 rounded-lg transition-all duration-200;
-	@apply hover:shadow-lg hover:scale-[1.02];
+	@apply rounded-lg p-6 transition-all duration-200;
+	@apply hover:scale-[1.02] hover:shadow-lg;
 	@apply bg-white dark:bg-[#202633];
 	@apply border border-gray-200 dark:border-surface-700/20;
 }
 
 /* Metrics cards */
 .metric-card {
-	@apply p-6 rounded-lg;
+	@apply rounded-lg p-6;
 	@apply bg-white dark:bg-[#202633];
 	@apply border border-gray-200 dark:border-surface-700/20;
 }
@@ -68,7 +69,7 @@ pre {
 /* Bar chart styles */
 .chart-bar {
 	@apply bg-[#00DC82]/80 hover:bg-[#00DC82];
-	@apply rounded-sm h-8 transition-all duration-300;
+	@apply h-8 rounded-sm transition-all duration-300;
 }
 
 /* Icon colors */
@@ -78,13 +79,13 @@ pre {
 
 /* Update select/dropdown styles */
 .select {
-	@apply bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 rounded-lg;
+	@apply rounded-lg border border-gray-200 bg-white dark:border-surface-700/20 dark:bg-[#202633];
 	@apply text-gray-900 dark:text-white;
 }
 
 /* Dropdown options */
 .select option {
-	@apply bg-white dark:bg-[#202633] text-gray-900 dark:text-white;
+	@apply bg-white text-gray-900 dark:bg-[#202633] dark:text-white;
 }
 
 /* Option hover state - using a custom color that matches theme */
@@ -98,7 +99,7 @@ pre {
 
 /* Focus state */
 .select:focus {
-	@apply ring-2 ring-[#00DC82]/20 border-[#00DC82] dark:border-[#00DC82] outline-none;
+	@apply border-[#00DC82] outline-none ring-2 ring-[#00DC82]/20 dark:border-[#00DC82];
 }
 
 /* Hover state */
@@ -113,21 +114,88 @@ pre {
 
 /* Disabled state */
 .select:disabled {
-	@apply bg-gray-100 dark:bg-surface-700/20 cursor-not-allowed;
+	@apply cursor-not-allowed bg-gray-100 dark:bg-surface-700/20;
 }
 
 /* Handle browser autofill styling */
 :global(input:-webkit-autofill),
 :global(input:-webkit-autofill:hover),
 :global(input:-webkit-autofill:focus) {
-    -webkit-text-fill-color: rgb(156 163 175) !important;
-    -webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
-    transition: background-color 5000s ease-in-out 0s;
+	-webkit-text-fill-color: rgb(156 163 175) !important;
+	-webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
+	transition: background-color 5000s ease-in-out 0s;
 }
 
 :global(.dark) :global(input:-webkit-autofill),
 :global(.dark) :global(input:-webkit-autofill:hover),
 :global(.dark) :global(input:-webkit-autofill:focus) {
-    -webkit-text-fill-color: rgb(156 163 175) !important;
-    -webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
-} 
+	-webkit-text-fill-color: rgb(156 163 175) !important;
+	-webkit-box-shadow: 0 0 0px 1000px rgb(17 24 39) inset !important;
+}
+
+/* Add custom styles for code blocks */
+.hljs {
+	@apply rounded-lg p-4 text-sm;
+	@apply bg-gray-100 dark:bg-[#151821];
+	@apply border border-gray-200 dark:border-surface-700/20;
+}
+
+/* Dark mode syntax colors */
+:global(.dark) {
+	.hljs-keyword {
+		color: #00dc82;
+	} /* async, const, function */
+	.hljs-string {
+		color: #22c55e;
+	} /* string literals */
+	.hljs-number {
+		color: #f59e0b;
+	} /* numbers */
+	.hljs-comment {
+		color: #64748b;
+	} /* comments */
+	.hljs-type {
+		color: #3b82f6;
+	} /* TypeScript types */
+	.hljs-title {
+		color: #0ea5e9;
+	} /* function names */
+	.hljs-attr {
+		color: #8b5cf6;
+	} /* object properties */
+	.hljs-built_in {
+		color: #06b6d4;
+	} /* built-in functions */
+	.hljs-literal {
+		color: #f43f5e;
+	} /* true, false, null */
+}
+
+/* Light mode syntax colors */
+.hljs-keyword {
+	color: #059669;
+}
+.hljs-string {
+	color: #16a34a;
+}
+.hljs-number {
+	color: #d97706;
+}
+.hljs-comment {
+	color: #6b7280;
+}
+.hljs-type {
+	color: #2563eb;
+}
+.hljs-title {
+	color: #0284c7;
+}
+.hljs-attr {
+	color: #7c3aed;
+}
+.hljs-built_in {
+	color: #0891b2;
+}
+.hljs-literal {
+	color: #e11d48;
+}

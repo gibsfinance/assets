@@ -20,4 +20,4 @@ export interface PlatformMetrics {
 		supported: NetworkInfo[];
 		active: string;
 	};
-} 
+}
