@@ -44,6 +44,9 @@
     let isNetworkSelectOpen = false;
     let selectedNetwork = null;
 
+    const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets';
+    const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new`;
+
     // Load metrics for chain data
     onMount(() => {
         metrics.fetchMetrics();
@@ -256,6 +259,26 @@
         return getApiUrl(`/image/${token.chainId}/${token.address}`);
     }
 
+    function createGithubIssue() {
+        const isToken = urlType === 'token';
+        const title = isToken 
+            ? `Missing Token Icon: ${selectedNetwork?.name || 'Unknown'} - ${tokenAddress}`
+            : `Missing Network Icon: ${selectedNetwork?.name || ''} (Chain ID: ${selectedChain})`;
+            
+        const body = isToken 
+            ? `### Asset Type\nToken Icon\n\n### Network Details\n- **Network Name**: ${selectedNetwork?.name || 'Unknown'}\n- **Chain ID**: ${selectedChain}\n\n### Token Details\n- **Token Address**: \`${tokenAddress}\`\n\n### URL Information\n- **Attempted URL**: ${generatedUrl}`
+            : `### Asset Type\nNetwork Icon\n\n### Network Details\n- **Network Name**: ${selectedNetwork?.name || 'Unknown'}\n- **Chain ID**: ${selectedChain}\n\n### URL Information\n- **Attempted URL**: ${generatedUrl}`;
+
+        const params = new URLSearchParams({
+            title: title,
+            body: body,
+            labels: 'missing-asset'
+        });
+
+        const issueUrl = `${GITHUB_REPO_URL}/issues/new?${params.toString()}`;
+        window.open(issueUrl, '_blank');
+    }
+
     $: if (generatedUrl) {
         setTimeout(() => {
             document.querySelectorAll('pre code').forEach((block) => {
@@ -415,7 +438,7 @@
                         <p class="font-medium">No icon found</p>
                         <p class="text-sm opacity-90">
                             There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. 
-                            You can help by submitting it to <a href="https://github.com/trustwallet/assets" class="anchor" target="_blank" rel="noopener">TrustWallet Assets</a>.
+                            You can help by <a href="#" class="anchor" on:click|preventDefault={createGithubIssue}>submitting an issue</a> or contributing directly to the <a href={GITHUB_REPO_URL} class="anchor" target="_blank" rel="noopener">Gib Assets repository</a>.
                         </p>
                     </div>
                 </div>
