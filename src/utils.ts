@@ -63,7 +63,7 @@ export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
   return BigInt(a.address) < BigInt(b.address) ? -1 : 1
 }
 
-export const limit = promiseLimit<any>(16)
+export const limit = promiseLimit(16) as ReturnType<typeof promiseLimit<any>>
 
 export const findChain = (chainId: number) => {
   const chain = Object.values(chains).find((chain) => chain.id === chainId) as viem.Chain

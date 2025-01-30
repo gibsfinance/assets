@@ -59,7 +59,7 @@ export type TokenList = {
   name: string
   timestamp: string
   version: TokenListVersion
-  tokens: TokenEntryMetadataOptional[]
+  tokens: TokenEntry[]
 }
 
 export type Call = {
