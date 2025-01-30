@@ -4,7 +4,7 @@ import { router as listRouter } from './list'
 import { router as networksRouter } from './networks'
 import { router as statsRouter } from './stats'
 
-export const router = Router()
+export const router = Router() as Router
 
 router.use('/health', (_req, res) => {
   res.send('ok')

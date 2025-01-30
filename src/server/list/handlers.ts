@@ -1,6 +1,6 @@
 import createError from 'http-errors'
 import * as db from '@/db'
-import { Request, RequestHandler } from 'express'
+import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, ListToken } from 'knex/types/tables'
