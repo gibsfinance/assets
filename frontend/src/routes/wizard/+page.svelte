@@ -272,7 +272,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
         <button
           class="btn {urlType === 'token' ? 'variant-filled-primary' : 'variant-ghost'}"
-          on:click={() => {
+          onclick={() => {
             urlType = 'token'
             generatedUrl = ''
             previewError = false
@@ -282,7 +282,7 @@
         </button>
         <button
           class="btn {urlType === 'network' ? 'variant-filled-primary' : 'variant-ghost'}"
-          on:click={() => {
+          onclick={() => {
             urlType = 'network'
             generatedUrl = ''
             tokenAddress = ''
@@ -293,7 +293,7 @@
         </button>
         <button
           class="btn {urlType === 'list' ? 'variant-filled-primary' : 'variant-ghost'}"
-          on:click={() => {
+          onclick={() => {
             urlType = 'list'
             generatedUrl = ''
             previewError = false
@@ -308,7 +308,7 @@
     {#if urlType === 'list'}
       <div class="space-y-2">
         <label for="list-select" class="label">Select Token List</label>
-        <select id="list-select" class="select" bind:value={listName} on:change={() => generateUrl()}>
+        <select id="list-select" class="select" bind:value={listName} onchange={() => generateUrl()}>
           {#each listOptions as option}
             <option value={option.value}>
               {option.label}
@@ -320,31 +320,31 @@
 
     <!-- Network Selection -->
     <div class="space-y-2">
-      <label class="label">
-        {urlType === 'list' ? 'Filter by Network (Optional)' : 'Select Network'}
-      </label>
       <div class="relative">
-        <button
-          type="button"
-          class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm"
-          on:click={toggleNetworkSelect}>
-          {#if selectedNetwork}
-            <span>{selectedNetwork.name} (Chain ID: {selectedNetwork.chainId})</span>
-          {:else}
-            <span class="text-gray-500">
-              {urlType === 'list' ? 'All Networks' : 'Choose a network...'}
-            </span>
-          {/if}
-          <i class="fas fa-chevron-down transition-transform" class:rotate-180={isNetworkSelectOpen}></i>
-        </button>
+        <label class="label">
+          <span class="leading-5">{urlType === 'list' ? 'Filter by Network (Optional)' : 'Select Network'}</span>
+          <button
+            type="button"
+            class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm leading-6"
+            onclick={toggleNetworkSelect}>
+            {#if selectedNetwork}
+              <span>{selectedNetwork.name} (Chain ID: {selectedNetwork.chainId})</span>
+            {:else}
+              <span class="text-gray-500">
+                {urlType === 'list' ? 'All Networks' : 'Choose a network...'}
+              </span>
+            {/if}
+            <i class="fas fa-chevron-down transition-transform flex" class:rotate-180={isNetworkSelectOpen}></i>
+          </button>
+        </label>
 
         {#if isNetworkSelectOpen}
           <div
-            class="absolute z-50 w-full mt-1 bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 rounded-lg shadow-lg max-h-[300px] overflow-y-auto text-sm">
+            class="absolute z-50 w-full mt-1 bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 shadow-lg max-h-[300px] overflow-y-auto text-sm">
             {#if urlType === 'list'}
               <button
                 class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
-                on:click={() => {
+                onclick={() => {
                   selectedChain = null
                   selectedNetwork = null
                   isNetworkSelectOpen = false
@@ -358,7 +358,7 @@
                 <button
                   class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
                   class:selected={selectedChain === network.chainId}
-                  on:click={() => selectNetwork(network)}>
+                  onclick={() => selectNetwork(network)}>
                   {network.name} (Chain ID: {network.chainId})
                 </button>
               {/each}
@@ -375,10 +375,10 @@
         <input
           id="token-address"
           type="text"
-          class="input"
+          class="input rounded-lg"
           placeholder="0x..."
           bind:value={tokenAddress}
-          on:input={(e) => {
+          oninput={(e) => {
             const input = e.target as HTMLInputElement
             tokenAddress = input.value.trim()
             generateUrl()
@@ -410,7 +410,7 @@
       <div class="card variant-ghost p-4 space-y-2">
         <div class="flex justify-between items-center">
           <span class="label">Generated URL</span>
-          <button class="btn btn-sm variant-soft" on:click={copyToClipboard}>
+          <button class="btn btn-sm variant-soft" onclick={copyToClipboard}>
             {#if copied}
               <i class="fas fa-check mr-2"></i>
               Copied!
@@ -442,8 +442,8 @@
                 src={generatedUrl.replace(/^\./, 'https://gib.show')}
                 alt="Icon preview"
                 class="w-16 h-16 rounded-full bg-surface-700 cursor-zoom-in hover:opacity-80 transition-opacity"
-                on:error={handleImageError}
-                on:click={openZoomModal} />
+                onerror={handleImageError}
+                onclick={openZoomModal} />
             {/if}
           </div>
         </div>
@@ -456,7 +456,7 @@
             <span class="label">Response Preview</span>
             <!-- Only show the toggle button for non-default lists -->
             {#if listName !== 'default'}
-              <button class="btn btn-sm variant-soft" on:click={toggleTokenListPreview}>
+              <button class="btn btn-sm variant-soft" onclick={toggleTokenListPreview}>
                 <i class="fas {showTokenList ? 'fa-code' : 'fa-list'} mr-2"></i>
                 {showTokenList ? 'Show Response' : 'Show Tokens'}
               </button>
@@ -490,7 +490,7 @@
                       placeholder="Search tokens..."
                       class="input"
                       bind:value={searchQuery}
-                      on:input={() => {
+                      oninput={() => {
                         currentPage = 1
                         filteredTokens = allTokens.filter(
                           (token) =>
@@ -527,8 +527,8 @@
                               <img
                                 src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
                                 alt={token.symbol}
-                                class="w-8 h-8 rounded-full bg-surface-700"
-                                on:error={(e) => {
+                                class="w-8 h-8 bg-surface-700"
+                                onerror={(e) => {
                                   const target = e.target as HTMLImageElement
                                   target.src = fallbackIcon
                                 }} />
@@ -543,7 +543,7 @@
                             <div class="flex gap-2">
                               <button
                                 class="btn btn-sm variant-soft"
-                                on:click={() => {
+                                onclick={() => {
                                   navigator.clipboard.writeText(getTokenUrl(token))
                                 }}>
                                 <i class="fas fa-copy"></i>
@@ -565,7 +565,7 @@
 
                 <!-- Pagination -->
                 <div class="flex justify-between items-center">
-                  <button class="btn btn-sm variant-soft" disabled={currentPage === 1} on:click={() => currentPage--}>
+                  <button class="btn btn-sm variant-soft" disabled={currentPage === 1} onclick={() => currentPage--}>
                     <i class="fas fa-chevron-left mr-2"></i>
                     Previous
                   </button>
@@ -575,7 +575,7 @@
                   <button
                     class="btn btn-sm variant-soft"
                     disabled={currentPage >= Math.ceil(filteredTokens.length / tokensPerPage)}
-                    on:click={() => currentPage++}>
+                    onclick={() => currentPage++}>
                     Next
                     <i class="fas fa-chevron-right ml-2"></i>
                   </button>
@@ -600,23 +600,23 @@
 
       <!-- Zoom Modal -->
       {#if showZoomModal && !previewError}
-        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" on:click={closeZoomModal}>
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={closeZoomModal}>
           <div
             class="bg-[#202633] border border-surface-700/20 p-6 rounded-lg shadow-xl w-[90vw] max-w-6xl mx-4 space-y-4"
-            on:click|stopPropagation>
+            onclick={(e) => e.stopPropagation()}>
             <div class="flex justify-between items-center text-white">
               <h3 class="h3">Image Preview</h3>
               <div class="flex gap-2">
-                <button class="btn btn-sm variant-soft-surface" on:click={handleZoomOut} disabled={zoomLevel <= 0.5}>
+                <button class="btn btn-sm variant-soft-surface" onclick={handleZoomOut} disabled={zoomLevel <= 0.5}>
                   <i class="fas fa-minus"></i>
                 </button>
                 <span class="flex items-center px-2 text-sm">
                   {Math.round(zoomLevel * 100)}%
                 </span>
-                <button class="btn btn-sm variant-soft-surface" on:click={handleZoomIn} disabled={zoomLevel >= 4}>
+                <button class="btn btn-sm variant-soft-surface" onclick={handleZoomIn} disabled={zoomLevel >= 4}>
                   <i class="fas fa-plus"></i>
                 </button>
-                <button class="btn btn-sm variant-soft-error" on:click={closeZoomModal}>
+                <button class="btn btn-sm variant-soft-error" onclick={closeZoomModal}>
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -624,11 +624,14 @@
 
             <div
               class="overflow-hidden rounded-lg relative h-[400px] cursor-move checkerboard bg-[#151821] border border-surface-700/20"
-              on:mousedown={handleMouseDown}
-              on:mousemove={handleMouseMove}
-              on:mouseup={handleMouseUp}
-              on:mouseleave={handleMouseUp}
-              on:wheel|preventDefault={handleWheel}>
+              onmousedown={handleMouseDown}
+              onmousemove={handleMouseMove}
+              onmouseup={handleMouseUp}
+              onmouseleave={handleMouseUp}
+              onwheel={(e) => {
+                e.preventDefault()
+                return handleWheel(e)
+              }}>
               <img
                 src={generatedUrl.replace(/^\./, 'https://gib.show')}
                 alt="Icon preview"
@@ -645,7 +648,7 @@
       {/if}
 
       <!-- Reset Button -->
-      <button class="btn variant-ghost-surface w-full" on:click={resetForm}>
+      <button class="btn variant-ghost-surface w-full" onclick={resetForm}>
         <i class="fas fa-redo mr-2"></i>
         Reset
       </button>
@@ -665,10 +668,10 @@
   .label {
     @apply font-medium text-sm;
   }
-  .input,
+  /*.input,
   .select {
     @apply w-full;
-  }
+  }*/
   /* Prevent image dragging which interferes with pan functionality */
   img {
     -webkit-user-drag: none;
