@@ -1,6 +1,6 @@
 import createError from 'http-errors'
 import * as db from '@/db'
-import { Request, RequestHandler } from 'express'
+import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, ListToken } from 'knex/types/tables'
@@ -59,7 +59,6 @@ export const versioned: RequestHandler = async (req, res, next) => {
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
-  console.log(req.params)
   const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
   if (!list) {
     return next(createError.NotFound())

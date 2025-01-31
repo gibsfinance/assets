@@ -8,7 +8,6 @@ import * as db from '@/db'
 import config from 'config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
 import { RequestHandler, Response } from 'express'
-import * as core from 'express-serve-static-core'
 import _ from 'lodash'
 
 export const getListTokens = async (
@@ -197,7 +196,7 @@ const ignoreNotFound = (err: HttpError) => {
   throw err
 }
 
-export const tryMultiple: RequestHandler<core.ParamsDictionary, any, any, { i: string | string[] }> = async (
+export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (
   req,
   res,
   next,
