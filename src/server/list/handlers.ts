@@ -3,8 +3,9 @@ import * as db from '@/db'
 import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
 import { tableNames } from '@/db/tables'
-import type { Image, ListToken } from 'knex/types/tables'
+import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
+import { cacheResult } from '@/utils'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -65,4 +66,36 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   }
   const filters = utils.tokenFilters(req.query)
   await utils.respondWithList(res, list, filters, extensions)
+}
+
+const getLists = async (filter: object) => {
+  let q = db
+    .getDB()
+    .select<List & Provider>([
+      `${tableNames.list}.key`,
+      `${tableNames.list}.name`,
+      `${tableNames.list}.description`,
+      `${tableNames.list}.default`,
+      `${tableNames.provider}.key as provider_key`,
+      `${tableNames.network}.chain_id`,
+    ])
+    .from(tableNames.list)
+    .join(tableNames.provider, {
+      [`${tableNames.provider}.provider_id`]: `${tableNames.list}.provider_id`,
+    })
+    .join(tableNames.network, {
+      [`${tableNames.network}.network_id`]: `${tableNames.list}.network_id`,
+    })
+  for (const [k, v] of Object.entries(filter)) {
+    if (_.isArray(v)) {
+      q = q.whereIn(k, v)
+    } else {
+      q = q.where(k, v)
+    }
+  }
+  return q
+}
+
+export const all: RequestHandler = async (req, res, next) => {
+  res.json(await getLists(req.query))
 }
