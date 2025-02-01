@@ -50,6 +50,7 @@ export const normalizeTokens = (
   return [
     ..._(tokens)
       .filter((a) => over(a))
+      .filter((tkn) => viem.isAddress(tkn.providedId))
       .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
