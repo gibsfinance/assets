@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { metrics } from '$lib/stores/metrics'
+  import { getApiUrl, FALLBACK_ICON } from '$lib/utils'
   import type { PlatformMetrics, TokenInfo, FloatingToken, PositionType, Hex } from '$lib/types'
-  import { getApiUrl } from '$lib/utils'
+  import networkNames from '$lib/networks.json' assert { type: "json" }
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
@@ -79,9 +80,32 @@
     { chainId: 56, address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82' }, // BSC PancakeSwap
   ]
 
-  // Add fallback icon definition
-  const fallbackIcon =
-    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PHBhdGggZD0iTTggMTRzMS41IDIgNCAyIDQtMiA0LTIiLz48bGluZSB4MT0iOSIgeTE9IjkiIHgyPSI5LjAxIiB5Mj0iOSIvPjxsaW5lIHgxPSIxNSIgeTE9IjkiIHgyPSIxNS4wMSIgeTI9IjkiLz48L3N2Zz4='
+  // Add the getNetworkName function
+  function getNetworkName(chainId: number | string): string {
+    const chainIdStr = chainId.toString();
+    // First check our priority networks to ensure specific naming
+    const priorityNames: Record<string, string> = {
+      '1': 'Ethereum',
+      '369': 'PulseChain',
+      '56': 'BNB Smart Chain',
+      '137': 'Polygon',
+      '42161': 'Arbitrum One',
+      '10': 'Optimism',
+      '100': 'Gnosis Chain',
+      '324': 'zkSync Era',
+      '534352': 'Scroll',
+      '250': 'Fantom Opera',
+      '1030': 'Conflux eSpace',
+      '5000': 'Mantle',
+      '8453': 'Base',
+      '59144': 'Linea',
+      '7777777': 'Zora'
+    };
+    
+    // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
+    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames];
+    return networkName || `Chain ${chainIdStr}`;
+  }
 
   // Function to generate random floating images
   function generateFloatingImages(): FloatingToken[] {
@@ -156,8 +180,8 @@
       <!-- Hero Section -->
       <section class="relative space-y-6 py-8 rounded-lg overflow-hidden">
         <div class="absolute inset-0 -z-10 overflow-hidden blur-3xl">
-          <div class="absolute -top-4 -right-4 w-96 h-72 bg-[#00DC82]/10 rounded-full"></div>
-          <div class="absolute -bottom-4 -left-4 w-96 h-72 bg-[#00DC82]/10 rounded-full"></div>
+          <div class="absolute -top-4 -right-4 w-96 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
+          <div class="absolute -bottom-4 -left-4 w-96 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
         </div>
 
         <div class="space-y-2">
@@ -201,10 +225,10 @@
         <h2 class="h2 text-center text-3xl font-bold">Simple Integration</h2>
         <div class="grid gap-6">
           {#each examples as example}
-            <div class="card p-6 transition-all">
+            <div class="card p-6 hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all">
               <div class="grid md:grid-cols-2 gap-6">
                 <!-- Visual Preview -->
-                <div class="flex items-center justify-center p-4 rounded-lg">
+                <div class="flex items-center justify-center p-4 bg-surface-700/10 rounded-lg">
                   {#if example.title === 'Get Token Image'}
                     <div class="flex gap-4 items-center">
                       <img
@@ -275,9 +299,19 @@
           <div
             class="metric-card group hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all p-6 rounded-lg border border-gray-200 dark:border-surface-700/20 bg-white dark:bg-[#202633]">
             {#if $metrics}
+              {@const networks = $metrics.networks.supported
+                .filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
+                .map(n => ({
+                  chainId: n.chainId,
+                  name: getNetworkName(n.chainId),
+                  tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0
+                }))
+                .filter(n => n.tokenCount > 0)
+                .sort((a, b) => b.tokenCount - a.tokenCount)}
+              {@const totalTokens = $metrics.tokenList.total}
               <span
                 class="block text-5xl font-bold text-center mb-2 bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">
-                {$metrics.tokenList.total}+
+                {totalTokens.toLocaleString()}+
               </span>
             {:else}
               <span class="block text-5xl font-bold text-center mb-2 animate-pulse">---</span>
@@ -289,7 +323,7 @@
             {#if $metrics}
               <span
                 class="block text-5xl font-bold text-center mb-2 bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">
-                {$metrics.networks.supported.length}
+                {$metrics.networks.supported.filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet')).length}
               </span>
             {:else}
               <span class="block text-5xl font-bold text-center mb-2 animate-pulse">---</span>
@@ -298,27 +332,58 @@
           </div>
         </div>
 
-        <!-- Token Distribution Graph -->
+        <!-- Token Distribution Visualization -->
         {#if $metrics}
-          {@const c = console.log($metrics)}
+          {@const networks = $metrics.networks.supported
+            .filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
+            .map(n => ({
+              chainId: n.chainId,
+              name: getNetworkName(n.chainId),
+              tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0
+            }))
+            .filter(n => n.tokenCount > 0)
+            .sort((a, b) => b.tokenCount - a.tokenCount)}
+          {@const totalTokens = $metrics.tokenList.total}
+          
           <div class="card p-4">
-            <h3 class="h3 mb-2 text-center">Tokens by Chain</h3>
-            <div class="flex h-[400px] flex-col justify-end space-y-3 mt-4 w-full">
-              {#each $metrics.networks.supported.filter((n) => n.chainId !== 943) as network}
-                {@const tokenCount = $metrics.tokenList.byChain[network.chainId] || 0}
-                {@const maxTokens = Math.max(...Object.values($metrics.tokenList.byChain))}
-                {@const percentage = (tokenCount / maxTokens) * 100}
-                <div class="flex items-center gap-4">
-                  <div class="w-32 text-sm font-medium text-gray-900 dark:text-white">
-                    {network.name}
-                  </div>
-                  <div class="flex-1">
-                    <div
-                      class="chart-bar bg-[#00DC82]/80 hover:bg-[#00DC82] rounded-sm h-8 transition-all duration-300"
-                      style="width: {percentage}%">
-                      <div class="px-3 text-sm leading-8 font-medium text-black dark:text-white">
-                        {tokenCount.toLocaleString()}
+            <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {#each networks as network}
+                {@const percentage = (network.tokenCount / totalTokens * 100).toFixed(1)}
+                {@const intensity = Math.max(0.2, network.tokenCount / Math.max(...networks.map(n => n.tokenCount)))}
+                <div 
+                  class="relative group hover:scale-105 transition-all duration-200"
+                  style="aspect-ratio: 1;"
+                >
+                  <div 
+                    class="absolute inset-0 rounded-lg bg-[#00DC82]"
+                    style="opacity: {intensity * 0.15}"
+                  ></div>
+                  <div class="relative h-full card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between gap-2">
+                    <div class="flex flex-col items-center gap-2">
+                      <img 
+                        src={getApiUrl(`/image/${network.chainId}`)} 
+                        alt={network.name}
+                        class="w-12 h-12 rounded-full"
+                        on:error={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = FALLBACK_ICON;
+                        }}
+                      />
+                      <div class="text-center">
+                        <div class="font-medium truncate w-full" title={network.name}>{network.name}</div>
+                        <div class="text-xs text-surface-500 font-mono">Chain ID: {network.chainId}</div>
                       </div>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                      <div class="text-lg font-bold text-[#00DC82]">{network.tokenCount.toLocaleString()}</div>
+                      <div class="text-xs text-surface-500">{percentage}% of total</div>
+                    </div>
+                    <div class="w-full h-1 bg-surface-700/20 rounded-full overflow-hidden">
+                      <div 
+                        class="h-full bg-[#00DC82]/80 rounded-full transition-all duration-200"
+                        style="width: {percentage}%"
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -367,7 +432,7 @@
           class="w-full h-full rounded-full opacity-10"
           on:error={(e) => {
             const target = e.target as HTMLImageElement
-            target.src = fallbackIcon
+            target.src = FALLBACK_ICON
           }} />
       </div>
     {/each}
@@ -443,5 +508,15 @@
     opacity: 0.4;
     filter: blur(0) !important;
     transition: all 0.3s ease;
+  }
+
+  /* Add smooth hover effects for cards */
+  .card {
+    @apply transition-all duration-200;
+  }
+  
+  /* Ensure text truncation works properly */
+  .truncate {
+    @apply max-w-full overflow-hidden text-ellipsis;
   }
 </style>

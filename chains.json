@@ -1,0 +1,19 @@
+{
+  "chains": [
+    {
+      "chainId": 314,
+      "name": "Filecoin - Mainnet",
+      "shortName": "filecoin"
+    },
+    {
+      "chainId": 3141,
+      "name": "Filecoin - Hyperspace testnet",
+      "shortName": "filecoin-hyperspace"
+    },
+    {
+      "chainId": 314159,
+      "name": "Filecoin - Calibration testnet",
+      "shortName": "filecoin-calibration"
+    }
+  ]
+}
