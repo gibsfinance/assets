@@ -44,7 +44,7 @@
         </a>
         <div class="flex items-center gap-4">
           <button
-            onclick={() => {
+            on:click={() => {
               goto('/wizard')
             }}
             class="btn bg-[#00DC82] hover:bg-[#00DC82]/80 text-black shadow-lg hover:-translate-y-0.5 transition-all">

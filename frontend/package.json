@@ -3,6 +3,11 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
+	"config": {
+		"maxsockets": 3,
+		"network-timeout": 100000,
+		"fetch-retries": 5
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
