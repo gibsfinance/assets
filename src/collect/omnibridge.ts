@@ -1,6 +1,6 @@
 import * as viem from 'viem'
 import * as db from '@/db'
-import { chainIdToNetworkId, erc20Read } from '@/utils'
+import { chainIdToNetworkId, erc20Read, publicClient } from '@/utils'
 import _ from 'lodash'
 import { log } from '@/logger'
 
@@ -31,14 +31,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
       const fromHome = fromConfig === config.home
       const toConfig = fromHome ? config.foreign : config.home
       // console.log('todo: %o from=%o to=%o', config.providerPrefix, fromConfig.chain.id, toConfig.chain.id)
-      const fromClient = viem.createPublicClient({
-        chain: fromConfig.chain,
-        transport: viem.http(),
-      }) as viem.PublicClient
-      const toClient = viem.createPublicClient({
-        chain: toConfig.chain,
-        transport: viem.http(),
-      }) as viem.PublicClient
+      const fromClient = publicClient(fromConfig.chain)
+      const toClient = publicClient(toConfig.chain)
       const toOmnibridge = viem.getContract({
         address: toConfig.address,
         client: toClient,

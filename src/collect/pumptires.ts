@@ -111,22 +111,27 @@ export const collect = async () => {
     name: listKey,
     providerId: provider.providerId,
     networkId: network.networkId,
+    default: true,
   })
   const tokens = await collectTokens(list.listId)
-  await utils.limit.map(tokens, async (token: TokenInfo) => {
-    const originalUri = `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
-    await db.fetchImageAndStoreForToken({
-      listId: list.listId,
-      uri: originalUri,
-      originalUri,
-      providerKey,
-      token: {
-        name: token.name,
-        symbol: token.symbol,
-        decimals: 18,
-        providedId: token.address,
-        networkId: network.networkId,
-      },
+  await utils.spinner('pumptires', async (l) => {
+    l.incrementMax(tokens.length)
+    await utils.limit.map(tokens, async (token: TokenInfo) => {
+      const originalUri = `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
+      await db.fetchImageAndStoreForToken({
+        listId: list.listId,
+        uri: originalUri,
+        originalUri,
+        providerKey,
+        token: {
+          name: token.name,
+          symbol: token.symbol,
+          decimals: 18,
+          providedId: token.address,
+          networkId: network.networkId,
+        },
+      })
+      l.incrementCurrent()
     })
   })
 }

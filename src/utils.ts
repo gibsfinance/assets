@@ -310,3 +310,16 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
     return cached.result
   })
 }
+
+export const publicClient = _.memoize((chain: viem.Chain) => {
+  return viem.createPublicClient({
+    chain,
+    transport: viem.http(),
+    batch: {
+      multicall: {
+        batchSize: 32,
+        wait: 0,
+      },
+    },
+  }) as viem.PublicClient
+})

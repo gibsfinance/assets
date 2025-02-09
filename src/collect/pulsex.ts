@@ -82,10 +82,7 @@ export const collect = async () => {
   await Promise.all([
     remoteList(),
     ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
-      const client = viem.createPublicClient({
-        chain,
-        transport: viem.http(),
-      })
+      const client = utils.publicClient(chain)
       const targets = [...config.targets.values()]
       const tokens = await Promise.all(targets.map((target) => utils.erc20Read(pulsechain, client, target)))
       const list = tokens.map(([name, symbol, decimals], index) => {
