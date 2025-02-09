@@ -23,7 +23,12 @@ export async function seedOrders(): Promise<void> {
       db.ids.provider('internetmoney'),
       db.ids.provider('pulsechain'),
     ]
-    const providers = await db.getDB().select('*').from(tableNames.provider).whereIn('providerId', providerIds)
+    const providers = await db
+      .getDB()
+      .select('*')
+      .from(tableNames.provider)
+      .whereIn('providerId', providerIds)
+      .returning('*')
     if (providers.length !== providerIds.length) {
       throw new Error('Failed to insert providers')
     }
