@@ -136,10 +136,7 @@ export const collect = async () => {
           utils.failureLog('unable to find network %o/%o', 'smoldapp', +chainIdString)
         }
         l.incrementMax(tokens.length)
-        const client = viem.createPublicClient({
-          chain,
-          transport: viem.http(),
-        })
+        const client = utils.publicClient(chain)
         // total += tokens.length
         const limit = promiseLimit<viem.Hex>(256)
         await limit

@@ -37,10 +37,7 @@ export const collect =
       extra.map(async (item) => {
         // extension
         const chain = utils.findChain(item.network.id) as viem.Chain
-        const client = viem.createPublicClient({
-          chain,
-          transport: viem.http(),
-        })
+        const client = utils.publicClient(chain)
         const [image, [name, symbol, decimals]] = await Promise.all([
           db.fetchImage(item.logoURI, providerKey),
           utils.erc20Read(chain, client, item.address),

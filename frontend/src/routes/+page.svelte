@@ -3,7 +3,7 @@
   import { metrics } from '$lib/stores/metrics'
   import { getApiUrl, FALLBACK_ICON } from '$lib/utils'
   import type { PlatformMetrics, TokenInfo, FloatingToken, PositionType, Hex } from '$lib/types'
-  import networkNames from '$lib/networks.json' assert { type: "json" }
+  import networkNames from '$lib/networks.json' assert { type: 'json' }
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
@@ -82,7 +82,7 @@
 
   // Add the getNetworkName function
   function getNetworkName(chainId: number | string): string {
-    const chainIdStr = chainId.toString();
+    const chainIdStr = chainId.toString()
     // First check our priority networks to ensure specific naming
     const priorityNames: Record<string, string> = {
       '1': 'Ethereum',
@@ -99,12 +99,12 @@
       '5000': 'Mantle',
       '8453': 'Base',
       '59144': 'Linea',
-      '7777777': 'Zora'
-    };
-    
+      '7777777': 'Zora',
+    }
+
     // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
-    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames];
-    return networkName || `Chain ${chainIdStr}`;
+    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames]
+    return networkName || `Chain ${chainIdStr}`
   }
 
   // Function to generate random floating images
@@ -300,13 +300,13 @@
             class="metric-card group hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all p-6 rounded-lg border border-gray-200 dark:border-surface-700/20 bg-white dark:bg-[#202633]">
             {#if $metrics}
               {@const networks = $metrics.networks.supported
-                .filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
-                .map(n => ({
+                .filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
+                .map((n) => ({
                   chainId: n.chainId,
                   name: getNetworkName(n.chainId),
-                  tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0
+                  tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0,
                 }))
-                .filter(n => n.tokenCount > 0)
+                .filter((n) => n.tokenCount > 0)
                 .sort((a, b) => b.tokenCount - a.tokenCount)}
               {@const totalTokens = $metrics.tokenList.total}
               <span
@@ -323,7 +323,8 @@
             {#if $metrics}
               <span
                 class="block text-5xl font-bold text-center mb-2 bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">
-                {$metrics.networks.supported.filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet')).length}
+                {$metrics.networks.supported.filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
+                  .length}
               </span>
             {:else}
               <span class="block text-5xl font-bold text-center mb-2 animate-pulse">---</span>
@@ -335,41 +336,35 @@
         <!-- Token Distribution Visualization -->
         {#if $metrics}
           {@const networks = $metrics.networks.supported
-            .filter(n => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
-            .map(n => ({
+            .filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
+            .map((n) => ({
               chainId: n.chainId,
               name: getNetworkName(n.chainId),
-              tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0
+              tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0,
             }))
-            .filter(n => n.tokenCount > 0)
+            .filter((n) => n.tokenCount > 0)
             .sort((a, b) => b.tokenCount - a.tokenCount)}
           {@const totalTokens = $metrics.tokenList.total}
-          
+
           <div class="card p-4">
             <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {#each networks as network}
-                {@const percentage = (network.tokenCount / totalTokens * 100).toFixed(1)}
-                {@const intensity = Math.max(0.2, network.tokenCount / Math.max(...networks.map(n => n.tokenCount)))}
-                <div 
-                  class="relative group hover:scale-105 transition-all duration-200"
-                  style="aspect-ratio: 1;"
-                >
-                  <div 
-                    class="absolute inset-0 rounded-lg bg-[#00DC82]"
-                    style="opacity: {intensity * 0.15}"
-                  ></div>
-                  <div class="relative h-full card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between gap-2">
+                {@const percentage = ((network.tokenCount / totalTokens) * 100).toFixed(1)}
+                {@const intensity = Math.max(0.2, network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)))}
+                <div class="relative group hover:scale-105 transition-all duration-200" style="aspect-ratio: 1;">
+                  <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
+                  <div
+                    class="relative h-full card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between gap-2">
                     <div class="flex flex-col items-center gap-2">
-                      <img 
-                        src={getApiUrl(`/image/${network.chainId}`)} 
+                      <img
+                        src={getApiUrl(`/image/${network.chainId}`)}
                         alt={network.name}
                         class="w-12 h-12 rounded-full"
                         on:error={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.src = FALLBACK_ICON;
-                        }}
-                      />
+                          const target = e.target as HTMLImageElement
+                          target.src = FALLBACK_ICON
+                        }} />
                       <div class="text-center">
                         <div class="font-medium truncate w-full" title={network.name}>{network.name}</div>
                         <div class="text-xs text-surface-500 font-mono">Chain ID: {network.chainId}</div>
@@ -380,10 +375,9 @@
                       <div class="text-xs text-surface-500">{percentage}% of total</div>
                     </div>
                     <div class="w-full h-1 bg-surface-700/20 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         class="h-full bg-[#00DC82]/80 rounded-full transition-all duration-200"
-                        style="width: {percentage}%"
-                      ></div>
+                        style="width: {percentage}%"></div>
                     </div>
                   </div>
                 </div>
@@ -514,7 +508,7 @@
   .card {
     @apply transition-all duration-200;
   }
-  
+
   /* Ensure text truncation works properly */
   .truncate {
     @apply max-w-full overflow-hidden text-ellipsis;

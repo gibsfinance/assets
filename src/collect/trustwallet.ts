@@ -68,6 +68,12 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     // check the chain itself
     const client = viem.createPublicClient({
       transport: viem.http(networkInfo.rpc_url),
+      batch: {
+        multicall: {
+          batchSize: 32,
+          wait: 0,
+        },
+      },
     })
     chainId = await client.getChainId()
   }
