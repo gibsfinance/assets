@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import Image from '$lib/components/Image.svelte'
+  import Icon from '@iconify/svelte'
   import { metrics } from '$lib/stores/metrics'
-  import { getApiUrl, FALLBACK_ICON } from '$lib/utils'
-  import type { PlatformMetrics, TokenInfo, FloatingToken, PositionType, Hex } from '$lib/types'
+  import { getApiUrl } from '$lib/utils'
+  import type { PlatformMetrics, FloatingToken, PositionType, Hex } from '$lib/types'
   import networkNames from '$lib/networks.json' assert { type: 'json' }
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
-  let tokenAddress = ''
 
   metrics.subscribe((value) => {
     metricsData = value
@@ -304,7 +305,7 @@
                 .map((n) => ({
                   chainId: n.chainId,
                   name: getNetworkName(n.chainId),
-                  tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0,
+                  tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
                 }))
                 .filter((n) => n.tokenCount > 0)
                 .sort((a, b) => b.tokenCount - a.tokenCount)}
@@ -340,7 +341,7 @@
             .map((n) => ({
               chainId: n.chainId,
               name: getNetworkName(n.chainId),
-              tokenCount: $metrics.tokenList.byChain[n.chainId.toString()] || 0,
+              tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
             }))
             .filter((n) => n.tokenCount > 0)
             .sort((a, b) => b.tokenCount - a.tokenCount)}
@@ -357,14 +358,11 @@
                   <div
                     class="relative h-full card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between gap-2">
                     <div class="flex flex-col items-center gap-2">
-                      <img
-                        src={getApiUrl(`/image/${network.chainId}`)}
-                        alt={network.name}
-                        class="w-12 h-12 rounded-full"
-                        on:error={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = FALLBACK_ICON
-                        }} />
+                      <Image src={getApiUrl(`/image/${network.chainId}`)} alt={network.name} class="rounded-full">
+                        {#snippet fallback()}
+                          <Icon icon="nrk:404" class="w-12 h-12" />
+                        {/snippet}
+                      </Image>
                       <div class="text-center">
                         <div class="font-medium truncate w-full" title={network.name}>{network.name}</div>
                         <div class="text-xs text-surface-500 font-mono">Chain ID: {network.chainId}</div>
@@ -418,16 +416,16 @@
 					opacity: 0;
 					--direction: {image.direction};
 				">
-        <img
+        <Image
           src={image.type === 'network'
             ? getApiUrl(`/image/${image.chainId}`)
             : getApiUrl(`/image/${image.chainId}/${image.address}`)}
           alt={image.type === 'network' ? 'Network icon' : 'Token icon'}
-          class="w-full h-full rounded-full opacity-10"
-          on:error={(e) => {
-            const target = e.target as HTMLImageElement
-            target.src = FALLBACK_ICON
-          }} />
+          class="w-full h-full rounded-full opacity-10">
+          {#snippet fallback(p)}
+            <Icon icon="nrk:404" />
+          {/snippet}
+        </Image>
       </div>
     {/each}
   </div>

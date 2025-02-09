@@ -1,9 +1,11 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte'
   import { metrics } from '$lib/stores/metrics'
   import { onMount, onDestroy } from 'svelte'
-  import { getApiUrl, FALLBACK_ICON } from '$lib/utils'
+  import { getApiUrl } from '$lib/utils'
   import type { ApiType, NetworkInfo } from '$lib/types'
-  import networkNames from '$lib/networks.json' assert { type: "json" }
+  import networkNames from '$lib/networks.json' assert { type: 'json' }
+  import Image from '$lib/components/Image.svelte'
 
   let selectedChain: number | null = null
   let tokenAddress: string = ''
@@ -26,16 +28,16 @@
   let backgroundColor = '#151821'
   let showColorPicker = false
   let showTokenBrowser = true
-  let availableLists: Array<{ 
-    key: string, 
-    name: string, 
-    providerKey: string,
-    chainId: string,
-    type: string,
+  let availableLists: Array<{
+    key: string
+    name: string
+    providerKey: string
+    chainId: string
+    type: string
     default: boolean
   }> = []
 
-  let selectedList: { key: string, providerKey: string } | null = null
+  let selectedList: { key: string; providerKey: string } | null = null
 
   let currentPage = 1
   const tokensPerPage = 25
@@ -64,106 +66,115 @@
   let globalSearchResults: Token[] = []
 
   // Add local storage for token lists
-  let tokenListsCache = new Map<string, {
-    timestamp: number,
-    tokens: Token[]
-  }>();
+  let tokenListsCache = new Map<
+    string,
+    {
+      timestamp: number
+      tokens: Token[]
+    }
+  >()
 
-  const CACHE_DURATION = 1000 * 60 * 60; // 1 hour cache duration
+  const CACHE_DURATION = 1000 * 60 * 60 // 1 hour cache duration
 
   // Add loading state
-  let isSearching = false;
+  let isSearching = false
 
   // Add these constants at the top with other constants
-  const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets';
-  const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new?template=missing-asset.yml`;
+  const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets'
+  const GITHUB_NEW_ISSUE_URL = `${GITHUB_REPO_URL}/issues/new?template=missing-asset.yml`
 
   // Add an abort controller before the component logic
-  let searchAbortController: AbortController | null = null;
+  let searchAbortController: AbortController | null = null
 
   // Add cleanup function
   onDestroy(() => {
     // Cancel any ongoing searches
     if (searchAbortController) {
-      searchAbortController.abort();
+      searchAbortController.abort()
     }
     // Reset search state
-    isSearching = false;
-    isGlobalSearchActive = false;
-    globalSearchResults = [];
-  });
+    isSearching = false
+    isGlobalSearchActive = false
+    globalSearchResults = []
+  })
 
   // Function to get cached list or fetch it
   async function getTokenList(providerKey: string, key: string, chainId: string | number): Promise<Token[]> {
-    const cacheKey = `${providerKey}-${key}-${chainId}`;
-    const now = Date.now();
-    
+    const cacheKey = `${providerKey}-${key}-${chainId}`
+    const now = Date.now()
+
     // Check cache first
-    const cached = tokenListsCache.get(cacheKey);
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-      return cached.tokens;
+    const cached = tokenListsCache.get(cacheKey)
+    if (cached && now - cached.timestamp < CACHE_DURATION) {
+      return cached.tokens
     }
 
     // If not in cache or expired, fetch it
     try {
-      const url = getApiUrl(`/list/${providerKey}/${key}?chainId=${chainId}`);
-      const response = await fetch(url);
-      
+      const url = getApiUrl(`/list/${providerKey}/${key}?chainId=${chainId}`)
+      const response = await fetch(url)
+
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json()
         if (data?.tokens && Array.isArray(data.tokens)) {
           const tokens = data.tokens.map((token: Token) => ({
             ...token,
             hasIcon: true,
             sourceList: `${providerKey}/${key}`,
             isBridgeToken: providerKey.includes('bridge'),
-            chainName: $metrics?.networks.supported.find(n => n.chainId.toString() === chainId.toString())?.name || `Chain ${chainId}`
-          }));
-          
+            chainName:
+              $metrics?.networks.supported.find((n) => n.chainId.toString() === chainId.toString())?.name ||
+              `Chain ${chainId}`,
+          }))
+
           // Store in cache
           tokenListsCache.set(cacheKey, {
             timestamp: now,
-            tokens
-          });
-          
-          return tokens;
+            tokens,
+          })
+
+          return tokens
         }
       }
-      return [];
+      return []
     } catch (error) {
-      console.error(`Error fetching list ${providerKey}/${key}:`, error);
-      return [];
+      console.error(`Error fetching list ${providerKey}/${key}:`, error)
+      return []
     }
   }
 
   // Load metrics and available lists
-  onMount(async () => {
+  onMount(() => {
+    let cancelled = false
     metrics.fetchMetrics()
-    try {
-      const response = await fetch(getApiUrl('/list'))
-      if (response.ok) {
-        const data = await response.json()
-        // Transform the data into the format we need, removing duplicates
-        const uniqueLists = new Map()
-        data.forEach((info: any) => {
-          const key = `${info.providerKey}-${info.key}-${info.chainId}`
-          if (!uniqueLists.has(key)) {
-            uniqueLists.set(key, {
-              key: info.key,
-              name: info.name || info.key,
-              providerKey: info.providerKey,
-              chainId: info.chainId?.toString() || '0',
-              type: info.type || 'hosted',
-              default: info.default || false
-            })
-          }
-        })
-        availableLists = Array.from(uniqueLists.values())
-        console.log('Available lists:', availableLists)
-      }
-    } catch (error) {
-      console.error('Failed to fetch available lists:', error)
-    }
+    fetch(getApiUrl('/list'))
+      .then(async (response) => {
+        if (cancelled) return
+        if (response.ok) {
+          const data = await response.json()
+          if (cancelled) return
+          // Transform the data into the format we need, removing duplicates
+          const uniqueLists = new Map()
+          data.forEach((info: any) => {
+            const key = `${info.providerKey}-${info.key}-${info.chainId}`
+            if (!uniqueLists.has(key)) {
+              uniqueLists.set(key, {
+                key: info.key,
+                name: info.name || info.key,
+                providerKey: info.providerKey,
+                chainId: info.chainId?.toString() || '0',
+                type: info.type || 'hosted',
+                default: info.default || false,
+              })
+            }
+          })
+          availableLists = Array.from(uniqueLists.values())
+          console.log('Available lists:', availableLists)
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to fetch available lists:', error)
+      })
 
     // Add click outside handler for network select
     const handler = (e: MouseEvent) => {
@@ -173,6 +184,7 @@
     }
     document.addEventListener('click', handler)
     return () => {
+      cancelled = true
       document.removeEventListener('click', handler)
     }
   })
@@ -181,17 +193,17 @@
   onMount(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (isListFilterOpen && !(e.target as HTMLElement).closest('.list-filter-dropdown')) {
-        isListFilterOpen = false;
+        isListFilterOpen = false
       }
       if (isNetworkSelectOpen && !(e.target as HTMLElement).closest('.select')) {
-        isNetworkSelectOpen = false;
+        isNetworkSelectOpen = false
       }
-    };
-    document.addEventListener('click', handleClickOutside);
+    }
+    document.addEventListener('click', handleClickOutside)
     return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  });
+      document.removeEventListener('click', handleClickOutside)
+    }
+  })
 
   function generateUrl() {
     previewError = false
@@ -278,12 +290,12 @@
 
   function getFormattedResponse(url: string) {
     let baseUrl = ''
-    
+
     if (typeof window !== 'undefined') {
       baseUrl = (window as any).__ipfsPath || ''
 
-    if (window.location.hostname === 'localhost') {
-      baseUrl = 'https://gib.show'
+      if (window.location.hostname === 'localhost') {
+        baseUrl = 'https://gib.show'
       }
     }
 
@@ -341,7 +353,7 @@
     selectedNetwork = network
     isNetworkSelectOpen = false
     generateUrl()
-    
+
     // When network is selected in token mode, fetch the token list
     if (urlType === 'token') {
       // Try each list in order until we find one that works
@@ -354,137 +366,136 @@
     items: T[],
     batchSize: number,
     processItem: (item: T) => Promise<R>,
-    delayMs: number = 100
+    delayMs: number = 100,
   ): Promise<R[]> {
-    const results: R[] = [];
+    const results: R[] = []
     for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(batch.map(processItem));
-      results.push(...batchResults);
+      const batch = items.slice(i, i + batchSize)
+      const batchResults = await Promise.all(batch.map(processItem))
+      results.push(...batchResults)
       if (i + batchSize < items.length) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
       }
     }
-    return results;
+    return results
   }
 
-  async function processListWithRetry(list: typeof availableLists[0], chainId: number) {
-    const cacheKey = `${list.providerKey}-${list.key}-${chainId}`;
-    
+  async function processListWithRetry(list: (typeof availableLists)[0], chainId: number) {
+    const cacheKey = `${list.providerKey}-${list.key}-${chainId}`
+
     // Check cache first
     if (tokenListCache.has(cacheKey)) {
-      const cachedTokens = tokenListCache.get(cacheKey)!;
-      const listKey = `${list.providerKey}/${list.key}`;
-      tokensByList.set(listKey, cachedTokens);
-      enabledLists.add(listKey);
-      enabledLists = enabledLists; // trigger reactivity
-      updateCombinedTokenList(); // Update the list immediately when cached tokens are added
-      return;
+      const cachedTokens = tokenListCache.get(cacheKey)!
+      const listKey = `${list.providerKey}/${list.key}`
+      tokensByList.set(listKey, cachedTokens)
+      enabledLists.add(listKey)
+      enabledLists = enabledLists // trigger reactivity
+      updateCombinedTokenList() // Update the list immediately when cached tokens are added
+      return
     }
 
-    let currentRetry = 0;
-    let currentDelay = retryDelay;
+    let currentRetry = 0
+    let currentDelay = retryDelay
 
     while (currentRetry < maxRetries) {
       try {
-        const url = getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`);
-        console.log('Fetching list:', url);
-        const response = await fetch(url);
-        
+        const url = getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
+        console.log('Fetching list:', url)
+        const response = await fetch(url)
+
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json()
           if (data?.tokens && Array.isArray(data.tokens)) {
             // Process tokens without checking icons
-            const tokens = data.tokens as Token[];
-            const processedTokens = tokens.map(token => ({
+            const tokens = data.tokens as Token[]
+            const processedTokens = tokens.map((token) => ({
               ...token,
               hasIcon: true, // Assume true initially, will be set to false if image fails to load
               sourceList: `${list.providerKey}/${list.key}`,
-              isBridgeToken: list.providerKey.includes('bridge')
-            }));
+              isBridgeToken: list.providerKey.includes('bridge'),
+            }))
 
             // Cache the results
-            tokenListCache.set(cacheKey, processedTokens);
-            
+            tokenListCache.set(cacheKey, processedTokens)
+
             // Store tokens by list
-            const listKey = `${list.providerKey}/${list.key}`;
-            tokensByList.set(listKey, processedTokens);
-            enabledLists.add(listKey);
-            enabledLists = enabledLists; // trigger reactivity
-            updateCombinedTokenList(); // Update the list immediately when new tokens are added
-            break;
+            const listKey = `${list.providerKey}/${list.key}`
+            tokensByList.set(listKey, processedTokens)
+            enabledLists.add(listKey)
+            enabledLists = enabledLists // trigger reactivity
+            updateCombinedTokenList() // Update the list immediately when new tokens are added
+            break
           }
         } else if (response.status === 404) {
           // If list doesn't exist, log it and move on
-          console.log(`List ${list.providerKey}/${list.key} not available for chain ${chainId}`);
-          break; // Don't retry on 404
+          console.log(`List ${list.providerKey}/${list.key} not available for chain ${chainId}`)
+          break // Don't retry on 404
         } else if (response.status === 429 || response.status === 503) {
-          console.warn(`Rate limited while fetching list ${list.name}, retrying...`);
-          await new Promise(resolve => setTimeout(resolve, currentDelay));
-          currentDelay = Math.min(currentDelay * 2, maxRetryDelay);
-          currentRetry++;
-          continue;
+          console.warn(`Rate limited while fetching list ${list.name}, retrying...`)
+          await new Promise((resolve) => setTimeout(resolve, currentDelay))
+          currentDelay = Math.min(currentDelay * 2, maxRetryDelay)
+          currentRetry++
+          continue
         } else {
-          console.warn(`Failed to fetch list ${list.name} with status ${response.status}`);
-          break;
+          console.warn(`Failed to fetch list ${list.name} with status ${response.status}`)
+          break
         }
       } catch (error) {
-        console.error(`Failed to fetch list ${list.name}:`, error);
+        console.error(`Failed to fetch list ${list.name}:`, error)
         if (currentRetry < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, currentDelay));
-          currentDelay = Math.min(currentDelay * 2, maxRetryDelay);
-          currentRetry++;
+          await new Promise((resolve) => setTimeout(resolve, currentDelay))
+          currentDelay = Math.min(currentDelay * 2, maxRetryDelay)
+          currentRetry++
         }
       }
     }
-  };
+  }
 
   async function tryFetchTokenLists(chainId: number) {
     // Get relevant lists for the chain
-    const relevantLists = availableLists.filter(list => 
-      list.chainId === chainId.toString() || list.chainId === "0"
-    );
+    const relevantLists = availableLists.filter((list) => list.chainId === chainId.toString() || list.chainId === '0')
 
-    console.log('Trying lists for chain', chainId, ':', relevantLists);
-    
+    console.log('Trying lists for chain', chainId, ':', relevantLists)
+
     // Clear previous tokens
-    tokensByList.clear();
-    enabledLists.clear();
-    allTokens = [];
-    filteredTokens = [];
+    tokensByList.clear()
+    enabledLists.clear()
+    allTokens = []
+    filteredTokens = []
 
     // Sort lists to prioritize non-bridge lists first
     const sortedLists = [...relevantLists].sort((a, b) => {
-      const aIsBridge = a.providerKey.includes('bridge');
-      const bIsBridge = b.providerKey.includes('bridge');
-      return aIsBridge === bIsBridge ? 0 : aIsBridge ? 1 : -1;
-    });
+      const aIsBridge = a.providerKey.includes('bridge')
+      const bIsBridge = b.providerKey.includes('bridge')
+      return aIsBridge === bIsBridge ? 0 : aIsBridge ? 1 : -1
+    })
 
     // Process lists in parallel but with controlled concurrency
     const processInBatches = async () => {
-      const batchSize = 2;
+      const batchSize = 2
       for (let i = 0; i < sortedLists.length; i += batchSize) {
-        const batch = sortedLists.slice(i, i + batchSize);
-        await Promise.all(batch.map(list => processListWithRetry(list, chainId)));
+        const batch = sortedLists.slice(i, i + batchSize)
+        await Promise.all(batch.map((list) => processListWithRetry(list, chainId)))
       }
-    };
+    }
 
     // Start processing in the background
-    processInBatches();
+    processInBatches()
   }
 
   // Function to update the combined token list based on enabled lists
   function updateCombinedTokenList() {
     // Create a Map to deduplicate tokens by address
-    const tokenMap = new Map<string, Token>();
-    
+    const tokenMap = new Map<string, Token>()
+
     // First add non-bridge tokens
     for (const [listKey, tokens] of tokensByList.entries()) {
       if (enabledLists.has(listKey) && !listKey.includes('bridge')) {
         for (const token of tokens) {
-          const key = `${token.chainId}-${token.address.toLowerCase()}`;
-          if (!tokenMap.has(key) && token.hasIcon) {  // Only add if it has an icon
-            tokenMap.set(key, token);
+          const key = `${token.chainId}-${token.address.toLowerCase()}`
+          if (!tokenMap.has(key) && token.hasIcon) {
+            // Only add if it has an icon
+            tokenMap.set(key, token)
           }
         }
       }
@@ -494,21 +505,21 @@
     for (const [listKey, tokens] of tokensByList.entries()) {
       if (enabledLists.has(listKey) && listKey.includes('bridge')) {
         for (const token of tokens) {
-          const key = `${token.chainId}-${token.address.toLowerCase()}`;
+          const key = `${token.chainId}-${token.address.toLowerCase()}`
           // Only add bridge token if:
           // 1. Token doesn't exist yet
           // 2. Token has a verified icon
           if (!tokenMap.has(key) && token.hasIcon) {
-            tokenMap.set(key, token);
+            tokenMap.set(key, token)
           }
         }
       }
     }
-    
+
     // Convert Map to array and filter out any tokens that have lost their icons
-    allTokens = Array.from(tokenMap.values()).filter(token => token.hasIcon);
-    filteredTokens = allTokens;
-    currentPage = 1;
+    allTokens = Array.from(tokenMap.values()).filter((token) => token.hasIcon)
+    filteredTokens = allTokens
+    currentPage = 1
   }
 
   // Function to toggle a list
@@ -561,147 +572,148 @@
   async function performGlobalSearch() {
     // Cancel any previous ongoing search
     if (searchAbortController) {
-        searchAbortController.abort();
+      searchAbortController.abort()
     }
     // Create new abort controller for this search
-    searchAbortController = new AbortController();
-    
-    isGlobalSearchActive = true;
-    isSearching = true;
-    globalSearchResults = [];
-    filteredTokens = []; // Clear current results while searching
-    currentPage = 1;
-    const searchTerm = searchQuery.toLowerCase();
-    
+    searchAbortController = new AbortController()
+
+    isGlobalSearchActive = true
+    isSearching = true
+    globalSearchResults = []
+    filteredTokens = [] // Clear current results while searching
+    currentPage = 1
+    const searchTerm = searchQuery.toLowerCase()
+
     try {
-        // Split lists into global and chain-specific
-        const globalLists = availableLists.filter(list => list.chainId === "0");
-        const chainSpecificLists = availableLists.filter(list => list.chainId !== "0");
-        
-        console.log('Starting global search');
-        
-        // First, fetch all global lists (these contain tokens for all chains)
-        for (const list of globalLists) {
-            try {
-                const url = getApiUrl(`/list/${list.providerKey}/${list.key}`);
-                console.log('Fetching global list:', url);
-                const response = await fetch(url, {
-                    signal: searchAbortController.signal
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data?.tokens && Array.isArray(data.tokens)) {
-                        const matchingTokens = data.tokens
-                            .filter((token: Token) =>
-                                token.name.toLowerCase().includes(searchTerm) ||
-                                token.symbol.toLowerCase().includes(searchTerm) ||
-                                token.address.toLowerCase().includes(searchTerm)
-                            )
-                            .map((token: Token) => ({
-                                ...token,
-                                hasIcon: true,
-                                sourceList: `${list.providerKey}/${list.key}`,
-                                isBridgeToken: list.providerKey.includes('bridge'),
-                                chainName: $metrics?.networks.supported.find(n => n.chainId.toString() === token.chainId.toString())?.name || `Chain ${token.chainId}`
-                            }));
-                        
-                        if (matchingTokens.length > 0) {
-                            globalSearchResults = [...globalSearchResults, ...matchingTokens];
-                        }
-                    }
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    console.log('Search aborted');
-                    return; // Exit early if search was aborted
-                }
-                console.error(`Error searching global list ${list.providerKey}/${list.key}:`, error);
-            }
-        }
+      // Split lists into global and chain-specific
+      const globalLists = availableLists.filter((list) => list.chainId === '0')
+      const chainSpecificLists = availableLists.filter((list) => list.chainId !== '0')
 
-        // Then, fetch chain-specific lists
-        for (const list of chainSpecificLists) {
-            try {
-                const url = getApiUrl(`/list/${list.providerKey}/${list.key}`);
-                console.log('Fetching chain-specific list:', url);
-                const response = await fetch(url, {
-                    signal: searchAbortController.signal
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data?.tokens && Array.isArray(data.tokens)) {
-                        const matchingTokens = data.tokens
-                            .filter((token: Token) =>
-                                token.name.toLowerCase().includes(searchTerm) ||
-                                token.symbol.toLowerCase().includes(searchTerm) ||
-                                token.address.toLowerCase().includes(searchTerm)
-                            )
-                            .map((token: Token) => ({
-                                ...token,
-                                hasIcon: true,
-                                sourceList: `${list.providerKey}/${list.key}`,
-                                isBridgeToken: list.providerKey.includes('bridge'),
-                                chainName: $metrics?.networks.supported.find(n => n.chainId.toString() === token.chainId.toString())?.name || `Chain ${token.chainId}`
-                            }));
-                        
-                        if (matchingTokens.length > 0) {
-                            globalSearchResults = [...globalSearchResults, ...matchingTokens];
-                        }
-                    }
-                }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    console.log('Search aborted');
-                    return; // Exit early if search was aborted
-                }
-                console.error(`Error searching chain-specific list ${list.providerKey}/${list.key}:`, error);
-            }
-        }
-        
-        // Only process results if search wasn't aborted
-        if (!searchAbortController.signal.aborted) {
-            // Remove duplicates
-            globalSearchResults = Array.from(
-                new Map(
-                    globalSearchResults.map(token => 
-                        [`${token.chainId}-${token.address.toLowerCase()}`, token]
-                    )
-                ).values()
-            );
-            
-            // Sort results
-            globalSearchResults.sort((a, b) => {
-                // Ethereum chain first
-                if (a.chainId.toString() === '1' && b.chainId.toString() !== '1') return -1;
-                if (a.chainId.toString() !== '1' && b.chainId.toString() === '1') return 1;
-                // Then by name
-                return a.name.localeCompare(b.name);
-            });
+      console.log('Starting global search')
 
-            // Update filteredTokens with the global search results
-            filteredTokens = globalSearchResults;
+      // First, fetch all global lists (these contain tokens for all chains)
+      for (const list of globalLists) {
+        try {
+          const url = getApiUrl(`/list/${list.providerKey}/${list.key}`)
+          console.log('Fetching global list:', url)
+          const response = await fetch(url, {
+            signal: searchAbortController.signal,
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            if (data?.tokens && Array.isArray(data.tokens)) {
+              const matchingTokens = data.tokens
+                .filter(
+                  (token: Token) =>
+                    token.name.toLowerCase().includes(searchTerm) ||
+                    token.symbol.toLowerCase().includes(searchTerm) ||
+                    token.address.toLowerCase().includes(searchTerm),
+                )
+                .map((token: Token) => ({
+                  ...token,
+                  hasIcon: true,
+                  sourceList: `${list.providerKey}/${list.key}`,
+                  isBridgeToken: list.providerKey.includes('bridge'),
+                  chainName:
+                    $metrics?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())?.name ||
+                    `Chain ${token.chainId}`,
+                }))
+
+              if (matchingTokens.length > 0) {
+                globalSearchResults = [...globalSearchResults, ...matchingTokens]
+              }
+            }
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            console.log('Search aborted')
+            return // Exit early if search was aborted
+          }
+          console.error(`Error searching global list ${list.providerKey}/${list.key}:`, error)
         }
-        
+      }
+
+      // Then, fetch chain-specific lists
+      for (const list of chainSpecificLists) {
+        try {
+          const url = getApiUrl(`/list/${list.providerKey}/${list.key}`)
+          console.log('Fetching chain-specific list:', url)
+          const response = await fetch(url, {
+            signal: searchAbortController.signal,
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            if (data?.tokens && Array.isArray(data.tokens)) {
+              const matchingTokens = data.tokens
+                .filter(
+                  (token: Token) =>
+                    token.name.toLowerCase().includes(searchTerm) ||
+                    token.symbol.toLowerCase().includes(searchTerm) ||
+                    token.address.toLowerCase().includes(searchTerm),
+                )
+                .map((token: Token) => ({
+                  ...token,
+                  hasIcon: true,
+                  sourceList: `${list.providerKey}/${list.key}`,
+                  isBridgeToken: list.providerKey.includes('bridge'),
+                  chainName:
+                    $metrics?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())?.name ||
+                    `Chain ${token.chainId}`,
+                }))
+
+              if (matchingTokens.length > 0) {
+                globalSearchResults = [...globalSearchResults, ...matchingTokens]
+              }
+            }
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            console.log('Search aborted')
+            return // Exit early if search was aborted
+          }
+          console.error(`Error searching chain-specific list ${list.providerKey}/${list.key}:`, error)
+        }
+      }
+
+      // Only process results if search wasn't aborted
+      if (!searchAbortController.signal.aborted) {
+        // Remove duplicates
+        globalSearchResults = Array.from(
+          new Map(
+            globalSearchResults.map((token) => [`${token.chainId}-${token.address.toLowerCase()}`, token]),
+          ).values(),
+        )
+
+        // Sort results
+        globalSearchResults.sort((a, b) => {
+          // Ethereum chain first
+          if (a.chainId.toString() === '1' && b.chainId.toString() !== '1') return -1
+          if (a.chainId.toString() !== '1' && b.chainId.toString() === '1') return 1
+          // Then by name
+          return a.name.localeCompare(b.name)
+        })
+
+        // Update filteredTokens with the global search results
+        filteredTokens = globalSearchResults
+      }
     } catch (error) {
-        if (error.name !== 'AbortError') {
-            console.error('Global search error:', error);
-        }
+      if (error instanceof Error && error.name !== 'AbortError') {
+        console.error('Global search error:', error)
+      }
     } finally {
-        if (searchAbortController?.signal.aborted) {
-            // Reset everything if search was aborted
-            globalSearchResults = [];
-            filteredTokens = allTokens.filter(token => 
-                token.chainId.toString() === selectedChain?.toString()
-            );
-        }
-        isSearching = false;
+      if (searchAbortController?.signal.aborted) {
+        // Reset everything if search was aborted
+        globalSearchResults = []
+        filteredTokens = allTokens.filter((token) => token.chainId.toString() === selectedChain?.toString())
+      }
+      isSearching = false
     }
   }
 
   function getNetworkName(chainId: number | string): string {
-    const chainIdStr = chainId.toString();
+    const chainIdStr = chainId.toString()
     // First check our priority networks to ensure specific naming
     const priorityNames: Record<string, string> = {
       '1': 'Ethereum',
@@ -718,108 +730,103 @@
       '5000': 'Mantle',
       '8453': 'Base',
       '59144': 'Linea',
-      '7777777': 'Zora'
-    };
-    
+      '7777777': 'Zora',
+    }
+
     // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
-    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames];
-    return networkName || `Chain ${chainIdStr}`;
+    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames]
+    return networkName || `Chain ${chainIdStr}`
   }
 
   // Sort networks by priority and name
   function sortNetworks(networks: NetworkInfo[]): NetworkInfo[] {
-    const priorityChains = ['1', '369']; // Ethereum and PulseChain first
-    
+    const priorityChains = ['1', '369'] // Ethereum and PulseChain first
+
     // Filter out testnets if showTestnets is false
-    let filteredNetworks = networks;
+    let filteredNetworks = networks
     if (!showTestnets) {
-      filteredNetworks = networks.filter(network => 
-        !getNetworkName(network.chainId).toLowerCase().includes('testnet')
-      );
+      filteredNetworks = networks.filter(
+        (network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'),
+      )
     }
-    
+
     return [...filteredNetworks].sort((a, b) => {
-      const aChainId = a.chainId.toString();
-      const bChainId = b.chainId.toString();
-      
+      const aChainId = a.chainId.toString()
+      const bChainId = b.chainId.toString()
+
       // Priority chains first
-      const aIndex = priorityChains.indexOf(aChainId);
-      const bIndex = priorityChains.indexOf(bChainId);
-      
-      if (aIndex !== -1 && bIndex === -1) return -1;
-      if (aIndex === -1 && bIndex !== -1) return 1;
-      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-      
+      const aIndex = priorityChains.indexOf(aChainId)
+      const bIndex = priorityChains.indexOf(bChainId)
+
+      if (aIndex !== -1 && bIndex === -1) return -1
+      if (aIndex === -1 && bIndex !== -1) return 1
+      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
+
       // Then sort by name
-      return getNetworkName(a.chainId).localeCompare(getNetworkName(b.chainId));
-    });
+      return getNetworkName(a.chainId).localeCompare(getNetworkName(b.chainId))
+    })
   }
 
   function createGithubIssue() {
-    const isToken = urlType === 'token';
+    const isToken = urlType === 'token'
     const params = new URLSearchParams({
-        'labels[]': 'missing-asset',
-        'template': 'missing-asset.yml',
-        'asset-type': isToken ? 'Token Icon' : 'Network Icon',
-        'network-name': getNetworkName(selectedChain || 0),
-        'chain-id': selectedChain?.toString() || '',
-        'token-address': isToken ? tokenAddress : '',
-        'attempted-url': generatedUrl,
-        'title': isToken 
-            ? `Missing Token Icon: ${getNetworkName(selectedChain || 0)} - ${tokenAddress}`
-            : `Missing Network Icon: ${getNetworkName(selectedChain || 0)} (Chain ID: ${selectedChain})`
-    });
-    window.open(`${GITHUB_REPO_URL}/issues/new?${params.toString()}`, '_blank');
+      'labels[]': 'missing-asset',
+      template: 'missing-asset.yml',
+      'asset-type': isToken ? 'Token Icon' : 'Network Icon',
+      'network-name': getNetworkName(selectedChain || 0),
+      'chain-id': selectedChain?.toString() || '',
+      'token-address': isToken ? tokenAddress : '',
+      'attempted-url': generatedUrl,
+      title: isToken
+        ? `Missing Token Icon: ${getNetworkName(selectedChain || 0)} - ${tokenAddress}`
+        : `Missing Network Icon: ${getNetworkName(selectedChain || 0)} (Chain ID: ${selectedChain})`,
+    })
+    window.open(`${GITHUB_REPO_URL}/issues/new?${params.toString()}`, '_blank')
   }
 
   function filterTokens() {
-    const searchTerm = searchQuery.toLowerCase();
-    
+    const searchTerm = searchQuery.toLowerCase()
+
     if (!isGlobalSearchActive) {
-        // Filter only tokens from the selected chain
-        filteredTokens = allTokens.filter(token => 
-            token.chainId.toString() === selectedChain.toString() &&
-            (
-                token.name.toLowerCase().includes(searchTerm) ||
-                token.symbol.toLowerCase().includes(searchTerm) ||
-                token.address.toLowerCase().includes(searchTerm)
-            )
-        );
+      // Filter only tokens from the selected chain
+      filteredTokens = allTokens.filter(
+        (token) =>
+          token.chainId.toString() === selectedChain?.toString() &&
+          (token.name.toLowerCase().includes(searchTerm) ||
+            token.symbol.toLowerCase().includes(searchTerm) ||
+            token.address.toLowerCase().includes(searchTerm)),
+      )
     } else {
-        // Use global search results
-        filteredTokens = globalSearchResults;
+      // Use global search results
+      filteredTokens = globalSearchResults
     }
-    
-    currentPage = 1;
+
+    currentPage = 1
   }
 
   // Update the search query watcher
   $: {
     if (searchQuery) {
-        if (!isGlobalSearchActive) {
-            filterTokens();
-        }
+      if (!isGlobalSearchActive) {
+        filterTokens()
+      }
     } else {
-        // Reset to show all tokens for the selected chain when search is cleared
-        isGlobalSearchActive = false;
-        filteredTokens = allTokens.filter(token => 
-            token.chainId.toString() === selectedChain.toString()
-        );
-        globalSearchResults = [];
-        currentPage = 1;
+      // Reset to show all tokens for the selected chain when search is cleared
+      isGlobalSearchActive = false
+      filteredTokens = allTokens.filter((token) => token.chainId.toString() === selectedChain?.toString())
+      globalSearchResults = []
+      currentPage = 1
     }
   }
 
   // Add a watcher for selectedChain changes
   $: {
     if (selectedChain && !isGlobalSearchActive) {
-        filteredTokens = allTokens.filter(token => 
-            token.chainId.toString() === selectedChain.toString()
-        );
-        if (searchQuery) {
-            filterTokens();
-        }
-        currentPage = 1;
+      filteredTokens = allTokens.filter((token) => token.chainId.toString() === selectedChain?.toString())
+      if (searchQuery) {
+        filterTokens()
+      }
+      currentPage = 1
     }
   }
 </script>
@@ -872,10 +879,10 @@
     {#if urlType === 'list'}
       <div class="space-y-2">
         <label for="list-select" class="label">Select Token List</label>
-        <select 
-          id="list-select" 
-          class="select" 
-          bind:value={selectedList} 
+        <select
+          id="list-select"
+          class="select"
+          bind:value={selectedList}
           on:change={(e) => {
             if (selectedList) {
               listName = `${selectedList.providerKey}/${selectedList.key}`
@@ -896,32 +903,31 @@
     <div class="space-y-2">
       <div class="relative w-full">
         <div class="flex justify-between items-center mb-2">
-        <label class="label">
+          <label class="label">
             <span class="leading-5">Select Network</span>
           </label>
           <label class="flex items-center space-x-2">
             <span class="text-sm">Show Testnets</span>
-            <input
-              type="checkbox"
-              class="checkbox"
-              bind:checked={showTestnets}
-            />
+            <input type="checkbox" class="checkbox" bind:checked={showTestnets} />
           </label>
         </div>
-          <button
-            type="button"
-            class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm leading-6"
+        <button
+          type="button"
+          class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm leading-6"
           on:click={toggleNetworkSelect}>
-            {#if selectedNetwork}
-            <span class="truncate">{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
-            {:else}
+          {#if selectedNetwork}
+            <span class="truncate"
+              >{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
+          {:else}
             <span class="text-gray-500">Choose a network...</span>
-            {/if}
-          <i class="fas fa-chevron-down transition-transform flex-shrink-0 ml-2" class:rotate-180={isNetworkSelectOpen}></i>
-          </button>
+          {/if}
+          <i class="fas fa-chevron-down transition-transform flex-shrink-0 ml-2" class:rotate-180={isNetworkSelectOpen}
+          ></i>
+        </button>
 
         {#if isNetworkSelectOpen}
-          <div class="absolute z-50 w-full mt-1 bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 shadow-lg max-h-[300px] overflow-y-auto text-sm rounded-container-token">
+          <div
+            class="absolute z-50 w-full mt-1 bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 shadow-lg max-h-[300px] overflow-y-auto text-sm rounded-container-token">
             {#if $metrics}
               {#each sortNetworks($metrics.networks.supported) as network}
                 <button
@@ -941,78 +947,78 @@
     <!-- Token Browser (show when network is selected in token mode) -->
     {#if urlType === 'token' && selectedNetwork && !tokenAddress}
       <div class="card variant-ghost p-1 sm:p-2 space-y-2">
-      <div class="space-y-2">
-                <!-- Chain Token Count Header -->
-                <div class="flex items-center justify-between">
-                  <span class="font-medium">
-                    {filteredTokens.length} {filteredTokens.length === 1 ? 'token' : 'tokens'} on {getNetworkName(selectedNetwork.chainId)}
-                  </span>
-      </div>
+        <div class="space-y-2">
+          <!-- Chain Token Count Header -->
+          <div class="flex items-center justify-between">
+            <span class="font-medium">
+              {filteredTokens.length}
+              {filteredTokens.length === 1 ? 'token' : 'tokens'} on {getNetworkName(selectedNetwork.chainId)}
+            </span>
+          </div>
 
-                <!-- Search and Filter -->
-                <div class="flex gap-1">
+          <!-- Search and Filter -->
+          <div class="flex gap-1">
             <div class="input-group input-group-divider grid-cols-[auto_1fr_auto_auto] rounded-container-token flex-1">
-                    <div class="input-group-shim">
-                      <i class="fas fa-search"></i>
-                    </div>
-                    <input
-                      type="search"
-                      placeholder="Search tokens..."
-                      class="input"
-                      bind:value={searchQuery}
-                      on:input={(e) => {
-                        if (!isGlobalSearchActive) {
-                          currentPage = 1;
-                          filterTokens();
-                        }
-                      }} />
+              <div class="input-group-shim">
+                <i class="fas fa-search"></i>
+              </div>
+              <input
+                type="search"
+                placeholder="Search tokens..."
+                class="input"
+                bind:value={searchQuery}
+                on:input={(e) => {
+                  if (!isGlobalSearchActive) {
+                    currentPage = 1
+                    filterTokens()
+                  }
+                }} />
               <button
                 class="input-group-shim btn variant-soft-primary"
                 on:click={() => {
-                  isGlobalSearchActive = true;
-                  performGlobalSearch();
+                  isGlobalSearchActive = true
+                  performGlobalSearch()
                 }}
                 disabled={!searchQuery}>
-                  <i class="fas fa-globe mr-2"></i>
-                  Search All Chains
+                <i class="fas fa-globe mr-2"></i>
+                Search All Chains
               </button>
-                  </div>
-            
+            </div>
+
             <!-- List filter dropdown -->
             <div class="relative">
               <button
                 class="btn variant-soft-surface list-filter-dropdown"
                 on:click={() => {
-                  isListFilterOpen = !isListFilterOpen;
+                  isListFilterOpen = !isListFilterOpen
                   if (isListFilterOpen) {
-                    listSearchQuery = '';
+                    listSearchQuery = ''
                     // Filter out lists with 0 tokens
-                    filteredLists = Array.from(tokensByList.entries())
-                      .filter(([_, tokens]) => tokens.length > 0);
+                    filteredLists = Array.from(tokensByList.entries()).filter(([_, tokens]) => tokens.length > 0)
                   }
                 }}>
                 <i class="fas fa-filter mr-2"></i>
                 Lists ({enabledLists.size})
               </button>
-              
+
               {#if isListFilterOpen}
                 <div class="absolute right-0 mt-1 w-64 bg-surface-100-800-token card p-2 z-50 list-filter-dropdown">
                   <div class="p-2 space-y-3">
                     <div class="flex justify-between items-center">
                       <h3 class="h4">Token Lists</h3>
-                      <button 
+                      <button
                         class="btn btn-sm variant-soft"
                         on:click={() => {
-                          const allEnabled = filteredLists.every(([key]) => enabledLists.has(key));
+                          const allEnabled = filteredLists.every(([key]) => enabledLists.has(key))
                           if (allEnabled) {
                             // Disable all lists
-                            filteredLists.forEach(([key]) => enabledLists.delete(key));
+                            filteredLists.forEach(([key]) => enabledLists.delete(key))
                           } else {
                             // Enable all lists
-                            filteredLists.forEach(([key]) => enabledLists.add(key));
+                            filteredLists.forEach(([key]) => enabledLists.add(key))
                           }
-                          enabledLists = enabledLists; // trigger reactivity
-                          updateCombinedTokenList();
+                          enabledLists = enabledLists // trigger reactivity
+                          updateCombinedTokenList()
                         }}>
                         <i class="fas fa-check-double mr-2"></i>
                         Toggle All
@@ -1030,17 +1036,16 @@
                         bind:value={listSearchQuery}
                         on:input={(e) => {
                           // Filter lists based on search and exclude empty lists
-                          filteredLists = Array.from(tokensByList.entries())
-                            .filter(([key, tokens]) => 
+                          filteredLists = Array.from(tokensByList.entries()).filter(
+                            ([key, tokens]) =>
                               tokens.length > 0 && // Only include lists with tokens
-                              (!listSearchQuery || 
-                              key.toLowerCase().includes(listSearchQuery.toLowerCase()))
-                            );
-                        }}
-                      />
+                              (!listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase())),
+                          )
+                        }} />
                     </div>
                     <!-- List container with fixed height -->
-                    <div class="overflow-y-auto" style="height: 297px"> <!-- Height for ~8.5 items (35px per item) -->
+                    <div class="overflow-y-auto" style="height: 297px">
+                      <!-- Height for ~8.5 items (35px per item) -->
                       {#each filteredLists as [listKey, tokens]}
                         <label class="flex items-center gap-2 p-2 hover:bg-surface-hover cursor-pointer">
                           <input
@@ -1048,16 +1053,15 @@
                             class="checkbox"
                             checked={enabledLists.has(listKey)}
                             on:change={(e) => {
-                              const checkbox = e.target as HTMLInputElement;
+                              const checkbox = e.target as HTMLInputElement
                               if (checkbox.checked) {
-                                enabledLists.add(listKey);
+                                enabledLists.add(listKey)
                               } else {
-                                enabledLists.delete(listKey);
+                                enabledLists.delete(listKey)
                               }
-                              enabledLists = enabledLists; // trigger reactivity
-                              updateCombinedTokenList();
-                            }}
-                          />
+                              enabledLists = enabledLists // trigger reactivity
+                              updateCombinedTokenList()
+                            }} />
                           <div class="flex-1">
                             <div class="font-medium">{listKey}</div>
                             <div class="text-xs opacity-75">{tokens.length} tokens</div>
@@ -1068,8 +1072,8 @@
                   </div>
                 </div>
               {/if}
-                  </div>
-                </div>
+            </div>
+          </div>
 
           {#if filteredTokens.length === 0 && !isSearching}
             <div class="text-center p-4 text-gray-500">
@@ -1077,55 +1081,67 @@
             </div>
           {:else if isSearching}
             <div class="text-center p-4">
-                <div class="spinner" />
-                <p class="mt-2 text-gray-500">Searching across all chains...</p>
+              <div class="spinner" />
+              <p class="mt-2 text-gray-500">Searching across all chains...</p>
             </div>
           {:else}
-                <!-- Token Table -->
-                <div class="table-container">
-                  <table class="token-table">
-                    <thead>
-                      <tr>
-                        <th>Token</th>
-                        <th>Symbol</th>
-                        <th>Address</th>
-                        <th>Network</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each (isGlobalSearchActive ? globalSearchResults : filteredTokens).slice((currentPage - 1) * tokensPerPage, currentPage * tokensPerPage) as token}
-                        <tr
-                          class="cursor-pointer hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
-                          on:click={() => {
-                            if (isGlobalSearchActive) {
-                              const network = $metrics?.networks.supported.find(n => n.chainId === token.chainId);
-                              if (network) {
-                                selectNetwork(network);
-                              }
-                            }
-                            tokenAddress = token.address;
-                            generateUrl();
-                          }}
-                        >
-                          <td class="p-1">
-                            <div class="flex items-center gap-2">
-                          <div class="min-w-[40px] min-h-[40px] w-10 h-10 relative flex items-center justify-center bg-surface-700 {isCircularCrop ? 'rounded-full' : ''}">
-                              <img
-                              src={token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : FALLBACK_ICON}
+            <!-- Token Table -->
+            <div class="table-container">
+              <table class="token-table">
+                <thead>
+                  <tr>
+                    <th>Token</th>
+                    <th>Symbol</th>
+                    <th>Address</th>
+                    <th>Network</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each (isGlobalSearchActive ? globalSearchResults : filteredTokens).slice((currentPage - 1) * tokensPerPage, currentPage * tokensPerPage) as token}
+                    <tr
+                      class="cursor-pointer hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
+                      on:click={() => {
+                        if (isGlobalSearchActive) {
+                          const network = $metrics?.networks.supported.find((n) => n.chainId === token.chainId)
+                          if (network) {
+                            selectNetwork(network)
+                          }
+                        }
+                        tokenAddress = token.address
+                        generateUrl()
+                      }}>
+                      <td class="p-1">
+                        <div class="flex items-center gap-2">
+                          <div
+                            class="min-w-[40px] min-h-[40px] w-10 h-10 relative flex items-center justify-center bg-surface-700 {isCircularCrop
+                              ? 'rounded-full'
+                              : ''}">
+                            {#snippet imageFallback()}
+                              <Icon icon="nrk:404" class="w-12 h-12" />
+                            {/snippet}
+                            {#if token.hasIcon}
+                              <Image
+                                src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
                                 alt={token.symbol}
-                              class="w-8 h-8 object-contain {isCircularCrop ? 'rounded-full' : ''}"
-                                on:error={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = FALLBACK_ICON;
-                                token.hasIcon = false;
-                                if (!isGlobalSearchActive) {
-                                  // Only update combined list for normal search
-                                  updateCombinedTokenList();
-                                }
-                              }} />
+                                class="object-contain user-drag-none {isCircularCrop ? 'rounded-full' : ''}"
+                                size={32}
+                                onerror={() => {
+                                  token.hasIcon = false
+                                  if (!isGlobalSearchActive) {
+                                    // Only update combined list for normal search
+                                    updateCombinedTokenList()
+                                  }
+                                }}>
+                                {#snippet fallback()}
+                                  {@render imageFallback()}
+                                {/snippet}
+                              </Image>
+                            {:else}
+                              {@render imageFallback()}
+                            {/if}
                           </div>
                           <div class="flex flex-col">
-                              <span class="font-medium">{token.name}</span>
+                            <span class="font-medium">{token.name}</span>
                             <div class="flex gap-2 items-center">
                               {#if !token.hasIcon}
                                 <span class="text-xs text-error-500">No icon</span>
@@ -1133,43 +1149,43 @@
                               <span class="text-xs opacity-75">{token.sourceList}</span>
                             </div>
                           </div>
-                            </div>
-                          </td>
-                          <td title={token.symbol}>{token.symbol}</td>
-                          <td title={token.address}>
-                            <code class="text-xs">{token.address}</code>
-                          </td>
-                          <td title={getNetworkName(token.chainId)}>
-                            <span class="text-sm">{getNetworkName(token.chainId)}</span>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
+                        </div>
+                      </td>
+                      <td title={token.symbol}>{token.symbol}</td>
+                      <td title={token.address}>
+                        <code class="text-xs">{token.address}</code>
+                      </td>
+                      <td title={getNetworkName(token.chainId)}>
+                        <span class="text-sm">{getNetworkName(token.chainId)}</span>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
 
-                <!-- Pagination -->
-                <div class="flex justify-between items-center">
-              <button 
-                class="btn btn-sm variant-soft" 
-                disabled={currentPage === 1} 
-                on:click={() => currentPage--}>
-                    <i class="fas fa-chevron-left mr-2"></i>
-                    Previous
-                  </button>
-                  <span class="text-sm">
-                Page {currentPage} of {Math.ceil((isGlobalSearchActive ? globalSearchResults : filteredTokens).length / tokensPerPage)}
-                  </span>
-                  <button
-                    class="btn btn-sm variant-soft"
-                disabled={currentPage >= Math.ceil((isGlobalSearchActive ? globalSearchResults : filteredTokens).length / tokensPerPage)}
+            <!-- Pagination -->
+            <div class="flex justify-between items-center">
+              <button class="btn btn-sm variant-soft" disabled={currentPage === 1} on:click={() => currentPage--}>
+                <i class="fas fa-chevron-left mr-2"></i>
+                Previous
+              </button>
+              <span class="text-sm">
+                Page {currentPage} of {Math.ceil(
+                  (isGlobalSearchActive ? globalSearchResults : filteredTokens).length / tokensPerPage,
+                )}
+              </span>
+              <button
+                class="btn btn-sm variant-soft"
+                disabled={currentPage >=
+                  Math.ceil((isGlobalSearchActive ? globalSearchResults : filteredTokens).length / tokensPerPage)}
                 on:click={() => currentPage++}>
-                    Next
-                    <i class="fas fa-chevron-right ml-2"></i>
-                  </button>
-                </div>
+                Next
+                <i class="fas fa-chevron-right ml-2"></i>
+              </button>
+            </div>
           {/if}
-              </div>
+        </div>
       </div>
     {/if}
 
@@ -1178,7 +1194,7 @@
       <div class="space-y-2">
         <div class="flex justify-between items-center">
           <label for="token-address" class="label">Token Address</label>
-          <button 
+          <button
             class="btn btn-sm variant-soft"
             on:click={() => {
               tokenAddress = ''
@@ -1204,20 +1220,21 @@
 
     <!-- After the token address input and before the Generated URL Display -->
     {#if urlType !== 'list' && previewError}
-              <div class="card variant-ghost-error p-4">
-                <div class="flex items-center gap-3">
-                  <i class="fas fa-exclamation-circle text-error-500"></i>
-                  <div class="flex-1">
+      <div class="card variant-ghost-error p-4">
+        <div class="flex items-center gap-3">
+          <i class="fas fa-exclamation-circle text-error-500"></i>
+          <div class="flex-1">
             <p class="font-medium">No icon found</p>
-                    <p class="text-sm opacity-90">
-              There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. You can help by 
-              <a href="#" class="anchor" on:click|preventDefault={createGithubIssue}>submitting an issue</a> or contributing directly to the 
+            <p class="text-sm opacity-90">
+              There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. You can help by
+              <a href="#" class="anchor" on:click|preventDefault={createGithubIssue}>submitting an issue</a> or
+              contributing directly to the
               <a href={GITHUB_REPO_URL} class="anchor" target="_blank" rel="noopener">Gib Assets repository</a>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-          {/if}
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     <!-- Generated URL Display (only show if URL exists and icon is found for image types) -->
     {#if generatedUrl && (urlType === 'list' || iconExists)}
@@ -1231,7 +1248,7 @@
             {:else}
               <i class="fas fa-copy mr-2"></i>
               Copy
-      {/if}
+            {/if}
           </button>
         </div>
         <code class="text-sm break-all">{generatedUrl}</code>
@@ -1242,19 +1259,19 @@
         <div class="card variant-ghost p-4 space-y-2">
           <div class="flex justify-between items-center">
             <span class="label">Preview</span>
-              <div class="flex gap-2">
+            <div class="flex gap-2">
               <button class="btn btn-sm variant-soft-surface" on:click={handleZoomOut} disabled={zoomLevel <= 0.5}>
-                  <i class="fas fa-minus"></i>
-                </button>
-                <span class="flex items-center px-2 text-sm">
-                  {Math.round(zoomLevel * 100)}%
-                </span>
+                <i class="fas fa-minus"></i>
+              </button>
+              <span class="flex items-center px-2 text-sm">
+                {Math.round(zoomLevel * 100)}%
+              </span>
               <button class="btn btn-sm variant-soft-surface" on:click={handleZoomIn} disabled={zoomLevel >= 4}>
-                  <i class="fas fa-plus"></i>
-                </button>
-              </div>
+                <i class="fas fa-plus"></i>
+              </button>
             </div>
-          <div class="flex justify-center">
+          </div>
+          <div class="flex flex-col justify-center">
             {#if previewError}
               <div class="text-error-500 flex items-center gap-2">
                 <i class="fas fa-exclamation-circle"></i>
@@ -1262,29 +1279,44 @@
               </div>
             {:else}
               <div
-                class="overflow-hidden relative h-[300px] w-full cursor-move {showColorPicker ? '' : 'checkerboard'} border border-surface-700/20"
+                class="overflow-hidden relative h-[300px] w-full cursor-move {showColorPicker
+                  ? ''
+                  : 'checkerboard'} border border-surface-700/20"
                 style="background-color: {showColorPicker ? backgroundColor : ''}"
                 on:mousedown={handleMouseDown}
                 on:mousemove={handleMouseMove}
                 on:mouseup={handleMouseUp}
                 on:mouseleave={handleMouseUp}
                 on:wheel={(e) => {
-                e.preventDefault()
-                return handleWheel(e)
-              }}>
-              <img
-                src={generatedUrl.replace(/^\./, 'https://gib.show')}
-                alt="Icon preview"
-                  class="absolute left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop ? 'rounded-full' : ''}"
+                  e.preventDefault()
+                  return handleWheel(e)
+                }}>
+                <Image
+                  alt="Icon preview"
+                  src={generatedUrl.replace(/^\./, 'https://gib.show')}
+                  class="absolute user-drag-none left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop
+                    ? 'rounded-full'
+                    : ''}"
                   style="transform: translate(calc(-50% + {translateX}px), calc(-50% + {translateY}px)) scale({zoomLevel})"
-                  on:error={handleImageError} />
+                  size={128}
+                  onerror={handleImageError} />
+                <!-- <img
+                  src={generatedUrl.replace(/^\./, 'https://gib.show')}
+                  alt="Icon preview"
+                  class="absolute left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop
+                    ? 'rounded-full'
+                    : ''}"
+                  style="transform: translate(calc(-50% + {translateX}px), calc(-50% + {translateY}px)) scale({zoomLevel})"
+                  height={128}
+                  width={128}
+                  on:error={handleImageError} /> -->
               </div>
               <div class="text-center text-sm text-gray-400 mt-2">
                 <span class="opacity-75">Click and drag to pan • Scroll to zoom</span>
               </div>
             {/if}
           </div>
-            </div>
+        </div>
 
         <!-- Preview Options -->
         <div class="card variant-ghost p-4 space-y-4">
@@ -1292,22 +1324,14 @@
           <div class="flex flex-col gap-4">
             <!-- Crop Option -->
             <label class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                class="checkbox"
-                bind:checked={isCircularCrop}
-              />
+              <input type="checkbox" class="checkbox" bind:checked={isCircularCrop} />
               <span>Circular Crop</span>
             </label>
 
             <!-- Background Options -->
             <div class="space-y-2">
               <label class="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  class="checkbox"
-                  bind:checked={showColorPicker}
-                />
+                <input type="checkbox" class="checkbox" bind:checked={showColorPicker} />
                 <span>Custom Background Color</span>
               </label>
 
@@ -1320,8 +1344,7 @@
                       type="color"
                       class="w-full h-10 rounded cursor-pointer"
                       value={backgroundColor}
-                      on:input={handleColorInput}
-                    />
+                      on:input={handleColorInput} />
                   </div>
 
                   <!-- Color Input -->
@@ -1332,8 +1355,7 @@
                       class="input"
                       placeholder="#HEX, rgb(), rgba()"
                       value={backgroundColor}
-                      on:input={handleColorTextInput}
-                    />
+                      on:input={handleColorTextInput} />
                     <p class="text-xs opacity-75">
                       Supports HEX (#RRGGBB), RGB (rgb(r,g,b)), and RGBA (rgba(r,g,b,a))
                     </p>
@@ -1362,7 +1384,7 @@
   </div>
 </div>
 
-<style>
+<style lang="postcss">
   .label {
     @apply font-medium text-sm;
   }
@@ -1371,7 +1393,7 @@
     @apply w-full;
   }*/
   /* Prevent image dragging which interferes with pan functionality */
-  img {
+  :global(.user-drag-none) {
     -webkit-user-drag: none;
     user-select: none;
     -moz-user-select: none;
@@ -1402,7 +1424,7 @@
     background-image: linear-gradient(45deg, #ddd 25%, transparent 25%),
       linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%),
       linear-gradient(-45deg, transparent 75%, #ddd 75%);
-    background-size: 16px 16px;  /* Reduced from 20px to 16px for a tighter pattern */
+    background-size: 16px 16px; /* Reduced from 20px to 16px for a tighter pattern */
     background-position:
       0 0,
       0 8px,
@@ -1451,8 +1473,12 @@
   }
 
   @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .token-table {
@@ -1461,28 +1487,33 @@
     border-collapse: separate;
     border-spacing: 0;
   }
-  
-  .token-table th, .token-table td {
+
+  .token-table th,
+  .token-table td {
     padding: 0.5rem;
     text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
-  .token-table th:nth-child(1), .token-table td:nth-child(1) { 
-    width: 35%; 
-  }
-  
-  .token-table th:nth-child(2), .token-table td:nth-child(2) { 
-    width: 15%; 
-  }
-  
-  .token-table th:nth-child(3), .token-table td:nth-child(3) { 
+
+  .token-table th:nth-child(1),
+  .token-table td:nth-child(1) {
     width: 35%;
   }
-  
-  .token-table th:nth-child(4), .token-table td:nth-child(4) { 
+
+  .token-table th:nth-child(2),
+  .token-table td:nth-child(2) {
+    width: 15%;
+  }
+
+  .token-table th:nth-child(3),
+  .token-table td:nth-child(3) {
+    width: 35%;
+  }
+
+  .token-table th:nth-child(4),
+  .token-table td:nth-child(4) {
     width: 15%;
   }
 
