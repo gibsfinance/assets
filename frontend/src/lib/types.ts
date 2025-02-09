@@ -31,16 +31,6 @@ export interface NetworkInfo {
 }
 
 export interface PlatformMetrics {
-<<<<<<< HEAD
-	tokenList: {
-		total: number;
-		byChain: Record<number, number>;
-	};
-	networks: {
-		supported: NetworkInfo[];
-		active: string;
-	};
-=======
     tokenList: {
         total: number;
         byChain: Record<number, number>;
@@ -49,5 +39,4 @@ export interface PlatformMetrics {
         supported: NetworkInfo[];
         active: string;
     };
->>>>>>> 2f88e560 (Update frontend configuration and improve code structure)
 }
