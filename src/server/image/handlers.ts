@@ -114,7 +114,7 @@ const getListImage =
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens(+chainId, address, listOrderId, exts)
     if (!img) {
-      throw httpErrors.NotFound()
+      throw httpErrors.NotFound('list image missing')
     }
     return img
   }
@@ -163,7 +163,7 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     .whereIn('ext', exts as string[])
     .first()
   if (!img) {
-    return next(httpErrors.NotFound())
+    return next(httpErrors.NotFound('image not found'))
   }
   sendImage(res, img)
 }
@@ -175,7 +175,7 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   }
   const { img } = await getNetworkIcon(+chainId, exts)
   if (!img) {
-    throw httpErrors.NotFound()
+    throw httpErrors.NotFound('best guess network image not found')
   }
   return img
 }
@@ -196,11 +196,7 @@ const ignoreNotFound = (err: HttpError) => {
   throw err
 }
 
-export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (
-  req,
-  res,
-  next,
-) => {
+export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (req, res, next) => {
   const { i } = req.query
   let images!: string[]
   if (Array.isArray(i)) images = i

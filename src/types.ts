@@ -1,7 +1,10 @@
 import { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
 import * as viem from 'viem'
+import type { ImageMode } from '@/db/tables'
 
 export type Todo = () => Promise<void>
+
+export type ImageModeParam = ImageMode | 'default'
 
 export type PerNetworkBridgeLink = {
   tokenAddress: viem.Hex

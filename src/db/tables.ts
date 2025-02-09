@@ -22,3 +22,10 @@ const tn = Object.values(tableNames)
 export type TableNames = (typeof tn)[number]
 
 export type Tx = Knex | Knex.Transaction
+
+export const imageMode = {
+  SAVE: 'save',
+  LINK: 'link',
+} as const
+
+export type ImageMode = (typeof imageMode)[keyof typeof imageMode]

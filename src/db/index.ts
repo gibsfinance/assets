@@ -6,7 +6,7 @@ import * as viem from 'viem'
 import { config } from './config'
 import * as fileType from 'file-type'
 import * as utils from '../utils'
-import { Tx, tableNames } from './tables'
+import { Tx, imageMode, tableNames } from './tables'
 import type {
   Image,
   InsertableList,
@@ -27,12 +27,12 @@ import type {
   Bridge,
   InsertableBridgeLink,
   BridgeLink,
-  Metadata,
 } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { join } from './utils'
+import * as args from '@/args'
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
@@ -49,6 +49,16 @@ export const ids = {
     minor: number
     patch: number
   }) => utils.toKeccakBytes(`${providerId}${key}${major}${minor}${patch}`),
+  imageHash: (image: Buffer, uri: string, ext: string | null) =>
+    viem
+      .keccak256(
+        viem.concatBytes([
+          Uint8Array.from(image), //
+          viem.toBytes(uri),
+          viem.toBytes(ext || ''),
+        ]),
+      )
+      .slice(2),
 }
 
 let db = knex(config)
@@ -165,8 +175,8 @@ export const insertImage = async (
   },
   t: Tx = db,
 ) => {
-  const imageHash = viem.keccak256(Uint8Array.from(image)).slice(2)
   const ext = await getExt(image, path.extname(originalUri))
+  const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
     utils.failureLog('no ext %o -> %o', providerKey, originalUri)
     await writeMissing({
@@ -178,6 +188,14 @@ export const insertImage = async (
     })
     return null
   }
+  const shouldSave = args.checkShouldSave(providerKey)
+  const insertable = {
+    uri: originalUri,
+    content: shouldSave ? image : Buffer.from([]),
+    imageHash,
+    ext,
+    mode: shouldSave ? imageMode.SAVE : imageMode.LINK,
+  }
   const [, [inserted]] = await Promise.all([
     removeMissing({
       imageHash,
@@ -187,14 +205,19 @@ export const insertImage = async (
     }),
     t
       .from(tableNames.image)
-      .insert({
-        content: image,
-        ext,
-      })
+      .insert(insertable)
       .onConflict(['imageHash'])
       .merge(['imageHash'])
-      .returning<Image[]>(['ext', 'imageHash']),
+      .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
   ])
+  // this fails for some reason when the db creates the image hash
+  // figure out why
+  // if (imageHash !== inserted.imageHash) {
+  //   log(insertable, inserted, imageHash)
+  //   throw new Error('image hash mismatch')
+  // } else {
+  //   log('image hash match %o', imageHash)
+  // }
   const [link] = await t
     .from(tableNames.link)
     .insert([
@@ -631,6 +654,8 @@ export const getTokensUnderListId = (t: Tx = db) => {
       t.raw(`${tableNames.token}.token_id`),
       t.raw(`${tableNames.image}.image_hash`),
       t.raw(`${tableNames.image}.ext`),
+      t.raw(`${tableNames.image}.mode`),
+      t.raw(`${tableNames.image}.uri`),
     ])
     .from<types.TokenInfo>(tableNames.listToken)
     .fullOuterJoin(tableNames.image, {

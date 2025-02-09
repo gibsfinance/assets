@@ -10,14 +10,8 @@ export const cancelAllRequests = () => {
   }
 }
 
-const limiters = new Map<string, ReturnType<typeof promiseLimit<Response>>>()
-
 export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> => {
-  let limiter = limiters.get(url.host)
-  if (limiter) return limiter
-  limiter = promiseLimit(256)
-  limiters.set(url.host, limiter)
-  return limiter
+  return utils.limitBy<Response>(url.host)
 }
 
 const ipfsCompatableFetch: typeof fetch = async (
