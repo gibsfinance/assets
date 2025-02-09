@@ -1,8 +1,11 @@
 import { hideBin } from 'yargs/helpers'
-import { collectables, Collectable } from '@/collect/collectables'
+import { collectables, type Collectable } from '@/collect/collectables'
 import yargs from 'yargs'
-
-export const collect = () => {
+import _ from 'lodash'
+import { log } from '@/logger'
+import { ImageModeParam } from './types'
+import { imageMode } from '@/db/tables'
+export const collect = _.memoize(() => {
   const argv = yargs(hideBin(process.argv))
     .options({
       providers: {
@@ -10,15 +13,33 @@ export const collect = () => {
         describe: 'a list of providers to collect',
         required: false,
       },
+      ipfs: {
+        type: 'string',
+        describe: 'the ipfs gateway to when none is provided',
+        required: false,
+        default: 'https://ipfs.io/ipfs/',
+      },
+      mode: {
+        type: 'string',
+        describe: 'how to link and treat images - should they be saved or simply linked to',
+        required: false,
+        default: 'mixed',
+        choices: ['mixed', 'save', 'link'],
+      },
     })
     .parseSync()
   const providers = (argv.providers?.length ? argv.providers : Object.keys(collectables)) as Collectable[]
+  if (argv.mode === 'save') {
+    log('warning: saving all images - this could collect unwanted data')
+  }
   return {
     providers,
+    ipfs: argv.ipfs,
+    mode: argv.mode as ImageModeParam,
   }
-}
+})
 
-export const exportImage = () => {
+export const exportImage = _.memoize(() => {
   const argv = yargs(hideBin(process.argv))
     .options({
       token: {
@@ -37,4 +58,18 @@ export const exportImage = () => {
     token: argv.token,
     chainId: argv.chainId,
   }
-}
+})
+
+// because pumptires is controlled by anyone, we don't want to collect it by default
+const defaultNotCollected = new Set<Collectable>(['pumptires'])
+
+export const checkShouldSave = _.memoize((providerKey: string) => {
+  const { mode } = collect()
+  if (mode === imageMode.SAVE) {
+    return true
+  } else if (mode === imageMode.LINK) {
+    return false
+  } else {
+    return !defaultNotCollected.has(providerKey as Collectable)
+  }
+})

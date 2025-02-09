@@ -5,13 +5,12 @@ import * as utils from './utils'
 import { tableNames } from '@/db/tables'
 import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
-import { cacheResult } from '@/utils'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {
-    return next(createError.NotFound())
+    return next(createError.NotFound('order id missing'))
   }
   const listTokens = db
     .getDB()
@@ -23,6 +22,8 @@ export const merged: RequestHandler = async (req, res, next) => {
       `${tableNames.network}.chain_id`,
       `${tableNames.image}.image_hash`,
       `${tableNames.image}.ext`,
+      `${tableNames.image}.mode`,
+      `${tableNames.image}.uri`,
     ])
     .from(tableNames.listToken)
     .join(tableNames.token, {
@@ -52,7 +53,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
   const unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
   const list = await utils.applyVersion(req.params.version, unversionedList).first()
   if (!list) {
-    return next(createError.NotFound())
+    return next(createError.NotFound('versioned list missing'))
   }
   const filters = utils.tokenFilters(req.query)
   await utils.respondWithList(res, list, filters, extensions)
@@ -62,7 +63,14 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
   if (!list) {
-    return next(createError.NotFound())
+    return next(
+      createError.NotFound(
+        JSON.stringify({
+          providerKey: req.params.providerKey,
+          listKey: req.params.listKey,
+        }),
+      ),
+    )
   }
   const filters = utils.tokenFilters(req.query)
   await utils.respondWithList(res, list, filters, extensions)

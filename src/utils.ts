@@ -9,6 +9,8 @@ import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { Spinner } from '@topcli/spinner'
+import { Image } from 'knex/types/tables.js'
+import { imageMode } from './db/tables'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -64,6 +66,10 @@ export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
 }
 
 export const limit = promiseLimit(16) as ReturnType<typeof promiseLimit<any>>
+
+export const limitBy = _.memoize(<T>(_key: string, count: number = 16) => {
+  return promiseLimit<T>(count) as ReturnType<typeof promiseLimit<T>>
+})
 
 export const findChain = (chainId: number) => {
   const chain = Object.values(chains).find((chain) => chain.id === chainId) as viem.Chain
@@ -281,8 +287,8 @@ export const timeout = (ms: number) => {
 
 export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)
 
-export const directUri = ({ imageHash, ext }: { imageHash: string; ext: string }) =>
-  imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
+export const directUri = ({ imageHash, ext, mode, uri }: Image) =>
+  mode === imageMode.LINK ? uri : imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
 
 export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
   let cached: null | {

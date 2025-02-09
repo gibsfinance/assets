@@ -24,6 +24,7 @@ import * as uma from './uma'
 import * as baofinance from './baofinance'
 import * as compound from './compound'
 import * as optimism from './optimism'
+import * as pumptires from './pumptires'
 
 export const collectables = {
   pulsechain: pulsechainCollector.collect,
@@ -77,6 +78,7 @@ export const collectables = {
   baofinance: baofinance.collect,
   compound: compound.collect,
   optimism: optimism.collect,
+  pumptires: pumptires.collect,
 }
 
 export type Collectable = keyof typeof collectables

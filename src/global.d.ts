@@ -27,6 +27,8 @@ declare module 'knex/types/tables.js' {
     content: Buffer
     ext: string
     createdAt: Date
+    uri: string
+    mode: string
   }
   interface List extends Timestamped {
     providerId: string
