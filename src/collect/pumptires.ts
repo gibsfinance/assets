@@ -78,8 +78,13 @@ const collectTokens = async (listId: string, filter: string) => {
     await utils.retry(async () => {
       const res = await fetch(url)
       const result = (await res.json()) as Response
-      first = result.tokens[0]
-      response = result
+      try {
+        first = result.tokens[0]
+        response = result
+      } catch (err) {
+        log(result)
+        throw err
+      }
     })
     if (!first) {
       break
@@ -87,7 +92,7 @@ const collectTokens = async (listId: string, filter: string) => {
     // const firstAddress = getAddress((first as TokenInfo).address)
     // response.tokens.forEach((token) => {
     //   if (getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')) {
-    //     console.log('token', token)
+    //     log('token', token)
     //   }
     // })
     relevantData.push(...response.tokens)
@@ -127,17 +132,11 @@ export const collect = async () => {
     networkId: network.networkId,
     default: false,
   })
-  const [
-    // nonLaunchedTokens,
-    launchedTokens,
-  ] = await Promise.all([
-    // collectTokens(list.listId, 'created_timestamp'),
+  const [nonLaunchedTokens, launchedTokens] = await Promise.all([
+    collectTokens(list.listId, 'created_timestamp'),
     collectTokens(list.listId, 'launch_timestamp'),
   ])
-  const tokens = [
-    // ...nonLaunchedTokens,
-    ...launchedTokens,
-  ]
+  const tokens = [...nonLaunchedTokens, ...launchedTokens]
   const launched = new Set(launchedTokens)
   await fs.promises.writeFile('pumptires.json', JSON.stringify(tokens, null, 2))
   const factory = '0x29eA7545DEf87022BAdc76323F373EA1e707C523'
@@ -174,6 +173,7 @@ export const collect = async () => {
         }),
       ])
       if (!isLaunched || !reserves) {
+        l.incrementCurrent()
         return
       }
       // const shouldLog = getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')
@@ -186,10 +186,10 @@ export const collect = async () => {
       // const amount = tokenReserve / wplsReserve
       // const price =
       // if (shouldLog) {
-      // console.log('reserves', pair, tokenReserve, oneBillionWei, token.address)
+      // log('reserves', pair, tokenReserve, oneBillionWei, token.address)
       // }
       if (wplsReserve > oneBillionWei) {
-        console.log('inserting highcap token', token.address)
+        log('inserting highcap token %o', token.address)
         await db.fetchImageAndStoreForToken({
           listId: highMarketCapList.listId,
           uri: originalUri,
@@ -227,7 +227,7 @@ const getReserves = async (pair: Hex, context: any) => {
     ],
   })
   if (result.status === 'failure') {
-    console.log('failed context', context)
+    log('failed context', context)
     return [0n, 0n, 0] as const
   }
   return result.result
