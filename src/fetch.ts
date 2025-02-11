@@ -47,7 +47,12 @@ const ipfsCompatableFetch: typeof fetch = async (
         ...options,
       })
         .then((res) => {
-          clearTimeout(timeout.timeoutId())
+          const id = timeout.timeoutId()
+          clearTimeout(id)
+          const index = controllers.findIndex(([itemId]) => id === itemId)
+          if (index !== -1) {
+            controllers.splice(index, 1)
+          }
           return res
         })
         .catch((err) => {

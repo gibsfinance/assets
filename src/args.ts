@@ -1,5 +1,5 @@
 import { hideBin } from 'yargs/helpers'
-import { collectables, type Collectable } from '@/collect/collectables'
+import { type Collectable, allCollectables } from '@/collect/collectables'
 import yargs from 'yargs'
 import _ from 'lodash'
 import { log } from '@/logger'
@@ -24,6 +24,7 @@ export const collect = _.memoize(() => {
         type: 'array',
         describe: 'a list of providers to collect',
         required: false,
+        coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
       },
       ipfs: {
         type: 'array',
@@ -44,7 +45,9 @@ export const collect = _.memoize(() => {
       rpc56: rpc('bsc', 'https://bsc-pokt.nodies.app'),
     })
     .parseSync()
-  const providers = (argv.providers?.length ? argv.providers : Object.keys(collectables)) as Collectable[]
+  // because of the cirulcar dependency, this is how this is currently done
+  // get rid of the circular dependency and then you can get rid of this
+  const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
     log('warning: saving all images - this could collect unwanted data')
   }
