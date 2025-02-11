@@ -5,6 +5,14 @@ import * as db from '@/db'
 // providers and lists are seeded by the worker. can't be done in 1 tx
 export async function seedOrders(): Promise<void> {
   await db.transaction(async (trx) => {
+    const [gibsProvider] = await db.insertProvider(
+      {
+        key: 'gibs',
+        name: 'Gibs',
+        description: 'lists curated by gibs contributors',
+      },
+      trx,
+    )
     const pulsechainProvider = await db.insertProvider(
       {
         key: 'pulsechain',
@@ -17,14 +25,20 @@ export async function seedOrders(): Promise<void> {
       throw new Error('Failed to insert pulsechain provider')
     }
     const providerIds = [
-      db.ids.provider('gibs'),
+      gibsProvider.providerId,
       db.ids.provider('balancer'),
       db.ids.provider('piteas'),
       db.ids.provider('internetmoney'),
       db.ids.provider('pulsechain'),
     ]
-    const providers = await db.getDB().select('*').from(tableNames.provider).whereIn('providerId', providerIds)
+    const providers = await db
+      .getDB()
+      .select('*')
+      .from(tableNames.provider)
+      .whereIn('providerId', providerIds)
+      .returning('*')
     if (providers.length !== providerIds.length) {
+      console.log(providers)
       throw new Error('Failed to insert providers')
     }
     await db.insertOrder(
