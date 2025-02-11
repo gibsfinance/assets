@@ -53,13 +53,6 @@ export const collect = _.memoize(() => {
       required: false,
       coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
     },
-    ipfs: {
-      type: 'array',
-      describe: 'the ipfs gateway to when none is provided',
-      required: false,
-      default: ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/'],
-      coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
-    },
     mode: {
       type: 'string',
       describe: 'how to link and treat images - should they be saved or simply linked to',
