@@ -1,5 +1,6 @@
 import * as utils from './utils'
 import promiseLimit from 'promise-limit'
+import { collect } from '@/args'
 
 const controllers: [NodeJS.Timeout, AbortController][] = []
 
@@ -14,6 +15,8 @@ export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> 
   return utils.limitBy<Response>(url.host)
 }
 
+let ipfsCounter = 0
+
 const ipfsCompatableFetch: typeof fetch = async (
   url: Parameters<typeof fetch>[0],
   options: Parameters<typeof fetch>[1],
@@ -21,7 +24,10 @@ const ipfsCompatableFetch: typeof fetch = async (
   url = new URL(url as string | URL)
   if (url.protocol === 'ipfs:') {
     const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : `${url.host}${url.pathname}`
-    url = new URL(`https://ipfs.io/ipfs/${cid}`)
+    const ipfsDomains = collect().ipfs
+    const domain = ipfsDomains[ipfsCounter % ipfsDomains.length]
+    ipfsCounter++
+    url = new URL(`${domain}${cid}`)
   }
   // support both http+https
   if (url.protocol?.startsWith('http')) {
@@ -33,6 +39,7 @@ const ipfsCompatableFetch: typeof fetch = async (
       return fetch(url, {
         redirect: 'follow',
         signal: controller.signal,
+        // used to get around certain domains that check user agents
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -40,7 +47,12 @@ const ipfsCompatableFetch: typeof fetch = async (
         ...options,
       })
         .then((res) => {
-          clearTimeout(timeout.timeoutId())
+          const id = timeout.timeoutId()
+          clearTimeout(id)
+          const index = controllers.findIndex(([itemId]) => id === itemId)
+          if (index !== -1) {
+            controllers.splice(index, 1)
+          }
           return res
         })
         .catch((err) => {
