@@ -9,6 +9,7 @@
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
+  let showTestnets = false
 
   metrics.subscribe((value) => {
     metricsData = value
@@ -337,46 +338,63 @@
         <!-- Token Distribution Visualization -->
         {#if $metrics}
           {@const networks = $metrics.networks.supported
-            .filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
-            .map((n) => ({
-              chainId: n.chainId,
-              name: getNetworkName(n.chainId),
-              tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
-            }))
-            .filter((n) => n.tokenCount > 0)
-            .sort((a, b) => b.tokenCount - a.tokenCount)}
+              .map((n) => ({
+                chainId: n.chainId,
+                name: getNetworkName(n.chainId),
+                tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
+                isTestnet: getNetworkName(n.chainId).toLowerCase().includes('testnet')
+              }))
+              .filter((n) => n.tokenCount > 0)
+              .sort((a, b) => {
+                // Sort mainnet networks first, then by token count
+                if (!a.isTestnet && b.isTestnet) return -1;
+                if (a.isTestnet && !b.isTestnet) return 1;
+                return b.tokenCount - a.tokenCount;
+              })}
           {@const totalTokens = $metrics.tokenList.total}
 
           <div class="card p-4">
             <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {#each networks as network}
-                {@const percentage = ((network.tokenCount / totalTokens) * 100).toFixed(1)}
+            
+            <!-- Add testnet toggle -->
+            <div class="flex justify-end mb-4">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                  <input
+                    type="checkbox"
+                    class="sr-only peer"
+                    bind:checked={showTestnets}
+                  />
+                  <div class="w-11 h-6 bg-surface-700/20 rounded-full peer-checked:bg-[#00DC82]/20 transition-colors"></div>
+                  <div class="absolute left-1 top-1 w-4 h-4 bg-surface-200 rounded-full transition-all peer-checked:bg-[#00DC82] peer-checked:translate-x-5"></div>
+                </div>
+                <span class="text-sm font-medium text-surface-600 dark:text-surface-300 group-hover:text-[#00DC82] transition-colors">Show Testnets</span>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {#each networks.filter(n => showTestnets || !n.isTestnet) as network}
                 {@const intensity = Math.max(0.2, network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)))}
-                <div class="relative group hover:scale-105 transition-all duration-200" style="aspect-ratio: 1;">
+                <div class="relative group hover:scale-105 transition-all duration-200">
                   <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
                   <div
-                    class="relative h-full card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between gap-2">
-                    <div class="flex flex-col items-center gap-2">
-                      <Image src={getApiUrl(`/image/${network.chainId}`)} alt={network.name} class="rounded-full">
+                    class="relative card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between h-[160px]">
+                    <div class="flex flex-col items-center flex-1">
+                      <Image 
+                        src={getApiUrl(`/image/${network.chainId}`)} 
+                        alt={network.name} 
+                        class="rounded-full w-10 h-10 flex-shrink-0"
+                      >
                         {#snippet fallback()}
-                          <Icon icon="nrk:404" class="w-12 h-12" />
+                          <Icon icon="nrk:404" class="w-8 h-8" />
                         {/snippet}
                       </Image>
-                      <div class="text-center">
-                        <div class="font-medium truncate w-full" title={network.name}>{network.name}</div>
-                        <div class="text-xs text-surface-500 font-mono">Chain ID: {network.chainId}</div>
+                      <div class="text-center mt-2 flex-1 flex flex-col justify-center w-full">
+                        <div class="font-medium text-sm leading-tight line-clamp-2 px-1" title={network.name}>{network.name}</div>
+                        <div class="text-xs text-surface-500 font-mono mt-1">ID: {network.chainId}</div>
                       </div>
                     </div>
-                    <div class="flex flex-col items-center gap-1">
-                      <div class="text-lg font-bold text-[#00DC82]">{network.tokenCount.toLocaleString()}</div>
-                      <div class="text-xs text-surface-500">{percentage}% of total</div>
-                    </div>
-                    <div class="w-full h-1 bg-surface-700/20 rounded-full overflow-hidden">
-                      <div
-                        class="h-full bg-[#00DC82]/80 rounded-full transition-all duration-200"
-                        style="width: {percentage}%"></div>
-                    </div>
+                    <div class="text-base font-bold text-[#00DC82] mt-2 flex-shrink-0">{network.tokenCount.toLocaleString()}</div>
                   </div>
                 </div>
               {/each}
@@ -479,29 +497,6 @@
     animation: float-left var(--duration) linear infinite !important;
   }
 
-  /* Update depth and opacity based on layers */
-  .animate-float[style*="layer: 'back'"] img {
-    opacity: 0.2;
-    filter: blur(2px);
-  }
-
-  .animate-float[style*="layer: 'middle'"] img {
-    opacity: 0.2;
-    filter: blur(1px);
-  }
-
-  .animate-float[style*="layer: 'front'"] img {
-    opacity: 0.2;
-    filter: blur(0);
-  }
-
-  /* Hover effects */
-  .animate-float:hover img {
-    opacity: 0.4;
-    filter: blur(0) !important;
-    transition: all 0.3s ease;
-  }
-
   /* Add smooth hover effects for cards */
   .card {
     @apply transition-all duration-200;
@@ -512,3 +507,4 @@
     @apply max-w-full overflow-hidden text-ellipsis;
   }
 </style>
+
