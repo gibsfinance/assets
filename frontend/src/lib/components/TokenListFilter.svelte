@@ -1,6 +1,5 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-
   const dispatch = createEventDispatcher<{
     toggleList: { listKey: string; enabled: boolean }
     toggleAll: { enabled: boolean }

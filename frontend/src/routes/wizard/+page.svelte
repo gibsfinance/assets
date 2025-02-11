@@ -67,13 +67,13 @@
       await initializeApiBase()
       if (!cancelled) {
         isInitialized = true
-        
+
         // Clean up URL if it contains a hash
         if (window.location.hash) {
           const cleanPath = window.location.pathname
           goto(cleanPath, { replaceState: true })
         }
-        
+
         metrics.fetchMetrics()
         try {
           const response = await fetch(getApiUrl('/list'))
@@ -270,10 +270,9 @@
   async function processListWithRetry(list: (typeof availableLists)[0], chainId: number) {
     try {
       // Add chainId parameter for chain-specific lists
-      const url = list.chainId === '0' 
+      const url = list.chainId === '0'
         ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
         : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
-      
       const response = await fetch(url)
 
       if (response.ok) {

@@ -6,7 +6,6 @@
   export let networkName: string = ''
   export let tokenAddress: string = ''
   export let generatedUrl: string = ''
-
   const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets'
 
   const dispatch = createEventDispatcher<{

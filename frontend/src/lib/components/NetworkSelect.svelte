@@ -9,7 +9,7 @@
     networkname: (chainId: number | string) => string
   }>()
 
-  let { 
+  let {
     isOpen = $bindable(false),
     selectedNetwork = $bindable<NetworkInfo | null>(null),
     showTestnets = $bindable(false)
@@ -147,4 +147,4 @@
   .selected {
     @apply bg-[#00DC82]/20;
   }
-</style> 
+</style>

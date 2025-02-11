@@ -3,7 +3,6 @@
   import { createEventDispatcher } from 'svelte'
 
   export let urlType: ApiType
-
   const dispatch = createEventDispatcher<{
     reset: void
     select: { type: ApiType }
