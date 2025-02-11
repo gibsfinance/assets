@@ -26,6 +26,10 @@ import * as compound from './compound'
 import * as optimism from './optimism'
 import * as pumptires from './pumptires'
 
+export const allCollectables = () => {
+  return Object.keys(collectables) as Collectable[]
+}
+
 export const collectables = {
   pulsechain: pulsechainCollector.collect,
   trustwallet: trustwallet.collect,
