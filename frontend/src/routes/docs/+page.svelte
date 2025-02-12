@@ -6,16 +6,16 @@
         description: 'Get specific token information',
       },
       {
-        path: '/list/{listName}',
-        description: 'Get full token list (e.g. 9mm list)',
+        path: '/list',
+        description: 'Get all available token lists across providers and chains',
       },
       {
-        path: '/list/{listName}?chainId={chainId}',
-        description: 'Get filtered token list for specific chain',
+        path: '/list/{providerKey}/{listKey}',
+        description: 'Get a specific token list (e.g. uniswap/hosted, pulsex/extended)',
       },
       {
-        path: '/list/{listName}?chainId={chainId}&address={tokenAddress}',
-        description: 'Get token list filtered by chain and address',
+        path: '/list/{providerKey}/{listKey}?chainId={chainId}',
+        description: 'Get a filtered token list for a specific chain',
       },
     ],
     imageEndpoints: [
@@ -48,15 +48,26 @@ fetch(\`\${baseUrl}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
         // <img src={imageUrl} alt="Token logo" />
     });
 
-// Example 2: Get network tokens with filtering
-async function getNetworkTokens(chainId: number) {
-    const tokens = await fetch(\`https://gib.show/list/default?chainId=\${chainId}\`)
-        .then(res => res.json())
-        .then(data => data.tokens)
-        .catch(error => {
-            console.error('Failed to fetch tokens:', error);
-            return [];
-        });
+// Example 2: Get all available token lists
+fetch('https://gib.show/list')
+    .then(res => res.json())
+    .then(lists => {
+        // Lists contain information about available token lists:
+        // - key: List identifier
+        // - name: Display name
+        // - providerKey: Provider identifier
+        // - chainId: Chain specific lists (0 for global lists)
+        // - default: Whether it's a default list
+        console.log(lists);
+    });
+
+// Example 3: Get tokens from a specific list
+fetch('https://gib.show/list/pulsex/extended')
+    .then(res => res.json())
+    .then(data => {
+        // Use the token list data
+        console.log(data.tokens);
+    });
 
 // Get a specific network icon (e.g. Ethereum)
 fetch(\`\${baseUrl}/image/1\`)

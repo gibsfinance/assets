@@ -6,34 +6,52 @@ import {
   pulsechainV4 as viemPulsechainV4,
   type Chain,
 } from 'viem/chains'
+import { collect } from '@/args'
 
-export const mainnet = {
-  ...viemMainnet,
-  rpcUrls: {
-    default: {
-      http: [process.env.RPC_1 || 'https://rpc-ethereum.g4mm4.io'],
+export default () => {
+  const { rpc1, rpc369, rpc56 } = collect()
+
+  const mainnet = {
+    ...viemMainnet,
+    rpcUrls: {
+      ...viemMainnet.rpcUrls,
+      default: {
+        ...viemMainnet.rpcUrls.default,
+        http: rpc1,
+      },
     },
-  },
-} as Chain
-export const pulsechain = {
-  ...viemPulsechain,
-  rpcUrls: {
-    default: {
-      http: [process.env.RPC_369 || 'https://rpc-pulsechain.g4mm4.io'],
+  } as Chain
+  const pulsechain = {
+    ...viemPulsechain,
+    rpcUrls: {
+      ...viemPulsechain.rpcUrls,
+      default: {
+        ...viemPulsechain.rpcUrls.default,
+        http: rpc369,
+      },
     },
-  },
-} as Chain
-export const bsc = {
-  ...viemBSC,
-  rpcUrls: {
-    default: {
-      http: [process.env.RPC_56 || 'https://bsc-pokt.nodies.app'],
+  } as Chain
+  const bsc = {
+    ...viemBSC,
+    rpcUrls: {
+      ...viemBSC.rpcUrls,
+      default: {
+        ...viemBSC.rpcUrls.default,
+        http: rpc56,
+      },
     },
-  },
-} as Chain
-export const sepolia = {
-  ...viemSepolia,
-} as Chain
-export const pulsechainV4 = {
-  ...viemPulsechainV4,
-} as Chain
+  } as Chain
+  const sepolia = {
+    ...viemSepolia,
+  } as Chain
+  const pulsechainV4 = {
+    ...viemPulsechainV4,
+  } as Chain
+  return {
+    mainnet,
+    pulsechain,
+    bsc,
+    sepolia,
+    pulsechainV4,
+  }
+}

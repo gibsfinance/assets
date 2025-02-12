@@ -7,7 +7,7 @@ const { providers } = args.collect()
 
 db.getDB()
   .migrate.latest()
-  .then(() => collect.main(providers))
+  .then(() => collect.main(providers()))
   .then(() => seedOrders())
   .catch((err) => console.log(err))
   .then(cleanup)

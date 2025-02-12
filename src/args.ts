@@ -1,23 +1,37 @@
 import { hideBin } from 'yargs/helpers'
-import { collectables, type Collectable } from '@/collect/collectables'
+import { type Collectable, allCollectables } from '@/collect/collectables'
 import yargs from 'yargs'
 import _ from 'lodash'
 import { log } from '@/logger'
-import { ImageModeParam } from './types'
+import type { ImageModeParam } from './types'
 import { imageMode } from '@/db/tables'
+
+const rpc = (chain: string, url: string) => {
+  return {
+    type: 'array',
+    describe: `the rpc url for ${chain}`,
+    required: false,
+    default: [url],
+    coerce: (val: string[]) => val.flatMap((v) => v.split(',')),
+  } as const
+}
+
 export const collect = _.memoize(() => {
   const argv = yargs(hideBin(process.argv))
+    .env()
     .options({
       providers: {
         type: 'array',
         describe: 'a list of providers to collect',
         required: false,
+        coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
       },
       ipfs: {
-        type: 'string',
+        type: 'array',
         describe: 'the ipfs gateway to when none is provided',
         required: false,
-        default: 'https://ipfs.io/ipfs/',
+        default: ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/'],
+        coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
       },
       mode: {
         type: 'string',
@@ -26,9 +40,14 @@ export const collect = _.memoize(() => {
         default: 'mixed',
         choices: ['mixed', 'save', 'link'],
       },
+      rpc1: rpc('ethereum', 'https://rpc-ethereum.g4mm4.io'),
+      rpc369: rpc('pulsechain', 'https://rpc-pulsechain.g4mm4.io'),
+      rpc56: rpc('bsc', 'https://bsc-pokt.nodies.app'),
     })
     .parseSync()
-  const providers = (argv.providers?.length ? argv.providers : Object.keys(collectables)) as Collectable[]
+  // because of the cirulcar dependency, this is how this is currently done
+  // get rid of the circular dependency and then you can get rid of this
+  const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
     log('warning: saving all images - this could collect unwanted data')
   }
@@ -36,6 +55,9 @@ export const collect = _.memoize(() => {
     providers,
     ipfs: argv.ipfs,
     mode: argv.mode as ImageModeParam,
+    rpc1: argv.rpc1,
+    rpc369: argv.rpc369,
+    rpc56: argv.rpc56,
   }
 })
 
