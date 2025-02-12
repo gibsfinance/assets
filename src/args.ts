@@ -3,7 +3,7 @@ import { type Collectable, allCollectables } from '@/collect/collectables'
 import yargs from 'yargs'
 import _ from 'lodash'
 import { log } from '@/logger'
-import { ImageModeParam } from './types'
+import type { ImageModeParam } from './types'
 import { imageMode } from '@/db/tables'
 
 const rpc = (chain: string, url: string) => {
