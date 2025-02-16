@@ -16,6 +16,7 @@ import * as db from '@/db'
 import { zeroAddress } from 'viem'
 import promiseLimit from 'promise-limit'
 import type { List } from 'knex/types/tables'
+import * as paths from '@/paths'
 
 type Version = {
   major: number
@@ -49,7 +50,7 @@ const filenameToListKey = (filename: string) => {
  */
 export const collect = async () => {
   utils.updateStatus(`🔍 [smoldapp] Reading token list...`)
-  const root = path.join(utils.submodules, 'smoldapp-tokenassets')
+  const root = path.join(paths.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
   const chainsPath = path.join(root, 'chains')
   const providerKey = 'smoldapp'
@@ -258,5 +259,4 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [smoldapp] Collection complete!`)
-  // process.stdout.write('\n')
 }

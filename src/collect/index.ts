@@ -17,11 +17,7 @@ const dbg = debug('📷:collect')
 
 /**
  * @notice Configuration constants for collection tuning
- * @dev Changes:
- * 1. Added maximum retry attempts per provider
- * 2. Reduced concurrency from 4 to 2 for better stability
  */
-// const MAX_PROVIDER_RETRIES = 2
 const PROVIDER_CONCURRENCY = 4
 
 /**
@@ -38,9 +34,9 @@ async function collectWithRetry(
   total: number,
   retryCount = 0,
 ): Promise<void> {
-  utils.updateStatus(`⏳ [${index + 1}/${total}] Collecting from ${provider}...`, true)
+  utils.updateStatus(`⏳ [${index + 1}/${total}] Collecting from ${provider}...`)
   await collector()
-  utils.updateStatus(`✅ [${index + 1}/${total}] Successfully collected from ${provider}`, true)
+  utils.updateStatus(`✅ [${index + 1}/${total}] Successfully collected from ${provider}`)
 }
 
 /**
@@ -90,7 +86,6 @@ export const main = async (providers: Collectable[]) => {
   )
 
   // Print summary
-  // process.stdout.write('\n')
   dbg('\nCollection Summary:')
 
   if (results.successful.length > 0) {

@@ -22,37 +22,6 @@ const updateStatus = (message: string) => {
 }
 
 /**
- * @notice Configuration constants for performance tuning
- * @dev Changes:
- * 1. Reduced batch size from 100 to 25 for better stability
- * 2. Added statement timeout to prevent hanging transactions
- * 3. Implemented configurable retry attempts
- */
-// const MAX_RETRIES = 3
-// const BATCH_SIZE = 25
-// const STATEMENT_TIMEOUT = 300000 // 5 minutes
-
-/**
- * @notice Generic retry wrapper with exponential backoff
- * @dev Added to improve reliability:
- * 1. Implements exponential backoff between retries
- * 2. Configurable maximum retry attempts
- * 3. Preserves original error context
- */
-// async function withRetry<T>(operation: () => Promise<T>, retryCount = 0): Promise<T> {
-//   try {
-//     return await operation()
-//   } catch (error) {
-//     if (retryCount >= MAX_RETRIES) {
-//       throw error
-//     }
-//     const delay = Math.pow(2, retryCount) * 1000
-//     await new Promise((resolve) => setTimeout(resolve, delay))
-//     return withRetry(operation, retryCount + 1)
-//   }
-// }
-
-/**
  * @notice Main collection function for processing token lists
  * @dev Changes:
  * 1. Added batched processing with configurable batch size

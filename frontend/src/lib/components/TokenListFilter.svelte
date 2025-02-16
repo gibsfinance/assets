@@ -9,7 +9,6 @@
   export let enabledLists: Set<string>
   export let tokensByList: Map<string, any[]>
   export let selectedChain: number | null
-
   let listSearchQuery = ''
   let filteredLists: Array<[string, any[]]> = []
 

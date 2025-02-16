@@ -174,5 +174,4 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [internetmoney] Completed processing ${totalTokens} tokens!`)
-  // process.stdout.write('\n')
 }

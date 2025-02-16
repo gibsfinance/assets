@@ -326,16 +326,12 @@ export const timeout = (ms: number) => {
   }
 }
 
-/** this is a helper function that stands in for ink in the console */
-export const updateStatus = (message: string, addNewline = false) => {
+export const updateStatus = (message: string) => {
   // Clear the current line and move to the beginning
-  readline.clearLine(process.stdout, 0)
-  readline.cursorTo(process.stdout, 0)
+  process.stdout.clearLine(0)
+  process.stdout.cursorTo(0)
   // Write the new message
   process.stdout.write(message)
-  if (addNewline) {
-    process.stdout.write('\n')
-  }
 }
 
 export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)

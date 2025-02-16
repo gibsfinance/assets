@@ -129,129 +129,125 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
     }
 
     log('provider=%o, %o->%o updating=%o', provider.key, fromList.key, toList.key, bridgeBlockKey)
-    await iterateOverRange(
-      fromBlock,
-      latestBlock.number,
-      async (fromBlock, toBlock) => {
-        const events = await toOmnibridge.getEvents.NewTokenRegistered(
-          {},
-          {
-            fromBlock,
-            toBlock,
-          },
-        )
-        if (!events.length) {
-          await db.updateBridgeBlockProgress(bridge.bridgeId, {
-            [bridgeBlockKey]: `${toBlock}`,
-          })
-          return
+    await iterateOverRange(fromBlock, latestBlock.number, async (fromBlock, toBlock) => {
+      const events = await toOmnibridge.getEvents.NewTokenRegistered(
+        {},
+        {
+          fromBlock,
+          toBlock,
+        },
+      )
+      if (!events.length) {
+        await db.updateBridgeBlockProgress(bridge.bridgeId, {
+          [bridgeBlockKey]: `${toBlock}`,
+        })
+        return
+      }
+      log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
+      const collectedData = await Promise.all(
+        events.map(async (event) => {
+          const native = event.args.native as viem.Hex
+          const bridged = event.args.bridged as viem.Hex
+          const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
+          const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
+          const [name, symbol, decimals] = await erc20Read(fromConfig.chain, fromClient, native)
+          const [bridgedName, bridgedSymbol, bridgedDecimals] = await erc20Read(toConfig.chain, toClient, bridged)
+          const metadata = {
+            name,
+            symbol,
+            decimals,
+          }
+          const bridgedMetadata = {
+            name: bridgedName,
+            symbol: bridgedSymbol,
+            decimals: bridgedDecimals,
+          }
+          return [
+            [nativeKey, metadata],
+            [bridgedKey, bridgedMetadata],
+          ] as const
+        }),
+      )
+      const collectedDataForTokens = new Map<
+        string,
+        {
+          decimals: number
+          symbol: string
+          name: string
         }
-        log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
-        const collectedData = await Promise.all(
-          events.map(async (event) => {
-            const native = event.args.native as viem.Hex
-            const bridged = event.args.bridged as viem.Hex
-            const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
-            const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
-            const [name, symbol, decimals] = await erc20Read(fromConfig.chain, fromClient, native)
-            const [bridgedName, bridgedSymbol, bridgedDecimals] = await erc20Read(toConfig.chain, toClient, bridged)
-            const metadata = {
-              name,
-              symbol,
-              decimals,
-            }
-            const bridgedMetadata = {
-              name: bridgedName,
-              symbol: bridgedSymbol,
-              decimals: bridgedDecimals,
-            }
-            return [
-              [nativeKey, metadata],
-              [bridgedKey, bridgedMetadata],
-            ] as const
-          }),
-        )
-        const collectedDataForTokens = new Map<
-          string,
-          {
-            decimals: number
-            symbol: string
-            name: string
-          }
-        >(_.flatten(collectedData))
-        await db.transaction(async (tx) => {
-          for (const event of events) {
-            const [native, bridged] = await Promise.all(
-              [[fromConfig.chain.id, event.args.native] as const, [toConfig.chain.id, event.args.bridged] as const].map(
-                async ([chainId, addr]) => {
-                  const providedId = viem.getAddress(addr as viem.Hex)
-                  const networkId = chainIdToNetworkId(chainId)
-                  const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
-                  if (!metadata) {
-                    return
-                  }
-                  const { token } = await db.fetchImageAndStoreForToken(
-                    {
-                      // no images to associate
-                      uri: null,
-                      originalUri: null,
-                      listId: toList.listId,
-                      providerKey: provider.key,
-                      token: {
-                        networkId,
-                        providedId,
-                        ...metadata,
-                      },
+      >(_.flatten(collectedData))
+      await db.transaction(async (tx) => {
+        for (const event of events) {
+          const [native, bridged] = await Promise.all(
+            [[fromConfig.chain.id, event.args.native] as const, [toConfig.chain.id, event.args.bridged] as const].map(
+              async ([chainId, addr]) => {
+                const providedId = viem.getAddress(addr as viem.Hex)
+                const networkId = chainIdToNetworkId(chainId)
+                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
+                if (!metadata) {
+                  return
+                }
+                const { token } = await db.fetchImageAndStoreForToken(
+                  {
+                    // no images to associate
+                    uri: null,
+                    originalUri: null,
+                    listId: toList.listId,
+                    providerKey: provider.key,
+                    token: {
+                      networkId,
+                      providedId,
+                      ...metadata,
                     },
-                    tx,
-                  )
-                  return token
-                },
-              ),
-            )
-            if (!native || !bridged) {
-              continue
-            }
-            await db.insertBridgeLink(
-              {
-                bridgeId: bridge.bridgeId,
-                nativeTokenId: native.tokenId,
-                bridgedTokenId: bridged.tokenId,
-                transactionHash: event.transactionHash,
+                  },
+                  tx,
+                )
+                return token
               },
-              tx,
-            )
+            ),
+          )
+          if (!native || !bridged) {
+            continue
           }
-          await db.updateBridgeBlockProgress(
-            bridge.bridgeId,
+          await db.insertBridgeLink(
             {
-              [bridgeBlockKey]: `${toBlock}`,
+              bridgeId: bridge.bridgeId,
+              nativeTokenId: native.tokenId,
+              bridgedTokenId: bridged.tokenId,
+              transactionHash: event.transactionHash,
             },
             tx,
           )
-        })
-      },
-      10_000n,
-    )
+        }
+        await db.updateBridgeBlockProgress(
+          bridge.bridgeId,
+          {
+            [bridgeBlockKey]: `${toBlock}`,
+          },
+          tx,
+        )
+      })
+    })
+  }, 10_000n)
 
-    // break // Success, exit retry loop
-    // } catch (error: unknown) {
-    //   retryCount++
-    //   const err = error as { message?: string; details?: string; status?: number }
+  // break // Success, exit retry loop
+  // } catch (error: unknown) {
+  //   retryCount++
+  //   const err = error as { message?: string; details?: string; status?: number }
 
-    //   log('Error in bridge collection (attempt %d/%d): %s', retryCount, maxRetries, err.message || 'Unknown error')
+  //   log('Error in bridge collection (attempt %d/%d): %s', retryCount, maxRetries, err.message || 'Unknown error')
 
-    //   if (retryCount === maxRetries) {
-    //     throw error // Re-throw on final attempt
-    //   }
+  //   if (retryCount === maxRetries) {
+  //     throw error // Re-throw on final attempt
+  //   }
 
-    //   // Wait longer for HTTP errors
-    //   const delay = err.status === 503 ? retryDelay * 2 : retryDelay
-    //   log('Waiting %dms before retry...', delay)
-    //   await new Promise((resolve) => setTimeout(resolve, delay))
-    // }
-    // }
-  })
+  //   // Wait longer for HTTP errors
+  //   const delay = err.status === 503 ? retryDelay * 2 : retryDelay
+  //   log('Waiting %dms before retry...', delay)
+  //   await new Promise((resolve) => setTimeout(resolve, delay))
+  // }
+  // }
+  // })
 
   await Promise.all(tasks)
 }

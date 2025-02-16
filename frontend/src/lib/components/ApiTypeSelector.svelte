@@ -33,9 +33,3 @@
     </button>
   </div>
 </div>
-
-<style lang="postcss">
-  .label {
-    @apply text-sm font-medium;
-  }
-</style>
