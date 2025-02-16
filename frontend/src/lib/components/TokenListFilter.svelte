@@ -9,16 +9,22 @@
   export let isOpen = false
   export let enabledLists: Set<string>
   export let tokensByList: Map<string, any[]>
+  export let selectedChain: number | null
   
   let listSearchQuery = ''
   let filteredLists: Array<[string, any[]]> = []
 
+  function getListsWithTokensForChain() {
+    return Array.from(tokensByList.entries()).filter(([_, tokens]) => {
+      const tokensForNetwork = tokens.filter(token => token.chainId === selectedChain)
+      return tokensForNetwork.length > 0
+    })
+  }
+
   $: {
-    // Filter lists based on search and exclude empty lists
-    filteredLists = Array.from(tokensByList.entries()).filter(
-      ([key, tokens]) =>
-        tokens.length > 0 && // Only include lists with tokens
-        (!listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase())),
+    // Filter lists based on search, network, and exclude empty lists
+    filteredLists = getListsWithTokensForChain().filter(
+      ([key]) => !listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase())
     )
   }
 
@@ -39,11 +45,11 @@
       isOpen = !isOpen
       if (isOpen) {
         listSearchQuery = ''
-        filteredLists = Array.from(tokensByList.entries()).filter(([_, tokens]) => tokens.length > 0)
+        filteredLists = getListsWithTokensForChain()
       }
     }}>
     <i class="fas fa-filter mr-2"></i>
-    Lists ({enabledLists.size})
+    Lists ({getListsWithTokensForChain().length})
   </button>
 
   {#if isOpen}
@@ -81,7 +87,9 @@
                 }} />
               <div class="flex-1">
                 <div class="font-medium">{listKey}</div>
-                <div class="text-xs opacity-75">{tokens.length} tokens</div>
+                <div class="text-xs opacity-75">
+                  {tokens.filter(token => token.chainId === selectedChain).length} tokens
+                </div>
               </div>
             </label>
           {/each}

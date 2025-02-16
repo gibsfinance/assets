@@ -1,14 +1,43 @@
-export function getApiUrl(path: string = ''): string {
-    // Always use gib.show for API and image requests
-    return `https://gib.show${path}`;
+import { writable, get } from 'svelte/store';
+
+export const apiBase = writable<string | null>(null);
+
+async function checkLocalServerAvailable(): Promise<boolean> {
+  try {
+    const response = await fetch(process.env.VITE_API_LOCAL + '/health', {
+      method: 'HEAD',
+      cache: 'no-cache'
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
-const API_BASE = 'https://gib.show';
+export async function initializeApiBase(): Promise<string> {
+  const currentBase = get(apiBase);
+  if (currentBase) return currentBase;
+  
+  const isLocalAvailable = await checkLocalServerAvailable();
+  const baseUrl = isLocalAvailable ? process.env.VITE_API_LOCAL : process.env.VITE_API_BASE;
+  
+  console.log(`🌐 API: Using ${isLocalAvailable ? 'local server' : 'production server'} at ${baseUrl}`);
+  apiBase.set(baseUrl);
+  return baseUrl;
+}
+
+export function getApiUrl(path: string): string {
+  const base = get(apiBase);
+  if (!base) {
+    return `${process.env.VITE_API_BASE}${path}`; // Fallback to production
+  }
+  return `${base}${path}`;
+}
 
 export const GET = async (params: Record<string, string>) => {
     const chainId = params.chainId;
     try {
-        const apiUrl = `${API_BASE}/list/default${chainId ? `?chainId=${chainId}` : ''}`;
+        const apiUrl = getApiUrl(`/list/default${chainId ? `?chainId=${chainId}` : ''}`);
         console.log('Fetching token list from:', apiUrl);
 
         const response = await fetch(apiUrl);

@@ -8,9 +8,9 @@
     select: NetworkInfo
   }>()
 
-  export let isOpen = false
-  export let selectedNetwork: NetworkInfo | null = null
-  export let showTestnets = false
+  let isOpen = $state(false)
+  let selectedNetwork = $state<NetworkInfo | null>(null)
+  let showTestnets = $state(false)
 
   // Add click outside handler for network select
   onMount(() => {

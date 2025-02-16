@@ -17,6 +17,18 @@
   let translateX = 0
   let translateY = 0
 
+  // Add reset function to restore initial state
+  export function resetPreview() {
+    zoomLevel = 1
+    translateX = 0
+    translateY = 0
+    isCircularCrop = false
+    showColorPicker = false
+    backgroundColor = '#151821'
+    previewError = false
+    iconExists = true
+  }
+
   function handleZoomIn() {
     zoomLevel = Math.min(zoomLevel + 0.5, 4)
   }
@@ -81,19 +93,28 @@
   <div class="flex justify-between items-center">
     <span class="label">Preview</span>
     <div class="flex gap-2">
-      <button class="btn btn-sm variant-soft-surface" on:click={handleZoomOut} disabled={zoomLevel <= 0.5}>
+      <button 
+        class="btn btn-sm variant-soft-surface" 
+        on:click={handleZoomOut} 
+        disabled={zoomLevel <= 0.5}
+        aria-label="Zoom out">
         <i class="fas fa-minus"></i>
       </button>
       <span class="flex items-center px-2 text-sm">
         {Math.round(zoomLevel * 100)}%
       </span>
-      <button class="btn btn-sm variant-soft-surface" on:click={handleZoomIn} disabled={zoomLevel >= 4}>
+      <button 
+        class="btn btn-sm variant-soft-surface" 
+        on:click={handleZoomIn} 
+        disabled={zoomLevel >= 4}
+        aria-label="Zoom in">
         <i class="fas fa-plus"></i>
       </button>
     </div>
   </div>
   <div class="flex flex-col justify-center">
-    <div
+    <button
+      type="button"
       class="overflow-hidden relative h-[300px] w-full cursor-move {showColorPicker
         ? ''
         : 'checkerboard'} border border-surface-700/20"
@@ -102,10 +123,16 @@
       on:mousemove={handleMouseMove}
       on:mouseup={handleMouseUp}
       on:mouseleave={handleMouseUp}
-      on:wheel={handleWheel}>
+      on:wheel={handleWheel}
+      role="slider"
+      aria-label="Token preview zoom control"
+      aria-valuemin="50"
+      aria-valuemax="400"
+      aria-valuenow={Math.round(zoomLevel * 100)}
+      aria-valuetext="{Math.round(zoomLevel * 100)}% zoom">
       <Image
         alt="Icon preview"
-        src={url.replace(/^\./, 'https://gib.show')}
+        src={url}
         class="absolute user-drag-none left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop
           ? 'rounded-full'
           : ''}"
@@ -116,7 +143,7 @@
           <Icon icon="nrk:404" class="w-12 h-12" />
         {/snippet}
       </Image>
-    </div>
+    </button>
     <div class="text-center text-sm text-gray-400 mt-2">
       <span class="opacity-75">Click and drag to pan • Scroll to zoom</span>
     </div>
@@ -144,8 +171,9 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <!-- Color Picker -->
           <div class="space-y-2">
-            <label class="text-sm">Pick a color:</label>
+            <label for="color-picker" class="text-sm">Pick a color:</label>
             <input
+              id="color-picker"
               type="color"
               class="w-full h-10 rounded cursor-pointer"
               value={backgroundColor}
@@ -154,8 +182,9 @@
 
           <!-- Color Input -->
           <div class="space-y-2">
-            <label class="text-sm">Or enter a color value:</label>
+            <label for="color-text" class="text-sm">Or enter a color value:</label>
             <input
+              id="color-text"
               type="text"
               class="input"
               placeholder="#HEX, rgb(), rgba()"

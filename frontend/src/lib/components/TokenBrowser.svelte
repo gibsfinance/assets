@@ -58,6 +58,7 @@
         bind:isOpen={isListFilterOpen}
         {enabledLists}
         {tokensByList}
+        {selectedChain}
         on:toggleList={({ detail }) => dispatch('toggleList', detail)}
         on:toggleAll={({ detail }) => dispatch('toggleAll', detail)}
       />

@@ -17,10 +17,18 @@ interface Provider {
 	chainId: string;
 }
 
+interface TokenChunk {
+	startIndex: number;
+	tokens: TokenInfo[];
+}
+
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const MAX_CACHE_SIZE = 4.5 * 1024 * 1024; // 4.5MB
 const MAX_ENTRY_SIZE = 500 * 1024; // 500KB for a single entry
 const MAX_TOKENS_PER_LIST = 100000; // Increased to handle large token lists
+const CHUNK_SIZE = 500; // Reduced chunk size
+const MAX_CHUNKS_PER_LIST = 5; // Limit total chunks per list
+const MINIMUM_TOKENS_FOR_CHUNKING = 1000; // Only chunk if more than 1000 tokens
 
 function isCacheValid<T>(cache: CacheEntry<T> | null): cache is CacheEntry<T> {
 	if (!cache) return false;
@@ -40,20 +48,50 @@ function compressTokenList(tokens: TokenInfo[]): TokenInfo[] {
 	}));
 }
 
+function chunkTokenList(tokens: TokenInfo[]): TokenChunk[] {
+	const chunks: TokenChunk[] = [];
+	for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
+		chunks.push({
+			startIndex: i,
+			tokens: tokens.slice(i, i + CHUNK_SIZE)
+		});
+	}
+	return chunks;
+}
+
+// Add new helper function to filter and compress tokens
+function filterAndCompressTokens(tokens: TokenInfo[]): TokenInfo[] {
+	// Keep only essential fields and normalize addresses
+	return tokens.map(token => ({
+		chainId: token.chainId,
+		address: token.address.toLowerCase(),
+		symbol: token.symbol,
+		name: token.name,
+		decimals: token.decimals
+	}));
+}
+
 function createMetricsStore() {
 	const { subscribe, set } = writable<PlatformMetrics | null>(null);
 
 	const clearCache = () => {
 		try {
-			// Get all cache keys
-			const keys = Object.keys(localStorage).filter(key => 
+			const keys = Object.keys(localStorage);
+			const cacheKeys = keys.filter(key => 
 				key.startsWith('tokenList_') || 
 				key === 'providers' || 
 				key === 'networks'
 			);
-
-			// Remove all cache entries
-			keys.forEach(key => localStorage.removeItem(key));
+			
+			cacheKeys.forEach(key => {
+				localStorage.removeItem(key);
+				// Also remove any associated chunks
+				if (key.startsWith('tokenList_')) {
+					keys.filter(k => k.startsWith(`${key}_chunk_`))
+						.forEach(chunkKey => localStorage.removeItem(chunkKey));
+					localStorage.removeItem(`${key}_meta`);
+				}
+			});
 			console.log('Cache cleared successfully');
 		} catch (error) {
 			console.error('Error clearing cache:', error);
@@ -111,68 +149,123 @@ function createMetricsStore() {
 
 	const getFromCache = <T>(key: string): T | null => {
 		try {
+			// Check for chunked token list
+			if (key.startsWith('tokenList_')) {
+				const metaKey = `${key}_meta`;
+				const meta = localStorage.getItem(metaKey);
+				
+				if (meta) {
+					const { data: { chunks } } = JSON.parse(meta);
+					const allTokens: TokenInfo[] = [];
+					
+					// Collect all available chunks
+					for (let i = 0; i < chunks; i++) {
+						try {
+							const chunkKey = `${key}_chunk_${i}`;
+							const chunkData = localStorage.getItem(chunkKey);
+							if (!chunkData) continue;
+							
+							const chunk: CacheEntry<TokenChunk> = JSON.parse(chunkData);
+							if (isCacheValid(chunk)) {
+								allTokens.push(...chunk.data.tokens);
+							}
+						} catch (error) {
+							console.warn(`Failed to read chunk ${i}`);
+						}
+					}
+					
+					if (allTokens.length > 0) {
+						return allTokens as T;
+					}
+				}
+			}
+
+			// Regular cache handling
 			const cached = localStorage.getItem(key);
 			if (!cached) return null;
+			
 			const parsedCache: CacheEntry<T> = JSON.parse(cached);
-			if (!isCacheValid(parsedCache)) return null;
-			return parsedCache.data;
+			return isCacheValid(parsedCache) ? parsedCache.data : null;
 		} catch (error) {
-			console.error(`Error reading from cache (${key}):`, error);
+			console.warn(`Failed to read cache for ${key}`, error);
 			return null;
 		}
 	};
 
 	const setToCache = <T>(key: string, data: T, forceCompress = false): void => {
 		try {
-			let finalData = data;
-			let compressed = false;
-
-			// For token lists, try to compress if needed
+			// Special handling for token lists
 			if (key.startsWith('tokenList_') && Array.isArray(data)) {
-				if (forceCompress || data.length > MAX_TOKENS_PER_LIST) {
-					finalData = compressTokenList(data as TokenInfo[]) as T;
-					compressed = true;
-				}
-			}
+				const tokens = data as TokenInfo[];
+				
+				// Only chunk if we have a large number of tokens
+				if (tokens.length > MINIMUM_TOKENS_FOR_CHUNKING) {
+					// Compress tokens first
+					const compressedTokens = filterAndCompressTokens(tokens);
+					const chunks = chunkTokenList(compressedTokens);
+					
+					// Limit number of chunks to prevent excessive storage usage
+					const limitedChunks = chunks.slice(0, MAX_CHUNKS_PER_LIST);
+					
+					let successfulChunks = 0;
+					limitedChunks.forEach((chunk, index) => {
+						const chunkKey = `${key}_chunk_${index}`;
+						try {
+							const chunkEntry: CacheEntry<TokenChunk> = {
+								timestamp: Date.now(),
+								data: {
+									startIndex: chunk.startIndex,
+									tokens: chunk.tokens
+								}
+							};
+							
+							const serialized = JSON.stringify(chunkEntry);
+							if (serialized.length <= MAX_ENTRY_SIZE) {
+								localStorage.setItem(chunkKey, serialized);
+								successfulChunks++;
+							}
+						} catch (error) {
+							// Individual chunk failed, continue with others
+							console.warn(`Skipping chunk ${index} due to storage error`);
+						}
+					});
 
-			const cacheEntry: CacheEntry<T> = {
-				timestamp: Date.now(),
-				data: finalData,
-				compressed
-			};
-			
-			const serialized = JSON.stringify(cacheEntry);
-			if (serialized.length > MAX_ENTRY_SIZE) {
-				if (!compressed && key.startsWith('tokenList_')) {
-					// Try again with compression
-					setToCache(key, data, true);
-					return;
-				}
-				console.warn(`Cache entry ${key} too large (${serialized.length} bytes), skipping cache`);
-				return;
-			}
-
-			try {
-				localStorage.setItem(key, serialized);
-			} catch (error) {
-				if (error instanceof Error && error.name === 'QuotaExceededError') {
-					clearOldestCache();
-					try {
-						localStorage.setItem(key, serialized);
-					} catch (retryError) {
-						if (!compressed && key.startsWith('tokenList_')) {
-							// Try one last time with compression
-							setToCache(key, data, true);
-						} else {
-							console.error(`Failed to cache ${key} after cleanup:`, retryError);
+					// Only store metadata if we successfully stored some chunks
+					if (successfulChunks > 0) {
+						const metaEntry = {
+							timestamp: Date.now(),
+							data: {
+								totalTokens: tokens.length,
+								storedTokens: successfulChunks * CHUNK_SIZE,
+								chunks: successfulChunks
+							}
+						};
+						try {
+							localStorage.setItem(`${key}_meta`, JSON.stringify(metaEntry));
+						} catch (error) {
+							console.warn('Failed to store chunk metadata');
 						}
 					}
-				} else {
-					console.error(`Error writing to cache (${key}):`, error);
+					return;
 				}
 			}
+
+			// Regular cache handling for non-token-list data or small token lists
+			const cacheEntry: CacheEntry<T> = {
+				timestamp: Date.now(),
+				data: data
+			};
+			
+			try {
+				const serialized = JSON.stringify(cacheEntry);
+				if (serialized.length <= MAX_ENTRY_SIZE) {
+					localStorage.setItem(key, serialized);
+				}
+			} catch (error) {
+				console.warn(`Failed to cache ${key}`, error);
+			}
 		} catch (error) {
-			console.error(`Error preparing cache entry (${key}):`, error);
+			console.warn(`Error preparing cache entry for ${key}`, error);
 		}
 	};
 
@@ -187,7 +280,10 @@ function createMetricsStore() {
 		try {
 			const response = await fetch(getApiUrl(`/list/${provider}`));
 			if (!response.ok) {
-				console.error(`Failed to fetch list ${provider}, status: ${response.status}`);
+				// Only log error if it's not a 404 (missing list is expected for some providers)
+				if (response.status !== 404) {
+					console.error(`Failed to fetch list ${provider}, status: ${response.status}`);
+				}
 				return [];
 			}
 			const data = await response.json();
@@ -215,7 +311,7 @@ function createMetricsStore() {
 		}
 
 		try {
-			const response = await fetch('https://gib.show/list');
+			const response = await fetch(getApiUrl('/list'));
 			if (!response.ok) return [];
 			const providers = await response.json();
 			setToCache(cacheKey, providers);

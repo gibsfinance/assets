@@ -2,6 +2,39 @@
 
 based off of [available schema](https://raw.githubusercontent.com/Uniswap/token-lists/main/src/tokenlist.schema.json)
 
+## Installation
+
+1. Clone the repository with submodules:
+
+```sh
+git clone --recursive https://github.com/yourusername/assets.git
+cd assets
+```
+
+2. Set up environment variables:
+
+```sh
+cp .env.example .env
+# Edit .env with your RPC endpoints
+```
+
+3. Run the setup script:
+
+```sh
+pnpm run setup
+```
+
+This will:
+
+- Install dependencies
+- Start the database
+- Run migrations
+- Seed initial data
+- Collect all providers
+- Create orders
+
+## Usage
+
 this repo relies on git submodules so you will need to be careful not to break links and regularly update
 
 constrained assets metadata linking.
@@ -76,6 +109,19 @@ resolve through specific lists, first by seeding the db with your configuration,
 ```sh
 https://gib.show/list/merged/5ff74ffa222c6c435c9432ad937c5d95e3327ebbe3eb9ff9f62a4d940d5790f9?chainId=369
 ```
+
+## Progress Indicators
+
+During collection and processing, the following visual indicators are used:
+
+- 🔍 Searching/Reading - When scanning directories or reading files
+- ⚡ Processing - When processing blockchains or tokens
+- 🔗 RPC Operations - When interacting with blockchain nodes
+- 🏗️ Setup Operations - When setting up providers and lists
+- 🖼️ Logo Operations - When handling network or token logos
+- 📥 Asset Processing - When processing individual assets
+- 💾 Storage Operations - When storing data to the database
+- ✨ Completion - When a collection process is complete
 
 ### building
 
