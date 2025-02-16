@@ -1,4 +1,4 @@
-import _, { result } from 'lodash'
+import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
 import * as db from '@/db'
 import * as utils from '@/utils'
