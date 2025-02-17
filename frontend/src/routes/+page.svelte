@@ -525,4 +525,3 @@
     @apply max-w-full overflow-hidden text-ellipsis;
   }
 </style>
-
