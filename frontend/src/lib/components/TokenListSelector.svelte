@@ -18,9 +18,9 @@
 
   function handleChange() {
     if (selectedList) {
-      dispatch('select', { 
-        providerKey: selectedList.providerKey, 
-        key: selectedList.key 
+      dispatch('select', {
+        providerKey: selectedList.providerKey,
+        key: selectedList.key,
       })
     }
   }
@@ -28,11 +28,7 @@
 
 <div class="space-y-2">
   <label for="list-select" class="label">Select Token List</label>
-  <select
-    id="list-select"
-    class="select"
-    bind:value={selectedList}
-    on:change={handleChange}>
+  <select id="list-select" class="select" bind:value={selectedList} on:change={handleChange}>
     <option value={null}>Choose a list...</option>
     {#each availableLists as list}
       <option value={{ key: list.key, providerKey: list.providerKey }}>
@@ -44,9 +40,9 @@
 
 <style lang="postcss">
   .label {
-    @apply font-medium text-sm;
+    @apply text-sm font-medium;
   }
   .select {
     @apply w-full;
   }
-</style> 
+</style>

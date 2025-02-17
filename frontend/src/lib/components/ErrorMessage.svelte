@@ -6,7 +6,7 @@
   export let networkName: string = ''
   export let tokenAddress: string = ''
   export let generatedUrl: string = ''
-  
+
   const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets'
 
   const dispatch = createEventDispatcher<{
@@ -16,8 +16,8 @@
   function createGithubIssue() {
     // Create the issue URL with pre-filled template values
     const params = new URLSearchParams({
-      'template': 'missing-asset.yml',
-      'title': `[Missing Asset]: ${urlType === 'token' ? `Token icon for ${tokenAddress}` : `Network icon for ${networkName}`}`,
+      template: 'missing-asset.yml',
+      title: `[Missing Asset]: ${urlType === 'token' ? `Token icon for ${tokenAddress}` : `Network icon for ${networkName}`}`,
       'asset-type': urlType === 'token' ? 'Token Icon' : 'Network Icon',
       'network-name': networkName,
       'chain-id': chainId?.toString() || '',
@@ -46,4 +46,4 @@
       </p>
     </div>
   </div>
-</div> 
+</div>

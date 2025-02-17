@@ -89,13 +89,13 @@
   }
 </script>
 
-<div class="card variant-ghost p-4 space-y-2">
-  <div class="flex justify-between items-center">
+<div class="card variant-ghost space-y-2 p-4">
+  <div class="flex items-center justify-between">
     <span class="label">Preview</span>
     <div class="flex gap-2">
-      <button 
-        class="btn btn-sm variant-soft-surface" 
-        on:click={handleZoomOut} 
+      <button
+        class="variant-soft-surface btn btn-sm"
+        on:click={handleZoomOut}
         disabled={zoomLevel <= 0.5}
         aria-label="Zoom out">
         <i class="fas fa-minus"></i>
@@ -103,9 +103,9 @@
       <span class="flex items-center px-2 text-sm">
         {Math.round(zoomLevel * 100)}%
       </span>
-      <button 
-        class="btn btn-sm variant-soft-surface" 
-        on:click={handleZoomIn} 
+      <button
+        class="variant-soft-surface btn btn-sm"
+        on:click={handleZoomIn}
         disabled={zoomLevel >= 4}
         aria-label="Zoom in">
         <i class="fas fa-plus"></i>
@@ -115,7 +115,7 @@
   <div class="flex flex-col justify-center">
     <button
       type="button"
-      class="overflow-hidden relative h-[300px] w-full cursor-move {showColorPicker
+      class="relative h-[300px] w-full cursor-move overflow-hidden {showColorPicker
         ? ''
         : 'checkerboard'} border border-surface-700/20"
       style="background-color: {showColorPicker ? backgroundColor : ''}"
@@ -133,25 +133,25 @@
       <Image
         alt="Icon preview"
         src={url}
-        class="absolute user-drag-none left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop
+        class="user-drag-none absolute left-1/2 top-1/2 transition-transform duration-100 {isCircularCrop
           ? 'rounded-full'
           : ''}"
         style="transform: translate(calc(-50% + {translateX}px), calc(-50% + {translateY}px)) scale({zoomLevel})"
         size={128}
         onerror={handleImageError}>
         {#snippet fallback()}
-          <Icon icon="nrk:404" class="w-12 h-12" />
+          <Icon icon="nrk:404" class="h-12 w-12" />
         {/snippet}
       </Image>
     </button>
-    <div class="text-center text-sm text-gray-400 mt-2">
+    <div class="mt-2 text-center text-sm text-gray-400">
       <span class="opacity-75">Click and drag to pan • Scroll to zoom</span>
     </div>
   </div>
 </div>
 
 <!-- Preview Options -->
-<div class="card variant-ghost p-4 space-y-4">
+<div class="card variant-ghost space-y-4 p-4">
   <span class="label">Preview Options</span>
   <div class="flex flex-col gap-4">
     <!-- Crop Option -->
@@ -168,14 +168,14 @@
       </label>
 
       {#if showColorPicker}
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <!-- Color Picker -->
           <div class="space-y-2">
             <label for="color-picker" class="text-sm">Pick a color:</label>
             <input
               id="color-picker"
               type="color"
-              class="w-full h-10 rounded cursor-pointer"
+              class="h-10 w-full cursor-pointer rounded"
               value={backgroundColor}
               on:input={handleColorInput} />
           </div>
@@ -190,9 +190,7 @@
               placeholder="#HEX, rgb(), rgba()"
               value={backgroundColor}
               on:input={handleColorTextInput} />
-            <p class="text-xs opacity-75">
-              Supports HEX (#RRGGBB), RGB (rgb(r,g,b)), and RGBA (rgba(r,g,b,a))
-            </p>
+            <p class="text-xs opacity-75"> Supports HEX (#RRGGBB), RGB (rgb(r,g,b)), and RGBA (rgba(r,g,b,a)) </p>
           </div>
         </div>
       {/if}
@@ -230,4 +228,4 @@
     -webkit-user-select: none;
     -ms-user-select: none;
   }
-</style> 
+</style>

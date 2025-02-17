@@ -22,7 +22,18 @@
     fallbackProps?: FallbackProps
   }
 
-  const { size = 48, height, width, class: className, src, alt, style, fallbackProps, fallback, onerror }: Props = $props()
+  const {
+    size = 48,
+    height,
+    width,
+    class: className,
+    src,
+    alt,
+    style,
+    fallbackProps,
+    fallback,
+    onerror,
+  }: Props = $props()
   const h = $derived(height || size)
   const w = $derived(width || size)
 

@@ -5,12 +5,12 @@
  * and error handling for the asset service
  */
 
-import express from 'express'
 import bodyParser from 'body-parser'
-import { router } from './routes'
-import responseTime from 'response-time'
-import cors from 'cors'
 import compression from 'compression'
+import cors from 'cors'
+import express from 'express'
+import responseTime from 'response-time'
+import { router } from './routes'
 
 export const app = express() as express.Express
 
@@ -23,11 +23,11 @@ app.use(bodyParser.json())
 /**
  * @notice Health Check Endpoint
  * @dev Simple endpoint for monitoring service health
- * Returns 200 OK with 'ok' message
+ * Returns 200 OK with JSON response
  * Used by frontend to check if the service is running, if not, will pull from gib.show
  */
 app.get('/health', (_req, res) => {
-  res.send('ok')
+  res.json({ status: 'ok' })
 })
 
 app.use(router)
@@ -44,10 +44,7 @@ app.use(router)
  */
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   // Don't log 404s for missing images/networks as these are expected
-  if (
-    err.status === 404 &&
-    (err.message === 'image not found' || err.message === 'best guess network image not found')
-  ) {
+  if (err.status === 404 && err.message.includes('image not found')) {
     res.status(404).json({ error: err.message })
     return
   }

@@ -1,20 +1,19 @@
 <script lang="ts">
-  import { metrics } from '$lib/stores/metrics'
-  import { onMount } from 'svelte'
-  import { getApiUrl, initializeApiBase, apiBase } from '$lib/utils'
-  import type { ApiType, NetworkInfo } from '$lib/types'
-  import NetworkSelect from '$lib/components/NetworkSelect.svelte'
-  import TokenPreview from '$lib/components/TokenPreview.svelte'
-  import ErrorMessage from '$lib/components/ErrorMessage.svelte'
-  import ApiTypeSelector from '$lib/components/ApiTypeSelector.svelte'
-  import UrlDisplay from '$lib/components/UrlDisplay.svelte'
-  import TokenAddressInput from '$lib/components/TokenAddressInput.svelte'
-  import TokenListSelector from '$lib/components/TokenListSelector.svelte'
-  import TokenBrowser from '$lib/components/TokenBrowser.svelte'
   import { goto } from '$app/navigation'
-  import { page } from '$app/stores'
+  import ApiTypeSelector from '$lib/components/ApiTypeSelector.svelte'
+  import ErrorMessage from '$lib/components/ErrorMessage.svelte'
+  import NetworkSelect from '$lib/components/NetworkSelect.svelte'
+  import TokenAddressInput from '$lib/components/TokenAddressInput.svelte'
+  import TokenBrowser from '$lib/components/TokenBrowser.svelte'
+  import TokenListSelector from '$lib/components/TokenListSelector.svelte'
+  import TokenPreview from '$lib/components/TokenPreview.svelte'
+  import UrlDisplay from '$lib/components/UrlDisplay.svelte'
+  import { metrics } from '$lib/stores/metrics'
+  import type { ApiType, NetworkInfo } from '$lib/types'
+  import { getApiUrl, initializeApiBase } from '$lib/utils'
+  import { onMount } from 'svelte'
 
-  let getNetworkName: (chainId: number | string) => string
+  let getNetworkName: (chainId: number | string) => string = (chainId) => `Chain ${chainId}`
   let selectedChain: number | null = null
   let tokenAddress: string = ''
   let urlType: ApiType = 'token'
@@ -366,7 +365,7 @@
         bind:isOpen={isNetworkSelectOpen}
         bind:selectedNetwork
         bind:showTestnets
-        bind:getNetworkName
+        on:networkname={({ detail }) => getNetworkName = detail}
         on:select={({ detail }) => selectNetwork(detail)}
       />
 
@@ -374,7 +373,7 @@
       {#if urlType === 'token' && selectedNetwork && !tokenAddress}
         <TokenBrowser
           {selectedChain}
-          networkName={getNetworkName(selectedNetwork.chainId)}
+          networkName={selectedNetwork ? getNetworkName(selectedNetwork.chainId) : ''}
           bind:filteredTokens
           bind:isCircularCrop
           bind:enabledLists

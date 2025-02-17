@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-  
+
   const dispatch = createEventDispatcher<{
     toggleList: { listKey: string; enabled: boolean }
     toggleAll: { enabled: boolean }
@@ -10,13 +10,13 @@
   export let enabledLists: Set<string>
   export let tokensByList: Map<string, any[]>
   export let selectedChain: number | null
-  
+
   let listSearchQuery = ''
   let filteredLists: Array<[string, any[]]> = []
 
   function getListsWithTokensForChain() {
     return Array.from(tokensByList.entries()).filter(([_, tokens]) => {
-      const tokensForNetwork = tokens.filter(token => token.chainId === selectedChain)
+      const tokensForNetwork = tokens.filter((token) => token.chainId === selectedChain)
       return tokensForNetwork.length > 0
     })
   }
@@ -24,7 +24,7 @@
   $: {
     // Filter lists based on search, network, and exclude empty lists
     filteredLists = getListsWithTokensForChain().filter(
-      ([key]) => !listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase())
+      ([key]) => !listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase()),
     )
   }
 
@@ -40,7 +40,7 @@
 
 <div class="relative">
   <button
-    class="btn variant-soft-surface list-filter-dropdown"
+    class="list-filter-dropdown variant-soft-surface btn"
     on:click={() => {
       isOpen = !isOpen
       if (isOpen) {
@@ -53,11 +53,11 @@
   </button>
 
   {#if isOpen}
-    <div class="absolute right-0 mt-1 w-64 bg-surface-100-800-token card p-2 z-50 list-filter-dropdown">
-      <div class="p-2 space-y-3">
-        <div class="flex justify-between items-center">
+    <div class="list-filter-dropdown card bg-surface-100-800-token absolute right-0 z-50 mt-1 w-64 p-2">
+      <div class="space-y-3 p-2">
+        <div class="flex items-center justify-between">
           <h3 class="h4">Token Lists</h3>
-          <button class="btn btn-sm variant-soft" on:click={handleToggleAll}>
+          <button class="variant-soft btn btn-sm" on:click={handleToggleAll}>
             <i class="fas fa-check-double mr-2"></i>
             Toggle All
           </button>
@@ -67,16 +67,12 @@
           <div class="input-group-shim">
             <i class="fas fa-search"></i>
           </div>
-          <input
-            type="search"
-            placeholder="Search lists..."
-            class="input"
-            bind:value={listSearchQuery} />
+          <input type="search" placeholder="Search lists..." class="input" bind:value={listSearchQuery} />
         </div>
 
         <div class="overflow-y-auto" style="height: 297px">
           {#each filteredLists as [listKey, tokens]}
-            <label class="flex items-center gap-2 p-2 hover:bg-surface-hover cursor-pointer">
+            <label class="hover:bg-surface-hover flex cursor-pointer items-center gap-2 p-2">
               <input
                 type="checkbox"
                 class="checkbox"
@@ -88,7 +84,7 @@
               <div class="flex-1">
                 <div class="font-medium">{listKey}</div>
                 <div class="text-xs opacity-75">
-                  {tokens.filter(token => token.chainId === selectedChain).length} tokens
+                  {tokens.filter((token) => token.chainId === selectedChain).length} tokens
                 </div>
               </div>
             </label>
@@ -114,6 +110,6 @@
   }
 
   .overflow-y-auto::-webkit-scrollbar-thumb {
-    @apply bg-[#00DC82]/50 rounded-full;
+    @apply rounded-full bg-[#00DC82]/50;
   }
-</style> 
+</style>

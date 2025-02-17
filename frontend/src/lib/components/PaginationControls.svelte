@@ -20,11 +20,7 @@
 </script>
 
 <div class="flex items-center gap-2">
-  <button 
-    class="btn btn-sm variant-soft" 
-    disabled={currentPage === 1} 
-    on:click={goToPreviousPage}
-  >
+  <button class="variant-soft btn btn-sm" disabled={currentPage === 1} on:click={goToPreviousPage}>
     <i class="fas fa-chevron-left"></i>
   </button>
 
@@ -32,11 +28,7 @@
     Page {currentPage} of {totalPages}
   </span>
 
-  <button 
-    class="btn btn-sm variant-soft"
-    disabled={currentPage >= totalPages}
-    on:click={goToNextPage}
-  >
+  <button class="variant-soft btn btn-sm" disabled={currentPage >= totalPages} on:click={goToNextPage}>
     <i class="fas fa-chevron-right"></i>
   </button>
-</div> 
+</div>

@@ -9,4 +9,3 @@ const baofinance = remoteTokenList.collect({
 export const collect = async () => {
   await Promise.all([baofinance()])
 }
-

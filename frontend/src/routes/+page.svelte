@@ -180,30 +180,30 @@
 </script>
 
 {#if !isInitialized}
-  <div class="flex items-center justify-center min-h-screen">
-    <div class="text-center space-y-4">
+  <div class="flex min-h-screen items-center justify-center">
+    <div class="space-y-4 text-center">
       <div class="loading loading-spinner loading-lg"></div>
       <p>Initializing...</p>
     </div>
   </div>
 {:else}
-  <div class="min-h-screen flex flex-col">
+  <div class="flex min-h-screen flex-col">
     <div class="relative z-10 flex-1">
       <div class="mx-auto space-y-8">
         <!-- Hero Section -->
-        <section class="relative space-y-6 py-8 rounded-lg overflow-hidden">
+        <section class="relative space-y-6 overflow-hidden rounded-lg py-8">
           <div class="absolute inset-0 -z-10 overflow-hidden blur-3xl">
-            <div class="absolute -top-4 -right-4 w-96 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
-            <div class="absolute -bottom-4 -left-4 w-96 h-72 bg-[#00DC82]/10 rounded-full blur-3xl"></div>
+            <div class="absolute -right-4 -top-4 h-72 w-96 rounded-full bg-[#00DC82]/10 blur-3xl"></div>
+            <div class="absolute -bottom-4 -left-4 h-72 w-96 rounded-full bg-[#00DC82]/10 blur-3xl"></div>
           </div>
 
           <div class="space-y-2">
             <p
-              class="text-lg font-space-grotesk text-gray-600 dark:text-gray-400 font-medium tracking-wide w-full text-center">
+              class="font-space-grotesk w-full text-center text-lg font-medium tracking-wide text-gray-600 dark:text-gray-400">
               Welcome to
             </p>
             <h1
-              class="font-space-grotesk text-6xl font-bold bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent tracking-tight w-full text-center">
+              class="font-space-grotesk w-full bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-center text-6xl font-bold tracking-tight text-transparent">
               Gib<span class="text-[#00DC82]">.Show</span>
             </h1>
           </div>
@@ -220,10 +220,10 @@
           <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
             {#each features as feature}
               <div
-                class="feature-card group p-6 rounded-lg transition-all border border-gray-200 dark:border-surface-700/20 hover:shadow-lg hover:scale-[1.02] bg-white dark:bg-[#202633]">
+                class="feature-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:scale-[1.02] hover:shadow-lg dark:border-surface-700/20 dark:bg-[#202633]">
                 <div class="relative">
-                  <div class="absolute inset-0 rounded-lg transition-colors -z-10"></div>
-                  <i class="fas {feature.icon} text-[#00DC82] mb-4 text-4xl group-hover:scale-110 transition-transform"
+                  <div class="absolute inset-0 -z-10 rounded-lg transition-colors"></div>
+                  <i class="fas {feature.icon} mb-4 text-4xl text-[#00DC82] transition-transform group-hover:scale-110"
                   ></i>
                   <h3 class="h3 mb-2 font-bold">{feature.title}</h3>
                   <p class="text-gray-600 dark:text-gray-300">{feature.description}</p>
@@ -238,47 +238,47 @@
           <h2 class="h2 text-center text-3xl font-bold">Simple Integration</h2>
           <div class="grid gap-6">
             {#each examples as example}
-              <div class="card p-6 hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all">
-                <div class="grid md:grid-cols-2 gap-6">
+              <div class="card p-6 transition-all hover:shadow-lg hover:shadow-[#00DC82]/5">
+                <div class="grid gap-6 md:grid-cols-2">
                   <!-- Visual Preview -->
-                  <div class="flex items-center justify-center p-4 bg-surface-700/10 rounded-lg">
+                  <div class="flex items-center justify-center rounded-lg bg-surface-700/10 p-4">
                     {#if example.title === 'Get Token Image'}
-                      <div class="flex gap-4 items-center">
+                      <div class="flex items-center gap-4">
                         <img
                           src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
                           alt="WBTC Token"
-                          class="w-12 h-12 rounded-full" />
+                          class="h-12 w-12 rounded-full" />
                         <i class="fas fa-arrow-right text-[#00DC82]"></i>
-                        <div class="text-sm font-mono bg-surface-700/20 p-2 rounded">
+                        <div class="rounded bg-surface-700/20 p-2 font-mono text-sm">
                           {example.displayUrl}
                         </div>
                       </div>
                     {:else if example.title === 'Get Network Logo'}
-                      <div class="flex gap-4 items-center">
-                        <img src={getApiUrl('/image/1')} alt="Ethereum" class="w-12 h-12 rounded-full" />
+                      <div class="flex items-center gap-4">
+                        <img src={getApiUrl('/image/1')} alt="Ethereum" class="h-12 w-12 rounded-full" />
                         <i class="fas fa-arrow-right text-[#00DC82]"></i>
-                        <div class="text-sm font-mono bg-surface-700/20 p-2 rounded">
+                        <div class="rounded bg-surface-700/20 p-2 font-mono text-sm">
                           {example.displayUrl}
                         </div>
                       </div>
                     {:else}
-                      <div class="flex gap-4 items-center">
+                      <div class="flex items-center gap-4">
                         <div class="flex -space-x-4">
                           <img
                             src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
                             alt="Token 1"
-                            class="w-12 h-12 rounded-full border-2 border-surface-700/20" />
+                            class="h-12 w-12 rounded-full border-2 border-surface-700/20" />
                           <img
                             src={getApiUrl('/image/1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
                             alt="Token 2"
-                            class="w-12 h-12 rounded-full border-2 border-surface-700/20" />
+                            class="h-12 w-12 rounded-full border-2 border-surface-700/20" />
                           <img
                             src={getApiUrl('/image/1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
                             alt="Token 3"
-                            class="w-12 h-12 rounded-full border-2 border-surface-700/20" />
+                            class="h-12 w-12 rounded-full border-2 border-surface-700/20" />
                         </div>
                         <i class="fas fa-arrow-right text-[#00DC82]"></i>
-                        <div class="text-sm font-mono bg-surface-700/20 p-2 rounded">
+                        <div class="rounded bg-surface-700/20 p-2 font-mono text-sm">
                           {example.displayUrl}
                         </div>
                       </div>
@@ -288,15 +288,15 @@
                   <!-- Description -->
                   <div class="space-y-4">
                     <div class="flex items-center gap-4">
-                      <div class="p-3 rounded-lg bg-[#00DC82]/10">
-                        <i class="fas {example.icon} text-[#00DC82] text-2xl"></i>
+                      <div class="rounded-lg bg-[#00DC82]/10 p-3">
+                        <i class="fas {example.icon} text-2xl text-[#00DC82]"></i>
                       </div>
                       <h3 class="h3 font-bold">{example.title}</h3>
                     </div>
                     <p class="text-gray-600 dark:text-gray-300">{example.description}</p>
                     <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                       <i class="fas fa-link text-[#00DC82]"></i>
-                      <code class="font-mono break-all">{example.code}</code>
+                      <code class="break-all font-mono">{example.code}</code>
                     </div>
                   </div>
                 </div>
@@ -310,7 +310,7 @@
           <h2 class="h2 text-center text-3xl font-bold">Platform Metrics</h2>
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div
-              class="metric-card group hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all p-6 rounded-lg border border-gray-200 dark:border-surface-700/20 bg-white dark:bg-[#202633]">
+              class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-[#00DC82]/5 dark:border-surface-700/20 dark:bg-[#202633]">
               {#if $metrics}
                 {@const networks = $metrics.networks.supported
                   .filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
@@ -323,89 +323,95 @@
                   .sort((a, b) => b.tokenCount - a.tokenCount)}
                 {@const totalTokens = $metrics.tokenList.total}
                 <span
-                  class="block text-5xl font-bold text-center mb-2 bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">
+                  class="mb-2 block bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-center text-5xl font-bold text-transparent">
                   {totalTokens.toLocaleString()}+
                 </span>
               {:else}
-                <span class="block text-5xl font-bold text-center mb-2 animate-pulse">---</span>
+                <span class="mb-2 block animate-pulse text-center text-5xl font-bold">---</span>
               {/if}
-              <p class="text-lg text-center text-gray-600 dark:text-gray-300">Total Tokens</p>
+              <p class="text-center text-lg text-gray-600 dark:text-gray-300">Total Tokens</p>
             </div>
             <div
-              class="metric-card group hover:shadow-lg hover:shadow-[#00DC82]/5 transition-all p-6 rounded-lg border border-gray-200 dark:border-surface-700/20 bg-white dark:bg-[#202633]">
+              class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-[#00DC82]/5 dark:border-surface-700/20 dark:bg-[#202633]">
               {#if $metrics}
                 <span
-                  class="block text-5xl font-bold text-center mb-2 bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-transparent">
-                  {$metrics.networks.supported.filter((n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'))
-                    .length}
+                  class="mb-2 block bg-gradient-to-r from-[#00DC82] to-[#00b368] bg-clip-text text-center text-5xl font-bold text-transparent">
+                  {$metrics.networks.supported.filter(
+                    (n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'),
+                  ).length}
                 </span>
               {:else}
-                <span class="block text-5xl font-bold text-center mb-2 animate-pulse">---</span>
+                <span class="mb-2 block animate-pulse text-center text-5xl font-bold">---</span>
               {/if}
-              <p class="text-lg text-center text-gray-600 dark:text-gray-300">Supported Networks</p>
+              <p class="text-center text-lg text-gray-600 dark:text-gray-300">Supported Networks</p>
             </div>
           </div>
 
           <!-- Token Distribution Visualization -->
           {#if $metrics}
             {@const networks = $metrics.networks.supported
-                .map((n) => ({
-                  chainId: n.chainId,
-                  name: getNetworkName(n.chainId),
-                  tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
-                  isTestnet: getNetworkName(n.chainId).toLowerCase().includes('testnet')
-                }))
-                .filter((n) => n.tokenCount > 0)
-                .sort((a, b) => {
-                  // Sort mainnet networks first, then by token count
-                  if (!a.isTestnet && b.isTestnet) return -1;
-                  if (a.isTestnet && !b.isTestnet) return 1;
-                  return b.tokenCount - a.tokenCount;
-                })}
+              .map((n) => ({
+                chainId: n.chainId,
+                name: getNetworkName(n.chainId),
+                tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
+                isTestnet: getNetworkName(n.chainId).toLowerCase().includes('testnet'),
+              }))
+              .filter((n) => n.tokenCount > 0)
+              .sort((a, b) => {
+                // Sort mainnet networks first, then by token count
+                if (!a.isTestnet && b.isTestnet) return -1
+                if (a.isTestnet && !b.isTestnet) return 1
+                return b.tokenCount - a.tokenCount
+              })}
             {@const totalTokens = $metrics.tokenList.total}
 
             <div class="card p-4">
               <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
-              
+
               <!-- Add testnet toggle -->
-              <div class="flex justify-end mb-4">
-                <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="mb-4 flex justify-end">
+                <label class="group flex cursor-pointer items-center gap-3">
                   <div class="relative">
-                    <input
-                      type="checkbox"
-                      class="sr-only peer"
-                      bind:checked={showTestnets}
-                    />
-                    <div class="w-11 h-6 bg-surface-700/20 rounded-full peer-checked:bg-[#00DC82]/20 transition-colors"></div>
-                    <div class="absolute left-1 top-1 w-4 h-4 bg-surface-200 rounded-full transition-all peer-checked:bg-[#00DC82] peer-checked:translate-x-5"></div>
+                    <input type="checkbox" class="peer sr-only" bind:checked={showTestnets} />
+                    <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"
+                    ></div>
+                    <div
+                      class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"
+                    ></div>
                   </div>
-                  <span class="text-sm font-medium text-surface-600 dark:text-surface-300 group-hover:text-[#00DC82] transition-colors">Show Testnets</span>
+                  <span
+                    class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300"
+                    >Show Testnets</span>
                 </label>
               </div>
 
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {#each networks.filter(n => showTestnets || !n.isTestnet) as network}
-                  {@const intensity = Math.max(0.2, network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)))}
-                  <div class="relative group hover:scale-105 transition-all duration-200">
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {#each networks.filter((n) => showTestnets || !n.isTestnet) as network}
+                  {@const intensity = Math.max(
+                    0.2,
+                    network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)),
+                  )}
+                  <div class="group relative transition-all duration-200 hover:scale-105">
                     <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
                     <div
-                      class="relative card variant-ghost p-3 rounded-lg border border-[#00DC82]/20 hover:border-[#00DC82]/40 flex flex-col items-center justify-between h-[160px]">
-                      <div class="flex flex-col items-center flex-1">
-                        <Image 
-                          src={getApiUrl(`/image/${network.chainId}`)} 
-                          alt={network.name} 
-                          class="rounded-full w-10 h-10 flex-shrink-0"
-                        >
+                      class="card variant-ghost relative flex h-[160px] flex-col items-center justify-between rounded-lg border border-[#00DC82]/20 p-3 hover:border-[#00DC82]/40">
+                      <div class="flex flex-1 flex-col items-center">
+                        <Image
+                          src={getApiUrl(`/image/${network.chainId}`)}
+                          alt={network.name}
+                          class="h-10 w-10 flex-shrink-0 rounded-full">
                           {#snippet fallback()}
-                            <Icon icon="nrk:404" class="w-8 h-8" />
+                            <Icon icon="nrk:404" class="h-8 w-8" />
                           {/snippet}
                         </Image>
-                        <div class="text-center mt-2 flex-1 flex flex-col justify-center w-full">
-                          <div class="font-medium text-sm leading-tight line-clamp-2 px-1" title={network.name}>{network.name}</div>
-                          <div class="text-xs text-surface-500 font-mono mt-1">ID: {network.chainId}</div>
+                        <div class="mt-2 flex w-full flex-1 flex-col justify-center text-center">
+                          <div class="line-clamp-2 px-1 text-sm font-medium leading-tight" title={network.name}
+                            >{network.name}</div>
+                          <div class="mt-1 font-mono text-xs text-surface-500">ID: {network.chainId}</div>
                         </div>
                       </div>
-                      <div class="text-base font-bold text-[#00DC82] mt-2 flex-shrink-0">{network.tokenCount.toLocaleString()}</div>
+                      <div class="mt-2 flex-shrink-0 text-base font-bold text-[#00DC82]"
+                        >{network.tokenCount.toLocaleString()}</div>
                     </div>
                   </div>
                 {/each}
@@ -419,7 +425,7 @@
         </section>
 
         <!-- CTA -->
-        <section class="card space-y-4 p-8 text-center mb-8">
+        <section class="card mb-8 space-y-4 p-8 text-center">
           <h2 class="h2">Ready to Get Started?</h2>
           <p class="text-lg">Try our URL wizard to generate the perfect integration for your needs.</p>
           <a href="./wizard" class="btn bg-[#00DC82] text-black">
@@ -431,10 +437,10 @@
     </div>
 
     <!-- Update the floating images container -->
-    <div class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index: 1; height: {pageHeight}px;">
+    <div class="pointer-events-none absolute inset-0 overflow-hidden" style="z-index: 1; height: {pageHeight}px;">
       {#each floatingImages as image}
         <div
-          class="absolute rounded-full animate-float"
+          class="animate-float absolute rounded-full"
           style="
 					width: {image.size}px;
 					height: {image.size}px;
@@ -450,7 +456,7 @@
               ? getApiUrl(`/image/${image.chainId}`)
               : getApiUrl(`/image/${image.chainId}/${image.address}`)}
             alt={image.type === 'network' ? 'Network icon' : 'Token icon'}
-            class="w-full h-full rounded-full opacity-10">
+            class="h-full w-full rounded-full opacity-10">
             {#snippet fallback(p)}
               <Icon icon="nrk:404" />
             {/snippet}
@@ -463,7 +469,7 @@
 
 <style lang="postcss">
   .gradient-heading {
-    @apply from-primary-500 to-secondary-500 bg-gradient-to-br bg-clip-text font-bold text-transparent;
+    @apply bg-gradient-to-br from-primary-500 to-secondary-500 bg-clip-text font-bold text-transparent;
   }
 
   @keyframes float-right {
@@ -519,4 +525,3 @@
     @apply max-w-full overflow-hidden text-ellipsis;
   }
 </style>
-

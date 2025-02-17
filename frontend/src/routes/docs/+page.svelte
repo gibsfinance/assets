@@ -79,8 +79,8 @@ fetch(\`\${baseUrl}/image/1\`)
     });`
 </script>
 
-<div class="container mx-auto p-8 max-w-4xl space-y-12">
-  <div class="text-center space-y-4">
+<div class="container mx-auto max-w-4xl space-y-12 p-8">
+  <div class="space-y-4 text-center">
     <h1 class="h1">API Documentation</h1>
     <p class="text-lg">Complete reference for the Gib Assets API</p>
   </div>
@@ -89,11 +89,11 @@ fetch(\`\${baseUrl}/image/1\`)
   <section class="space-y-6">
     <h2 class="h2">Token Information Endpoints</h2>
     <div class="card variant-ghost">
-      <div class="p-4 space-y-4">
+      <div class="space-y-4 p-4">
         {#each endpoints.tokenInfo as endpoint}
           <div class="card variant-soft p-4">
             <div class="flex flex-col gap-2">
-              <code class="text-primary-500 font-mono text-lg">
+              <code class="font-mono text-lg text-primary-500">
                 {endpoint.path}
               </code>
               <p class="text-sm">{endpoint.description}</p>
@@ -108,11 +108,11 @@ fetch(\`\${baseUrl}/image/1\`)
   <section class="space-y-6">
     <h2 class="h2">Image Endpoints</h2>
     <div class="card variant-ghost">
-      <div class="p-4 space-y-4">
+      <div class="space-y-4 p-4">
         {#each endpoints.imageEndpoints as endpoint}
           <div class="card variant-soft p-4">
             <div class="flex flex-col gap-2">
-              <code class="text-primary-500 font-mono text-lg">
+              <code class="font-mono text-lg text-primary-500">
                 {endpoint.path}
               </code>
               <p class="text-sm">{endpoint.description}</p>
@@ -126,10 +126,10 @@ fetch(\`\${baseUrl}/image/1\`)
   <!-- Features -->
   <section class="space-y-6">
     <h2 class="h2">Features</h2>
-    <div class="grid md:grid-cols-2 gap-4">
+    <div class="grid gap-4 md:grid-cols-2">
       <div class="card variant-soft p-4">
         <h3 class="h3 mb-2">Token Management</h3>
-        <ul class="list-disc list-inside space-y-2">
+        <ul class="list-inside list-disc space-y-2">
           <li>Token list management</li>
           <li>Token data aggregation</li>
           <li>Token statistics tracking</li>
@@ -137,7 +137,7 @@ fetch(\`\${baseUrl}/image/1\`)
       </div>
       <div class="card variant-soft p-4">
         <h3 class="h3 mb-2">Image Handling</h3>
-        <ul class="list-disc list-inside space-y-2">
+        <ul class="list-inside list-disc space-y-2">
           <li>Token image serving and caching</li>
           <li>Network/chain images</li>
           <li>Fallback mechanisms</li>
@@ -145,7 +145,7 @@ fetch(\`\${baseUrl}/image/1\`)
       </div>
       <div class="card variant-soft p-4">
         <h3 class="h3 mb-2">Network Support</h3>
-        <ul class="list-disc list-inside space-y-2">
+        <ul class="list-inside list-disc space-y-2">
           <li>Multiple blockchain networks</li>
           <li>Chain-specific data</li>
           <li>Cross-chain compatibility</li>
@@ -153,7 +153,7 @@ fetch(\`\${baseUrl}/image/1\`)
       </div>
       <div class="card variant-soft p-4">
         <h3 class="h3 mb-2">Data Management</h3>
-        <ul class="list-disc list-inside space-y-2">
+        <ul class="list-inside list-disc space-y-2">
           <li>Database operations</li>
           <li>Configuration management</li>
           <li>Efficient caching</li>
@@ -166,7 +166,7 @@ fetch(\`\${baseUrl}/image/1\`)
   <section class="space-y-6">
     <h2 class="h2">Example Usage</h2>
     <div class="card variant-ghost p-6">
-      <pre class="text-sm overflow-x-auto"><code>{codeExamples}</code></pre>
+      <pre class="overflow-x-auto text-sm"><code>{codeExamples}</code></pre>
     </div>
   </section>
 

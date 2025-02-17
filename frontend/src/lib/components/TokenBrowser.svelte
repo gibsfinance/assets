@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
-  import type { Token } from '$lib/types'
-  import Icon from '@iconify/svelte'
   import Image from '$lib/components/Image.svelte'
-  import TokenSearch from '$lib/components/TokenSearch.svelte'
-  import TokenListFilter from '$lib/components/TokenListFilter.svelte'
   import PaginationControls from '$lib/components/PaginationControls.svelte'
+  import TokenListFilter from '$lib/components/TokenListFilter.svelte'
+  import TokenSearch from '$lib/components/TokenSearch.svelte'
+  import type { Token } from '$lib/types'
   import { getApiUrl } from '$lib/utils'
+  import Icon from '@iconify/svelte'
+  import { createEventDispatcher } from 'svelte'
 
   export let selectedChain: number | null = null
   export let networkName: string
@@ -32,7 +32,7 @@
   }>()
 </script>
 
-<div class="card variant-ghost p-1 sm:p-2 space-y-2">
+<div class="card variant-ghost space-y-2 p-1 sm:p-2">
   <div class="space-y-2">
     <!-- Chain Token Count Header -->
     <div class="flex items-center justify-between">
@@ -50,8 +50,7 @@
         bind:isSearching
         {selectedChain}
         on:search={() => dispatch('search')}
-        on:updateResults={({ detail }) => dispatch('updateResults', { tokens: detail.tokens })}
-      />
+        on:updateResults={({ detail }) => dispatch('updateResults', { tokens: detail.tokens })} />
 
       <!-- List filter dropdown -->
       <TokenListFilter
@@ -60,17 +59,16 @@
         {tokensByList}
         {selectedChain}
         on:toggleList={({ detail }) => dispatch('toggleList', detail)}
-        on:toggleAll={({ detail }) => dispatch('toggleAll', detail)}
-      />
+        on:toggleAll={({ detail }) => dispatch('toggleAll', detail)} />
     </div>
 
     {#if filteredTokens.length === 0 && !isSearching}
-      <div class="text-center p-4 text-gray-500">
+      <div class="p-4 text-center text-gray-500">
         {searchQuery ? 'No tokens match your search' : 'Loading tokens...'}
       </div>
     {:else if isSearching}
-      <div class="text-center p-4">
-        <div class="spinner" />
+      <div class="p-4 text-center">
+        <div class="spinner"></div>
         <p class="mt-2 text-gray-500">Searching across all chains...</p>
       </div>
     {:else}
@@ -88,18 +86,19 @@
           <tbody>
             {#each filteredTokens.slice((currentPage - 1) * tokensPerPage, currentPage * tokensPerPage) as token}
               <tr
-                class="cursor-pointer hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors"
+                class="cursor-pointer transition-colors hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20"
                 on:click={() => dispatch('selectToken', { token })}>
                 <td class="p-1">
                   <div class="flex items-center gap-2">
                     <div
-                      class="min-w-[40px] min-h-[40px] w-10 h-10 relative flex items-center justify-center bg-surface-700 {isCircularCrop ? 'rounded-full' : ''}"
-                    >
+                      class="relative flex h-10 min-h-[40px] w-10 min-w-[40px] items-center justify-center bg-surface-700 {isCircularCrop
+                        ? 'rounded-full'
+                        : ''}">
                       {#if token.hasIcon}
                         <Image
                           src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
                           alt={token.symbol}
-                          class="object-contain user-drag-none {isCircularCrop ? 'rounded-full' : ''}"
+                          class="user-drag-none object-contain {isCircularCrop ? 'rounded-full' : ''}"
                           size={32}
                           onerror={() => {
                             token.hasIcon = false
@@ -108,15 +107,14 @@
                             if (isGlobalSearchActive) {
                               globalSearchResults = [...globalSearchResults]
                             }
-                          }}
-                        />
+                          }} />
                       {:else}
-                        <Icon icon="nrk:404" class="w-8 h-8 text-surface-50" />
+                        <Icon icon="nrk:404" class="h-8 w-8 text-surface-50" />
                       {/if}
                     </div>
                     <div class="flex flex-col">
                       <span class="font-medium">{token.name}</span>
-                      <div class="flex gap-2 items-center">
+                      <div class="flex items-center gap-2">
                         {#if !token.hasIcon}
                           <span class="text-xs text-error-500">No icon</span>
                         {/if}
@@ -139,24 +137,17 @@
       </div>
 
       <!-- Pagination -->
-      <div class="flex justify-between items-center gap-4">
+      <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
           <span class="text-sm text-surface-600 dark:text-surface-300">Show</span>
-          <select
-            class="select !h-7 !py-0 text-sm"
-            bind:value={tokensPerPage}
-            on:change={() => currentPage = 1}>
+          <select class="select !h-7 !py-0 text-sm" bind:value={tokensPerPage} on:change={() => (currentPage = 1)}>
             <option value={10}>10</option>
             <option value={25}>25</option>
             <option value={50}>50</option>
           </select>
           <span class="text-sm text-surface-600 dark:text-surface-300">tokens</span>
         </div>
-        <PaginationControls
-          bind:currentPage
-          totalItems={filteredTokens.length}
-          {tokensPerPage}
-        />
+        <PaginationControls bind:currentPage totalItems={filteredTokens.length} {tokensPerPage} />
       </div>
     {/if}
   </div>
@@ -206,7 +197,7 @@
   }
 
   .spinner {
-    @apply w-8 h-8 border-4 border-primary-500/20 border-t-primary-500 rounded-full mx-auto;
+    @apply mx-auto h-8 w-8 rounded-full border-4 border-primary-500/20 border-t-primary-500;
     animation: spin 1s linear infinite;
   }
 
@@ -218,4 +209,4 @@
       transform: rotate(360deg);
     }
   }
-</style> 
+</style>

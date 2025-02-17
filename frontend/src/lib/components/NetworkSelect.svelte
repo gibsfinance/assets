@@ -1,16 +1,19 @@
 <script lang="ts">
-  import type { NetworkInfo } from '$lib/types'
   import networkNames from '$lib/networks.json' assert { type: 'json' }
   import { metrics } from '$lib/stores/metrics'
-  import { onMount, createEventDispatcher } from 'svelte'
+  import type { NetworkInfo } from '$lib/types'
+  import { createEventDispatcher, onMount } from 'svelte'
 
   const dispatch = createEventDispatcher<{
     select: NetworkInfo
+    networkname: (chainId: number | string) => string
   }>()
 
-  let isOpen = $state(false)
-  let selectedNetwork = $state<NetworkInfo | null>(null)
-  let showTestnets = $state(false)
+  let { 
+    isOpen = $bindable(false),
+    selectedNetwork = $bindable<NetworkInfo | null>(null),
+    showTestnets = $bindable(false)
+  } = $props()
 
   // Add click outside handler for network select
   onMount(() => {
@@ -25,8 +28,8 @@
     }
   })
 
-  // Export getNetworkName for use in parent component
-  export function getNetworkName(chainId: number | string): string {
+  // Network name function for use in component and parent
+  function getNetworkName(chainId: number | string): string {
     const chainIdStr = chainId.toString()
     // First check our priority networks to ensure specific naming
     const priorityNames: Record<string, string> = {
@@ -51,6 +54,11 @@
     const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames]
     return networkName || `Chain ${chainIdStr}`
   }
+
+  // Expose getNetworkName to parent
+  $effect(() => {
+    dispatch('networkname', getNetworkName)
+  })
 
   // Sort networks by priority and name
   function sortNetworks(networks: NetworkInfo[]): NetworkInfo[] {
@@ -84,7 +92,7 @@
 
 <div class="relative w-full">
   <div class="flex justify-between items-center mb-2">
-    <label class="label">
+    <label for="network-select" class="label">
       <span class="leading-5">Select Network</span>
     </label>
     <label class="flex items-center gap-3 cursor-pointer group">
@@ -102,8 +110,9 @@
   </div>
   <button
     type="button"
+    id="network-select"
     class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm leading-6"
-    on:click={() => (isOpen = !isOpen)}>
+    onclick={() => (isOpen = !isOpen)}>
     {#if selectedNetwork}
       <span class="truncate">{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
     {:else}
@@ -120,7 +129,7 @@
           <button
             class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors flex items-center justify-between"
             class:selected={selectedNetwork?.chainId === network.chainId}
-            on:click={() => {
+            onclick={() => {
               selectedNetwork = network
               isOpen = false
               dispatch('select', network)

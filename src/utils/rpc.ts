@@ -1,8 +1,8 @@
 import { config as dotenvConfig } from 'dotenv'
 dotenvConfig()
 
-import { type PublicClient, createPublicClient, http, type Chain } from 'viem'
 import debug from 'debug'
+import { createPublicClient, fallback, http, type Chain, type PublicClient } from 'viem'
 
 const dbg = debug('📷:rpc')
 
@@ -41,39 +41,23 @@ export class RpcClient {
 
   /**
    * @notice Creates a new viem public client using the current endpoint
-   * @dev Attempts to find a working endpoint that hasn't failed recently
-   * If all endpoints have failed, it will reset the failed endpoints list and try again
+   * @dev Uses viem's fallback transport to handle failing endpoints automatically
    */
   private createClient() {
-    // Try to find a working endpoint that hasn't failed
-    let attempts = 0
-    while (attempts < this.urls.length) {
-      const url = this.urls[this.currentUrlIndex]
-      if (!this.failedEndpoints.has(url)) {
-        dbg(`Creating RPC client for ${this.chain.name} using ${url}`)
-        this.client = createPublicClient({
-          chain: this.chain,
-          transport: http(url),
-          batch: {
-            multicall: {
-              batchSize: 32,
-              wait: 0,
-            },
-          },
-        })
-        return
-      }
-      this.currentUrlIndex = (this.currentUrlIndex + 1) % this.urls.length
-      attempts++
-    }
-
-    // If all endpoints have failed, reset and try again
-    if (this.failedEndpoints.size === this.urls.length) {
-      dbg(`All endpoints failed for ${this.chain.name}, resetting failed endpoints list`)
-      this.failedEndpoints.clear()
-      this.currentUrlIndex = 0
-      this.createClient()
-    }
+    dbg(`Creating RPC client for ${this.chain.name} using fallback transport`)
+    this.client = createPublicClient({
+      chain: this.chain,
+      transport: fallback(
+        this.urls.map((url) => http(url)),
+        { rank: true },
+      ),
+      batch: {
+        multicall: {
+          batchSize: 32,
+          wait: 0,
+        },
+      },
+    })
   }
 
   /**
@@ -104,47 +88,23 @@ export class RpcClient {
   }
 
   /**
-   * @notice Executes an operation with automatic retries and failover
+   * @notice Executes an operation with the RPC client
    * @param operation The async operation to perform with the RPC client
    * @returns The result of the operation
-   * @dev Implements exponential backoff for retries and will try all available endpoints
-   * before giving up. The total number of attempts will be maxRetries * number of URLs
-   * @throws Error if all attempts fail across all endpoints
+   * @dev Exits immediately if the operation fails
+   * @throws Error if the attempt fails
    */
   async withRetry<T>(operation: (client: PublicClient) => Promise<T>): Promise<T> {
-    let lastError: Error | null = null
-    let retryCount = 0
-    const maxAttempts = this.maxRetries * this.urls.length
-
-    while (retryCount < maxAttempts) {
-      try {
-        if (!this.client) throw new Error('No RPC client available')
-        const currentUrl = this.urls[this.currentUrlIndex]
-        dbg(`[${this.chain.name}] Attempting operation using ${currentUrl} (attempt ${retryCount + 1}/${maxAttempts})`)
-        return await operation(this.client)
-      } catch (err) {
-        lastError = err as Error
-        const currentUrl = this.urls[this.currentUrlIndex]
-
-        // Log the full error details
-        dbg(`[${this.chain.name}] Error on ${currentUrl} (attempt ${retryCount + 1}/${maxAttempts}):`)
-        dbg(`  Message: ${lastError.message}`)
-        dbg(`  Details: ${JSON.stringify(err)}`)
-
-        // Mark current endpoint as failed and rotate
-        this.rotateEndpoint(currentUrl)
-        retryCount++
-
-        // Add a delay before retrying
-        const delay = Math.min(2000 * Math.pow(2, retryCount - 1), 10000)
-        dbg(`[${this.chain.name}] Waiting ${delay}ms before next attempt...`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
+    try {
+      if (!this.client) throw new Error('No RPC client available')
+      return await operation(this.client)
+    } catch (err) {
+      const error = err as Error
+      dbg(`[${this.chain.name}] Operation failed:`)
+      dbg(`  Message: ${error.message}`)
+      dbg(`  Details: ${JSON.stringify(err)}`)
+      throw error
     }
-
-    throw new Error(
-      `All RPC attempts failed for ${this.chain.name} after ${retryCount} tries. Last error: ${lastError?.message}`,
-    )
   }
 
   /**
@@ -157,50 +117,23 @@ export class RpcClient {
   }
 
   /**
-   * @notice Fetches logs from the blockchain with enhanced error handling
+   * @notice Fetches logs from the blockchain
    * @param args The log filter parameters
    * @returns Array of log entries
-   * @dev Implements a specialized retry mechanism for log fetching with detailed error logging
-   * Uses exponential backoff and will try all available endpoints before failing
-   * @throws Error if all attempts fail across all endpoints
+   * @dev Exits immediately if the operation fails
+   * @throws Error if the attempt fails
    */
   async getLogs(args: Parameters<PublicClient['getLogs']>[0]) {
-    let lastError: Error | null = null
-    let retryCount = 0
-    const maxAttempts = this.maxRetries * this.urls.length
-
-    while (retryCount < maxAttempts) {
-      try {
-        if (!this.client) throw new Error('No RPC client available')
-        const currentUrl = this.urls[this.currentUrlIndex]
-        dbg(`[${this.chain.name}] Attempting getLogs using ${currentUrl} (attempt ${retryCount + 1}/${maxAttempts})`)
-
-        const result = await this.client.getLogs(args)
-        dbg(`[${this.chain.name}] getLogs succeeded using ${currentUrl}`)
-        return result
-      } catch (err) {
-        lastError = err as Error
-        const currentUrl = this.urls[this.currentUrlIndex]
-
-        // Log the full error details
-        dbg(`[${this.chain.name}] getLogs error on ${currentUrl} (attempt ${retryCount + 1}/${maxAttempts}):`)
-        dbg(`  Message: ${lastError.message}`)
-        dbg(`  Details: ${JSON.stringify(err)}`)
-
-        // Mark current endpoint as failed and rotate
-        this.rotateEndpoint(currentUrl)
-        retryCount++
-
-        // Add a delay before retrying
-        const delay = Math.min(2000 * Math.pow(2, retryCount - 1), 10000)
-        dbg(`[${this.chain.name}] Waiting ${delay}ms before next attempt...`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
+    try {
+      if (!this.client) throw new Error('No RPC client available')
+      return await this.client.getLogs(args)
+    } catch (err) {
+      const error = err as Error
+      dbg(`[${this.chain.name}] getLogs failed:`)
+      dbg(`  Message: ${error.message}`)
+      dbg(`  Details: ${JSON.stringify(err)}`)
+      throw error
     }
-
-    throw new Error(
-      `All getLogs attempts failed for ${this.chain.name} after ${retryCount} tries. Last error: ${lastError?.message}`,
-    )
   }
 
   // Add more methods as needed...

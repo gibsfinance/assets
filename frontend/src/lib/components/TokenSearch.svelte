@@ -136,7 +136,9 @@
 
       // Remove duplicates and update results
       globalSearchResults = Array.from(
-        new Map(globalSearchResults.map((token) => [`${token.chainId}-${token.address.toLowerCase()}`, token])).values(),
+        new Map(
+          globalSearchResults.map((token) => [`${token.chainId}-${token.address.toLowerCase()}`, token]),
+        ).values(),
       )
 
       // Sort results
@@ -165,21 +167,13 @@
   }
 </script>
 
-<div class="input-group input-group-divider grid-cols-[auto_1fr_auto_auto] rounded-container-token flex-1">
+<div class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto_auto] rounded-container-token">
   <div class="input-group-shim">
     <i class="fas fa-search"></i>
   </div>
-  <input
-    type="search"
-    placeholder="Search tokens..."
-    class="input"
-    bind:value={searchQuery}
-    on:input={handleInput} />
-  <button
-    class="input-group-shim btn variant-soft-primary"
-    on:click={performGlobalSearch}
-    disabled={!searchQuery}>
+  <input type="search" placeholder="Search tokens..." class="input" bind:value={searchQuery} on:input={handleInput} />
+  <button class="input-group-shim variant-soft-primary btn" on:click={performGlobalSearch} disabled={!searchQuery}>
     <i class="fas fa-globe mr-2"></i>
     Search All Chains
   </button>
-</div> 
+</div>

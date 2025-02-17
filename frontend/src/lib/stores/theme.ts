@@ -1,13 +1,13 @@
-import { writable } from 'svelte/store';
+import { writable } from 'svelte/store'
 
 function createThemeStore() {
-	const { subscribe, set, update } = writable(false);
+  const { subscribe, set, update } = writable(false)
 
-	return {
-		subscribe,
-		toggle: () => update((n) => !n),
-		set: (value: boolean) => set(value)
-	};
+  return {
+    subscribe,
+    toggle: () => update((n) => !n),
+    set: (value: boolean) => set(value),
+  }
 }
 
-export const isDark = createThemeStore();
+export const isDark = createThemeStore()

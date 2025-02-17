@@ -28,7 +28,7 @@
     "server": "tsx src/bin/server",
     "dev": "tsx watch src/bin/server",
     "lint": "prettier --check . && ESLINT_USE_FLAT_CONFIG=true eslint \"./src/**/*.ts\" -c .eslintrc.mjs",
-    "format": "prettier --write .",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\" \"*.{json,md}\" && cd frontend && pnpm format",
     "create-orders": "tsx src/bin/create-orders",
     "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts",
     "frontend:dev": "cd frontend && pnpm install && pnpm dev",
