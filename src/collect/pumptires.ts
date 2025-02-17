@@ -138,7 +138,7 @@ export const collect = async () => {
   ])
   const tokens = [...nonLaunchedTokens, ...launchedTokens]
   const launched = new Set(launchedTokens)
-  await fs.promises.writeFile('pumptires.json', JSON.stringify(tokens, null, 2))
+  // await fs.promises.writeFile('pumptires.json', JSON.stringify(tokens, null, 2))
   const factory = '0x29eA7545DEf87022BAdc76323F373EA1e707C523'
   const initCode = '0x5dff1ac2d132f5ac2841294c6e9fc0ebafae8d447fac7996ef21c21112f411f1'
   const wpls = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
