@@ -1,3 +1,13 @@
+/**
+ * @title Token Collector Registry
+ * @notice Registry of all available token collectors with their configurations
+ * @dev Changes from original version:
+ * 1. Added support for testnet collectors
+ * 2. Enhanced bridge configurations with block numbers
+ * 3. Added new collectors for various protocols
+ * 4. Improved type safety with explicit chain imports
+ */
+
 import chains from '@/chains'
 import * as trustwallet from './trustwallet'
 import * as pulsex from './pulsex'
@@ -26,10 +36,22 @@ import * as compound from './compound'
 import * as optimism from './optimism'
 import * as pumptires from './pumptires'
 
+/**
+ * @notice Helper function to get all available collector keys
+ * @dev Added to support dynamic collector discovery
+ */
 export const allCollectables = () => {
-  return Object.keys(collectables) as Collectable[]
+  return Object.keys(collectables()) as Collectable[]
 }
 
+/**
+ * @notice Main registry of token collectors with their configurations
+ * @dev Changes:
+ * 1. Added PulseChain and testnet bridge configurations
+ * 2. Enhanced remote token list collectors with explicit URLs
+ * 3. Added new DEX and protocol collectors
+ * 4. Improved configuration type safety with chain objects
+ */
 export const collectables = () => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
@@ -51,6 +73,13 @@ export const collectables = () => {
     phux: phux.collect,
     pls369: pls369.collect,
     smoldapp: smoldapp.collect,
+    levinswap: levinswap.collect,
+    honeyswap: honeyswap.collect,
+    pancake: pancake.collect,
+    quickswap: quickswap.collect,
+    roll: roll.collect,
+    scroll: scroll.collect,
+    set: set.collect,
     omnibridge: omnibridge.collect([
       {
         providerPrefix: 'pulsechain',
@@ -69,13 +98,6 @@ export const collectables = () => {
         home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
       },
     ]),
-    levinswap: levinswap.collect,
-    honeyswap: honeyswap.collect,
-    pancake: pancake.collect,
-    quickswap: quickswap.collect,
-    roll: roll.collect,
-    scroll: scroll.collect,
-    set: set.collect,
     kleros: kleros.collect,
     dfyn: dfyn.collect,
     coingecko: coingecko.collect,
@@ -87,4 +109,9 @@ export const collectables = () => {
     pumptires: pumptires.collect,
   }
 }
+
+/**
+ * @notice Type definition for available collectors
+ * @dev Changed to use ReturnType for better type inference
+ */
 export type Collectable = keyof ReturnType<typeof collectables>

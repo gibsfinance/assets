@@ -13,10 +13,10 @@
   }
 </script>
 
-<div class="card variant-ghost p-4 space-y-2">
-  <div class="flex justify-between items-center">
+<div class="card variant-ghost space-y-2 p-4">
+  <div class="flex items-center justify-between">
     <span class="label">Generated URL</span>
-    <button class="btn btn-sm variant-soft" on:click={copyToClipboard}>
+    <button class="variant-soft btn btn-sm" on:click={copyToClipboard}>
       {#if copied}
         <i class="fas fa-check mr-2"></i>
         Copied!
@@ -26,11 +26,11 @@
       {/if}
     </button>
   </div>
-  <code class="text-sm break-all">{url}</code>
+  <code class="break-all text-sm">{url}</code>
 </div>
 
 <style lang="postcss">
   .label {
-    @apply font-medium text-sm;
+    @apply text-sm font-medium;
   }
-</style> 
+</style>

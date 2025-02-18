@@ -1,3 +1,22 @@
 images
 links
 submodules
+
+# Database
+postgres-data/
+**/postgres-data/
+
+# Build outputs
+dist/
+build/
+.svelte-kit/
+**/node_modules/
+
+# Environment and config files
+.env
+.env.*
+!.env.example
+
+# Other
+.DS_Store
+coverage/

@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "description": "a repo for tokens, networks, and data providers",
   "main": "src/index.ts",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
+    "setup": "docker compose build && pnpm install && pnpm run db:start && sleep 5 && pnpm run db:migrate-latest && sleep 3 && pnpm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development pnpm run collect && sleep 10 && pnpm run create-orders",
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
     "db:prepare": "pnpm run db:start && pnpm run db:migrate-up",
@@ -23,9 +28,11 @@
     "server": "tsx src/bin/server",
     "dev": "tsx watch src/bin/server",
     "lint": "prettier --check . && ESLINT_USE_FLAT_CONFIG=true eslint \"./src/**/*.ts\" -c .eslintrc.mjs",
-    "format": "prettier --write .",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\" \"*.{json,md}\" && cd frontend && pnpm format",
     "create-orders": "tsx src/bin/create-orders",
-    "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts"
+    "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts",
+    "frontend:dev": "cd frontend && pnpm install && pnpm dev",
+    "frontend:build": "cd frontend && pnpm install && pnpm build"
   },
   "repository": {
     "type": "git",
@@ -89,6 +96,7 @@
     "@types/semver": "^7.5.8",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
     "express-urlrewrite": "^2.0.2",
     "node-fetch": "^3.3.2",
     "response-time": "^2.3.2",

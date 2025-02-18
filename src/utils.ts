@@ -1,3 +1,12 @@
+import { config as dotenvConfig } from 'dotenv'
+dotenvConfig()
+
+/**
+ * @title Core Utility Functions
+ * @notice Collection of utility functions for file handling, RPC interactions, and data processing
+ * @dev This module provides core functionality used throughout the application
+ */
+
 import * as chains from 'viem/chains'
 import config from 'config'
 import * as fs from 'fs'
@@ -15,6 +24,10 @@ import { imageMode } from './db/tables'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+/**
+ * @notice Path configuration for file system operations
+ * @dev Modified to support configurable output root via OUT_ROOT env var
+ */
 export const outRoot = process.env.OUT_ROOT || ''
 
 export const root = path.join(__dirname, '..')
@@ -32,10 +45,22 @@ export const pathFromOutRoot = (filePath: string) => {
   return filePath.split(root).join(outRoot)
 }
 
+/**
+ * @notice Failure logging system with spinner support
+ * @dev Modified to suppress certain file-related errors from console output
+ * while still tracking them internally
+ */
 type ConsoleLogParams = Parameters<typeof console.log>
 const failures: ConsoleLogParams[] = []
 export const failureLog = (...a: ConsoleLogParams) => {
-  if (process.env.FAKE_SPINNER) {
+  // Don't log file, extension, or image related failures to console, but still track them
+  const isFileFailure = a[0] === 'read file failed' || (typeof a[0] === 'string' && a[0].includes('read file failed'))
+  const isExtMissing = a[0] === 'ext missing' || (typeof a[0] === 'string' && a[0].includes('ext missing'))
+  const isNoImage = a[0] === 'no img' || (typeof a[0] === 'string' && a[0].includes('no img'))
+  const isNoExt = a[0] === 'no ext' || (typeof a[0] === 'string' && a[0].includes('no ext'))
+  const shouldSuppress = isFileFailure || isExtMissing || isNoImage || isNoExt
+
+  if (process.env.FAKE_SPINNER && !shouldSuppress) {
     console.log(...a)
   } else {
     failures.push(a)
@@ -71,19 +96,36 @@ export const limitBy = _.memoize(<T>(_key: string, count: number = 16) => {
   return promiseLimit<T>(count) as ReturnType<typeof promiseLimit<T>>
 })
 
+/**
+ * @notice Chain lookup with custom RPC support
+ * @dev Modified to support custom RPC endpoints for specific chains:
+ * - Added RPC for Ethereum mainnet from env
+ * - Added RPC for PulseChain from env
+ */
 export const findChain = (chainId: number) => {
   const chain = Object.values(chains).find((chain) => chain.id === chainId) as viem.Chain
   if (!chain) {
     return null
   }
-  if (chain.id === 1) {
-    return _.set(_.cloneDeep(chain), 'rpcUrls.default.http.0', 'https://rpc-ethereum.g4mm4.io')
-  } else if (chain.id === 369) {
-    return _.set(_.cloneDeep(chain), 'rpcUrls.default.http.0', 'https://rpc-pulsechain.g4mm4.io')
+
+  // Get RPC URLs from environment variables
+  const envKey = `RPC_${chainId}`
+  const rpcUrls = process.env[envKey]?.split(',').filter(Boolean)
+
+  if (rpcUrls?.length) {
+    return _.set(_.cloneDeep(chain), 'rpcUrls.default.http', rpcUrls)
   }
+
   return chain
 }
 
+/**
+ * @notice Multicall contract reader with enhanced error handling
+ * @dev Modified to support:
+ * - Optional target address
+ * - Per-call ABI override
+ * - Automatic failure handling
+ */
 export const multicallRead = async <T>({
   chain,
   client,
@@ -121,6 +163,13 @@ export const multicallRead = async <T>({
   ) as T
 }
 
+/**
+ * @notice Generic retry mechanism with exponential backoff
+ * @dev Modified to:
+ * - Add failure logging
+ * - Support configurable delay and attempts
+ * - Use timeout utility for delays
+ */
 const defaultRetryOpts = {
   delay: 3_000,
   attempts: 3,
@@ -190,6 +239,13 @@ type Incrementer = {
   incrementCurrent: (amount?: number) => void
 }
 
+/**
+ * @notice Progress spinner with enhanced functionality
+ * @dev Modified to:
+ * - Support fake spinner mode for CI/testing
+ * - Add progress tracking (current/max)
+ * - Include detailed failure logging
+ */
 export const spinner = async <T>(key: string, fn: ({ incrementMax, incrementCurrent }: Incrementer) => Promise<T>) => {
   return spinnerLimit(async () => {
     const fakeSpinner = process.env.FAKE_SPINNER
@@ -220,6 +276,13 @@ export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => toKe
 
 type TokenChainInfo = [string, string, number]
 
+/**
+ * @notice ERC20 token data reader with fallback support
+ * @dev Modified to:
+ * - Support both string and bytes32 metadata
+ * - Add mustExist flag for required tokens
+ * - Handle null bytes in token names/symbols
+ */
 export const erc20Read = async (
   chain: viem.Chain,
   client: viem.Client,
@@ -285,11 +348,27 @@ export const timeout = (ms: number) => {
   }
 }
 
+export const updateStatus = (message: string) => {
+  // Clear the current line and move to the beginning
+  process.stdout.clearLine(0)
+  process.stdout.cursorTo(0)
+  // Write the new message
+  process.stdout.write(message)
+}
+
 export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)
 
 export const directUri = ({ imageHash, ext, mode, uri }: Image) =>
   mode === imageMode.LINK ? uri : imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
 
+/**
+ * @notice Result caching utility with TTL
+ * @dev Added to improve performance for expensive operations
+ * Features:
+ * - Configurable cache duration
+ * - Automatic cache invalidation
+ * - Promise result caching
+ */
 export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
   let cached: null | {
     timestamp: number
@@ -311,6 +390,13 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
   })
 }
 
+/**
+ * @notice Memoized viem public client factory
+ * @dev Added to provide consistent client instances with optimal settings:
+ * - Multicall batching enabled
+ * - 32 calls per batch
+ * - No wait time between batches
+ */
 export const publicClient = _.memoize((chain: viem.Chain) => {
   return viem.createPublicClient({
     chain,

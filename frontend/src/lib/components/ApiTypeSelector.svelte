@@ -3,7 +3,7 @@
   import { createEventDispatcher } from 'svelte'
 
   export let urlType: ApiType
-  
+
   const dispatch = createEventDispatcher<{
     reset: void
     select: { type: ApiType }
@@ -19,7 +19,7 @@
 </script>
 
 <div class="space-y-2">
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+  <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
     <button
       class="btn {urlType === 'token' ? 'variant-filled-primary' : 'variant-ghost'}"
       on:click={() => selectType('token')}>
@@ -37,6 +37,6 @@
 
 <style lang="postcss">
   .label {
-    @apply font-medium text-sm;
+    @apply text-sm font-medium;
   }
-</style> 
+</style>

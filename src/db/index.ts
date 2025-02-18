@@ -279,17 +279,50 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   return result
 }
 
+/**
+ * @notice Network Insertion with Retry Logic
+ * @dev Added robust error handling and retry mechanism:
+ * - Handles transaction timeouts
+ * - Implements exponential backoff
+ * - Provides detailed error reporting
+ * @param chainId The chain ID to insert
+ * @param type The network type (default: 'evm')
+ * @param t The transaction object
+ */
 export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'evm', t: Tx = db) => {
-  const [network] = await t
-    .from(tableNames.network)
-    .insert({
-      type,
-      chainId: chainId.toString(),
-    })
-    .onConflict(['networkId'])
-    .merge(['networkId'])
-    .returning<Network[]>('*')
-  return network
+  const maxRetries = 3
+  let lastError: unknown
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const [network] = await t
+        .from(tableNames.network)
+        .insert({
+          type,
+          chainId: chainId.toString(),
+        })
+        .onConflict(['networkId'])
+        .merge(['networkId'])
+        .returning<Network[]>('*')
+      return network
+    } catch (err: unknown) {
+      lastError = err
+      // Retry on both timeout and aborted transaction errors
+      if (err && typeof err === 'object' && 'code' in err) {
+        const code = (err as { code: string }).code
+        if (code === '57014' || code === '25P02') {
+          if (i < maxRetries - 1) {
+            const delay = Math.pow(2, i) * 1000 // 1s, 2s, 4s
+            utils.updateStatus(`⚠️ Network insert error for chain ${chainId}, retrying in ${delay / 1000}s...`)
+            await new Promise((resolve) => setTimeout(resolve, delay))
+            continue
+          }
+        }
+      }
+      throw lastError
+    }
+  }
+  throw lastError
 }
 
 export const insertToken = async (token: InsertableToken, t: Tx = db) => {

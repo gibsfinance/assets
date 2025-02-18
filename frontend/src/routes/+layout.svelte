@@ -34,20 +34,20 @@
 <div
   class="app min-h-full overflow-x-hidden bg-gradient-to-br from-gray-50 to-gray-100 dark:from-[#1a1f2b] dark:to-[#151821]">
   <header
-    class="sticky top-0 z-50 backdrop-blur-lg bg-white/70 dark:bg-[#1a1f2b]/70 border-b border-gray-200/50 dark:border-surface-700/20">
+    class="sticky top-0 z-50 border-b border-gray-200/50 bg-white/70 backdrop-blur-lg dark:border-surface-700/20 dark:bg-[#1a1f2b]/70">
     <nav class="container mx-auto p-4">
       <div class="flex items-center justify-between">
         <a
           href="./"
-          class="font-space-grotesk text-2xl font-bold dark:text-white group hover:text-[#00DC82] transition-colors tracking-tight">
-          <span class="group-hover:text-[#00DC82] transition-colors">Gib</span><span class="text-[#00DC82]">.Show</span>
+          class="font-space-grotesk group text-2xl font-bold tracking-tight transition-colors hover:text-[#00DC82] dark:text-white">
+          <span class="transition-colors group-hover:text-[#00DC82]">Gib</span><span class="text-[#00DC82]">.Show</span>
         </a>
         <div class="flex items-center gap-4">
           <button
             on:click={() => {
               goto('/wizard')
             }}
-            class="btn bg-[#00DC82] hover:bg-[#00DC82]/80 text-black shadow-lg hover:-translate-y-0.5 transition-all">
+            class="btn bg-[#00DC82] text-black shadow-lg transition-all hover:-translate-y-0.5 hover:bg-[#00DC82]/80">
             <i class="fas fa-hat-wizard mr-2"></i>
             Wizard
           </button>
@@ -77,7 +77,7 @@
   }
 
   :global(.dark .card) {
-    @apply bg-[#202633] border border-surface-700/20;
+    @apply border border-surface-700/20 bg-[#202633];
   }
 
   :global(.btn-primary) {
@@ -85,6 +85,6 @@
   }
 
   :global(.gradient-heading) {
-    @apply dark:from-[#00DC82] dark:to-[#00DC82]/70 from-[#00DC82] to-[#00b368] bg-gradient-to-br;
+    @apply bg-gradient-to-br from-[#00DC82] to-[#00b368] dark:from-[#00DC82] dark:to-[#00DC82]/70;
   }
 </style>
