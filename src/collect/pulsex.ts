@@ -6,10 +6,27 @@ import { minimalList } from '@/server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
 import * as db from '@/db'
 
-const remoteList = remoteTokenList.collect({
+const remoteListOriginal = remoteTokenList.collect({
   providerKey: 'pulsex',
   listKey: 'extended',
   tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
+  isDefault: false,
+  extension: [
+    {
+      address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+      logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+      network: {
+        id: 369,
+        isNetworkImage: true,
+      },
+    },
+  ],
+})
+
+const remoteListV1_0_2 = remoteTokenList.collect({
+  providerKey: 'pulsex',
+  listKey: 'v1.0.2',
+  tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
   isDefault: true,
   extension: [
     {
@@ -35,7 +52,7 @@ const pulsexConfig = new Map<
     pulsechain,
     {
       domain: 'tokens.app.pulsex.com',
-      isDefault: true,
+      isDefault: false,
       targets: new Set([
         '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
         '0x2fa878Ab3F87CC1C9737Fc071108F904c0B0C95d',
@@ -80,7 +97,8 @@ export const collect = async () => {
     description: 'the pulsex token list hosted in their code',
   })
   await Promise.all([
-    remoteList(),
+    remoteListOriginal(),
+    remoteListV1_0_2(),
     ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
       const client = utils.publicClient(chain)
       const targets = [...config.targets.values()]
