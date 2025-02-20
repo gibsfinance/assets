@@ -11,11 +11,13 @@
 import * as path from 'path'
 import * as viem from 'viem'
 import * as fs from 'fs'
-import * as paths from '@/paths'
-import * as utils from '@/utils'
 import _ from 'lodash'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
+import * as paths from '@/paths'
+import * as utils from '@/utils'
 import * as db from '@/db'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
 import promiseLimit from 'promise-limit'
 
 /**
@@ -107,7 +109,12 @@ export const collect = async () => {
     .compact()
     .value()
 
-  utils.updateStatus(`🏗️ [pls369] Setting up provider...`)
+  updateStatus({
+    provider: 'pls369',
+    message: `Found ${pieces.length} valid assets to process`,
+    phase: 'setup',
+  } satisfies StatusProps)
+
   const [provider] = await db.insertProvider({
     key: 'pls369',
     name: 'PLS369',
@@ -117,7 +124,13 @@ export const collect = async () => {
   let configIndex = 0
   for (const { list, chain, fetchConfig } of configs) {
     configIndex++
-    utils.updateStatus(`⚡ [pls369] Processing config ${configIndex}/${configs.length} for chain ${chain.id}...`)
+    updateStatus({
+      provider: 'pls369',
+      message: `Processing config for chain ${chain.id} (${list.name})`,
+      current: configIndex,
+      total: configs.length,
+      phase: 'processing',
+    } satisfies StatusProps)
 
     const client = viem.createClient({
       chain: chain,
@@ -133,16 +146,38 @@ export const collect = async () => {
     let processedPieces = 0
     for (const piece of pieces) {
       processedPieces++
-      utils.updateStatus(`📥 [pls369] Processing piece ${processedPieces}/${pieces.length}: ${piece.address}...`)
+      updateStatus({
+        provider: 'pls369',
+        message: `Processing token at ${piece.address}`,
+        current: processedPieces,
+        total: pieces.length,
+        phase: 'processing',
+      } satisfies StatusProps)
 
       const response = await utils.erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
 
-      if (!response) continue
+      if (!response) {
+        updateStatus({
+          provider: 'pls369',
+          message: `Failed to read token at ${piece.address}`,
+          current: processedPieces,
+          total: pieces.length,
+          phase: 'processing',
+        } satisfies StatusProps)
+        continue
+      }
 
       const [name, symbol, decimals] = response
       const path = piece.fullPath.replace('hhttps://', 'https://')
 
-      utils.updateStatus(`💾 [pls369] Storing token ${processedPieces}/${pieces.length}: ${symbol}...`)
+      updateStatus({
+        provider: 'pls369',
+        message: `Storing token ${symbol} (${name})`,
+        current: processedPieces,
+        total: pieces.length,
+        phase: 'storing',
+      } satisfies StatusProps)
+
       await db.fetchImageAndStoreForToken({
         listId: dbList.listId,
         uri: path,
@@ -161,7 +196,14 @@ export const collect = async () => {
         continue
       }
 
-      utils.updateStatus(`🔄 [pls369] Processing testnet variants...`)
+      updateStatus({
+        provider: 'pls369',
+        message: `Processing testnet variants for ${symbol}`,
+        current: processedPieces,
+        total: pieces.length,
+        phase: 'processing',
+      } satisfies StatusProps)
+
       const testNetwork = await db.insertNetworkFromChainId(pulsechainV4.id)
       const [dbList2] = await db.insertList({
         providerId: provider.providerId,
@@ -169,8 +211,16 @@ export const collect = async () => {
         ...list,
       })
 
-      // Store testnet variants
-      for (const testAddress of ['0x70499adEBB11Efd915E3b69E700c331778628707', viem.zeroAddress]) {
+      const testnetAddresses = ['0x70499adEBB11Efd915E3b69E700c331778628707', viem.zeroAddress]
+      for (const testAddress of testnetAddresses) {
+        updateStatus({
+          provider: 'pls369',
+          message: `Storing testnet variant at ${testAddress}`,
+          current: processedPieces,
+          total: pieces.length,
+          phase: 'storing',
+        } satisfies StatusProps)
+
         await db.fetchImageAndStoreForToken({
           listId: dbList2.listId,
           uri: path,
@@ -186,6 +236,14 @@ export const collect = async () => {
         })
       }
 
+      updateStatus({
+        provider: 'pls369',
+        message: 'Storing mainnet zero address variant',
+        current: processedPieces,
+        total: pieces.length,
+        phase: 'storing',
+      } satisfies StatusProps)
+
       await db.fetchImageAndStoreForToken({
         listId: dbList.listId,
         uri: path,
@@ -199,6 +257,14 @@ export const collect = async () => {
           providedId: viem.zeroAddress,
         },
       })
+
+      updateStatus({
+        provider: 'pls369',
+        message: 'Storing network icon',
+        current: processedPieces,
+        total: pieces.length,
+        phase: 'storing',
+      } satisfies StatusProps)
 
       await db.fetchImageAndStoreForNetwork({
         network,

@@ -1,4 +1,15 @@
+import express from 'express'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { app } from './app'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// Add static file serving before other routes
+app.use(express.static(path.join(__dirname, '../../frontend/build')))
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../frontend/build/index.html'))
+})
 
 export const main = async () => {
   return listen().then(async () => {
@@ -10,7 +21,7 @@ export const main = async () => {
   })
 }
 
-export const listen = async (port = +(process.env.PORT || 3000)) => {
+export const listen = async (port = 3000) => {
   return new Promise((resolve, reject) => {
     app
       .listen(port)

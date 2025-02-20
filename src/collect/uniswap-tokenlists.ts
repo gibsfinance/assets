@@ -1,13 +1,27 @@
+/**
+ * @title Uniswap Token Lists Collector
+ * @notice Collects token information from Uniswap's curated token lists
+ */
+
+import { fetch } from '@/fetch'
 import lists from '@/harvested/uniswap/lists.json'
 import * as types from '@/types'
-import * as inmemoryTokenlist from './inmemory-tokenlist'
-import promiseLimit from 'promise-limit'
 import _ from 'lodash'
-import { fetch } from '@/fetch'
+import promiseLimit from 'promise-limit'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
+import * as inmemoryTokenlist from './inmemory-tokenlist'
 
 const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
+const providerKey = 'uniswap'
 
 export const collect = async () => {
+  updateStatus({
+    provider: providerKey,
+    message: 'Processing Uniswap token lists...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   const usable = Object.entries(lists).map(([key, item]) => {
     const suffixedKey = `${key}${key.slice(-4) === '.eth' ? '.link' : ''}`
     const fullKey = suffixedKey.startsWith('https://') ? suffixedKey : `https://${suffixedKey}`
@@ -20,6 +34,7 @@ export const collect = async () => {
       homepage: item.homepage,
     }
   })
+
   const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
   await promiseLimit<(typeof usable)[number]>(16).map(usable, async (info) => {
     if (listBlacklist.has(info.machineName)) return false
@@ -58,4 +73,10 @@ export const collect = async () => {
     })
     return await inmemoryTokenlist.collect(`uniswap-${info.machineName}`, 'hosted', result)
   })
+
+  updateStatus({
+    provider: providerKey,
+    message: 'Token list collection complete',
+    phase: 'complete',
+  } satisfies StatusProps)
 }

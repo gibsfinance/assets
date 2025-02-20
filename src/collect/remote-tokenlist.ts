@@ -8,14 +8,16 @@
  * 4. Improved extension token processing with progress indicators
  */
 
-import * as types from '@/types'
-import * as viem from 'viem'
-import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { fetch } from '@/fetch'
 import * as db from '@/db'
+import { fetch } from '@/fetch'
+import * as types from '@/types'
 import * as utils from '@/utils'
-import _ from 'lodash'
 import debug from 'debug'
+import _ from 'lodash'
+import * as viem from 'viem'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
+import * as inmemoryTokenlist from './inmemory-tokenlist'
 
 const dbg = debug('📷:remote-tokenlist')
 
@@ -38,10 +40,6 @@ type Input = {
   blacklist?: Set<string>
 }
 
-const updateStatus = (message: string) => {
-  process.stdout.write(`\r${' '.repeat(process.stdout.columns || 80)}\r${message}`)
-}
-
 /**
  * @notice Main collection function that processes remote token lists and extensions
  * @dev Changes:
@@ -60,10 +58,20 @@ export const collect =
     blacklist = new Set<string>(),
   }: Input) =>
   async () => {
-    updateStatus(`🌐 [${providerKey}] Fetching token list...`)
+    updateStatus({
+      provider: providerKey,
+      message: `Fetching token list from ${tokenListUrl}...`,
+      phase: 'setup',
+    } satisfies StatusProps)
+
     try {
       const response = await fetch(tokenListUrl)
       if (!response.ok) {
+        updateStatus({
+          provider: providerKey,
+          message: `Failed to fetch token list: ${response.status} ${response.statusText}`,
+          phase: 'complete',
+        } satisfies StatusProps)
         throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
       }
 
@@ -71,6 +79,11 @@ export const collect =
       try {
         tokenList = await response.json()
       } catch (e) {
+        updateStatus({
+          provider: providerKey,
+          message: `Failed to parse token list JSON: ${e}`,
+          phase: 'complete',
+        } satisfies StatusProps)
         dbg(`Failed to parse JSON from ${tokenListUrl}:`, e)
         throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
       }
@@ -82,11 +95,19 @@ export const collect =
         }
       })
       const tokenCount = tokenList.tokens?.length || 0
-      updateStatus(`📥 [${providerKey}] Found ${tokenCount} tokens`)
+      updateStatus({
+        provider: providerKey,
+        message: `Found ${tokenCount} tokens in list`,
+        phase: 'setup',
+      } satisfies StatusProps)
 
       const extra = extension || []
       if (extra.length > 0) {
-        updateStatus(`⚡ [${providerKey}] Processing ${extra.length} extension tokens...`)
+        updateStatus({
+          provider: providerKey,
+          message: `Processing ${extra.length} extension tokens...`,
+          phase: 'processing',
+        } satisfies StatusProps)
       }
 
       let processedCount = 0
@@ -98,9 +119,6 @@ export const collect =
           try {
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.publicClient(chain)
-            updateStatus(
-              `🔄 [${providerKey}] Processing token ${processedCount + 1}/${extra.length} on ${chain.name}...`,
-            )
 
             const [image, [name, symbol, decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, providerKey, item.address),
@@ -114,7 +132,11 @@ export const collect =
             await db.transaction(async (tx) => {
               const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
               if (item.network.isNetworkImage) {
-                updateStatus(`🖼️  [${providerKey}] Storing network image for ${chain.name}...`)
+                updateStatus({
+                  provider: providerKey,
+                  message: `Storing network image for ${chain.name}...`,
+                  phase: 'storing',
+                } satisfies StatusProps)
                 await db.fetchImageAndStoreForNetwork(
                   {
                     network,
@@ -126,7 +148,11 @@ export const collect =
                 )
               }
 
-              updateStatus(`💾 [${providerKey}] Storing token ${name} (${symbol})...`)
+              updateStatus({
+                provider: providerKey,
+                message: `Storing token ${name} (${symbol})...`,
+                phase: 'storing',
+              } satisfies StatusProps)
               await db.fetchImageAndStoreForToken(
                 {
                   listId: null,
@@ -155,6 +181,14 @@ export const collect =
               address: item.address,
             }
           } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            updateStatus({
+              provider: providerKey,
+              message: `Failed to process extension token ${item.address}: ${errorMessage}`,
+              current: processedCount + 1,
+              total: extra.length,
+              phase: 'processing',
+            } satisfies StatusProps)
             dbg(`Failed to process extension item ${item.address}:`, err)
             return undefined
           }
@@ -162,11 +196,20 @@ export const collect =
       )
 
       const validExtras = _.compact(extras)
-      updateStatus(`📦 [${providerKey}] Storing ${tokenCount + validExtras.length} total tokens...`)
+      updateStatus({
+        provider: providerKey,
+        message: `Storing ${tokenCount + validExtras.length} total tokens...`,
+        phase: 'storing',
+      } satisfies StatusProps)
+
       tokenList.tokens.push(...validExtras)
 
       const result = await inmemoryTokenlist.collect(providerKey, listKey, tokenList, isDefault)
-      updateStatus(`✨ [${providerKey}] Collection complete!`)
+      updateStatus({
+        provider: providerKey,
+        message: 'Collection complete!',
+        phase: 'complete',
+      } satisfies StatusProps)
       // process.stdout.write('\n')
       return result
     } catch (err) {

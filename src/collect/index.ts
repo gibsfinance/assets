@@ -8,10 +8,12 @@
  * 4. Added detailed progress tracking
  */
 
-import { type Collectable, collectables } from './collectables'
 import debug from 'debug'
-import * as utils from '@/utils'
 import promiseLimit from 'promise-limit'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
+import { type Collectable, collectables } from './collectables'
+import * as utils from '@/utils'
 
 const dbg = debug('📷:collect')
 
@@ -34,9 +36,17 @@ async function collectWithRetry(
   total: number,
   retryCount = 0,
 ): Promise<void> {
-  utils.updateStatus(`⏳ [${index + 1}/${total}] Collecting from ${provider}...`)
+  updateStatus({
+    provider: 'system',
+    message: `⏳ [${index + 1}/${total}] Collecting from ${provider}...`,
+    phase: 'setup',
+  } satisfies StatusProps)
   await collector()
-  utils.updateStatus(`✅ [${index + 1}/${total}] Successfully collected from ${provider}`)
+  updateStatus({
+    provider: 'system',
+    message: `✅ [${index + 1}/${total}] Successfully collected from ${provider}`,
+    phase: 'complete',
+  } satisfies StatusProps)
 }
 
 /**
@@ -51,7 +61,12 @@ export const main = async (providers: Collectable[]) => {
   const c = collectables()
 
   dbg(`Starting parallel collection for ${providers.length} providers`)
-  process.stdout.write('\n')
+
+  updateStatus({
+    provider: 'system',
+    message: `Starting collection from ${providers.length} providers`,
+    phase: 'setup',
+  } satisfies StatusProps)
 
   const results = {
     successful: [] as string[],
@@ -88,18 +103,17 @@ export const main = async (providers: Collectable[]) => {
   // Print summary
   dbg('\nCollection Summary:')
 
+  // Log detailed results for debugging
   if (results.successful.length > 0) {
-    dbg(`✅ Successfully collected from ${results.successful.length} providers:`)
-    dbg(results.successful.join(', '))
+    dbg(`Successfully collected from: ${results.successful.join(', ')}`)
   }
 
   if (results.skipped.length > 0) {
-    dbg(`⚠️ Skipped ${results.skipped.length} providers:`)
-    dbg(results.skipped.join(', '))
+    dbg(`Skipped providers: ${results.skipped.join(', ')}`)
   }
 
   if (results.failed.length > 0) {
-    dbg(`\n❌ Failed collectors (${results.failed.length}):`)
+    dbg('Failed collectors:')
     results.failed.forEach(({ provider, error }) => {
       dbg(`${provider}: ${error}`)
     })

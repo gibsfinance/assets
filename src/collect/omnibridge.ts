@@ -8,11 +8,12 @@
  * 4. Added testnet support via prefix configuration
  */
 
-import * as viem from 'viem'
 import * as db from '@/db'
 import { chainIdToNetworkId, erc20Read, publicClient } from '@/utils'
 import _ from 'lodash'
-import { log } from '@/logger'
+import * as viem from 'viem'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
 
 /**
  * @notice Configuration types for bridge endpoints
@@ -42,6 +43,12 @@ type BridgeConfig = {
  * 4. Added dynamic block range adjustment
  */
 export const collect = (config: BridgeConfig[]) => async () => {
+  updateStatus({
+    provider: 'omnibridge',
+    message: 'Starting bridge collection...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   await Promise.all(config.map(collectByBridgeConfig))
 }
 
@@ -128,7 +135,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
       fromBlock = currentToBlockNumber
     }
 
-    log('provider=%o, %o->%o updating=%o', provider.key, fromList.key, toList.key, bridgeBlockKey)
+    // log('provider=%o, %o->%o updating=%o', provider.key, fromList.key, toList.key, bridgeBlockKey)
     await iterateOverRange(fromBlock, latestBlock.number, async (fromBlock, toBlock) => {
       const events = await toOmnibridge.getEvents.NewTokenRegistered(
         {},
@@ -143,7 +150,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
         })
         return
       }
-      log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
+      // log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
       const collectedData = await Promise.all(
         events.map(async (event) => {
           const native = event.args.native as viem.Hex
@@ -285,7 +292,7 @@ const iterateOverRange = async (
 
       if (currentStep < step && consecutiveErrors === 0) {
         currentStep = BigInt(Math.min(Number((currentStep * 12_000n) / 10_000n), Number(step))) // 20% increase
-        log('Increasing block range to %o blocks after success', currentStep)
+        // log('Increasing block range to %o blocks after success', currentStep)
       }
     } catch (error: unknown) {
       consecutiveErrors++
@@ -302,14 +309,11 @@ const iterateOverRange = async (
 
       if (isLimitError) {
         currentStep = currentStep / 2n
-        log('Reducing block range to %o blocks due to limit error', currentStep)
-
         if (currentStep < minStep) {
           throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`)
         }
       } else {
         fromBlock = fromBlock + currentStep
-        log('Advancing block range due to non-limit error: %s', err.message || 'Unknown error')
       }
 
       const delay = isLimitError ? 2000 : 5000

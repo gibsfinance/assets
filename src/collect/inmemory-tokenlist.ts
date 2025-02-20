@@ -8,19 +8,12 @@
  * 4. Enhanced error handling with transaction timeouts
  */
 
-import * as types from '@/types'
 import * as db from '@/db'
+import * as types from '@/types'
 import * as utils from '@/utils'
+import { updateStatus } from '@/utils/status'
 import type { List, Network, Provider } from 'knex/types/tables'
-
-/**
- * @notice Status update utility for console output
- * @dev Added to replace spinner with more detailed progress information
- */
-const updateStatus = (message: string) => {
-  process.stdout.write(`\r${' '.repeat(process.stdout.columns || 80)}\r${message}`)
-}
-
+import type { StatusProps } from '../components/Status'
 /**
  * @notice Main collection function for processing token lists
  * @dev Changes:
@@ -40,7 +33,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
   const networks = new Map<number, Network>()
 
   // Initialize database entries
-  updateStatus(`🏗️  [${providerKey}] Setting up database entries...`)
+  updateStatus({
+    provider: providerKey,
+    message: 'Setting up database entries...',
+    phase: 'setup',
+  } satisfies StatusProps)
   let provider!: Provider
   let list!: List
 
@@ -58,7 +55,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     // Setup networks for each chain ID
     for (const chainId of chainIds) {
       if (chainId) {
-        updateStatus(`🔗 [${providerKey}] Setting up chain ${chainId}...`)
+        updateStatus({
+          provider: providerKey,
+          message: `Setting up chain ${chainId}...`,
+          phase: 'setup',
+        } satisfies StatusProps)
         const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
         networks.set(chainId, network)
       }
@@ -88,7 +89,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
 
     // Store list logo if available
     if (tokenList.logoURI) {
-      updateStatus(`🖼️  [${providerKey}] Storing list logo...`)
+      updateStatus({
+        provider: providerKey,
+        message: 'Storing list logo...',
+        phase: 'storing',
+      } satisfies StatusProps)
       await db.fetchImageAndStoreForList(
         {
           listId: list.listId,
@@ -116,7 +121,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     const entry = tokenList.tokens[i]
     await db.transaction(async (tx) => {
       processedTokens++
-      updateStatus(`📥 [${providerKey}] Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
+      updateStatus({
+        provider: providerKey,
+        message: `Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`,
+        phase: 'processing',
+      } satisfies StatusProps)
 
       const network = networks.get(entry.chainId)!
       const token = {
@@ -135,7 +144,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
       // Fix malformed URLs and store token image
       const path = entry.logoURI?.replace('hhttps://', 'https://') || null
       if (path) {
-        updateStatus(`💾 [${providerKey}] Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
+        updateStatus({
+          provider: providerKey,
+          message: `Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`,
+          phase: 'storing',
+        } satisfies StatusProps)
       }
       await db.fetchImageAndStoreForToken(
         {
@@ -150,6 +163,9 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     })
   }
 
-  updateStatus(`✨ [${providerKey}] Completed processing ${totalTokens} tokens!`)
-  // process.stdout.write('\n')
+  updateStatus({
+    provider: providerKey,
+    message: `Completed processing ${totalTokens} tokens!`,
+    phase: 'complete',
+  } satisfies StatusProps)
 }

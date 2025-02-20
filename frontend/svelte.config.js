@@ -10,13 +10,14 @@ const config = {
       fallback: 'index.html',
       strict: false,
       precompress: false,
-      trailingSlash: 'always',
       transformPage: ({ html }) => {
         return html
-          .replace(/href="\//g, 'href=".')
-          .replace(/src="\//g, 'src=".')
-          .replace(/from "\//g, 'from ".')
-          .replace(/import\("\/\_app/g, 'import("./\_app')
+          .replace(/href="\/_app\//g, 'href="./_app/')
+          .replace(/src="\/_app\//g, 'src="./_app/')
+          .replace(/from "\/_app\//g, 'from "./_app/')
+          .replace(/import\("\/_app/g, 'import("./_app')
+          .replace(/import\("\/(_app\/[^"]+)"\)/g, 'import("./$1")')
+          .replace(/modulepreload" href="\/_app\//g, 'modulepreload" href="./_app/')
           .replace(/url\(\//g, 'url(.')
           .replace(/"\/favicon/g, '"./favicon')
           .replace(/"\/assets/g, '"./assets')
@@ -28,6 +29,17 @@ const config = {
       relative: true,
     },
     appDir: '_app',
+    version: {
+      name: Date.now().toString(),
+    },
+    prerender: {
+      handleHttpError: 'warn',
+      entries: ['*'],
+      handleMissingId: 'ignore',
+    },
+    router: {
+      type: 'hash',
+    },
   },
   preprocess: vitePreprocess(),
 }
