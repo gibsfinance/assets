@@ -8,11 +8,12 @@
  * 4. Added testnet support via prefix configuration
  */
 
-import * as viem from 'viem'
 import * as db from '@/db'
 import { chainIdToNetworkId, erc20Read, publicClient } from '@/utils'
 import _ from 'lodash'
-import { log } from '@/logger'
+import * as viem from 'viem'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
 
 /**
  * @notice Configuration types for bridge endpoints
@@ -42,6 +43,12 @@ type BridgeConfig = {
  * 4. Added dynamic block range adjustment
  */
 export const collect = (config: BridgeConfig[]) => async () => {
+  updateStatus({
+    provider: 'omnibridge',
+    message: 'Starting bridge collection...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   await Promise.all(config.map(collectByBridgeConfig))
 }
 
@@ -62,6 +69,12 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
 
     while (retryCount < maxRetries) {
       try {
+        updateStatus({
+          provider: key,
+          message: `Connecting to ${fromHome ? 'home' : 'foreign'} network...`,
+          phase: 'setup',
+        } satisfies StatusProps)
+
         const fromClient = publicClient(fromConfig.chain)
         const toClient = publicClient(toConfig.chain)
 
@@ -78,6 +91,12 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
         const latestBlock = await toClient.getBlock({
           blockTag: 'latest',
         })
+
+        updateStatus({
+          provider: key,
+          message: 'Setting up bridge configuration...',
+          phase: 'setup',
+        } satisfies StatusProps)
 
         const { provider, fromList, toList, bridge } = await db.transaction(async (tx) => {
           // other services may be held by the provider
@@ -128,7 +147,12 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           fromBlock = currentToBlockNumber
         }
 
-        log('provider=%o, %o->%o updating=%o', provider.key, fromList.key, toList.key, bridgeBlockKey)
+        updateStatus({
+          provider: key,
+          message: `Processing ${fromList.key}->${toList.key} bridge events...`,
+          phase: 'processing',
+        } satisfies StatusProps)
+
         await iterateOverRange(fromBlock, latestBlock.number, async (fromBlock, toBlock) => {
           const events = await toOmnibridge.getEvents.NewTokenRegistered(
             {},
@@ -143,7 +167,13 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
             })
             return
           }
-          log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
+
+          updateStatus({
+            provider: key,
+            message: `Processing ${events.length} events from block ${Number(fromBlock)} to ${Number(toBlock)}`,
+            phase: 'processing',
+          } satisfies StatusProps)
+
           const collectedData = await Promise.all(
             events.map(async (event) => {
               const native = event.args.native as viem.Hex
@@ -168,6 +198,13 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
               ] as const
             }),
           )
+
+          updateStatus({
+            provider: key,
+            message: 'Storing collected token data...',
+            phase: 'storing',
+          } satisfies StatusProps)
+
           const collectedDataForTokens = new Map<
             string,
             {
@@ -230,20 +267,34 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           })
         })
 
+        updateStatus({
+          provider: key,
+          message: 'Bridge processing complete',
+          phase: 'complete',
+        } satisfies StatusProps)
+
         break // Success, exit retry loop
       } catch (error: unknown) {
         retryCount++
         const err = error as { message?: string; details?: string; status?: number }
 
-        log('Error in bridge collection (attempt %d/%d): %s', retryCount, maxRetries, err.message || 'Unknown error')
+        updateStatus({
+          provider: key,
+          message: `Error (attempt ${retryCount}/${maxRetries}): ${err.message || 'Unknown error'}`,
+          phase: 'setup',
+        } satisfies StatusProps)
 
         if (retryCount === maxRetries) {
-          throw error // Re-throw on final attempt
+          throw error
         }
 
         // Wait longer for HTTP errors
         const delay = err.status === 503 ? retryDelay * 2 : retryDelay
-        log('Waiting %dms before retry...', delay)
+        updateStatus({
+          provider: key,
+          message: `Waiting ${delay}ms before retry...`,
+          phase: 'setup',
+        } satisfies StatusProps)
         await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
@@ -285,7 +336,6 @@ const iterateOverRange = async (
 
       if (currentStep < step && consecutiveErrors === 0) {
         currentStep = BigInt(Math.min(Number(currentStep * 2n), Number(step)))
-        log('Increasing block range to %o blocks after success', currentStep)
       }
     } catch (error: unknown) {
       consecutiveErrors++
@@ -302,14 +352,11 @@ const iterateOverRange = async (
 
       if (isLimitError) {
         currentStep = currentStep / 2n
-        log('Reducing block range to %o blocks due to limit error', currentStep)
-
         if (currentStep < minStep) {
           throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`)
         }
       } else {
         fromBlock = fromBlock + currentStep
-        log('Advancing block range due to non-limit error: %s', err.message || 'Unknown error')
       }
 
       const delay = isLimitError ? 2000 : 5000

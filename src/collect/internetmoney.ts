@@ -9,15 +9,17 @@
  * 5. Added controlled parallel processing for better performance
  */
 
-import * as chains from 'viem/chains'
-import * as viem from 'viem'
-import * as utils from '@/utils'
-import type { InternetMoneyNetwork, Todo } from '@/types'
-import { fetch } from '@/fetch'
 import * as db from '@/db'
+import { Tx } from '@/db/tables'
+import { fetch } from '@/fetch'
+import type { Todo } from '@/types'
+import * as utils from '@/utils'
 import type { List, Provider } from 'knex/types/tables'
 import promiseLimit from 'promise-limit'
-import { Tx } from '@/db/tables'
+import * as viem from 'viem'
+import * as chains from 'viem/chains'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 const CONCURRENT_TOKENS = 4 // Limit concurrent token processing
@@ -43,6 +45,12 @@ interface NetworkInfo {
  * 4. Enhanced network icon storage with clear status updates
  */
 export const collect = async () => {
+  updateStatus({
+    provider: 'internetmoney',
+    message: 'Fetching network list...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   const json = await fetch(baseUrl)
     .then((res): Promise<NetworkInfo[]> => res.json())
     .then((res) => (Array.isArray(res) ? res : []))
@@ -51,7 +59,11 @@ export const collect = async () => {
   let provider!: Provider
   let insertedList!: List
 
-  utils.updateStatus(`🏗️ [internetmoney] Setting up provider and list...`)
+  updateStatus({
+    provider: 'internetmoney',
+    message: 'Setting up provider and list...',
+    phase: 'setup',
+  } satisfies StatusProps)
   await db.transaction(async (tx) => {
     ;[provider] = await db.insertProvider(
       {
@@ -94,7 +106,13 @@ export const collect = async () => {
       } as unknown as viem.Chain
     }
 
-    utils.updateStatus(`🔗 [internetmoney] Processing chain ${chain.id}...`)
+    updateStatus({
+      provider: 'internetmoney',
+      message: `Processing chain ${chain.id}...`,
+      current: processedTokens,
+      total: totalTokens,
+      phase: 'processing',
+    } satisfies StatusProps)
     await db.insertNetworkFromChainId(chain.id)
 
     const client = viem.createClient({
@@ -119,7 +137,13 @@ export const collect = async () => {
     // Store network icon
     await db.transaction(async (tx) => {
       const [networkList] = await insertAndGetNetworkList(tx)
-      utils.updateStatus(`🖼️ [internetmoney] Storing network icon for chain ${chain.id}...`)
+      updateStatus({
+        provider: 'internetmoney',
+        message: `Storing network icon for chain ${chain.id}...`,
+        current: processedTokens,
+        total: totalTokens,
+        phase: 'storing',
+      } satisfies StatusProps)
       await db.fetchImageAndStoreForList(
         {
           listId: networkList.listId,
@@ -135,7 +159,13 @@ export const collect = async () => {
     const limit = promiseLimit<TokenInfo>(CONCURRENT_TOKENS)
     await limit.map(network.tokens, async (token) => {
       processedTokens++
-      utils.updateStatus(`📥 [internetmoney] Processing token ${processedTokens}/${totalTokens}: ${token.address}...`)
+      updateStatus({
+        provider: 'internetmoney',
+        message: `Processing token: ${token.address}`,
+        current: processedTokens,
+        total: totalTokens,
+        phase: 'processing',
+      } satisfies StatusProps)
 
       try {
         const address = viem.getAddress(token.address)
@@ -156,7 +186,13 @@ export const collect = async () => {
             },
           }
 
-          utils.updateStatus(`💾 [internetmoney] Storing token ${processedTokens}/${totalTokens}: ${symbol}...`)
+          updateStatus({
+            provider: 'internetmoney',
+            message: `Storing token: ${symbol}`,
+            current: processedTokens,
+            total: totalTokens,
+            phase: 'storing',
+          } satisfies StatusProps)
           await db.fetchImageAndStoreForToken(
             {
               ...insertion,
@@ -173,11 +209,21 @@ export const collect = async () => {
           )
         })
       } catch (err) {
-        utils.failureLog(`Failed to process token ${token.address} on chain ${chain.id}: ${err}`)
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        updateStatus({
+          provider: 'internetmoney',
+          message: `Failed to process token ${token.address} on chain ${chain.id}: ${errorMessage}`,
+          current: processedTokens,
+          total: totalTokens,
+          phase: 'complete',
+        } satisfies StatusProps)
       }
     })
   }
 
-  utils.updateStatus(`✨ [internetmoney] Completed processing ${totalTokens} tokens!`)
-  process.stdout.write('\n')
+  updateStatus({
+    provider: 'internetmoney',
+    message: `Completed processing ${totalTokens} tokens!`,
+    phase: 'complete',
+  } satisfies StatusProps)
 }

@@ -1,7 +1,7 @@
+import * as args from '@/args'
+import { cleanup } from '@/cleanup'
 import * as collect from '@/collect'
 import * as db from '@/db'
-import { cleanup } from '@/cleanup'
-import * as args from '@/args'
 import { seedOrders } from '@/db/create-orders'
 const { providers } = args.collect()
 

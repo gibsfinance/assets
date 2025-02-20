@@ -1,16 +1,58 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import Image from '$lib/components/Image.svelte'
-  import Icon from '@iconify/svelte'
-  import { metrics } from '$lib/stores/metrics'
-  import { getApiUrl, initializeApiBase, apiBase } from '$lib/utils'
-  import type { PlatformMetrics, FloatingToken, PositionType, Hex } from '$lib/types'
   import networkNames from '$lib/networks.json' assert { type: 'json' }
+  import { metrics } from '$lib/stores/metrics'
+  import type { FloatingToken, Hex, PlatformMetrics, PositionType } from '$lib/types'
+  import { getApiUrl, initializeApiBase } from '$lib/utils'
+  import Icon from '@iconify/svelte'
+  import { onMount } from 'svelte'
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
   let showTestnets = false
   let isInitialized = false
+
+  // Add type for getNetworkName function
+  let getNetworkName: (chainId: number | string) => string = (chainId) => {
+    const chainIdStr = chainId.toString()
+    // First check our priority networks to ensure specific naming
+    const priorityNames: Record<string, string> = {
+      '1': 'Ethereum',
+      '369': 'PulseChain',
+      '56': 'BNB Smart Chain',
+      '137': 'Polygon',
+      '42161': 'Arbitrum One',
+      '10': 'Optimism',
+      '100': 'Gnosis Chain',
+      '324': 'zkSync Era',
+      '534352': 'Scroll',
+      '250': 'Fantom Opera',
+      '1030': 'Conflux eSpace',
+      '5000': 'Mantle',
+      '8453': 'Base',
+      '59144': 'Linea',
+      '7777777': 'Zora',
+    }
+
+    // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
+    const name = priorityNames[chainIdStr] || (networkNames as Record<string, string>)[chainIdStr]
+    return name || `Chain ${chainId}`
+  }
+
+  // Add type for metrics data
+  type NetworkInfo = {
+    chainId: number
+  }
+
+  type MetricsData = {
+    networks: {
+      supported: NetworkInfo[]
+    }
+    tokenList: {
+      byChain: Record<number, number>
+      total: number
+    }
+  }
 
   metrics.subscribe((value) => {
     metricsData = value
@@ -84,33 +126,6 @@
     { chainId: 369, address: '0x95B303987A60C71504D99Aa1b13B4DA07b0790ab' }, // PLSX
     { chainId: 56, address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82' }, // BSC PancakeSwap
   ]
-
-  // Add the getNetworkName function
-  function getNetworkName(chainId: number | string): string {
-    const chainIdStr = chainId.toString()
-    // First check our priority networks to ensure specific naming
-    const priorityNames: Record<string, string> = {
-      '1': 'Ethereum',
-      '369': 'PulseChain',
-      '56': 'BNB Smart Chain',
-      '137': 'Polygon',
-      '42161': 'Arbitrum One',
-      '10': 'Optimism',
-      '100': 'Gnosis Chain',
-      '324': 'zkSync Era',
-      '534352': 'Scroll',
-      '250': 'Fantom Opera',
-      '1030': 'Conflux eSpace',
-      '5000': 'Mantle',
-      '8453': 'Base',
-      '59144': 'Linea',
-      '7777777': 'Zora',
-    }
-
-    // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
-    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames]
-    return networkName || `Chain ${chainIdStr}`
-  }
 
   // Function to generate random floating images
   function generateFloatingImages(): FloatingToken[] {
@@ -348,12 +363,12 @@
           </div>
 
           <!-- Token Distribution Visualization -->
-          {#if $metrics}
-            {@const networks = $metrics.networks.supported
-              .map((n) => ({
+          {#if metricsData}
+            {@const networks = metricsData.networks.supported
+              .map((n: NetworkInfo) => ({
                 chainId: n.chainId,
                 name: getNetworkName(n.chainId),
-                tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
+                tokenCount: metricsData?.tokenList.byChain[n.chainId] || 0,
                 isTestnet: getNetworkName(n.chainId).toLowerCase().includes('testnet'),
               }))
               .filter((n) => n.tokenCount > 0)
@@ -363,7 +378,7 @@
                 if (a.isTestnet && !b.isTestnet) return 1
                 return b.tokenCount - a.tokenCount
               })}
-            {@const totalTokens = $metrics.tokenList.total}
+            {@const totalTokens = metricsData.tokenList.total}
 
             <div class="card p-4">
               <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
@@ -428,7 +443,7 @@
         <section class="card mb-8 space-y-4 p-8 text-center">
           <h2 class="h2">Ready to Get Started?</h2>
           <p class="text-lg">Try our URL wizard to generate the perfect integration for your needs.</p>
-          <a href="./wizard" class="btn bg-[#00DC82] text-black">
+          <a href="#/wizard" class="btn bg-[#00DC82] text-black">
             <i class="fas fa-hat-wizard mr-2"></i>
             Wizard
           </a>
