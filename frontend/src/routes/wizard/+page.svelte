@@ -8,9 +8,12 @@
   import TokenPreview from '$lib/components/TokenPreview.svelte'
   import UrlDisplay from '$lib/components/UrlDisplay.svelte'
   import { metrics } from '$lib/stores/metrics'
+  import { showTestnets } from '$lib/stores/settings'
   import type { ApiType, NetworkInfo } from '$lib/types'
   import { getApiUrl, initializeApiBase } from '$lib/utils'
   import { onMount } from 'svelte'
+  import TokenSearch from '$lib/components/TokenSearch.svelte'
+  import TokenListFilter from '$lib/components/TokenListFilter.svelte'
 
   let getNetworkName: (chainId: number | string) => string = (chainId) => `Chain ${chainId}`
   let selectedChain: number | null = null
@@ -35,7 +38,6 @@
 
   let selectedList: { key: string; providerKey: string } | null = null
   let selectedNetwork: NetworkInfo | null = null
-  let showTestnets = false
   let isNetworkSelectOpen = false
 
   // TokenBrowser state
@@ -67,6 +69,8 @@
       if (!cancelled) {
         isInitialized = true
         metrics.fetchMetrics()
+
+        // First fetch available lists
         try {
           const response = await fetch(getApiUrl('/list'))
           if (!cancelled && response.ok) {
@@ -93,6 +97,11 @@
         } catch (error) {
           console.error('Failed to fetch available lists:', error)
         }
+
+        // Now check for selected network after lists are loaded
+        if (selectedNetwork) {
+          tryFetchTokenLists(selectedNetwork.chainId)
+        }
       }
     }
 
@@ -102,6 +111,11 @@
       cancelled = true
     }
   })
+
+  // Add this reactive statement
+  $: if (selectedNetwork && urlType === 'token') {
+    tryFetchTokenLists(selectedNetwork.chainId)
+  }
 
   function generateUrl() {
     previewError = false
@@ -323,15 +337,24 @@
       <!-- API Type Selection -->
       <ApiTypeSelector
         bind:urlType
+        selectedNetwork={selectedNetwork}
         on:select={() => {
           generatedUrl = ''
           previewError = false
           showTokenBrowser = urlType === 'token'
           // Reset token selection
           tokenAddress = ''
+        }}
+        on:loadTokens={() => {
           // If we have a selected network, reload its tokens
-          if (selectedNetwork && urlType === 'token') {
+          if (selectedNetwork) {
             tryFetchTokenLists(selectedNetwork.chainId)
+          }
+        }}
+        on:generateUrl={() => {
+          // Generate URL for network icon
+          if (selectedNetwork) {
+            generateUrl()
           }
         }}
         on:reset={() => {
@@ -355,41 +378,54 @@
       <NetworkSelect
         bind:isOpen={isNetworkSelectOpen}
         bind:selectedNetwork
-        bind:showTestnets
+        bind:showTestnets={$showTestnets}
         on:networkname={({ detail }) => (getNetworkName = detail)}
         on:select={({ detail }) => selectNetwork(detail)} />
 
       <!-- Token Browser (show when network is selected in token mode) -->
       {#if urlType === 'token' && selectedNetwork && !tokenAddress}
         <TokenBrowser
-          {selectedChain}
+          selectedChain={selectedChain}
           networkName={selectedNetwork ? getNetworkName(selectedNetwork.chainId) : ''}
           bind:filteredTokens
           bind:isCircularCrop
           bind:enabledLists
           bind:tokensByList
           bind:isListFilterOpen
-          bind:searchQuery
-          bind:isGlobalSearchActive
-          bind:isSearching
-          bind:globalSearchResults
           bind:currentPage
           {tokensPerPage}
           {getNetworkName}
-          on:search={() => {
-            currentPage = 1
-            filterTokens()
-          }}
-          on:updateResults={({ detail }) => {
-            globalSearchResults = detail.tokens
-            filteredTokens = detail.tokens
-          }}
           on:selectToken={({ detail }) => {
             tokenAddress = detail.token.address
             generateUrl()
           }}
           on:toggleList={handleTokenListToggle}
-          on:toggleAll={handleTokenListToggleAll} />
+          on:toggleAll={handleTokenListToggleAll}>
+          <TokenSearch
+            bind:searchQuery
+            bind:isGlobalSearchActive
+            bind:isSearching
+            selectedChain={selectedChain}
+            on:search={() => {
+              currentPage = 1
+              filterTokens()
+            }}
+            on:globalSearch
+            on:updateResults={({ detail }) => {
+              globalSearchResults = detail.tokens
+              filteredTokens = detail.tokens
+            }}>
+            <TokenListFilter
+              slot="filter"
+              bind:isOpen={isListFilterOpen}
+              bind:enabledLists
+              bind:tokensByList
+              {selectedChain}
+              on:toggleList
+              on:toggleAll
+            />
+          </TokenSearch>
+        </TokenBrowser>
       {/if}
 
       <!-- Manual Token Input -->

@@ -3,10 +3,13 @@
   import { createEventDispatcher } from 'svelte'
 
   export let urlType: ApiType
+  export let selectedNetwork: any = null
 
   const dispatch = createEventDispatcher<{
     reset: void
     select: { type: ApiType }
+    loadTokens: void
+    generateUrl: void
   }>()
 
   function selectType(type: ApiType) {
@@ -14,6 +17,12 @@
       urlType = type
       dispatch('select', { type })
       dispatch('reset')
+      
+      if (type === 'token' && selectedNetwork) {
+        dispatch('loadTokens')
+      } else if (type === 'network' && selectedNetwork) {
+        dispatch('generateUrl')
+      }
     }
   }
 </script>
@@ -35,8 +44,5 @@
   </div>
 </div>
 
-<style lang="postcss">
-  .label {
-    @apply text-sm font-medium;
-  }
+<style>
 </style>

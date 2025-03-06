@@ -1,6 +1,7 @@
 <script lang="ts">
   import networkNames from '$lib/networks.json' assert { type: 'json' }
   import { metrics } from '$lib/stores/metrics'
+  import { showTestnets } from '$lib/stores/settings'
   import type { NetworkInfo } from '$lib/types'
   import { createEventDispatcher, onMount } from 'svelte'
 
@@ -11,8 +12,7 @@
 
   let { 
     isOpen = $bindable(false),
-    selectedNetwork = $bindable<NetworkInfo | null>(null),
-    showTestnets = $bindable(false)
+    selectedNetwork = $bindable<NetworkInfo | null>(null)
   } = $props()
 
   // Add click outside handler for network select
@@ -27,6 +27,18 @@
       document.removeEventListener('click', handler)
     }
   })
+
+  // Add this to the existing onMount
+  const storedChainId = localStorage.getItem('selectedChainId');
+  if (storedChainId && $metrics) {
+    const network = $metrics.networks.supported.find(n => n.chainId.toString() === storedChainId);
+    if (network) {
+      selectedNetwork = network;
+      dispatch('select', network);
+    }
+    // Clear the stored chain ID after using it
+    localStorage.removeItem('selectedChainId');
+  }
 
   // Network name function for use in component and parent
   function getNetworkName(chainId: number | string): string {
@@ -66,7 +78,7 @@
 
     // Filter out testnets if showTestnets is false
     let filteredNetworks = networks
-    if (!showTestnets) {
+    if (!$showTestnets) {
       filteredNetworks = networks.filter(
         (network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'),
       )
@@ -100,7 +112,7 @@
         <input
           type="checkbox"
           class="sr-only peer"
-          bind:checked={showTestnets}
+          bind:checked={$showTestnets}
         />
         <div class="w-11 h-6 bg-surface-700/20 rounded-full peer-checked:bg-[#00DC82]/20 transition-colors"></div>
         <div class="absolute left-1 top-1 w-4 h-4 bg-surface-200 rounded-full transition-all peer-checked:bg-[#00DC82] peer-checked:translate-x-5"></div>

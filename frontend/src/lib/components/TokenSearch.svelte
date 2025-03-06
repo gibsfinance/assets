@@ -7,7 +7,7 @@
   export let searchQuery = ''
   export let isGlobalSearchActive = false
   export let isSearching = false
-  export let selectedChain: number | null = null
+  export let selectedChain: number | null | undefined = undefined
 
   const dispatch = createEventDispatcher<{
     search: { query: string }
@@ -167,13 +167,23 @@
   }
 </script>
 
-<div class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto_auto] rounded-container-token">
-  <div class="input-group-shim">
-    <i class="fas fa-search"></i>
+<div class="flex flex-col gap-2 sm:flex-row">
+  <!-- Search bar -->
+  <div class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto] rounded-container-token">
+    <div class="input-group-shim">
+      <i class="fas fa-search"></i>
+    </div>
+    <input type="search" placeholder="Search tokens..." class="input" bind:value={searchQuery} on:input={handleInput} />
+    <button 
+      class="input-group-shim variant-soft-primary btn" 
+      on:click={performGlobalSearch} 
+      disabled={!searchQuery}
+    >
+      <i class="fas fa-globe"></i>
+      <span class="hidden sm:inline ml-2">Search All</span>
+    </button>
   </div>
-  <input type="search" placeholder="Search tokens..." class="input" bind:value={searchQuery} on:input={handleInput} />
-  <button class="input-group-shim variant-soft-primary btn" on:click={performGlobalSearch} disabled={!searchQuery}>
-    <i class="fas fa-globe mr-2"></i>
-    Search All Chains
-  </button>
 </div>
+
+<!-- Slot for filter -->
+<slot name="filter" />
