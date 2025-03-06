@@ -64,7 +64,7 @@
         Loading tokens...
       </div>
     {:else}
-      <!-- Token Table -->
+      <!-- Token Table with responsive design -->
       <div class="table-container">
         <table class="token-table">
           <thead>
@@ -125,6 +125,11 @@
         </table>
       </div>
 
+      <!-- Horizontal scroll indicator for small screens -->
+      <div class="horizontal-scroll-hint">
+        <span class="text-xs text-surface-500 md:hidden">← Swipe horizontally to see more details →</span>
+      </div>
+
       <!-- Pagination -->
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-2">
@@ -143,11 +148,28 @@
 </div>
 
 <style lang="postcss">
+  /* Added comment to explain responsive table changes */
+  /* TokenBrowser.svelte updated on 08/16/2024 to make table fully scrollable on mobile screens */
+  
+  .table-container {
+    width: 100%;
+    overflow-x: auto;
+    margin: 1rem 0;
+    position: relative;
+  }
+
   .token-table {
     width: 100%;
     table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
+  }
+
+  /* Apply minimum width on smaller screens for proper scrolling */
+  @media (max-width: 768px) {
+    .token-table {
+      min-width: 700px; /* Ensure table has minimum width for scrolling on small screens */
+    }
   }
 
   .token-table th,
@@ -159,6 +181,7 @@
     white-space: nowrap;
   }
 
+  /* Responsive column widths */
   .token-table th:nth-child(1),
   .token-table td:nth-child(1) {
     width: 35%;
@@ -179,10 +202,10 @@
     width: 15%;
   }
 
-  .table-container {
-    width: 100%;
-    overflow-x: auto;
-    margin: 1rem 0;
+  /* Horizontal scroll hint */
+  .horizontal-scroll-hint {
+    text-align: center;
+    padding: 0.25rem 0;
   }
 
   .spinner {

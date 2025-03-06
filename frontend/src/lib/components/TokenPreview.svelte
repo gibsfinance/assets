@@ -6,7 +6,7 @@
   export let previewError = false
   export let iconExists = true
   export let isCircularCrop = false
-  export let backgroundColor = '#151821'
+  export let backgroundColor = '#2b4f54'
   export let showColorPicker = false
 
   let zoomLevel = 1
@@ -23,7 +23,7 @@
     translateY = 0
     isCircularCrop = false
     showColorPicker = false
-    backgroundColor = '#151821'
+    backgroundColor = '#2b4f54'
     previewError = false
     iconExists = true
   }
