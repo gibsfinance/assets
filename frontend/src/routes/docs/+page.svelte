@@ -172,7 +172,7 @@ fetch(\`\${baseUrl}/image/1\`)
 
   <!-- Try It Out -->
   <div class="text-center">
-    <a href="./wizard" class="btn bg-[#00DC82] text-black hover:bg-[#00DC82]/80">
+    <a href="./#/wizard" class="btn bg-[#00DC82] text-black hover:bg-[#00DC82]/80">
       <i class="fas fa-hat-wizard mr-2"></i>
       Wizard
     </a>
