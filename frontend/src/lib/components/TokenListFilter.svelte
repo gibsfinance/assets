@@ -36,9 +36,9 @@
   }
 </script>
 
-<div class="relative">
+<div class="relative mt-2 sm:mt-0">
   <button
-    class="list-filter-dropdown variant-soft-surface btn"
+    class="list-filter-dropdown variant-soft-surface btn w-full sm:w-auto"
     on:click={() => {
       isOpen = !isOpen
       if (isOpen) {

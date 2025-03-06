@@ -20,7 +20,11 @@
 </script>
 
 <div class="flex items-center gap-2">
-  <button class="variant-soft btn btn-sm" disabled={currentPage === 1} on:click={goToPreviousPage}>
+  <button 
+    class="btn variant-ghost-surface"
+    aria-label="Previous page"
+    on:click={() => goToPreviousPage()}
+    disabled={currentPage === 1}>
     <i class="fas fa-chevron-left"></i>
   </button>
 
@@ -28,7 +32,11 @@
     Page {currentPage} of {totalPages}
   </span>
 
-  <button class="variant-soft btn btn-sm" disabled={currentPage >= totalPages} on:click={goToNextPage}>
+  <button 
+    class="btn variant-ghost-surface"
+    aria-label="Next page"
+    on:click={() => goToNextPage()}
+    disabled={currentPage === totalPages}>
     <i class="fas fa-chevron-right"></i>
   </button>
 </div>

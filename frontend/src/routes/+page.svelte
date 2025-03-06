@@ -6,10 +6,10 @@
   import { getApiUrl, initializeApiBase } from '$lib/utils'
   import Icon from '@iconify/svelte'
   import { onMount } from 'svelte'
+  import { showTestnets } from '$lib/stores/settings'
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
-  let showTestnets = false
   let isInitialized = false
 
   // Add type for getNetworkName function
@@ -150,7 +150,7 @@
       chainId: network.chainId,
       size: random(20, 30), // Random size between 20-30px (smaller)
       speed: random(80, 90), // Random animation duration 80-90s (slower)
-      delay: random(0, 15), // Random start delay 0-15s
+      delay: Math.random() < 0.5 ? random(0, 5) : random(10, 25), // Spread second wave over longer period
       direction: Math.random() > 0.5 ? 1 : -1, // 50% chance left or right
       layer: 'back' as PositionType, // Always in background
       startPos: random(0, 100), // Random starting position 0-100% of viewport width
@@ -163,7 +163,7 @@
       address: token.address as Hex,
       size: random(40, 80), // Random size between 40-80px (larger)
       speed: random(55, 75), // Random animation duration 55-75s (faster)
-      delay: random(0, 20), // Random start delay 0-20s
+      delay: Math.random() < 0.5 ? random(0, 5) : random(10, 25), // Spread second wave over longer period
       direction: Math.random() > 0.5 ? 1 : -1, // 50% chance left or right
       layer: (random(0, 1) > 0.5 ? 'middle' : 'front') as PositionType, // Random layer
       startPos: random(0, 100), // Random starting position 0-100% of viewport width
@@ -387,26 +387,33 @@
               <div class="mb-4 flex justify-end">
                 <label class="group flex cursor-pointer items-center gap-3">
                   <div class="relative">
-                    <input type="checkbox" class="peer sr-only" bind:checked={showTestnets} />
-                    <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"
-                    ></div>
-                    <div
-                      class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"
-                    ></div>
+                    <input 
+                      type="checkbox" 
+                      class="peer sr-only" 
+                      bind:checked={$showTestnets}
+                    />
+                    <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"></div>
+                    <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"></div>
                   </div>
-                  <span
-                    class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300"
-                    >Show Testnets</span>
+                  <span class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300">Show Testnets</span>
                 </label>
               </div>
 
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {#each networks.filter((n) => showTestnets || !n.isTestnet) as network}
+                {#each networks.filter((n) => $showTestnets || !n.isTestnet) as network}
                   {@const intensity = Math.max(
                     0.2,
                     network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)),
                   )}
-                  <div class="group relative transition-all duration-200 hover:scale-105">
+                  <a 
+                    href="#/wizard"
+                    on:click|preventDefault={() => {
+                      // Navigate to wizard and set the selected network in localStorage
+                      localStorage.setItem('selectedChainId', network.chainId.toString());
+                      window.location.href = '#/wizard';
+                    }}
+                    class="group relative transition-all duration-200 hover:scale-105 cursor-pointer"
+                  >
                     <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
                     <div
                       class="card variant-ghost relative flex h-[160px] flex-col items-center justify-between rounded-lg border border-[#00DC82]/20 p-3 hover:border-[#00DC82]/40">
@@ -428,7 +435,7 @@
                       <div class="mt-2 flex-shrink-0 text-base font-bold text-[#00DC82]"
                         >{network.tokenCount.toLocaleString()}</div>
                     </div>
-                  </div>
+                  </a>
                 {/each}
               </div>
             </div>
@@ -490,7 +497,7 @@
   @keyframes float-right {
     0% {
       opacity: 0;
-      transform: translateX(-100px) rotate(0deg);
+      transform: translateX(100px) rotate(0deg);
     }
     5% {
       opacity: 1;
@@ -507,9 +514,9 @@
   @keyframes float-left {
     0% {
       opacity: 0;
-      transform: translateX(0) rotate(360deg);
+      transform: translateX(5vw) rotate(360deg);
     }
-    5% {
+    10% {
       opacity: 1;
     }
     95% {
