@@ -9,3 +9,4 @@ frontend/package/
 frontend/.env.*
 dist
 pumptires.json
+.DS_Store
