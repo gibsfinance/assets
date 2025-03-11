@@ -7,8 +7,18 @@ import * as utils from '@/utils'
 import * as db from '@/db'
 import config from 'config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
-import { RequestHandler, Response } from 'express'
+import { NextFunction, Request, RequestHandler, Response } from 'express'
 import _ from 'lodash'
+
+const nextOnError = (handler: RequestHandler) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      return handler(req, res, next)
+    } catch (err) {
+      return next(err)
+    }
+  }
+}
 
 export const getListTokens = async (
   chainId: ChainId,
@@ -180,14 +190,10 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   return img
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
-  try {
-    const img = await bestGuessNeworkImage(req.params.chainId)
-    sendImage(res, img)
-  } catch (err) {
-    return next(err)
-  }
-}
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = nextOnError(async (req, res, next) => {
+  const img = await bestGuessNeworkImage(req.params.chainId)
+  sendImage(res, img)
+})
 
 const ignoreNotFound = (err: HttpError) => {
   if (err.status === 404) {
@@ -196,41 +202,45 @@ const ignoreNotFound = (err: HttpError) => {
   throw err
 }
 
-export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (req, res, next) => {
-  const { i } = req.query
-  let images!: string[]
-  if (Array.isArray(i)) images = i
-  else images = [i]
-  for (const i of images) {
-    if (!_.isString(i)) {
-      return next(httpErrors.NotAcceptable('invalid i'))
+export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = nextOnError(
+  async (req, res, next) => {
+    const { i } = req.query
+    let images: string[] = []
+    if (Array.isArray(i)) images = i.map((i) => i.toString())
+    else if (i) {
+      images = [i.toString()]
     }
-    const [chainId, address, order] = i.split('/')
-    if (!address) {
-      const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
-      if (!img) continue
-      return sendImage(res, img)
-    }
-    if (order && order.length !== 64 /* check if hex */) {
-      return next(httpErrors.NotAcceptable('invalid order'))
-    }
-    let img = await getListImage(true)({
-      chainId: Number(chainId),
-      address,
-      order,
-    }).catch(ignoreNotFound)
-    if (!img) {
-      img = await getListImage(false)({
+    for (const i of images) {
+      if (!_.isString(i)) {
+        return next(httpErrors.NotAcceptable('invalid i'))
+      }
+      const [chainId, address, order] = i.split('/')
+      if (!address) {
+        const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
+        if (!img) continue
+        return sendImage(res, img)
+      }
+      if (order && order.length !== 64 /* check if hex */) {
+        return next(httpErrors.NotAcceptable('invalid order'))
+      }
+      let img = await getListImage(true)({
         chainId: Number(chainId),
         address,
+        order,
       }).catch(ignoreNotFound)
+      if (!img) {
+        img = await getListImage(false)({
+          chainId: Number(chainId),
+          address,
+        }).catch(ignoreNotFound)
+      }
+      if (img) {
+        return sendImage(res, img)
+      }
     }
-    if (img) {
-      return sendImage(res, img)
-    }
-  }
-  return next(httpErrors.NotFound('image not found from list'))
-}
+    return next(httpErrors.NotFound('image not found from list'))
+  },
+)
 
 export const sendImage = (res: Response, img: Image) => {
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`).contentType(img.ext).send(img.content)
