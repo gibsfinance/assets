@@ -92,7 +92,7 @@ export const sortTokenEntry = (a: types.TokenEntry, b: types.TokenEntry) => {
 
 export const limit = promiseLimit(16) as ReturnType<typeof promiseLimit<any>>
 
-export const limitBy = _.memoize(<T>(_key: string, count: number = 16) => {
+export const limitBy = _.memoize(<T>(_key: string, count = 16) => {
   return promiseLimit<T>(count) as ReturnType<typeof promiseLimit<T>>
 })
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import networkNames from '$lib/networks.json' assert { type: 'json' }
   import { metrics } from '$lib/stores/metrics'
+  import { showTestnets } from '$lib/stores/settings'
   import type { NetworkInfo } from '$lib/types'
   import { createEventDispatcher, onMount } from 'svelte'
 
@@ -9,11 +10,7 @@
     networkname: (chainId: number | string) => string
   }>()
 
-  let { 
-    isOpen = $bindable(false),
-    selectedNetwork = $bindable<NetworkInfo | null>(null),
-    showTestnets = $bindable(false)
-  } = $props()
+  let { isOpen = $bindable(false), selectedNetwork = $bindable<NetworkInfo | null>(null) } = $props()
 
   // Add click outside handler for network select
   onMount(() => {
@@ -27,6 +24,18 @@
       document.removeEventListener('click', handler)
     }
   })
+
+  // Add this to the existing onMount
+  const storedChainId = localStorage.getItem('selectedChainId')
+  if (storedChainId && $metrics) {
+    const network = $metrics.networks.supported.find((n) => n.chainId.toString() === storedChainId)
+    if (network) {
+      selectedNetwork = network
+      dispatch('select', network)
+    }
+    // Clear the stored chain ID after using it
+    localStorage.removeItem('selectedChainId')
+  }
 
   // Network name function for use in component and parent
   function getNetworkName(chainId: number | string): string {
@@ -66,7 +75,7 @@
 
     // Filter out testnets if showTestnets is false
     let filteredNetworks = networks
-    if (!showTestnets) {
+    if (!$showTestnets) {
       filteredNetworks = networks.filter(
         (network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'),
       )
@@ -91,51 +100,51 @@
 </script>
 
 <div class="relative w-full">
-  <div class="flex justify-between items-center mb-2">
+  <div class="mb-2 flex items-center justify-between">
     <label for="network-select" class="label">
       <span class="leading-5">Select Network</span>
     </label>
-    <label class="flex items-center gap-3 cursor-pointer group">
+    <label class="group flex cursor-pointer items-center gap-3">
       <div class="relative">
-        <input
-          type="checkbox"
-          class="sr-only peer"
-          bind:checked={showTestnets}
-        />
-        <div class="w-11 h-6 bg-surface-700/20 rounded-full peer-checked:bg-[#00DC82]/20 transition-colors"></div>
-        <div class="absolute left-1 top-1 w-4 h-4 bg-surface-200 rounded-full transition-all peer-checked:bg-[#00DC82] peer-checked:translate-x-5"></div>
+        <input type="checkbox" class="peer sr-only" bind:checked={$showTestnets} />
+        <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"></div>
+        <div
+          class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"
+        ></div>
       </div>
-      <span class="text-sm font-medium text-surface-600 dark:text-surface-300 group-hover:text-[#00DC82] transition-colors">Show Testnets</span>
+      <span
+        class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300"
+        >Show Testnets</span>
     </label>
   </div>
   <button
     type="button"
     id="network-select"
-    class="select w-full text-left flex justify-between items-center py-2 px-3 text-sm leading-6"
+    class="select flex w-full items-center justify-between px-3 py-2 text-left text-sm leading-6"
     onclick={() => (isOpen = !isOpen)}>
     {#if selectedNetwork}
       <span class="truncate">{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
     {:else}
       <span class="text-gray-500">Choose a network...</span>
     {/if}
-    <i class="fas fa-chevron-down transition-transform flex-shrink-0 ml-2" class:rotate-180={isOpen}></i>
+    <i class="fas fa-chevron-down ml-2 flex-shrink-0 transition-transform" class:rotate-180={isOpen}></i>
   </button>
 
   {#if isOpen}
     <div
-      class="absolute z-50 w-full mt-1 bg-white dark:bg-[#202633] border border-gray-200 dark:border-surface-700/20 shadow-lg max-h-[300px] overflow-y-auto text-sm rounded-container-token">
+      class="absolute z-50 mt-1 max-h-[300px] w-full overflow-y-auto border border-gray-200 bg-white text-sm shadow-lg rounded-container-token dark:border-surface-700/20 dark:bg-[#202633]">
       {#if $metrics}
         {#each sortNetworks($metrics.networks.supported) as network}
           <button
-            class="w-full px-3 py-1.5 text-left hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20 transition-colors flex items-center justify-between"
+            class="flex w-full items-center justify-between px-3 py-1.5 text-left transition-colors hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20"
             class:selected={selectedNetwork?.chainId === network.chainId}
             onclick={() => {
               selectedNetwork = network
               isOpen = false
               dispatch('select', network)
             }}>
-            <span class="truncate mr-2">{getNetworkName(network.chainId)}</span>
-            <span class="text-surface-500 whitespace-nowrap flex-shrink-0">(Chain ID: {network.chainId})</span>
+            <span class="mr-2 truncate">{getNetworkName(network.chainId)}</span>
+            <span class="flex-shrink-0 whitespace-nowrap text-surface-500">(Chain ID: {network.chainId})</span>
           </button>
         {/each}
       {/if}
@@ -147,4 +156,4 @@
   .selected {
     @apply bg-[#00DC82]/20;
   }
-</style> 
+</style>

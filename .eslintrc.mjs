@@ -18,6 +18,9 @@ export default tseslint.config(
       'package',
       '.env*',
       '!.env.example',
+      'pnpm-lock.yaml',
+      'frontend/pnpm-lock.yaml',
+      '.eslintrc.mjs',
     ],
     rules: {
       'no-plusplus': 'off',

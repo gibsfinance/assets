@@ -14,6 +14,10 @@ COPY package.json /usr/src/app/package.json
 RUN npm i -g pnpm
 RUN pnpm i
 
+# Copy and build frontend first
+COPY frontend /usr/src/app/frontend
+RUN pnpm frontend:build
+
 COPY src /usr/src/app/src
 COPY config.ts /usr/src/app/config.ts
 COPY knexfile.ts /usr/src/app/knexfile.ts

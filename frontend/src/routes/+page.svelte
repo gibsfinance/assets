@@ -1,16 +1,58 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import Image from '$lib/components/Image.svelte'
-  import Icon from '@iconify/svelte'
-  import { metrics } from '$lib/stores/metrics'
-  import { getApiUrl, initializeApiBase, apiBase } from '$lib/utils'
-  import type { PlatformMetrics, FloatingToken, PositionType, Hex } from '$lib/types'
   import networkNames from '$lib/networks.json' assert { type: 'json' }
+  import { metrics } from '$lib/stores/metrics'
+  import type { FloatingToken, Hex, PlatformMetrics, PositionType } from '$lib/types'
+  import { getApiUrl, initializeApiBase } from '$lib/utils'
+  import Icon from '@iconify/svelte'
+  import { onMount } from 'svelte'
+  import { showTestnets } from '$lib/stores/settings'
 
   let metricsData: PlatformMetrics | null = null
   let pageHeight: number
-  let showTestnets = false
   let isInitialized = false
+
+  // Add type for getNetworkName function
+  let getNetworkName: (chainId: number | string) => string = (chainId) => {
+    const chainIdStr = chainId.toString()
+    // First check our priority networks to ensure specific naming
+    const priorityNames: Record<string, string> = {
+      '1': 'Ethereum',
+      '369': 'PulseChain',
+      '56': 'BNB Smart Chain',
+      '137': 'Polygon',
+      '42161': 'Arbitrum One',
+      '10': 'Optimism',
+      '100': 'Gnosis Chain',
+      '324': 'zkSync Era',
+      '534352': 'Scroll',
+      '250': 'Fantom Opera',
+      '1030': 'Conflux eSpace',
+      '5000': 'Mantle',
+      '8453': 'Base',
+      '59144': 'Linea',
+      '7777777': 'Zora',
+    }
+
+    // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
+    const name = priorityNames[chainIdStr] || (networkNames as Record<string, string>)[chainIdStr]
+    return name || `Chain ${chainId}`
+  }
+
+  // Add type for metrics data
+  type NetworkInfo = {
+    chainId: number
+  }
+
+  type MetricsData = {
+    networks: {
+      supported: NetworkInfo[]
+    }
+    tokenList: {
+      byChain: Record<number, number>
+      total: number
+    }
+  }
 
   metrics.subscribe((value) => {
     metricsData = value
@@ -85,33 +127,6 @@
     { chainId: 56, address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82' }, // BSC PancakeSwap
   ]
 
-  // Add the getNetworkName function
-  function getNetworkName(chainId: number | string): string {
-    const chainIdStr = chainId.toString()
-    // First check our priority networks to ensure specific naming
-    const priorityNames: Record<string, string> = {
-      '1': 'Ethereum',
-      '369': 'PulseChain',
-      '56': 'BNB Smart Chain',
-      '137': 'Polygon',
-      '42161': 'Arbitrum One',
-      '10': 'Optimism',
-      '100': 'Gnosis Chain',
-      '324': 'zkSync Era',
-      '534352': 'Scroll',
-      '250': 'Fantom Opera',
-      '1030': 'Conflux eSpace',
-      '5000': 'Mantle',
-      '8453': 'Base',
-      '59144': 'Linea',
-      '7777777': 'Zora',
-    }
-
-    // Use priority names first, then fall back to Uniswap names, then to generic Chain ID
-    const networkName = priorityNames[chainIdStr] || networkNames[chainIdStr as keyof typeof networkNames]
-    return networkName || `Chain ${chainIdStr}`
-  }
-
   // Function to generate random floating images
   function generateFloatingImages(): FloatingToken[] {
     const networkImages = [
@@ -135,7 +150,7 @@
       chainId: network.chainId,
       size: random(20, 30), // Random size between 20-30px (smaller)
       speed: random(80, 90), // Random animation duration 80-90s (slower)
-      delay: random(0, 15), // Random start delay 0-15s
+      delay: Math.random() < 0.5 ? random(0, 5) : random(10, 25), // Spread second wave over longer period
       direction: Math.random() > 0.5 ? 1 : -1, // 50% chance left or right
       layer: 'back' as PositionType, // Always in background
       startPos: random(0, 100), // Random starting position 0-100% of viewport width
@@ -148,7 +163,7 @@
       address: token.address as Hex,
       size: random(40, 80), // Random size between 40-80px (larger)
       speed: random(55, 75), // Random animation duration 55-75s (faster)
-      delay: random(0, 20), // Random start delay 0-20s
+      delay: Math.random() < 0.5 ? random(0, 5) : random(10, 25), // Spread second wave over longer period
       direction: Math.random() > 0.5 ? 1 : -1, // 50% chance left or right
       layer: (random(0, 1) > 0.5 ? 'middle' : 'front') as PositionType, // Random layer
       startPos: random(0, 100), // Random starting position 0-100% of viewport width
@@ -348,12 +363,12 @@
           </div>
 
           <!-- Token Distribution Visualization -->
-          {#if $metrics}
-            {@const networks = $metrics.networks.supported
-              .map((n) => ({
+          {#if metricsData}
+            {@const networks = metricsData.networks.supported
+              .map((n: NetworkInfo) => ({
                 chainId: n.chainId,
                 name: getNetworkName(n.chainId),
-                tokenCount: $metrics.tokenList.byChain[n.chainId] || 0,
+                tokenCount: metricsData?.tokenList.byChain[n.chainId] || 0,
                 isTestnet: getNetworkName(n.chainId).toLowerCase().includes('testnet'),
               }))
               .filter((n) => n.tokenCount > 0)
@@ -363,7 +378,7 @@
                 if (a.isTestnet && !b.isTestnet) return 1
                 return b.tokenCount - a.tokenCount
               })}
-            {@const totalTokens = $metrics.tokenList.total}
+            {@const totalTokens = metricsData.tokenList.total}
 
             <div class="card p-4">
               <h3 class="h3 mb-4 text-center">Tokens by Chain</h3>
@@ -372,7 +387,7 @@
               <div class="mb-4 flex justify-end">
                 <label class="group flex cursor-pointer items-center gap-3">
                   <div class="relative">
-                    <input type="checkbox" class="peer sr-only" bind:checked={showTestnets} />
+                    <input type="checkbox" class="peer sr-only" bind:checked={$showTestnets} />
                     <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"
                     ></div>
                     <div
@@ -386,12 +401,19 @@
               </div>
 
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {#each networks.filter((n) => showTestnets || !n.isTestnet) as network}
+                {#each networks.filter((n) => $showTestnets || !n.isTestnet) as network}
                   {@const intensity = Math.max(
                     0.2,
                     network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)),
                   )}
-                  <div class="group relative transition-all duration-200 hover:scale-105">
+                  <a
+                    href="#/wizard"
+                    on:click|preventDefault={() => {
+                      // Navigate to wizard and set the selected network in localStorage
+                      localStorage.setItem('selectedChainId', network.chainId.toString())
+                      window.location.href = '#/wizard'
+                    }}
+                    class="group relative cursor-pointer transition-all duration-200 hover:scale-105">
                     <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
                     <div
                       class="card variant-ghost relative flex h-[160px] flex-col items-center justify-between rounded-lg border border-[#00DC82]/20 p-3 hover:border-[#00DC82]/40">
@@ -413,7 +435,7 @@
                       <div class="mt-2 flex-shrink-0 text-base font-bold text-[#00DC82]"
                         >{network.tokenCount.toLocaleString()}</div>
                     </div>
-                  </div>
+                  </a>
                 {/each}
               </div>
             </div>
@@ -428,7 +450,7 @@
         <section class="card mb-8 space-y-4 p-8 text-center">
           <h2 class="h2">Ready to Get Started?</h2>
           <p class="text-lg">Try our URL wizard to generate the perfect integration for your needs.</p>
-          <a href="./wizard" class="btn bg-[#00DC82] text-black">
+          <a href="#/wizard" class="btn bg-[#00DC82] text-black">
             <i class="fas fa-hat-wizard mr-2"></i>
             Wizard
           </a>
@@ -475,7 +497,7 @@
   @keyframes float-right {
     0% {
       opacity: 0;
-      transform: translateX(-100px) rotate(0deg);
+      transform: translateX(100px) rotate(0deg);
     }
     5% {
       opacity: 1;
@@ -492,9 +514,9 @@
   @keyframes float-left {
     0% {
       opacity: 0;
-      transform: translateX(0) rotate(360deg);
+      transform: translateX(5vw) rotate(360deg);
     }
-    5% {
+    10% {
       opacity: 1;
     }
     95% {

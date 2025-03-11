@@ -1,7 +1,8 @@
 <script lang="ts">
-  import '../app.css'
-  import ThemeToggle from '$lib/components/ThemeToggle.svelte'
   import { goto } from '$app/navigation'
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte'
+  import '../app.css'
+  import { page } from '$app/stores'
 
   // Handle base path for IPFS
   if (typeof window !== 'undefined') {
@@ -29,6 +30,9 @@
     updateBasePath()
     updateHash()
   }
+
+  // Check if we're on the wizard page
+  $: isWizardPage = $page.url.pathname === '/wizard' || $page.url.hash === '#/wizard'
 </script>
 
 <div
@@ -38,19 +42,21 @@
     <nav class="container mx-auto p-4">
       <div class="flex items-center justify-between">
         <a
-          href="./"
+          href="#/"
           class="font-space-grotesk group text-2xl font-bold tracking-tight transition-colors hover:text-[#00DC82] dark:text-white">
           <span class="transition-colors group-hover:text-[#00DC82]">Gib</span><span class="text-[#00DC82]">.Show</span>
         </a>
         <div class="flex items-center gap-4">
-          <button
-            on:click={() => {
-              goto('/wizard')
-            }}
-            class="btn bg-[#00DC82] text-black shadow-lg transition-all hover:-translate-y-0.5 hover:bg-[#00DC82]/80">
-            <i class="fas fa-hat-wizard mr-2"></i>
-            Wizard
-          </button>
+          {#if !isWizardPage}
+            <button
+              on:click={() => {
+                goto('/#/wizard')
+              }}
+              class="btn bg-[#00DC82] text-black shadow-lg transition-all hover:-translate-y-0.5 hover:bg-[#00DC82]/80">
+              <i class="fas fa-hat-wizard mr-2"></i>
+              Wizard
+            </button>
+          {/if}
           <ThemeToggle />
         </div>
       </div>

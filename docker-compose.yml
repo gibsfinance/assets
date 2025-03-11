@@ -23,6 +23,8 @@ services:
     command: sh -cx "pnpm run db:migrate-latest && pnpm run db:seed"
     networks:
       - gibassets
+    depends_on:
+      - gibassets-postgres
     environment:
       DEBUG: '${DEBUG:-📷*}'
       DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'

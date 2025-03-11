@@ -2,7 +2,6 @@ import { getDB } from '@/db'
 import { tableNames } from '@/db/tables'
 import { cacheResult } from '@/utils'
 import { Router } from 'express'
-import _ from 'lodash'
 
 const db = getDB()
 

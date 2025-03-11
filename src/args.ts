@@ -26,10 +26,9 @@ import { updateStatus } from '@/utils'
  * 2. Enhanced coercion for comma-separated values
  * 3. Improved default handling with environment fallbacks
  * @param chain The chain name for documentation
- * @param envVar The environment variable to check for RPC URLs
  * @return Yargs option configuration object
  */
-const rpc = (chain: string, envVar: string) => {
+const rpc = (chain: string) => {
   return {
     type: 'array',
     describe: `the rpc url for ${chain}`,
@@ -73,9 +72,9 @@ export const collect = _.memoize(() => {
         default: 'mixed',
         choices: ['mixed', 'save', 'link'],
       },
-      rpc1: rpc('ethereum', 'RPC_1'),
-      rpc369: rpc('pulsechain', 'RPC_369'),
-      rpc56: rpc('bsc', 'RPC_56'),
+      rpc1: rpc('ethereum'),
+      rpc369: rpc('pulsechain'),
+      rpc56: rpc('bsc'),
     })
     .parseSync()
 

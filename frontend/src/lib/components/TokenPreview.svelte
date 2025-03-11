@@ -1,13 +1,12 @@
 <script lang="ts">
-  import Icon from '@iconify/svelte'
   import Image from '$lib/components/Image.svelte'
-  import { getApiUrl } from '$lib/utils'
+  import Icon from '@iconify/svelte'
 
   export let url: string = ''
   export let previewError = false
   export let iconExists = true
   export let isCircularCrop = false
-  export let backgroundColor = '#151821'
+  export let backgroundColor = '#2b4f54'
   export let showColorPicker = false
 
   let zoomLevel = 1
@@ -24,7 +23,7 @@
     translateY = 0
     isCircularCrop = false
     showColorPicker = false
-    backgroundColor = '#151821'
+    backgroundColor = '#2b4f54'
     previewError = false
     iconExists = true
   }
@@ -155,17 +154,25 @@
   <span class="label">Preview Options</span>
   <div class="flex flex-col gap-4">
     <!-- Crop Option -->
-    <label class="flex items-center gap-2">
-      <input type="checkbox" class="checkbox" bind:checked={isCircularCrop} />
-      <span>Circular Crop</span>
-    </label>
+    <div class="flex items-center gap-2">
+      <button
+        class="variant-soft btn btn-sm transition-all {isCircularCrop ? 'shadow-lg shadow-[#00DC82]/15' : ''}"
+        on:click={() => (isCircularCrop = !isCircularCrop)}>
+        <i class="fas fa-circle mr-2"></i>
+        Circle Crop
+      </button>
+    </div>
 
     <!-- Background Options -->
     <div class="space-y-2">
-      <label class="flex items-center gap-2">
-        <input type="checkbox" class="checkbox" bind:checked={showColorPicker} />
-        <span>Custom Background Color</span>
-      </label>
+      <div class="flex items-center gap-2">
+        <button
+          class="variant-soft btn btn-sm transition-all {showColorPicker ? 'shadow-lg shadow-[#00DC82]/15' : ''}"
+          on:click={() => (showColorPicker = !showColorPicker)}>
+          <i class="fas fa-fill-drip mr-2"></i>
+          {showColorPicker ? 'Hide Color Options' : 'Custom Background'}
+        </button>
+      </div>
 
       {#if showColorPicker}
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -6,7 +6,6 @@ import { pulsechain } from 'viem/chains'
 import { fetch } from '@/fetch'
 import { log } from '@/logger'
 import * as chains from 'viem/chains'
-import * as fs from 'fs'
 
 type Creator = {
   address: Hex
@@ -177,9 +176,12 @@ export const collect = async () => {
         return
       }
       // const shouldLog = getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')
-      const [rt0, rt1, timestamp] = reserves
+      const [
+        rt0,
+        rt1,
+        // timestamp,
+      ] = reserves
       const wplsReserve = token0 === wpls ? rt0 : rt1
-      const tokenReserve = token1 === wpls ? rt0 : rt1
       const oneBillion = 1_000_000_000n
       const oneEther = 10n ** 18n
       const oneBillionWei = oneBillion * oneEther
