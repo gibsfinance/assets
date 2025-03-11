@@ -15,7 +15,7 @@ const nextOnError = (handler: RequestHandler) => {
     try {
       return handler(req, res, next)
     } catch (err) {
-      return next(err)
+      return next()
     }
   }
 }
@@ -129,39 +129,30 @@ const getListImage =
     return img
   }
 
-export const getImage =
-  (parseOrder: boolean): RequestHandler =>
-  async (req, res, next) => {
-    try {
-      const img = await getListImage(parseOrder)({
-        chainId: Number(req.params.chainId),
-        address: req.params.address as viem.Hex,
-        order: req.params.order,
-      })
-      sendImage(res, img)
-    } catch (err) {
-      return next(err)
-    }
-  }
-
-export const getImageAndFallback: RequestHandler = async (req, res, next) => {
-  try {
-    let img = await getListImage(true)({
+export const getImage = (parseOrder: boolean): RequestHandler =>
+  nextOnError(async (req, res, next) => {
+    const img = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
-    }).catch(ignoreNotFound)
-    if (!img) {
-      img = await getListImage(false)({
-        chainId: Number(req.params.chainId),
-        address: req.params.address as viem.Hex,
-      })
-    }
+    })
     sendImage(res, img)
-  } catch (err) {
-    return next(err)
+  })
+
+export const getImageAndFallback: RequestHandler = nextOnError(async (req, res, next) => {
+  let img = await getListImage(true)({
+    chainId: Number(req.params.chainId),
+    address: req.params.address as viem.Hex,
+    order: req.params.order,
+  }).catch(ignoreNotFound)
+  if (!img) {
+    img = await getListImage(false)({
+      chainId: Number(req.params.chainId),
+      address: req.params.address as viem.Hex,
+    })
   }
-}
+  sendImage(res, img)
+})
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   const { filename, exts } = splitExt(req.params.imageHash)
