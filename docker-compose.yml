@@ -23,6 +23,8 @@ services:
     command: sh -cx "npm run db:migrate-latest && npm run db:seed"
     networks:
       - gibassets
+    depends_on:
+      - gibassets-postgres
     environment:
       DEBUG: '${DEBUG:-📷*}'
       DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'

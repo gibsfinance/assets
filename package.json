@@ -23,7 +23,11 @@
     "db:migrate-make": "tsx ./node_modules/.bin/knex migrate:make --esm",
     "db:seed-make": "tsx ./node_modules/.bin/knex seed:make --esm",
     "db:seed": "tsx src/bin/seed",
+<<<<<<< HEAD
     "build": "hardhat compile && npm run lint && tsc",
+=======
+    "build": "pnpm run lint && tsc",
+>>>>>>> 37a4870b (Update dependencies and improve code quality)
     "collect": "tsx src/bin/collect",
     "harvest": "tsx src/bin/harvest",
     "server": "tsx src/bin/server",

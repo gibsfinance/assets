@@ -341,7 +341,7 @@
       <!-- API Type Selection -->
       <ApiTypeSelector
         bind:urlType
-        selectedNetwork={selectedNetwork}
+        {selectedNetwork}
         on:select={() => {
           generatedUrl = ''
           previewError = false
@@ -389,7 +389,7 @@
       <!-- Token Browser (show when network is selected in token mode) -->
       {#if urlType === 'token' && selectedNetwork && !tokenAddress}
         <TokenBrowser
-          selectedChain={selectedChain}
+          {selectedChain}
           networkName={selectedNetwork ? getNetworkName(selectedNetwork.chainId) : ''}
           bind:filteredTokens
           bind:isCircularCrop
@@ -409,7 +409,7 @@
             bind:searchQuery
             bind:isGlobalSearchActive
             bind:isSearching
-            selectedChain={selectedChain}
+            {selectedChain}
             on:search={() => {
               currentPage = 1
               filterTokens()
@@ -426,8 +426,7 @@
               bind:tokensByList
               {selectedChain}
               on:toggleList
-              on:toggleAll
-            />
+              on:toggleAll />
           </TokenSearch>
         </TokenBrowser>
       {/if}

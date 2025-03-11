@@ -104,6 +104,6 @@ const getLists = async (filter: object) => {
   return q
 }
 
-export const all: RequestHandler = async (req, res, next) => {
+export const all: RequestHandler = async (req, res) => {
   res.json(await getLists(req.query))
 }

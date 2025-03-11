@@ -41,7 +41,6 @@ app.use(router)
  * @param err The error object from previous middleware
  * @param req Express request object (unused)
  * @param res Express response object for sending error response
- * @param next Next middleware function
  */
 app.use((err: HttpError, req: express.Request, res: express.Response, next: express.NextFunction) => {
   // console.log(req.url)

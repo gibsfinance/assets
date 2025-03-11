@@ -22,7 +22,6 @@ import { updateStatus } from '@/utils'
  * 2. Enhanced coercion for comma-separated values
  * 3. Improved default handling with environment fallbacks
  * @param chain The chain name for documentation
- * @param envVar The environment variable to check for RPC URLs
  * @return Yargs option configuration object
  */
 const rpc = (chain: string, defaultUrl?: string) => {

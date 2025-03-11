@@ -60,9 +60,7 @@
     <slot />
 
     {#if filteredTokens.length === 0}
-      <div class="p-4 text-center text-gray-500">
-        Loading tokens...
-      </div>
+      <div class="p-4 text-center text-gray-500"> Loading tokens... </div>
     {:else}
       <!-- Token Table with responsive design -->
       <div class="table-container">
@@ -150,7 +148,7 @@
 <style lang="postcss">
   /* Added comment to explain responsive table changes */
   /* TokenBrowser.svelte updated on 08/16/2024 to make table fully scrollable on mobile screens */
-  
+
   .table-container {
     width: 100%;
     overflow-x: auto;

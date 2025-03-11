@@ -387,15 +387,16 @@
               <div class="mb-4 flex justify-end">
                 <label class="group flex cursor-pointer items-center gap-3">
                   <div class="relative">
-                    <input 
-                      type="checkbox" 
-                      class="peer sr-only" 
-                      bind:checked={$showTestnets}
-                    />
-                    <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"></div>
-                    <div class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"></div>
+                    <input type="checkbox" class="peer sr-only" bind:checked={$showTestnets} />
+                    <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"
+                    ></div>
+                    <div
+                      class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"
+                    ></div>
                   </div>
-                  <span class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300">Show Testnets</span>
+                  <span
+                    class="text-sm font-medium text-surface-600 transition-colors group-hover:text-[#00DC82] dark:text-surface-300"
+                    >Show Testnets</span>
                 </label>
               </div>
 
@@ -405,15 +406,14 @@
                     0.2,
                     network.tokenCount / Math.max(...networks.map((n) => n.tokenCount)),
                   )}
-                  <a 
+                  <a
                     href="#/wizard"
                     on:click|preventDefault={() => {
                       // Navigate to wizard and set the selected network in localStorage
-                      localStorage.setItem('selectedChainId', network.chainId.toString());
-                      window.location.href = '#/wizard';
+                      localStorage.setItem('selectedChainId', network.chainId.toString())
+                      window.location.href = '#/wizard'
                     }}
-                    class="group relative transition-all duration-200 hover:scale-105 cursor-pointer"
-                  >
+                    class="group relative cursor-pointer transition-all duration-200 hover:scale-105">
                     <div class="absolute inset-0 rounded-lg bg-[#00DC82]" style="opacity: {intensity * 0.15}"></div>
                     <div
                       class="card variant-ghost relative flex h-[160px] flex-col items-center justify-between rounded-lg border border-[#00DC82]/20 p-3 hover:border-[#00DC82]/40">
