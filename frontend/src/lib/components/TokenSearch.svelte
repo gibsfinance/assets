@@ -174,13 +174,9 @@
       <i class="fas fa-search"></i>
     </div>
     <input type="search" placeholder="Search tokens..." class="input" bind:value={searchQuery} on:input={handleInput} />
-    <button 
-      class="input-group-shim variant-soft-primary btn" 
-      on:click={performGlobalSearch} 
-      disabled={!searchQuery}
-    >
+    <button class="input-group-shim variant-soft-primary btn" on:click={performGlobalSearch} disabled={!searchQuery}>
       <i class="fas fa-globe"></i>
-      <span class="hidden sm:inline ml-2">Search All</span>
+      <span class="ml-2 hidden sm:inline">Search All</span>
     </button>
   </div>
 </div>

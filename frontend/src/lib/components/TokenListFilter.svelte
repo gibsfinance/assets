@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte'
 
   interface $$Slots {
-    filter: {}  // Define the filter slot
+    filter: {} // Define the filter slot
   }
 
   const dispatch = createEventDispatcher<{

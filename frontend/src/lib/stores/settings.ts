@@ -8,7 +8,7 @@ export const showTestnets = writable(storedShowTestnets)
 
 // Subscribe to changes and update localStorage
 if (typeof window !== 'undefined') {
-  showTestnets.subscribe(value => {
+  showTestnets.subscribe((value) => {
     localStorage.setItem('showTestnets', value.toString())
   })
-} 
+}

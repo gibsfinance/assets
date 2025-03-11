@@ -12,7 +12,6 @@
 import * as db from '@/db'
 import { Tx } from '@/db/tables'
 import { fetch } from '@/fetch'
-import type { Todo } from '@/types'
 import * as utils from '@/utils'
 import type { List, Provider } from 'knex/types/tables'
 import promiseLimit from 'promise-limit'
@@ -54,7 +53,6 @@ export const collect = async () => {
   const json = await fetch(baseUrl)
     .then((res): Promise<NetworkInfo[]> => res.json())
     .then((res) => (Array.isArray(res) ? res : []))
-  const todos: Todo[] = []
   const encounteredChainIds = new Set<bigint>()
   let provider!: Provider
   let insertedList!: List

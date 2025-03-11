@@ -23,7 +23,7 @@
     "db:migrate-make": "tsx ./node_modules/.bin/knex migrate:make --esm",
     "db:seed-make": "tsx ./node_modules/.bin/knex seed:make --esm",
     "db:seed": "tsx src/bin/seed",
-    "build": "hardhat compile && pnpm run lint && tsc",
+    "build": "pnpm run lint && tsc",
     "collect": "tsx src/bin/collect",
     "server": "tsx src/bin/server",
     "dev": "tsx watch src/bin/server",

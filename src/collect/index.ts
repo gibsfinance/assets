@@ -95,7 +95,7 @@ export const main = async (providers: Collectable[]) => {
 
   const results = {
     successful: [] as string[],
-    failed: [] as Array<{ provider: string; error: any }>,
+    failed: [] as { provider: string; error: any }[],
     skipped: [] as string[],
   }
 

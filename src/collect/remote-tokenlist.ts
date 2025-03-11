@@ -95,7 +95,6 @@ export const collect =
         } satisfies StatusProps)
       }
 
-      let processedCount = 0
       const extras = await Promise.all(
         extra.map(async (item, index) => {
           updateStatus({
@@ -160,7 +159,6 @@ export const collect =
               },
             })
 
-            processedCount++
             return {
               chainId: item.network.id,
               logoURI: item.logoURI,

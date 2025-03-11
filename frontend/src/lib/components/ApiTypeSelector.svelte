@@ -17,7 +17,7 @@
       urlType = type
       dispatch('select', { type })
       dispatch('reset')
-      
+
       if (type === 'token' && selectedNetwork) {
         dispatch('loadTokens')
       } else if (type === 'network' && selectedNetwork) {

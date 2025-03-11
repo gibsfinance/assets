@@ -20,8 +20,8 @@
 </script>
 
 <div class="flex items-center gap-2">
-  <button 
-    class="btn variant-ghost-surface"
+  <button
+    class="variant-ghost-surface btn"
     aria-label="Previous page"
     on:click={() => goToPreviousPage()}
     disabled={currentPage === 1}>
@@ -32,8 +32,8 @@
     Page {currentPage} of {totalPages}
   </span>
 
-  <button 
-    class="btn variant-ghost-surface"
+  <button
+    class="variant-ghost-surface btn"
     aria-label="Next page"
     on:click={() => goToNextPage()}
     disabled={currentPage === totalPages}>
