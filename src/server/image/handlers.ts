@@ -7,18 +7,9 @@ import * as utils from '@/utils'
 import * as db from '@/db'
 import config from 'config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
-import { NextFunction, Request, RequestHandler, Response } from 'express'
+import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
-
-const nextOnError = (handler: RequestHandler) => {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      return handler(req, res, next)
-    } catch (err) {
-      return next()
-    }
-  }
-}
+import { nextOnError } from '../utils'
 
 export const getListTokens = async (
   chainId: ChainId,
