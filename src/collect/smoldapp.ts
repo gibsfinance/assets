@@ -8,14 +8,16 @@
  * 4. Added clear phase separation with status messages
  */
 
-import * as utils from '@/utils'
-import * as viem from 'viem'
-import * as path from 'path'
-import * as fs from 'fs'
 import * as db from '@/db'
-import { zeroAddress } from 'viem'
-import promiseLimit from 'promise-limit'
+import * as utils from '@/utils'
+import * as fs from 'fs'
 import type { List } from 'knex/types/tables'
+import * as path from 'path'
+import promiseLimit from 'promise-limit'
+import * as viem from 'viem'
+import { zeroAddress } from 'viem'
+import type { StatusProps } from '../components/Status'
+import { updateStatus } from '../utils/status'
 
 type Version = {
   major: number
@@ -48,19 +50,36 @@ const filenameToListKey = (filename: string) => {
  * 5. Enhanced error handling with detailed messages
  */
 export const collect = async () => {
-  utils.updateStatus(`🔍 [smoldapp] Reading token list...`)
+  updateStatus({
+    provider: 'smoldapp',
+    message: 'Reading token list...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   const root = path.join(utils.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
   const chainsPath = path.join(root, 'chains')
   const providerKey = 'smoldapp'
 
   const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json')).catch(() => null)
-  if (!infoBuff) return
+  if (!infoBuff) {
+    updateStatus({
+      provider: 'smoldapp',
+      message: 'Failed to read token list file',
+      phase: 'complete',
+    } satisfies StatusProps)
+    return
+  }
 
   const info = JSON.parse(infoBuff.toString()) as Info
   const { tokens } = info
 
-  utils.updateStatus(`🏗️ [smoldapp] Setting up provider...`)
+  updateStatus({
+    provider: 'smoldapp',
+    message: 'Setting up provider...',
+    phase: 'setup',
+  } satisfies StatusProps)
+
   const [provider] = await db.insertProvider({
     key: providerKey,
     name: 'Smol Dapp',
@@ -77,7 +96,6 @@ export const collect = async () => {
   const chainIdToNetworkId = new Map<string, List>()
 
   // Process chains
-  utils.updateStatus(`🔗 [smoldapp] Processing chains...`)
   const chains = await utils.folderContents(chainsPath)
   let processedChains = 0
 
@@ -87,7 +105,13 @@ export const collect = async () => {
     }
 
     processedChains++
-    utils.updateStatus(`⚡ [smoldapp] Processing chain ${processedChains}/${chains.length}: ${chainId}...`)
+    updateStatus({
+      provider: 'smoldapp',
+      message: `Processing chain ${chainId}`,
+      current: processedChains,
+      total: chains.length,
+      phase: 'processing',
+    } satisfies StatusProps)
 
     await db.insertNetworkFromChainId(+chainId)
     const chainFolder = path.join(chainsPath, chainId)
@@ -95,7 +119,13 @@ export const collect = async () => {
 
     for (const file of folders) {
       const listKey = filenameToListKey(file)
-      utils.updateStatus(`📥 [smoldapp] Processing ${chainId} - ${listKey}...`)
+      updateStatus({
+        provider: 'smoldapp',
+        message: `Processing chain ${chainId} list: ${listKey}`,
+        current: processedChains,
+        total: chains.length,
+        phase: 'processing',
+      } satisfies StatusProps)
 
       const [networkList] = await db.insertList({
         key: `tokens-${chainId}-${listKey}`,
@@ -107,7 +137,14 @@ export const collect = async () => {
       chainIdToNetworkId.set(networkList.key, networkList)
 
       if (listKey === 'svg') {
-        utils.updateStatus(`🖼️ [smoldapp] Storing SVG assets for chain ${chainId}...`)
+        updateStatus({
+          provider: 'smoldapp',
+          message: `Storing SVG assets for chain ${chainId}`,
+          current: processedChains,
+          total: chains.length,
+          phase: 'storing',
+        } satisfies StatusProps)
+
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForNetwork(
             {
@@ -129,7 +166,14 @@ export const collect = async () => {
           )
         })
       } else {
-        utils.updateStatus(`💾 [smoldapp] Storing PNG assets for chain ${chainId}...`)
+        updateStatus({
+          provider: 'smoldapp',
+          message: `Storing PNG assets for chain ${chainId}`,
+          current: processedChains,
+          total: chains.length,
+          phase: 'storing',
+        } satisfies StatusProps)
+
         const img = await db.fetchImage(originalUri, providerKey)
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForList(
@@ -162,32 +206,53 @@ export const collect = async () => {
 
   for (const [chainIdString, tokens] of reverseOrderTokens) {
     processedChainTokens++
-    utils.updateStatus(
-      `⛓️ [smoldapp] Processing chain tokens ${processedChainTokens}/${reverseOrderTokens.length}: Chain ${chainIdString}...`,
-    )
+    updateStatus({
+      provider: 'smoldapp',
+      message: `Processing chain ${chainIdString} tokens`,
+      current: processedChainTokens,
+      total: reverseOrderTokens.length,
+      phase: 'processing',
+    } satisfies StatusProps)
 
     const chain = utils.findChain(+chainIdString)
     if (!chain) {
-      utils.failureLog('unable to find chain %o/%o', 'smoldapp', +chainIdString)
+      updateStatus({
+        provider: 'smoldapp',
+        message: `Failed to find chain ${chainIdString}`,
+        current: processedChainTokens,
+        total: reverseOrderTokens.length,
+        phase: 'processing',
+      } satisfies StatusProps)
       continue
     }
 
     const network = await db.insertNetworkFromChainId(+chainIdString)
     if (!network) {
-      utils.failureLog('unable to find network %o/%o', 'smoldapp', +chainIdString)
+      updateStatus({
+        provider: 'smoldapp',
+        message: `Failed to find network for chain ${chainIdString}`,
+        current: processedChainTokens,
+        total: reverseOrderTokens.length,
+        phase: 'processing',
+      } satisfies StatusProps)
       continue
     }
 
     const client = utils.publicClient(chain)
     const limit = promiseLimit<viem.Hex>(256)
     let processedTokens = 0
+    const totalTokens = tokens.length
 
-    await limit
-      .map(tokens as viem.Hex[], async (token) => {
+    try {
+      await limit.map(tokens as viem.Hex[], async (token) => {
         processedTokens++
-        utils.updateStatus(
-          `📥 [smoldapp] Chain ${chainIdString}: Processing token ${processedTokens}/${tokens.length}: ${token}...`,
-        )
+        updateStatus({
+          provider: 'smoldapp',
+          message: `Processing token ${token}`,
+          current: processedTokens,
+          total: totalTokens,
+          phase: 'processing',
+        } satisfies StatusProps)
 
         const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
         const address = viem.getAddress(
@@ -224,7 +289,14 @@ export const collect = async () => {
             },
           }
 
-          utils.updateStatus(`💾 [smoldapp] Storing token ${processedTokens}/${tokens.length}: ${symbol}...`)
+          updateStatus({
+            provider: 'smoldapp',
+            message: `Storing token ${symbol} (${name})`,
+            current: processedTokens,
+            total: totalTokens,
+            phase: 'storing',
+          } satisfies StatusProps)
+
           await db.transaction(async (tx) => {
             const [list] = await db.insertList(
               {
@@ -251,12 +323,21 @@ export const collect = async () => {
           })
         }
       })
-      .catch((err) => {
-        utils.failureLog('each token', err)
-        return null
-      })
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      updateStatus({
+        provider: 'smoldapp',
+        message: `Failed to process chain ${chainIdString}: ${errorMessage}`,
+        current: processedChainTokens,
+        total: reverseOrderTokens.length,
+        phase: 'processing',
+      } satisfies StatusProps)
+    }
   }
 
-  utils.updateStatus(`✨ [smoldapp] Collection complete!`)
-  process.stdout.write('\n')
+  updateStatus({
+    provider: 'smoldapp',
+    message: 'Collection complete!',
+    phase: 'complete',
+  } satisfies StatusProps)
 }

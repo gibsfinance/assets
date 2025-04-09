@@ -41,12 +41,8 @@ app.use(router)
  * @param err The error object from previous middleware
  * @param req Express request object (unused)
  * @param res Express response object for sending error response
- * @param next Next middleware function
  */
 app.use((err: HttpError, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // console.log(req.url)
-  // console.error('handling error', err.stack)
-  // res.status(500).send('Something broke!')
   // Don't log 404s for missing images/networks as these are expected
   if (err.status === 404 && err.message.includes('image not found')) {
     res.status(404).json({ error: err.message })

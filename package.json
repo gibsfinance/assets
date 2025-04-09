@@ -8,7 +8,7 @@
     "frontend"
   ],
   "scripts": {
-    "setup": "docker compose build && pnpm install && pnpm run db:start && sleep 5 && pnpm run db:migrate-latest && sleep 3 && pnpm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development pnpm run collect && sleep 10 && pnpm run create-orders",
+    "setup": "docker compose build && pnpm install && pnpm frontend:build && pnpm run db:start && sleep 5 && pnpm run db:migrate-latest && sleep 3 && pnpm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development pnpm run collect && sleep 10 && pnpm run create-orders",
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
     "db:prepare": "pnpm run db:start && pnpm run db:migrate-up",
@@ -23,7 +23,7 @@
     "db:migrate-make": "tsx ./node_modules/.bin/knex migrate:make --esm",
     "db:seed-make": "tsx ./node_modules/.bin/knex seed:make --esm",
     "db:seed": "tsx src/bin/seed",
-    "build": "hardhat compile && pnpm run lint && tsc",
+    "build": "pnpm run lint && tsc",
     "collect": "tsx src/bin/collect",
     "server": "tsx src/bin/server",
     "dev": "tsx watch src/bin/server",
@@ -32,7 +32,8 @@
     "create-orders": "tsx src/bin/create-orders",
     "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts",
     "frontend:dev": "cd frontend && pnpm install && pnpm dev",
-    "frontend:build": "cd frontend && pnpm install && pnpm build"
+    "frontend:build": "cd frontend && pnpm install && pnpm build",
+    "frontend:preview": "cd frontend && pnpm install && pnpm preview"
   },
   "repository": {
     "type": "git",
@@ -87,7 +88,10 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^7.12.0",
     "viem": "^2.14.2",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "@types/react": "^18.2.66",
+    "ink": "^4.4.1",
+    "react": "^18.2.0"
   },
   "dependencies": {
     "@types/body-parser": "^1.19.5",

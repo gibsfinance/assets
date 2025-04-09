@@ -8,18 +8,11 @@
  * 4. Enhanced error handling with transaction timeouts
  */
 
-import * as types from '@/types'
 import * as db from '@/db'
+import * as types from '@/types'
 import * as utils from '@/utils'
+import { clearStatus, stop, updateStatus } from '@/utils/status'
 import type { List, Network, Provider } from 'knex/types/tables'
-
-/**
- * @notice Status update utility for console output
- * @dev Added to replace spinner with more detailed progress information
- */
-const updateStatus = (message: string) => {
-  process.stdout.write(`\r${' '.repeat(process.stdout.columns || 80)}\r${message}`)
-}
 
 /**
  * @notice Configuration constants for performance tuning
@@ -62,128 +55,86 @@ async function withRetry<T>(operation: () => Promise<T>, retryCount = 0): Promis
  * 5. Added blacklist handling for problematic images
  */
 export const collect = async (providerKey: string, listKey: string, tokenList: types.TokenList, isDefault = true) => {
-  // Extract unique chain IDs from token list
-  const chainIdSet = new Set<number>()
-  for (const entry of tokenList.tokens) {
-    chainIdSet.add(+entry.chainId)
-  }
-  const chainIds = [...chainIdSet.values()]
-  const networks = new Map<number, Network>()
+  try {
+    // Extract unique chain IDs from token list
+    const chainIdSet = new Set<number>()
+    for (const entry of tokenList.tokens) {
+      chainIdSet.add(+entry.chainId)
+    }
+    const chainIds = [...chainIdSet.values()]
+    const networks = new Map<number, Network>()
 
-  // Initialize database entries
-  updateStatus(`🏗️  [${providerKey}] Setting up database entries...`)
-  let provider!: Provider
-  let list!: List
-
-  /**
-   * Initial setup transaction:
-   * 1. Creates networks for each chain ID
-   * 2. Creates provider entry
-   * 3. Creates list entry
-   * 4. Stores list logo if available
-   */
-  await withRetry(async () => {
-    await db.transaction(async (tx) => {
-      await tx.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT}`)
-
-      // Setup default network (chainId 0)
-      await db.insertNetworkFromChainId(0, undefined, tx)
-
-      // Setup networks for each chain ID
-      for (const chainId of chainIds) {
-        if (chainId) {
-          updateStatus(`🔗 [${providerKey}] Setting up chain ${chainId}...`)
-          const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
-          networks.set(chainId, network)
-        }
-      }
-
-      // Create provider entry
-      ;[provider] = await db.insertProvider(
-        {
-          key: providerKey,
-        },
-        tx,
-      )
-
-      // Create list entry
-      ;[list] = await db.insertList(
-        {
-          providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
-          name: tokenList.name,
-          key: listKey,
-          default: isDefault,
-          description: '',
-          ...(tokenList.version || {}),
-        },
-        tx,
-      )
-
-      // Store list logo if available
-      if (tokenList.logoURI) {
-        updateStatus(`🖼️  [${providerKey}] Storing list logo...`)
-        await db.fetchImageAndStoreForList(
-          {
-            listId: list.listId,
-            uri: tokenList.logoURI,
-            originalUri: tokenList.logoURI,
-            providerKey,
-          },
-          tx,
-        )
-      }
+    // Initialize database entries
+    updateStatus({
+      provider: providerKey,
+      message: 'Setting up database entries...',
+      phase: 'setup',
     })
-  })
+    let provider!: Provider
+    let list!: List
 
-  // Process tokens in batches
-  const totalTokens = tokenList.tokens.length
-  let processedTokens = 0
-  const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
-
-  /**
-   * Token processing:
-   * 1. Process tokens in batches to manage memory and database load
-   * 2. Each token is processed in its own transaction with retry logic
-   * 3. Stores token information and associated images
-   */
-  for (let i = 0; i < totalTokens; i += BATCH_SIZE) {
-    const batch = tokenList.tokens.slice(i, i + BATCH_SIZE)
-
+    /**
+     * Initial setup transaction:
+     * 1. Creates networks for each chain ID
+     * 2. Creates provider entry
+     * 3. Creates list entry
+     * 4. Stores list logo if available
+     */
     await withRetry(async () => {
       await db.transaction(async (tx) => {
         await tx.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT}`)
 
-        for (const entry of batch) {
-          processedTokens++
-          updateStatus(`📥 [${providerKey}] Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
+        // Setup default network (chainId 0)
+        await db.insertNetworkFromChainId(0, undefined, tx)
 
-          const network = networks.get(entry.chainId)!
-          const token = {
-            name: entry.name,
-            symbol: entry.symbol,
-            decimals: entry.decimals,
-            networkId: network.networkId,
-            providedId: entry.address,
+        // Setup networks for each chain ID
+        for (const chainId of chainIds) {
+          if (chainId) {
+            updateStatus({
+              provider: providerKey,
+              message: `Setting up chain ${chainId}...`,
+              phase: 'setup',
+            })
+            const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
+            networks.set(chainId, network)
           }
+        }
 
-          // Skip blacklisted images
-          if (blacklist.has(entry.logoURI as string)) {
-            entry.logoURI = ''
-          }
+        // Create provider entry
+        ;[provider] = await db.insertProvider(
+          {
+            key: providerKey,
+          },
+          tx,
+        )
 
-          // Fix malformed URLs and store token image
-          const path = entry.logoURI?.replace('hhttps://', 'https://') || null
-          if (path) {
-            updateStatus(`💾 [${providerKey}] Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
-          }
-          await db.fetchImageAndStoreForToken(
+        // Create list entry
+        ;[list] = await db.insertList(
+          {
+            providerId: provider.providerId,
+            networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
+            name: tokenList.name,
+            key: listKey,
+            default: isDefault,
+            description: '',
+            ...(tokenList.version || {}),
+          },
+          tx,
+        )
+
+        // Store list logo if available
+        if (tokenList.logoURI) {
+          updateStatus({
+            provider: providerKey,
+            message: 'Storing list logo...',
+            phase: 'setup',
+          })
+          await db.fetchImageAndStoreForList(
             {
               listId: list.listId,
-              uri: path,
-              originalUri: path,
+              uri: tokenList.logoURI,
+              originalUri: tokenList.logoURI,
               providerKey,
-              token,
             },
             tx,
           )
@@ -191,10 +142,97 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
       })
     })
 
-    // Add a small delay between batches to reduce database pressure
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
+    // Process tokens in batches
+    let processedTokens = 0
+    const totalTokens = tokenList.tokens.length
+    const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
 
-  updateStatus(`✨ [${providerKey}] Completed processing ${totalTokens} tokens!`)
-  process.stdout.write('\n')
+    updateStatus({
+      provider: providerKey,
+      message: 'Setting up token processing...',
+      phase: 'setup',
+    })
+
+    /**
+     * Token processing:
+     * 1. Process tokens in batches to manage memory and database load
+     * 2. Each token is processed in its own transaction with retry logic
+     * 3. Stores token information and associated images
+     */
+    for (let i = 0; i < totalTokens; i += BATCH_SIZE) {
+      const batch = tokenList.tokens.slice(i, i + BATCH_SIZE)
+
+      await withRetry(async () => {
+        await db.transaction(async (tx) => {
+          await tx.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT}`)
+
+          for (const entry of batch) {
+            processedTokens++
+
+            updateStatus({
+              provider: providerKey,
+              message: `Processing token: ${entry.symbol}...`,
+              current: processedTokens,
+              total: totalTokens,
+              phase: 'processing',
+            })
+
+            const network = networks.get(entry.chainId)!
+            const token = {
+              name: entry.name,
+              symbol: entry.symbol,
+              decimals: entry.decimals,
+              networkId: network.networkId,
+              providedId: entry.address,
+            }
+
+            // Skip blacklisted images
+            if (blacklist.has(entry.logoURI as string)) {
+              entry.logoURI = ''
+            }
+
+            // Fix malformed URLs and store token image
+            const path = entry.logoURI?.replace('hhttps://', 'https://') || null
+            if (path) {
+              updateStatus({
+                provider: providerKey,
+                message: `Storing token: ${entry.symbol}...`,
+                current: processedTokens,
+                total: totalTokens,
+                phase: 'storing',
+              })
+            }
+            await db.fetchImageAndStoreForToken(
+              {
+                listId: list.listId,
+                uri: path,
+                originalUri: path,
+                providerKey,
+                token,
+              },
+              tx,
+            )
+          }
+        })
+      })
+
+      // Add a small delay between batches to reduce database pressure
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+
+    updateStatus({
+      provider: providerKey,
+      message: 'Collection complete!',
+      phase: 'complete',
+    })
+
+    clearStatus()
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      stop(`Error: ${error.message}`)
+    } else {
+      stop('An unknown error occurred')
+    }
+    throw error
+  }
 }

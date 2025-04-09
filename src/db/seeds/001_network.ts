@@ -16,7 +16,7 @@ export async function seed(knex: Knex): Promise<void> {
   // network
   // await knex.transaction(async (t) => {
   const t = knex
-  const [defaultNetwork, network1] = await t(tableNames.network)
+  const [, network1] = await t(tableNames.network)
     .insert([
       {
         type: 'evm',

@@ -1,6 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
 
+  interface $$Slots {
+    filter: {} // Define the filter slot
+  }
+
   const dispatch = createEventDispatcher<{
     toggleList: { listKey: string; enabled: boolean }
     toggleAll: { enabled: boolean }
@@ -38,9 +42,9 @@
   }
 </script>
 
-<div class="relative">
+<div class="relative mt-2 sm:mt-0">
   <button
-    class="list-filter-dropdown variant-soft-surface btn"
+    class="list-filter-dropdown variant-soft-surface btn w-full sm:w-auto"
     on:click={() => {
       isOpen = !isOpen
       if (isOpen) {

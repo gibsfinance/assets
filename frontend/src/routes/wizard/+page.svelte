@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
   import ApiTypeSelector from '$lib/components/ApiTypeSelector.svelte'
   import ErrorMessage from '$lib/components/ErrorMessage.svelte'
   import NetworkSelect from '$lib/components/NetworkSelect.svelte'
@@ -9,9 +8,12 @@
   import TokenPreview from '$lib/components/TokenPreview.svelte'
   import UrlDisplay from '$lib/components/UrlDisplay.svelte'
   import { metrics } from '$lib/stores/metrics'
+  import { showTestnets } from '$lib/stores/settings'
   import type { ApiType, NetworkInfo } from '$lib/types'
   import { getApiUrl, initializeApiBase } from '$lib/utils'
   import { onMount } from 'svelte'
+  import TokenSearch from '$lib/components/TokenSearch.svelte'
+  import TokenListFilter from '$lib/components/TokenListFilter.svelte'
 
   let getNetworkName: (chainId: number | string) => string = (chainId) => `Chain ${chainId}`
   let selectedChain: number | null = null
@@ -36,7 +38,6 @@
 
   let selectedList: { key: string; providerKey: string } | null = null
   let selectedNetwork: NetworkInfo | null = null
-  let showTestnets = false
   let isNetworkSelectOpen = false
 
   // TokenBrowser state
@@ -50,7 +51,7 @@
   let globalSearchResults: any[] = []
   let currentPage = 1
   let tokensPerPage = 25
-  let backgroundColor = '#151821'
+  let backgroundColor = '#2b4f54'
   let showColorPicker = false
 
   // Add missing state
@@ -67,14 +68,9 @@
       await initializeApiBase()
       if (!cancelled) {
         isInitialized = true
-        
-        // Clean up URL if it contains a hash
-        if (window.location.hash) {
-          const cleanPath = window.location.pathname
-          goto(cleanPath, { replaceState: true })
-        }
-        
         metrics.fetchMetrics()
+
+        // First fetch available lists
         try {
           const response = await fetch(getApiUrl('/list'))
           if (!cancelled && response.ok) {
@@ -101,6 +97,11 @@
         } catch (error) {
           console.error('Failed to fetch available lists:', error)
         }
+
+        // Now check for selected network after lists are loaded
+        if (selectedNetwork) {
+          tryFetchTokenLists(selectedNetwork.chainId)
+        }
       }
     }
 
@@ -110,6 +111,11 @@
       cancelled = true
     }
   })
+
+  // Add this reactive statement
+  $: if (selectedNetwork && urlType === 'token') {
+    tryFetchTokenLists(selectedNetwork.chainId)
+  }
 
   function generateUrl() {
     previewError = false
@@ -203,9 +209,9 @@
       .map(([key]) => key)
 
     if (enabled) {
-      listsToToggle.forEach(key => enabledLists.add(key))
+      listsToToggle.forEach((key) => enabledLists.add(key))
     } else {
-      listsToToggle.forEach(key => enabledLists.delete(key))
+      listsToToggle.forEach((key) => enabledLists.delete(key))
     }
     enabledLists = enabledLists // trigger reactivity
     updateCombinedTokenList()
@@ -270,10 +276,11 @@
   async function processListWithRetry(list: (typeof availableLists)[0], chainId: number) {
     try {
       // Add chainId parameter for chain-specific lists
-      const url = list.chainId === '0' 
-        ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
-        : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
-      
+      const url =
+        list.chainId === '0'
+          ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
+          : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
+
       const response = await fetch(url)
 
       if (response.ok) {
@@ -313,40 +320,48 @@
 </script>
 
 {#if !isInitialized}
-  <div class="flex items-center justify-center min-h-screen">
-    <div class="text-center space-y-4">
+  <div class="flex min-h-screen items-center justify-center">
+    <div class="space-y-4 text-center">
       <div class="loading loading-spinner loading-lg"></div>
       <p>Initializing...</p>
     </div>
   </div>
 {:else}
-  <div class="container mx-auto p-4 sm:p-8 max-w-3xl space-y-8">
-    <div class="text-center space-y-4">
+  <div class="container mx-auto max-w-3xl space-y-8 p-4 sm:p-8">
+    <div class="space-y-4 text-center">
       <h1 class="h1">URL Wizard</h1>
       <p class="text-lg">Generate URLs for the Gib Assets API</p>
     </div>
 
-    <div class="card p-4 sm:p-6 space-y-6">
+    <div class="card space-y-6 p-4 sm:p-6">
       <!-- API Type Selection -->
       <ApiTypeSelector
         bind:urlType
+        {selectedNetwork}
         on:select={() => {
           generatedUrl = ''
           previewError = false
           showTokenBrowser = urlType === 'token'
           // Reset token selection
           tokenAddress = ''
+        }}
+        on:loadTokens={() => {
           // If we have a selected network, reload its tokens
-          if (selectedNetwork && urlType === 'token') {
+          if (selectedNetwork) {
             tryFetchTokenLists(selectedNetwork.chainId)
+          }
+        }}
+        on:generateUrl={() => {
+          // Generate URL for network icon
+          if (selectedNetwork) {
+            generateUrl()
           }
         }}
         on:reset={() => {
           generatedUrl = ''
           tokenAddress = ''
           previewError = false
-        }}
-      />
+        }} />
 
       <!-- Token List Selection (only for list type) -->
       {#if urlType === 'list'}
@@ -356,18 +371,16 @@
           on:select={({ detail }) => {
             listName = `${detail.providerKey}/${detail.key}`
             generateUrl()
-          }}
-        />
+          }} />
       {/if}
 
       <!-- Network Selection -->
       <NetworkSelect
         bind:isOpen={isNetworkSelectOpen}
         bind:selectedNetwork
-        bind:showTestnets
-        on:networkname={({ detail }) => getNetworkName = detail}
-        on:select={({ detail }) => selectNetwork(detail)}
-      />
+        bind:showTestnets={$showTestnets}
+        on:networkname={({ detail }) => (getNetworkName = detail)}
+        on:select={({ detail }) => selectNetwork(detail)} />
 
       <!-- Token Browser (show when network is selected in token mode) -->
       {#if urlType === 'token' && selectedNetwork && !tokenAddress}
@@ -379,28 +392,39 @@
           bind:enabledLists
           bind:tokensByList
           bind:isListFilterOpen
-          bind:searchQuery
-          bind:isGlobalSearchActive
-          bind:isSearching
-          bind:globalSearchResults
           bind:currentPage
           {tokensPerPage}
           {getNetworkName}
-          on:search={() => {
-            currentPage = 1
-            filterTokens()
-          }}
-          on:updateResults={({ detail }) => {
-            globalSearchResults = detail.tokens
-            filteredTokens = detail.tokens
-          }}
           on:selectToken={({ detail }) => {
             tokenAddress = detail.token.address
             generateUrl()
           }}
           on:toggleList={handleTokenListToggle}
-          on:toggleAll={handleTokenListToggleAll}
-        />
+          on:toggleAll={handleTokenListToggleAll}>
+          <TokenSearch
+            bind:searchQuery
+            bind:isGlobalSearchActive
+            bind:isSearching
+            {selectedChain}
+            on:search={() => {
+              currentPage = 1
+              filterTokens()
+            }}
+            on:globalSearch
+            on:updateResults={({ detail }) => {
+              globalSearchResults = detail.tokens
+              filteredTokens = detail.tokens
+            }}>
+            <TokenListFilter
+              slot="filter"
+              bind:isOpen={isListFilterOpen}
+              bind:enabledLists
+              bind:tokensByList
+              {selectedChain}
+              on:toggleList
+              on:toggleAll />
+          </TokenSearch>
+        </TokenBrowser>
       {/if}
 
       <!-- Manual Token Input -->
@@ -416,8 +440,7 @@
           on:input={({ detail }) => {
             tokenAddress = detail.address
             generateUrl()
-          }}
-        />
+          }} />
       {/if}
 
       <!-- Generated URL Display -->
@@ -431,19 +454,11 @@
             chainId={selectedNetwork?.chainId}
             networkName={getNetworkName(selectedNetwork?.chainId || '')}
             {tokenAddress}
-            generatedUrl={generatedUrl}
-          />
+            {generatedUrl} />
         {:else if urlType !== 'list' && ((!showTokenBrowser && urlType === 'network') || (urlType === 'token' && tokenAddress))}
           <div class="space-y-2">
-            <div class="flex justify-between items-center">
+            <div class="flex items-center justify-between">
               <span class="label">Preview</span>
-              <div class="flex items-center gap-2">
-                <button class="btn btn-sm variant-soft" on:click={() => isCircularCrop = !isCircularCrop}>
-                  <i class="fas fa-crop-alt mr-2"></i>
-                  {isCircularCrop ? 'Square' : 'Circle'}
-                </button>
-                <span class="text-sm">200%</span>
-              </div>
             </div>
             <TokenPreview
               url={generatedUrl}
@@ -452,18 +467,18 @@
               bind:iconExists
               bind:isCircularCrop
               bind:backgroundColor
-              bind:showColorPicker
-            />
+              bind:showColorPicker />
             {#if filteredTokens.length > 0}
               <div class="text-center text-sm text-surface-600 dark:text-surface-300">
-                {filteredTokens.find(t => t.address.toLowerCase() === tokenAddress.toLowerCase())?.name || 'Unknown Token'}
+                {filteredTokens.find((t) => t.address.toLowerCase() === tokenAddress.toLowerCase())?.name ||
+                  'Unknown Token'}
               </div>
             {/if}
           </div>
         {/if}
 
         <!-- Reset Button -->
-        <button class="btn variant-ghost-surface w-full" on:click={resetForm}>
+        <button class="variant-ghost-surface btn w-full" on:click={resetForm}>
           <i class="fas fa-redo mr-2"></i>
           Reset
         </button>
@@ -472,7 +487,7 @@
 
     <!-- API Documentation Link -->
     <div class="text-center">
-      <a href="/docs" class="btn variant-ghost-surface">
+      <a href="#/docs" class="variant-ghost-surface btn">
         <i class="fas fa-book mr-2"></i>
         View Full API Documentation
       </a>
