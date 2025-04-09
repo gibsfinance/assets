@@ -69,9 +69,6 @@ importers:
       '@types/lodash':
         specifier: ^4.17.4
         version: 4.17.14
-      '@types/node':
-        specifier: ^20.14.2
-        version: 20.17.12
       '@types/pg':
         specifier: ^8.11.6
         version: 8.11.10

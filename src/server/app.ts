@@ -11,6 +11,7 @@ import cors from 'cors'
 import express from 'express'
 import responseTime from 'response-time'
 import { router } from './routes'
+import { HttpError } from 'http-errors'
 
 export const app = express() as express.Express
 
@@ -38,17 +39,16 @@ app.use(router)
  * 1. Silent 404s for expected missing resources (images/networks)
  * 2. Logged errors for all other cases
  * @param err The error object from previous middleware
- * @param _req Express request object (unused)
+ * @param req Express request object (unused)
  * @param res Express response object for sending error response
  */
-app.use((err: any, _req: express.Request, res: express.Response) => {
+app.use((err: HttpError, req: express.Request, res: express.Response, next: express.NextFunction) => {
   // Don't log 404s for missing images/networks as these are expected
   if (err.status === 404 && err.message.includes('image not found')) {
     res.status(404).json({ error: err.message })
     return
   }
-
   // Log other errors
-  console.error(err)
+  // console.error(err)
   res.status(err.status || 500).json({ error: err.message })
 })

@@ -2,6 +2,7 @@ import { getDB } from '@/db'
 import { tableNames } from '@/db/tables'
 import { cacheResult } from '@/utils'
 import { Router } from 'express'
+import { nextOnError } from '../utils'
 
 const db = getDB()
 
@@ -27,7 +28,10 @@ const getStats = cacheResult<Result[]>(async () => {
   return counts
 })
 
-router.get('/', async (_req, res) => {
-  const counts = await getStats()
-  res.send(counts)
-})
+router.get(
+  '/',
+  nextOnError(async (_req, res) => {
+    const counts = await getStats()
+    res.send(counts)
+  }),
+)

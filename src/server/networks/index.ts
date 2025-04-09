@@ -3,7 +3,7 @@ import { getDB } from '../../db/index'
 import { tableNames } from '@/db/tables'
 import { Network } from 'knex/types/tables.js'
 import { cacheResult } from '@/utils'
-
+import { nextOnError } from '../utils'
 export const router = Router() as Router
 
 const getNetworks = cacheResult<string[]>(async () => {
@@ -11,7 +11,7 @@ const getNetworks = cacheResult<string[]>(async () => {
   return networks.map((n) => `${n.chainId}`)
 })
 
-router.get('/', async (_req, res) => {
+router.get('/', nextOnError(async (_req, res) => {
   const networks = await getNetworks()
   res.json(networks)
-})
+}))

@@ -20,6 +20,7 @@ import promiseLimit from 'promise-limit'
 import { Spinner } from '@topcli/spinner'
 import { Image } from 'knex/types/tables.js'
 import { imageMode } from './db/tables'
+import readline from 'node:readline'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -350,8 +351,8 @@ export const timeout = (ms: number) => {
 
 export const updateStatus = (message: string) => {
   // Clear the current line and move to the beginning
-  process.stdout.clearLine(0)
-  process.stdout.cursorTo(0)
+  readline.clearLine(process.stdout, 0)
+  readline.cursorTo(process.stdout, 0)
   // Write the new message
   process.stdout.write(message)
 }

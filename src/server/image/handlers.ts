@@ -121,36 +121,28 @@ const getListImage =
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-  async (req, res, next) => {
-    try {
-      const img = await getListImage(parseOrder)({
-        chainId: Number(req.params.chainId),
-        address: req.params.address as viem.Hex,
-        order: req.params.order,
-      })
-      sendImage(res, img)
-    } catch (err) {
-      return next(err)
-    }
-  }
-
-export const getImageAndFallback: RequestHandler = async (req, res, next) => {
-  try {
-    let img = await getListImage(true)({
+  async (req, res) => {
+    const img = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
-    }).catch(ignoreNotFound)
-    if (!img) {
-      img = await getListImage(false)({
-        chainId: Number(req.params.chainId),
-        address: req.params.address as viem.Hex,
-      })
-    }
+    })
     sendImage(res, img)
-  } catch (err) {
-    return next(err)
   }
+
+export const getImageAndFallback: RequestHandler = async (req, res) => {
+  let img = await getListImage(true)({
+    chainId: Number(req.params.chainId),
+    address: req.params.address as viem.Hex,
+    order: req.params.order,
+  }).catch(ignoreNotFound)
+  if (!img) {
+    img = await getListImage(false)({
+      chainId: Number(req.params.chainId),
+      address: req.params.address as viem.Hex,
+    })
+  }
+  sendImage(res, img)
 }
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
@@ -180,13 +172,9 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   return img
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
-  try {
-    const img = await bestGuessNeworkImage(req.params.chainId)
-    sendImage(res, img)
-  } catch (err) {
-    return next(err)
-  }
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res) => {
+  const img = await bestGuessNeworkImage(req.params.chainId)
+  sendImage(res, img)
 }
 
 const ignoreNotFound = (err: HttpError) => {
@@ -198,9 +186,11 @@ const ignoreNotFound = (err: HttpError) => {
 
 export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (req, res, next) => {
   const { i } = req.query
-  let images!: string[]
-  if (Array.isArray(i)) images = i
-  else images = [i]
+  let images: string[] = []
+  if (Array.isArray(i)) images = i.map((i) => i.toString())
+  else if (i) {
+    images = [i.toString()]
+  }
   for (const i of images) {
     if (!_.isString(i)) {
       return next(httpErrors.NotAcceptable('invalid i'))
