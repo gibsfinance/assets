@@ -34,6 +34,7 @@ type Input = {
   tokenList: string
   listKey: string
   isDefault?: boolean
+  blacklist?: Set<string>
 }
 
 const updateStatus = (message: string) => {
@@ -49,7 +50,14 @@ const updateStatus = (message: string) => {
  * 4. Enhanced debug logging for failures
  */
 export const collect =
-  ({ providerKey, listKey, tokenList: tokenListUrl, extension, isDefault = true }: Input) =>
+  ({
+    providerKey,
+    listKey,
+    tokenList: tokenListUrl,
+    extension,
+    isDefault = true,
+    blacklist = new Set<string>(),
+  }: Input) =>
   async () => {
     updateStatus(`🌐 [${providerKey}] Fetching token list...`)
     try {
@@ -75,8 +83,12 @@ export const collect =
       }
 
       let processedCount = 0
+      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
       const extras = await Promise.all(
         extra.map(async (item) => {
+          if (blacked.has(item.address.toLowerCase())) {
+            item.logoURI = ''
+          }
           try {
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.publicClient(chain)
@@ -142,10 +154,10 @@ export const collect =
 
       const result = await inmemoryTokenlist.collect(providerKey, listKey, tokenList, isDefault)
       updateStatus(`✨ [${providerKey}] Collection complete!`)
-      process.stdout.write('\n')
+      // process.stdout.write('\n')
       return result
     } catch (err) {
-      process.stdout.write('\n')
+      // process.stdout.write('\n')
       dbg(`Failed to collect tokens for ${providerKey}:`, err)
       throw err
     }

@@ -28,9 +28,9 @@ const updateStatus = (message: string) => {
  * 2. Added statement timeout to prevent hanging transactions
  * 3. Implemented configurable retry attempts
  */
-const MAX_RETRIES = 3
-const BATCH_SIZE = 25
-const STATEMENT_TIMEOUT = 300000 // 5 minutes
+// const MAX_RETRIES = 3
+// const BATCH_SIZE = 25
+// const STATEMENT_TIMEOUT = 300000 // 5 minutes
 
 /**
  * @notice Generic retry wrapper with exponential backoff
@@ -39,18 +39,18 @@ const STATEMENT_TIMEOUT = 300000 // 5 minutes
  * 2. Configurable maximum retry attempts
  * 3. Preserves original error context
  */
-async function withRetry<T>(operation: () => Promise<T>, retryCount = 0): Promise<T> {
-  try {
-    return await operation()
-  } catch (error) {
-    if (retryCount >= MAX_RETRIES) {
-      throw error
-    }
-    const delay = Math.pow(2, retryCount) * 1000
-    await new Promise((resolve) => setTimeout(resolve, delay))
-    return withRetry(operation, retryCount + 1)
-  }
-}
+// async function withRetry<T>(operation: () => Promise<T>, retryCount = 0): Promise<T> {
+//   try {
+//     return await operation()
+//   } catch (error) {
+//     if (retryCount >= MAX_RETRIES) {
+//       throw error
+//     }
+//     const delay = Math.pow(2, retryCount) * 1000
+//     await new Promise((resolve) => setTimeout(resolve, delay))
+//     return withRetry(operation, retryCount + 1)
+//   }
+// }
 
 /**
  * @notice Main collection function for processing token lists
@@ -82,58 +82,54 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
    * 3. Creates list entry
    * 4. Stores list logo if available
    */
-  await withRetry(async () => {
-    await db.transaction(async (tx) => {
-      await tx.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT}`)
+  await db.transaction(async (tx) => {
+    // Setup default network (chainId 0)
+    await db.insertNetworkFromChainId(0, undefined, tx)
 
-      // Setup default network (chainId 0)
-      await db.insertNetworkFromChainId(0, undefined, tx)
-
-      // Setup networks for each chain ID
-      for (const chainId of chainIds) {
-        if (chainId) {
-          updateStatus(`🔗 [${providerKey}] Setting up chain ${chainId}...`)
-          const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
-          networks.set(chainId, network)
-        }
+    // Setup networks for each chain ID
+    for (const chainId of chainIds) {
+      if (chainId) {
+        updateStatus(`🔗 [${providerKey}] Setting up chain ${chainId}...`)
+        const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
+        networks.set(chainId, network)
       }
+    }
 
-      // Create provider entry
-      ;[provider] = await db.insertProvider(
+    // Create provider entry
+    ;[provider] = await db.insertProvider(
+      {
+        key: providerKey,
+      },
+      tx,
+    )
+
+    // Create list entry
+    ;[list] = await db.insertList(
+      {
+        providerId: provider.providerId,
+        networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
+        name: tokenList.name,
+        key: listKey,
+        default: isDefault,
+        description: '',
+        ...(tokenList.version || {}),
+      },
+      tx,
+    )
+
+    // Store list logo if available
+    if (tokenList.logoURI) {
+      updateStatus(`🖼️  [${providerKey}] Storing list logo...`)
+      await db.fetchImageAndStoreForList(
         {
-          key: providerKey,
+          listId: list.listId,
+          uri: tokenList.logoURI,
+          originalUri: tokenList.logoURI,
+          providerKey,
         },
         tx,
       )
-
-      // Create list entry
-      ;[list] = await db.insertList(
-        {
-          providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
-          name: tokenList.name,
-          key: listKey,
-          default: isDefault,
-          description: '',
-          ...(tokenList.version || {}),
-        },
-        tx,
-      )
-
-      // Store list logo if available
-      if (tokenList.logoURI) {
-        updateStatus(`🖼️  [${providerKey}] Storing list logo...`)
-        await db.fetchImageAndStoreForList(
-          {
-            listId: list.listId,
-            uri: tokenList.logoURI,
-            originalUri: tokenList.logoURI,
-            providerKey,
-          },
-          tx,
-        )
-      }
-    })
+    }
   })
 
   // Process tokens in batches
@@ -147,54 +143,44 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
    * 2. Each token is processed in its own transaction with retry logic
    * 3. Stores token information and associated images
    */
-  for (let i = 0; i < totalTokens; i += BATCH_SIZE) {
-    const batch = tokenList.tokens.slice(i, i + BATCH_SIZE)
+  for (let i = 0; i < totalTokens; i++) {
+    const entry = tokenList.tokens[i]
+    await db.transaction(async (tx) => {
+      processedTokens++
+      updateStatus(`📥 [${providerKey}] Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
 
-    await withRetry(async () => {
-      await db.transaction(async (tx) => {
-        await tx.raw(`SET LOCAL statement_timeout = ${STATEMENT_TIMEOUT}`)
+      const network = networks.get(entry.chainId)!
+      const token = {
+        name: entry.name,
+        symbol: entry.symbol,
+        decimals: entry.decimals,
+        networkId: network.networkId,
+        providedId: entry.address,
+      }
 
-        for (const entry of batch) {
-          processedTokens++
-          updateStatus(`📥 [${providerKey}] Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
+      // Skip blacklisted images
+      if (blacklist.has(entry.logoURI as string)) {
+        entry.logoURI = ''
+      }
 
-          const network = networks.get(entry.chainId)!
-          const token = {
-            name: entry.name,
-            symbol: entry.symbol,
-            decimals: entry.decimals,
-            networkId: network.networkId,
-            providedId: entry.address,
-          }
-
-          // Skip blacklisted images
-          if (blacklist.has(entry.logoURI as string)) {
-            entry.logoURI = ''
-          }
-
-          // Fix malformed URLs and store token image
-          const path = entry.logoURI?.replace('hhttps://', 'https://') || null
-          if (path) {
-            updateStatus(`💾 [${providerKey}] Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
-          }
-          await db.fetchImageAndStoreForToken(
-            {
-              listId: list.listId,
-              uri: path,
-              originalUri: path,
-              providerKey,
-              token,
-            },
-            tx,
-          )
-        }
-      })
+      // Fix malformed URLs and store token image
+      const path = entry.logoURI?.replace('hhttps://', 'https://') || null
+      if (path) {
+        updateStatus(`💾 [${providerKey}] Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`)
+      }
+      await db.fetchImageAndStoreForToken(
+        {
+          listId: list.listId,
+          uri: path,
+          originalUri: path,
+          providerKey,
+          token,
+        },
+        tx,
+      )
     })
-
-    // Add a small delay between batches to reduce database pressure
-    await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
   updateStatus(`✨ [${providerKey}] Completed processing ${totalTokens} tokens!`)
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 }

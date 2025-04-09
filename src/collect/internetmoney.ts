@@ -12,7 +12,7 @@
 import * as chains from 'viem/chains'
 import * as viem from 'viem'
 import * as utils from '@/utils'
-import type { InternetMoneyNetwork, Todo } from '@/types'
+import type { Todo } from '@/types'
 import { fetch } from '@/fetch'
 import * as db from '@/db'
 import type { List, Provider } from 'knex/types/tables'
@@ -179,5 +179,5 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [internetmoney] Completed processing ${totalTokens} tokens!`)
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 }

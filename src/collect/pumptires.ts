@@ -6,7 +6,7 @@ import { pulsechain } from 'viem/chains'
 import { fetch } from '@/fetch'
 import { log } from '@/logger'
 import * as chains from 'viem/chains'
-import * as fs from 'fs'
+import { tableNames } from '@/db/tables'
 
 type Creator = {
   address: Hex
@@ -55,17 +55,18 @@ type TokenInfo = {
 type Response = {
   totalPages: number
   tokens: TokenInfo[]
+  message?: string
 }
 
 const collectTokens = async (listId: string, filter: string) => {
   const relevantData: TokenInfo[] = []
   let page = 1
   let pageCount = 0
-  // const knownList = await db
-  //   .getTokensUnderListId()
-  //   .where('listId', listId)
-  //   .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-  //   .limit(100)
+  const knownList = await db
+    .getTokensUnderListId()
+    .where('listId', listId)
+    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+    .limit(100)
   do {
     const url = new URL('https://api.pump.tires/api/tokens')
     url.searchParams.set('page', `${page}`)
@@ -89,7 +90,6 @@ const collectTokens = async (listId: string, filter: string) => {
     if (!first) {
       break
     }
-    // const firstAddress = getAddress((first as TokenInfo).address)
     // response.tokens.forEach((token) => {
     //   if (getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')) {
     //     log('token', token)
@@ -101,6 +101,10 @@ const collectTokens = async (listId: string, filter: string) => {
       log('page count update %o', pageCount)
     }
     page += 1
+    const firstAddress = getAddress((first as TokenInfo).address)
+    if (knownList.find((t) => getAddress(t.address) === firstAddress)) {
+      break
+    }
     // const firstAddress = getAddress((first as TokenInfo).address)
     // const exists = knownList.find((t) => getAddress(t.address) === firstAddress)
     // if (exists) {
@@ -138,9 +142,16 @@ export const collect = async () => {
   ])
   const tokens = [...nonLaunchedTokens, ...launchedTokens]
   const launched = new Set(launchedTokens)
-  // await fs.promises.writeFile('pumptires.json', JSON.stringify(tokens, null, 2))
-  const factory = '0x29eA7545DEf87022BAdc76323F373EA1e707C523'
-  const initCode = '0x5dff1ac2d132f5ac2841294c6e9fc0ebafae8d447fac7996ef21c21112f411f1'
+  const situation = [
+    {
+      factory: '0x1715a3E4A142d8b698131108995174F37aEBA10D',
+      initCode: '0x59fffffddd756cba9095128e53f3291a6ba38b21e3df744936e7289326555d62',
+    },
+    {
+      factory: '0x29eA7545DEf87022BAdc76323F373EA1e707C523',
+      initCode: '0x5dff1ac2d132f5ac2841294c6e9fc0ebafae8d447fac7996ef21c21112f411f1',
+    },
+  ] as { factory: Hex; initCode: Hex }[]
   const wpls = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
 
   await utils.spinner('pumptires', async (l) => {
@@ -148,46 +159,39 @@ export const collect = async () => {
     // const millionDollarMarketCap = parseEther('0.001') // add this constraint later
     await utils.limit.map(tokens, async (token: TokenInfo) => {
       const originalUri = `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
-      const [pair, token0, token1] = tokenToPair(wpls, token.address, factory, initCode)
+      // const [pair, token0, token1] = tokenToPair(wpls, token.address, factory, initCode)
       const isLaunched = launched.has(token)
-      const [reserves] = await Promise.all([
-        // we care about this for the price
-        isLaunched &&
-          getReserves(pair, {
-            pair,
-            token0,
-            token1,
-          }),
-        db.fetchImageAndStoreForToken({
-          listId: list.listId,
-          uri: originalUri,
-          originalUri,
-          providerKey,
-          token: {
-            name: token.name,
-            symbol: token.symbol,
-            decimals: 18,
-            providedId: token.address,
-            networkId: network.networkId,
-          },
-        }),
-      ])
-      if (!isLaunched || !reserves) {
+      await db.fetchImageAndStoreForToken({
+        listId: list.listId,
+        uri: originalUri,
+        originalUri,
+        providerKey,
+        token: {
+          name: token.name,
+          symbol: token.symbol,
+          decimals: 18,
+          providedId: token.address,
+          networkId: network.networkId,
+        },
+      })
+      if (!isLaunched) {
         l.incrementCurrent()
         return
       }
-      // const shouldLog = getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')
-      const [rt0, rt1, timestamp] = reserves
+      const {
+        token0,
+        // token1,
+        reserves: [rt0, rt1],
+      } = await getReserves(token.address, situation, wpls)
+      if (!rt0 || !rt1) {
+        l.incrementCurrent()
+        return
+      }
       const wplsReserve = token0 === wpls ? rt0 : rt1
-      const tokenReserve = token1 === wpls ? rt0 : rt1
+      // const tokenReserve = token1 === wpls ? rt0 : rt1
       const oneBillion = 1_000_000_000n
       const oneEther = 10n ** 18n
       const oneBillionWei = oneBillion * oneEther
-      // const amount = tokenReserve / wplsReserve
-      // const price =
-      // if (shouldLog) {
-      // log('reserves', pair, tokenReserve, oneBillionWei, token.address)
-      // }
       if (wplsReserve > oneBillionWei) {
         log('inserting highcap token %o', token.address)
         await db.fetchImageAndStoreForToken({
@@ -215,22 +219,34 @@ const univ2Abi = parseAbi([
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
 ])
 
-const getReserves = async (pair: Hex, context: any) => {
-  const [result] = await client.multicall({
-    contracts: [
-      {
-        abi: univ2Abi,
-        address: pair,
-        functionName: 'getReserves',
-        args: [],
-      },
-    ],
-  })
-  if (result.status === 'failure') {
-    log('failed context', context)
-    return [0n, 0n, 0] as const
+const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex }[], wpls: Hex) => {
+  const [, token0, token1] = tokenToPair(wpls, token, situations[0].factory, situations[0].initCode)
+  for (const { factory, initCode } of situations) {
+    const [pair, token0, token1] = tokenToPair(wpls, token, factory, initCode)
+    const [result] = await client.multicall({
+      contracts: [
+        {
+          abi: univ2Abi,
+          address: pair,
+          functionName: 'getReserves',
+          args: [],
+        },
+      ],
+    })
+    if (result.status === 'failure') {
+      continue
+    }
+    return {
+      reserves: result.result,
+      token0,
+      token1,
+    }
   }
-  return result.result
+  return {
+    reserves: [0n, 0n, 0],
+    token0,
+    token1,
+  }
 }
 
 const tokenToPair = _.memoize(

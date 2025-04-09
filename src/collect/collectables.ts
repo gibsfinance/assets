@@ -35,6 +35,7 @@ import * as baofinance from './baofinance'
 import * as compound from './compound'
 import * as optimism from './optimism'
 import * as pumptires from './pumptires'
+import _ from 'lodash'
 
 /**
  * @notice Helper function to get all available collector keys
@@ -52,7 +53,7 @@ export const allCollectables = () => {
  * 3. Added new DEX and protocol collectors
  * 4. Improved configuration type safety with chain objects
  */
-export const collectables = () => {
+export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
     pulsechain: pulsechainCollector.collect,
@@ -68,6 +69,7 @@ export const collectables = () => {
       providerKey: 'balancer',
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
+      blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
     }),
     internetmoney: internetmoney.collect,
     phux: phux.collect,
@@ -98,7 +100,7 @@ export const collectables = () => {
         home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
       },
     ]),
-    kleros: kleros.collect,
+    // kleros: kleros.collect,
     dfyn: dfyn.collect,
     coingecko: coingecko.collect,
     '9mm': nineMM.collect,
@@ -108,7 +110,7 @@ export const collectables = () => {
     optimism: optimism.collect,
     pumptires: pumptires.collect,
   }
-}
+})
 
 /**
  * @notice Type definition for available collectors

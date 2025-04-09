@@ -33,15 +33,15 @@ import { updateStatus } from '@/utils'
  */
 export default () => {
   updateStatus('🔗 Initializing chain configurations...')
-  const { rpc1, rpc369, rpc56 } = collect()
+  const { rpc1, rpc369, rpc56, rpc11155111, rpc943 } = collect()
 
   // Log RPC configurations
   console.log('RPC Configuration:')
-  console.log('Ethereum:', rpc1)
-  console.log('PulseChain:', rpc369)
-  console.log('BSC:', rpc56.length ? rpc56 : process.env.RPC_56?.split(','))
-  console.log('Sepolia:', process.env.RPC_11155111?.split(','))
-  console.log('PulseChainV4:', process.env.RPC_943?.split(','))
+  console.log('Ethereum:', rpc1.length)
+  console.log('PulseChain:', rpc369.length)
+  console.log('BSC:', rpc56.length)
+  console.log('Sepolia:', rpc11155111.length)
+  console.log('PulseChainV4:', rpc943.length)
   console.log('---')
 
   const mainnet = {
@@ -101,7 +101,7 @@ export default () => {
     },
   } as Chain
   updateStatus('✨ Chain configuration complete!')
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 
   return {
     mainnet,

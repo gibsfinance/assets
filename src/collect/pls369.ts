@@ -209,5 +209,5 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [pls369] Collection complete!`)
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 }

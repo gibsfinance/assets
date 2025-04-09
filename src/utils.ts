@@ -1,6 +1,8 @@
 import { config as dotenvConfig } from 'dotenv'
 dotenvConfig()
 
+Error.stackTraceLimit = Infinity
+
 /**
  * @title Core Utility Functions
  * @notice Collection of utility functions for file handling, RPC interactions, and data processing
@@ -349,12 +351,15 @@ export const timeout = (ms: number) => {
   }
 }
 
-export const updateStatus = (message: string) => {
+export const updateStatus = (message: string, addNewline = false) => {
   // Clear the current line and move to the beginning
   readline.clearLine(process.stdout, 0)
   readline.cursorTo(process.stdout, 0)
   // Write the new message
   process.stdout.write(message)
+  if (addNewline) {
+    process.stdout.write('\n')
+  }
 }
 
 export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)
