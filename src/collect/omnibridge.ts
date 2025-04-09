@@ -231,7 +231,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           )
         })
       },
-      25_000n,
+      10_000n,
     )
 
     // break // Success, exit retry loop
@@ -288,7 +288,7 @@ const iterateOverRange = async (
       consecutiveErrors = 0
 
       if (currentStep < step && consecutiveErrors === 0) {
-        currentStep = BigInt(Math.min(Number(currentStep * 2n), Number(step)))
+        currentStep = BigInt(Math.min(Number((currentStep * 12_000n) / 10_000n), Number(step))) // 20% increase
         log('Increasing block range to %o blocks after success', currentStep)
       }
     } catch (error: unknown) {
