@@ -21,8 +21,8 @@ const dbg = debug('📷:collect')
  * 1. Added maximum retry attempts per provider
  * 2. Reduced concurrency from 4 to 2 for better stability
  */
-const MAX_PROVIDER_RETRIES = 2
-const PROVIDER_CONCURRENCY = 2
+// const MAX_PROVIDER_RETRIES = 2
+const PROVIDER_CONCURRENCY = 4
 
 /**
  * @notice Retry wrapper for individual collector execution
@@ -38,20 +38,9 @@ async function collectWithRetry(
   total: number,
   retryCount = 0,
 ): Promise<void> {
-  try {
-    utils.updateStatus(`⏳ [${index + 1}/${total}] Collecting from ${provider}...`)
-    await collector()
-    utils.updateStatus(`✅ [${index + 1}/${total}] Successfully collected from ${provider}`)
-    process.stdout.write('\n')
-  } catch (err) {
-    if (retryCount < MAX_PROVIDER_RETRIES) {
-      const delay = Math.pow(2, retryCount) * 2000
-      utils.updateStatus(`⚠️ [${index + 1}/${total}] Retrying ${provider} in ${delay / 1000}s...`)
-      await new Promise((resolve) => setTimeout(resolve, delay))
-      return collectWithRetry(collector, provider, index, total, retryCount + 1)
-    }
-    throw err
-  }
+  utils.updateStatus(`⏳ [${index + 1}/${total}] Collecting from ${provider}...`, true)
+  await collector()
+  utils.updateStatus(`✅ [${index + 1}/${total}] Successfully collected from ${provider}`, true)
 }
 
 /**
@@ -84,7 +73,7 @@ export const main = async (providers: Collectable[]) => {
           if (!collector) {
             results.skipped.push(provider)
             utils.updateStatus(`⚠️ [${index + 1}/${providers.length}] Skipped ${provider} - No collector found`)
-            process.stdout.write('\n')
+            // process.stdout.write('\n')
             return
           }
 
@@ -93,7 +82,7 @@ export const main = async (providers: Collectable[]) => {
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
           utils.updateStatus(`❌ [${index + 1}/${providers.length}] Failed collecting from ${provider}`)
-          process.stdout.write('\n')
+          // process.stdout.write('\n')
           dbg(`  Error: ${errorMessage}`)
           results.failed.push({ provider, error: errorMessage })
         }
@@ -102,7 +91,7 @@ export const main = async (providers: Collectable[]) => {
   )
 
   // Print summary
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
   dbg('\nCollection Summary:')
 
   if (results.successful.length > 0) {

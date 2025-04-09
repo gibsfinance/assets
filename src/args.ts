@@ -29,12 +29,12 @@ import { updateStatus } from '@/utils'
  * @param envVar The environment variable to check for RPC URLs
  * @return Yargs option configuration object
  */
-const rpc = (chain: string, envVar: string) => {
+const rpc = (chain: string, defaultUrl?: string) => {
   return {
     type: 'array',
     describe: `the rpc url for ${chain}`,
     required: false,
-    default: [],
+    default: defaultUrl ? [defaultUrl] : [],
     coerce: (val: string[]) => val.flatMap((v) => v.split(',')),
   } as const
 }
@@ -73,9 +73,11 @@ export const collect = _.memoize(() => {
         default: 'mixed',
         choices: ['mixed', 'save', 'link'],
       },
-      rpc1: rpc('ethereum', 'RPC_1'),
-      rpc369: rpc('pulsechain', 'RPC_369'),
-      rpc56: rpc('bsc', 'RPC_56'),
+      rpc1: rpc('ethereum', 'https://rpc-ethereum.g4mm4.io'),
+      rpc369: rpc('pulsechain', 'https://rpc-pulsechain.g4mm4.io'),
+      rpc56: rpc('bsc'),
+      rpc11155111: rpc('sepolia', 'https://ethereum-sepolia-rpc.publicnode.com'),
+      rpc943: rpc('pulsechainv4', 'https://rpc-testnet-pulsechain.g4mm4.io'),
     })
     .parseSync()
 
@@ -84,10 +86,10 @@ export const collect = _.memoize(() => {
   const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
     updateStatus('⚠️ Warning: saving all images - this could collect unwanted data')
-    process.stdout.write('\n')
+    // process.stdout.write('\n')
   }
   updateStatus('✨ Arguments parsed successfully!')
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
   return {
     providers,
     ipfs: argv.ipfs,
@@ -95,6 +97,8 @@ export const collect = _.memoize(() => {
     rpc1: argv.rpc1,
     rpc369: argv.rpc369,
     rpc56: argv.rpc56,
+    rpc11155111: argv.rpc11155111,
+    rpc943: argv.rpc943,
   }
 })
 
@@ -123,7 +127,7 @@ export const exportImage = _.memoize(() => {
     })
     .parseSync()
   updateStatus('✨ Image export arguments parsed!')
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
   return {
     token: argv.token,
     chainId: argv.chainId,

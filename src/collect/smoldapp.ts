@@ -258,5 +258,5 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [smoldapp] Collection complete!`)
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 }

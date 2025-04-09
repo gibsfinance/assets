@@ -49,7 +49,7 @@ export const collect = async () => {
   }
 
   utils.updateStatus(`✨ [${providerKey}] Collection complete!`)
-  process.stdout.write('\n')
+  // process.stdout.write('\n')
 }
 
 /**

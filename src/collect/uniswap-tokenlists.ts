@@ -21,7 +21,7 @@ export const collect = async () => {
     }
   })
   const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
-  await promiseLimit<(typeof usable)[number]>(4).map(usable, async (info) => {
+  await promiseLimit<(typeof usable)[number]>(16).map(usable, async (info) => {
     if (listBlacklist.has(info.machineName)) return false
     const result = await fetch(info.uri)
       .then(async (res) => (await res.json()) as types.TokenList)
@@ -30,6 +30,9 @@ export const collect = async () => {
       return false
     }
     // custom domain replacement logic
+    if (result.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN')) {
+      result.logoURI = ''
+    }
     result.tokens.forEach((token) => {
       const replacing = 'ethereum-optimism.github.io'
       if (token.logoURI?.includes(replacing)) {
@@ -43,7 +46,10 @@ export const collect = async () => {
         token.logoURI = token.logoURI.split('?')[0]
         token.logoURI = token.logoURI.replace('hhttps://', 'https://')
       }
-      if (token.logoURI === 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH') {
+      if (
+        token.logoURI === 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH' ||
+        token.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN')
+      ) {
         token.logoURI = ''
       }
     })
