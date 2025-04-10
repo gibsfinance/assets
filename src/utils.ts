@@ -348,6 +348,7 @@ export const timeout = (ms: number) => {
   return {
     timeoutId: () => timeoutId,
     promise: p,
+    clear: () => clearTimeout(timeoutId),
   }
 }
 
@@ -404,6 +405,10 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
  * - No wait time between batches
  */
 export const publicClient = _.memoize((chain: viem.Chain) => {
+  let transport = viem.http()
+  if (chain.id === 250) {
+    transport = viem.http('https://fantom-rpc.publicnode.com')
+  }
   return viem.createPublicClient({
     chain,
     transport: viem.http(),

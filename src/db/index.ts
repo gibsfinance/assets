@@ -63,6 +63,22 @@ export const ids = {
 
 let db = knex(config)
 
+// setInterval(() => {
+//   db.raw('SELECT * FROM pg_stat_activity').then((res) => {
+//     const grouped = _(res.rows)
+//       .map(({ query }) => query)
+//       .reduce((accum, row) => {
+//         if (!row) return accum
+//         const id = viem.keccak256(viem.stringToBytes(row))
+//         let existing = accum.get(id)
+//         if (existing) accum.set(id, [existing[0] + 1, row])
+//         else accum.set(id, [1, row])
+//         return accum
+//       }, new Map<string, [number, string]>())
+//     console.log(grouped)
+//   })
+// }, 5000)
+
 export const getDB = () => db
 
 export const setDB = (k: Knex) => {

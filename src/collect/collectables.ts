@@ -59,6 +59,7 @@ export const collectables = _.memoize(() => {
     pulsechain: pulsechainCollector.collect,
     trustwallet: trustwallet.collect,
     'uniswap-tokenlists': uniswapTokenlists.collect,
+    kleros: kleros.collect,
     piteas: remoteTokenList.collect({
       providerKey: 'piteas',
       listKey: 'exchange',
@@ -100,7 +101,6 @@ export const collectables = _.memoize(() => {
         home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
       },
     ]),
-    // kleros: kleros.collect,
     dfyn: dfyn.collect,
     coingecko: coingecko.collect,
     '9mm': nineMM.collect,

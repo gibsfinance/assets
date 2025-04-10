@@ -46,7 +46,6 @@ export const collect = async () => {
   const json = await fetch(baseUrl)
     .then((res): Promise<NetworkInfo[]> => res.json())
     .then((res) => (Array.isArray(res) ? res : []))
-  const todos: Todo[] = []
   const encounteredChainIds = new Set<bigint>()
   let provider!: Provider
   let insertedList!: List
@@ -137,44 +136,40 @@ export const collect = async () => {
       processedTokens++
       utils.updateStatus(`📥 [internetmoney] Processing token ${processedTokens}/${totalTokens}: ${token.address}...`)
 
-      try {
-        const address = viem.getAddress(token.address)
-        const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
+      const address = viem.getAddress(token.address)
+      const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
 
-        await db.transaction(async (tx) => {
-          const [networkList] = await insertAndGetNetworkList(tx)
-          const insertion = {
-            uri: token.icon,
-            originalUri: token.icon,
-            providerKey: provider.key,
-            token: {
-              symbol,
-              name,
-              decimals,
-              networkId: utils.chainIdToNetworkId(chain.id),
-              providedId: address,
-            },
-          }
+      await db.transaction(async (tx) => {
+        const [networkList] = await insertAndGetNetworkList(tx)
+        const insertion = {
+          uri: token.icon,
+          originalUri: token.icon,
+          providerKey: provider.key,
+          token: {
+            symbol,
+            name,
+            decimals,
+            networkId: utils.chainIdToNetworkId(chain.id),
+            providedId: address,
+          },
+        }
 
-          utils.updateStatus(`💾 [internetmoney] Storing token ${processedTokens}/${totalTokens}: ${symbol}...`)
-          await db.fetchImageAndStoreForToken(
-            {
-              ...insertion,
-              listId: networkList.listId,
-            },
-            tx,
-          )
-          await db.fetchImageAndStoreForToken(
-            {
-              ...insertion,
-              listId: insertedList.listId,
-            },
-            tx,
-          )
-        })
-      } catch (err) {
-        utils.failureLog(`Failed to process token ${token.address} on chain ${chain.id}: ${err}`)
-      }
+        utils.updateStatus(`💾 [internetmoney] Storing token ${processedTokens}/${totalTokens}: ${symbol}...`)
+        await db.fetchImageAndStoreForToken(
+          {
+            ...insertion,
+            listId: networkList.listId,
+          },
+          tx,
+        )
+        await db.fetchImageAndStoreForToken(
+          {
+            ...insertion,
+            listId: insertedList.listId,
+          },
+          tx,
+        )
+      })
     })
   }
 

@@ -34,6 +34,7 @@ type Input = {
   tokenList: string
   listKey: string
   isDefault?: boolean
+  /** a list of addresses to blacklist images to speed up load time */
   blacklist?: Set<string>
 }
 
@@ -74,6 +75,12 @@ export const collect =
         throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
       }
 
+      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
+      tokenList.tokens.forEach((token) => {
+        if (blacked.has(token.address.toLowerCase())) {
+          token.logoURI = ''
+        }
+      })
       const tokenCount = tokenList.tokens?.length || 0
       updateStatus(`📥 [${providerKey}] Found ${tokenCount} tokens`)
 
@@ -83,7 +90,6 @@ export const collect =
       }
 
       let processedCount = 0
-      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
       const extras = await Promise.all(
         extra.map(async (item) => {
           if (blacked.has(item.address.toLowerCase())) {
@@ -105,31 +111,38 @@ export const collect =
               dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
               return
             }
+            await db.transaction(async (tx) => {
+              const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
+              if (item.network.isNetworkImage) {
+                updateStatus(`🖼️  [${providerKey}] Storing network image for ${chain.name}...`)
+                await db.fetchImageAndStoreForNetwork(
+                  {
+                    chainId: item.network.id,
+                    uri: image,
+                    originalUri: item.logoURI,
+                    providerKey,
+                  },
+                  tx,
+                )
+              }
 
-            const network = await db.insertNetworkFromChainId(item.network.id)
-            if (item.network.isNetworkImage) {
-              updateStatus(`🖼️  [${providerKey}] Storing network image for ${chain.name}...`)
-              await db.fetchImageAndStoreForNetwork({
-                chainId: item.network.id,
-                uri: image,
-                originalUri: item.logoURI,
-                providerKey,
-              })
-            }
-
-            updateStatus(`💾 [${providerKey}] Storing token ${name} (${symbol})...`)
-            await db.fetchImageAndStoreForToken({
-              listId: null,
-              uri: image,
-              originalUri: item.logoURI,
-              providerKey,
-              token: {
-                name,
-                symbol,
-                decimals,
-                providedId: item.address,
-                networkId: network.networkId,
-              },
+              updateStatus(`💾 [${providerKey}] Storing token ${name} (${symbol})...`)
+              await db.fetchImageAndStoreForToken(
+                {
+                  listId: null,
+                  uri: image,
+                  originalUri: item.logoURI,
+                  providerKey,
+                  token: {
+                    name,
+                    symbol,
+                    decimals,
+                    providedId: item.address,
+                    networkId: network.networkId,
+                  },
+                },
+                tx,
+              )
             })
 
             processedCount++

@@ -30,7 +30,10 @@ export const collect = async () => {
       return false
     }
     // custom domain replacement logic
-    if (result.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN')) {
+    if (
+      result.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN') ||
+      result.logoURI?.includes('QmVcci4ztPzCPb896uP7wY6szWDAm1cRYbGTUVLbGVhby9')
+    ) {
       result.logoURI = ''
     }
     result.tokens.forEach((token) => {

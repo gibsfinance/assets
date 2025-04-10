@@ -1,4 +1,4 @@
-import _ from 'lodash'
+import _, { result } from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
 import * as db from '@/db'
 import * as utils from '@/utils'
@@ -7,6 +7,8 @@ import { fetch } from '@/fetch'
 import { log } from '@/logger'
 import * as chains from 'viem/chains'
 import { tableNames } from '@/db/tables'
+import { Token } from 'knex/types/tables.js'
+import type * as types from '@/types'
 
 type Creator = {
   address: Hex
@@ -58,15 +60,12 @@ type Response = {
   message?: string
 }
 
-const collectTokens = async (listId: string, filter: string) => {
+const collectTokens = async (knownList: Token[], listId: string, filter: string) => {
   const relevantData: TokenInfo[] = []
   let page = 1
   let pageCount = 0
-  const knownList = await db
-    .getTokensUnderListId()
-    .where('listId', listId)
-    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-    .limit(100)
+  // const knownList =
+  //   .limit(100)
   do {
     const url = new URL('https://api.pump.tires/api/tokens')
     url.searchParams.set('page', `${page}`)
@@ -102,7 +101,7 @@ const collectTokens = async (listId: string, filter: string) => {
     }
     page += 1
     const firstAddress = getAddress((first as TokenInfo).address)
-    if (knownList.find((t) => getAddress(t.address) === firstAddress)) {
+    if (knownList.find((t) => getAddress(t.providedId) === firstAddress)) {
       break
     }
     // const firstAddress = getAddress((first as TokenInfo).address)
@@ -111,7 +110,7 @@ const collectTokens = async (listId: string, filter: string) => {
     //   break
     // }
   } while (page <= pageCount)
-  return _.uniqBy(relevantData, 'address')
+  return _.uniqBy(relevantData, (t) => getAddress(t.address))
 }
 
 export const collect = async () => {
@@ -122,12 +121,19 @@ export const collect = async () => {
     name: 'tokens',
   })
   const network = await db.insertNetworkFromChainId(pulsechain.id)
-  const [list] = await db.insertList({
+  const [pumptiresList] = await db.insertList({
     key: listKey,
     name: listKey,
     providerId: provider.providerId,
     networkId: network.networkId,
     default: true,
+  })
+  const [pumptiresLaunchedList] = await db.insertList({
+    key: 'launched',
+    name: 'Launched',
+    providerId: provider.providerId,
+    networkId: network.networkId,
+    default: false,
   })
   const [highMarketCapList] = await db.insertList({
     key: 'highcap',
@@ -136,12 +142,18 @@ export const collect = async () => {
     networkId: network.networkId,
     default: false,
   })
-  const [nonLaunchedTokens, launchedTokens] = await Promise.all([
-    collectTokens(list.listId, 'created_timestamp'),
-    collectTokens(list.listId, 'launch_timestamp'),
+  const knownPumptiresList: types.TokenInfo[] = await db
+    .getTokensUnderListId()
+    .where('listId', pumptiresList.listId)
+    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+  const knownLaunchedList: types.TokenInfo[] = await db
+    .getTokensUnderListId()
+    .where('listId', pumptiresLaunchedList.listId)
+    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+  const [createdTokens, launchedTokens] = await Promise.all([
+    collectTokens(knownPumptiresList, pumptiresList.listId, 'created_timestamp'),
+    collectTokens(knownLaunchedList, pumptiresList.listId, 'launch_timestamp'),
   ])
-  const tokens = [...nonLaunchedTokens, ...launchedTokens]
-  const launched = new Set(launchedTokens)
   const situation = [
     {
       factory: '0x1715a3E4A142d8b698131108995174F37aEBA10D',
@@ -154,15 +166,13 @@ export const collect = async () => {
   ] as { factory: Hex; initCode: Hex }[]
   const wpls = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
 
-  await utils.spinner('pumptires', async (l) => {
-    l.incrementMax(tokens.length)
-    // const millionDollarMarketCap = parseEther('0.001') // add this constraint later
-    await utils.limit.map(tokens, async (token: TokenInfo) => {
-      const originalUri = `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
-      // const [pair, token0, token1] = tokenToPair(wpls, token.address, factory, initCode)
-      const isLaunched = launched.has(token)
+  const toURI = (token: TokenInfo) => `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
+  await utils.spinner('pumptires:created', async (l) => {
+    l.incrementMax(createdTokens.length)
+    await utils.limit.map(createdTokens, async (token: TokenInfo) => {
+      const originalUri = toURI(token)
       await db.fetchImageAndStoreForToken({
-        listId: list.listId,
+        listId: pumptiresList.listId,
         uri: originalUri,
         originalUri,
         providerKey,
@@ -174,26 +184,53 @@ export const collect = async () => {
           networkId: network.networkId,
         },
       })
-      if (!isLaunched) {
-        l.incrementCurrent()
-        return
-      }
+    })
+  })
+  await utils.spinner('pumptires:launched', async (l) => {
+    l.incrementMax(launchedTokens.length)
+    await utils.limit.map(launchedTokens, async (token: TokenInfo) => {
+      const originalUri = toURI(token)
+      await db.fetchImageAndStoreForToken({
+        listId: pumptiresList.listId,
+        uri: originalUri,
+        originalUri,
+        providerKey,
+        token: {
+          name: token.name,
+          symbol: token.symbol,
+          decimals: 18,
+          providedId: token.address,
+          networkId: network.networkId,
+        },
+      })
+    })
+  })
+  // check all LAUNCHED tokens for pairing with 1b pls
+  await utils.spinner('pumptires:highcap', async (l) => {
+    const knownLaunchedList: types.TokenInfo[] = await db
+      .getTokensUnderListId()
+      .where('listId', pumptiresLaunchedList.listId)
+      .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+    l.incrementMax(knownLaunchedList.length)
+    await utils.limit.map(knownLaunchedList, async (token: types.TokenInfo) => {
+      const address = token.providedId as Hex
       const {
         token0,
         // token1,
         reserves: [rt0, rt1],
-      } = await getReserves(token.address, situation, wpls)
+      } = await getReserves(address, situation, wpls)
       if (!rt0 || !rt1) {
         l.incrementCurrent()
         return
       }
-      const wplsReserve = token0 === wpls ? rt0 : rt1
+      const wplsReserve = getAddress(token0) === getAddress(wpls) ? rt0 : rt1
       // const tokenReserve = token1 === wpls ? rt0 : rt1
       const oneBillion = 1_000_000_000n
       const oneEther = 10n ** 18n
       const oneBillionWei = oneBillion * oneEther
-      if (wplsReserve > oneBillionWei) {
-        log('inserting highcap token %o', token.address)
+      if (wplsReserve >= oneBillionWei) {
+        const originalUri = token.uri
+        log('inserting highcap token %o', token.providedId)
         await db.fetchImageAndStoreForToken({
           listId: highMarketCapList.listId,
           uri: originalUri,
@@ -203,7 +240,7 @@ export const collect = async () => {
             name: token.name,
             symbol: token.symbol,
             decimals: 18,
-            providedId: token.address,
+            providedId: token.providedId,
             networkId: network.networkId,
           },
         })
@@ -220,32 +257,25 @@ const univ2Abi = parseAbi([
 ])
 
 const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex }[], wpls: Hex) => {
-  const [, token0, token1] = tokenToPair(wpls, token, situations[0].factory, situations[0].initCode)
-  for (const { factory, initCode } of situations) {
-    const [pair, token0, token1] = tokenToPair(wpls, token, factory, initCode)
-    const [result] = await client.multicall({
-      contracts: [
-        {
-          abi: univ2Abi,
-          address: pair,
-          functionName: 'getReserves',
-          args: [],
-        },
-      ],
-    })
-    if (result.status === 'failure') {
-      continue
-    }
+  // the token pairs are the same for both situations so we can just use the first one
+  const [situation] = situations
+  const [, token0, token1] = tokenToPair(wpls, token, situation.factory, situation.initCode)
+  const calls = situations.map(({ factory, initCode }) => {
+    const [pair] = tokenToPair(wpls, token, factory, initCode)
     return {
-      reserves: result.result,
-      token0,
-      token1,
+      abi: univ2Abi,
+      address: pair,
+      functionName: 'getReserves',
+      args: [],
     }
-  }
+  })
+  const results = await client.multicall({
+    contracts: calls,
+  })
   return {
-    reserves: [0n, 0n, 0],
     token0,
     token1,
+    reserves: results.find((r) => r.status === 'success')?.result ?? [0n, 0n, 0],
   }
 }
 
