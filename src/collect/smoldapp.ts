@@ -130,7 +130,7 @@ export const collect = async () => {
         })
       } else {
         utils.updateStatus(`💾 [smoldapp] Storing PNG assets for chain ${chainId}...`)
-        const img = await db.fetchImage(originalUri, providerKey)
+        const img = await db.fetchImage(originalUri, providerKey, chainId)
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForList(
             {

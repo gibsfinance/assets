@@ -352,6 +352,7 @@ export const timeout = (ms: number) => {
   }
 }
 
+/** this is a helper function that stands in for ink in the console */
 export const updateStatus = (message: string, addNewline = false) => {
   // Clear the current line and move to the beginning
   readline.clearLine(process.stdout, 0)

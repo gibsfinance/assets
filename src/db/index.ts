@@ -260,7 +260,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   }
   if (url.startsWith(utils.submodules)) {
     return fs.promises.readFile(url).catch(() => {
-      utils.failureLog('read file failed %o -> %o', providerKey, address, url)
+      utils.failureLog('read file failed %o -> %o', providerKey, address, url, address)
       return null
     })
   }
@@ -419,7 +419,7 @@ export const fetchImageAndStoreForList = async (
       list,
     }
   }
-  const image = await fetchImage(uri, providerKey)
+  const image = await fetchImage(uri, providerKey, `list-id:${listId}`)
   if (!image) {
     utils.failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
@@ -472,7 +472,7 @@ export const fetchImageAndStoreForNetwork = async (
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
-  const image = await fetchImage(uri, providerKey)
+  const image = await fetchImage(uri, providerKey, `chain-id:${chainId}`)
   if (!image) {
     utils.failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({

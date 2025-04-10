@@ -183,7 +183,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[]) => {
     const address = asset as viem.Hex
 
     for (const list of [networkList, trustwalletList]) {
-      const file = await db.fetchImage(logoPath, networkList.key)
+      const file = await db.fetchImage(logoPath, networkList.key, network.chainId)
       if (!file) continue
 
       utils.updateStatus(`💾 [${providerKey}] Storing token ${processedAssets}/${totalAssets}: ${info.symbol}...`)
