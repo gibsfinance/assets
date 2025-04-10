@@ -251,7 +251,7 @@ export const insertImage = async (
   }
 }
 
-export const fetchImage = async (url: string | Buffer, providerKey: string | null = null) => {
+export const fetchImage = async (url: string | Buffer, providerKey: string | null = null, address?: string) => {
   if (Buffer.isBuffer(url)) {
     return url
   }
@@ -260,7 +260,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   }
   if (url.startsWith(utils.submodules)) {
     return fs.promises.readFile(url).catch(() => {
-      utils.failureLog('read file failed %o -> %o', providerKey, url)
+      utils.failureLog('read file failed %o -> %o', providerKey, address, url)
       return null
     })
   }
@@ -270,13 +270,8 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
     outerTimeout.promise.then(() => null),
     fetch(url)
       .then(utils.responseToBuffer)
-      .catch(async () => {
-        innerTimeout = utils.timeout(3_000)
-        await innerTimeout.promise
-        return await fetch(url).then(utils.responseToBuffer)
-      })
       .catch((err: Error) => {
-        utils.failureLog('fetch failure %o -> %o', providerKey, url)
+        utils.failureLog('fetch failure %o -> %o', providerKey, address, url)
         const errStr = err.toString()
         if (errStr.includes('This operation was abort')) {
           return null
@@ -575,7 +570,7 @@ export const fetchImageAndStoreForToken = async (
   // list must have already been inserted to db by this point
   let img!: Awaited<ReturnType<typeof insertImage>>
   if (uri && originalUri) {
-    const image = await fetchImage(uri, providerKey)
+    const image = await fetchImage(uri, providerKey, token.providedId)
     if (!image) {
       await writeMissing({
         providerKey,

@@ -103,7 +103,7 @@ export const collect =
             )
 
             const [image, [name, symbol, decimals]] = await Promise.all([
-              db.fetchImage(item.logoURI, providerKey),
+              db.fetchImage(item.logoURI, providerKey, item.address),
               utils.erc20Read(chain, client, item.address),
             ])
 
