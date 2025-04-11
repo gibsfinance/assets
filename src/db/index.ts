@@ -36,6 +36,7 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { join } from './utils'
 import * as args from '@/args'
+import { updateStatus } from '@/utils/status'
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
@@ -327,7 +328,11 @@ export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'e
         if (code === '57014' || code === '25P02') {
           if (i < maxRetries - 1) {
             const delay = Math.pow(2, i) * 1000 // 1s, 2s, 4s
-            utils.updateStatus(`⚠️ Network insert error for chain ${chainId}, retrying in ${delay / 1000}s...`)
+            updateStatus({
+              provider: 'system',
+              message: `⚠️ Network insert error for chain ${chainId}, retrying in ${delay / 1000}s...`,
+              phase: 'setup',
+            })
             await new Promise((resolve) => setTimeout(resolve, delay))
             continue
           }

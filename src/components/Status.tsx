@@ -6,7 +6,7 @@ export interface StatusProps {
   message: string
   current?: number
   total?: number
-  phase: 'setup' | 'processing' | 'storing' | 'complete'
+  phase?: 'setup' | 'processing' | 'storing' | 'complete'
 }
 
 const phaseEmoji = {
@@ -16,7 +16,7 @@ const phaseEmoji = {
   complete: '✨',
 } as const
 
-export const Status: React.FC<StatusProps> = ({ provider, message, current, total, phase = 'processing' }) => {
+export const Status: React.FC<StatusProps> = ({ provider, message, current, total, phase = 'processing' }: StatusProps) => {
   const progress = total ? ` ${current}/${total}` : ''
   const emoji = phaseEmoji[phase]
 

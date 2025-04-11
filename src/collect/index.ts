@@ -83,8 +83,11 @@ export const main = async (providers: Collectable[]) => {
           const collector = c[provider]
           if (!collector) {
             results.skipped.push(provider)
-            utils.updateStatus(`⚠️ [${index + 1}/${providers.length}] Skipped ${provider} - No collector found`)
-            // process.stdout.write('\n')
+            updateStatus({
+              provider: 'system',
+              message: `⚠️ [${index + 1}/${providers.length}] Skipped ${provider} - No collector found`,
+              phase: 'complete',
+            })
             return
           }
 
@@ -93,7 +96,11 @@ export const main = async (providers: Collectable[]) => {
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
           dbg(`  Error: ${errorMessage}`)
-          utils.updateStatus(`❌ [${index + 1}/${providers.length}] Failed collecting from ${provider}`)
+          updateStatus({
+            provider: 'system',
+            message: `❌ [${index + 1}/${providers.length}] Failed collecting from ${provider}`,
+            phase: 'complete',
+          })
           results.failed.push({ provider, error: errorMessage })
         }
       }),

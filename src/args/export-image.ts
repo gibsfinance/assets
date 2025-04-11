@@ -11,7 +11,7 @@
 import { parse } from '@/args/utils'
 import _ from 'lodash'
 
-import { updateStatus } from '@/utils'
+import { updateStatus } from '@/utils/status'
 
 /**
  * @notice Image export configuration parser
@@ -22,7 +22,11 @@ import { updateStatus } from '@/utils'
  * @return Parsed image export configuration
  */
 export const exportImage = _.memoize(() => {
-  updateStatus('⚙️ Parsing image export arguments...')
+  updateStatus({
+    provider: 'system',
+    message: '⚙️ Parsing image export arguments...',
+    phase: 'setup',
+  })
   const argv = parse('export-image', {
     token: {
       type: 'string',
@@ -35,7 +39,11 @@ export const exportImage = _.memoize(() => {
       required: true,
     },
   })
-  updateStatus('✨ Image export arguments parsed!')
+  updateStatus({
+    provider: 'system',
+    message: '✨ Image export arguments parsed!',
+    phase: 'complete',
+  })
   // process.stdout.write('\n')
   return {
     token: argv.token,

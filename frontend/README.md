@@ -37,7 +37,7 @@ You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
 
-# API Endpoints & Capabilities
+## API Endpoints & Capabilities
 
 1. Token Information
 
@@ -46,14 +46,14 @@ You can preview the production build with `npm run preview`.
 - `/list/{listName}?chainId={chainId}` - Get filtered token list for specific chain
 - `/list/{listName}?chainId={chainId}&address={tokenAddress}` - Get token list filtered by chain and address
 
-2. Image Endpoints
+1. Image Endpoints
 
 - `/image/{chainId}` - Get network/chain images
 - `/image/{chainId}/{tokenAddress}` - Get token images
 - `/image/fallback/default/{chainId}/{tokenAddress}` - Get fallback token images
 - `/image/direct/{hash}` - Get direct image access via hash
 
-# Assets Project Functionality
+## Assets Project Functionality
 
 1. Database Operations (`/src/db`)
 
@@ -61,42 +61,42 @@ You can preview the production build with `npm run preview`.
 - Configuration management
 - Database connection handling
 
-2. Token Collection (`/src/collect`)
+1. Token Collection (`/src/collect`)
 
 - Remote token list fetching
 - ERC20 token data reading
 - Token information aggregation
 
-3. Server Components
+1. Server Components
 
 - Image handling and serving
 - Token statistics processing
 - API request handling
 
-4. Utility Functions (`/src/utils`)
+1. Utility Functions (`/src/utils`)
 
 - ERC20 contract reading
 - Token data validation
 - Network/chain utilities
 
-5. Components
+1. Components
 
 - Network token display
 - Token dashboard
 - Token statistics visualization
 - Token timeline tracking
 
-6. Hooks
+1. Hooks
 
 - `useTokenStats` - Custom hook for token statistics
 
-7. Configuration
+1. Configuration
 
 - Environment variable management
 - Docker configuration
 - Database configuration
 
-8. Features
+1. Features
 
 - Token list management
 - Token image serving and caching
@@ -117,7 +117,7 @@ The project appears to be a backend service that:
 
 Would you like me to elaborate on any specific aspect of the API or the assets project?
 
-# Token Lists Overview (144 unique lists)
+## Token Lists Overview (144 unique lists)
 
 | Name                                   | Provider                                              | Chain ID         | Type                        | Default |
 | -------------------------------------- | ----------------------------------------------------- | ---------------- | --------------------------- | ------- |

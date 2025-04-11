@@ -77,7 +77,12 @@ export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
  * 4. Enhanced testnet variant handling with clear status updates
  */
 export const collect = async () => {
-  utils.updateStatus(`🔍 [pls369] Scanning asset directory...`)
+  updateStatus({
+    provider: 'pls369',
+    message: '🔍 Scanning asset directory...',
+    phase: 'setup',
+  })
+
   const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
   const infoFiles = await walkFor(walkPath, async (file, walker) => {
     const stat = await fs.promises.stat(file)
@@ -275,5 +280,9 @@ export const collect = async () => {
     }
   }
 
-  utils.updateStatus(`✨ [pls369] Collection complete!`)
+  updateStatus({
+    provider: 'pls369',
+    message: '✨ Collection complete!',
+    phase: 'complete',
+  })
 }

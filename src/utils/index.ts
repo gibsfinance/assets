@@ -19,8 +19,7 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { Spinner } from '@topcli/spinner'
 import { Image } from 'knex/types/tables.js'
-import { imageMode } from './db/tables'
-import readline from 'node:readline'
+import { imageMode } from '@/db/tables'
 
 /**
  * @notice Failure logging system with spinner support
@@ -324,14 +323,6 @@ export const timeout = (ms: number) => {
     promise: p,
     clear: () => clearTimeout(timeoutId),
   }
-}
-
-export const updateStatus = (message: string) => {
-  // Clear the current line and move to the beginning
-  process.stdout.clearLine(0)
-  process.stdout.cursorTo(0)
-  // Write the new message
-  process.stdout.write(message)
 }
 
 export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slice(2)

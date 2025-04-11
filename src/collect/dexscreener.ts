@@ -13,6 +13,7 @@ import * as utils from '@/utils'
 import { MinimalTokenInfo, MinimalTokenInfoWithLogo } from '@/types'
 import type { Link, ListToken, Network } from 'knex/types/tables.js'
 import { failureLog } from '../utils'
+import { updateStatus } from '@/utils/status'
 
 type ChainInfo = {
   name: string
@@ -435,7 +436,12 @@ class Collector {
     const f = this.fetched.size
     const t = p + f
     const i = this.info.size
-    utils.updateStatus(`📥 dexscreener collecting ${this.chainKey} pending=${p} fetched=${f} total=${t} info=${i}`)
+    updateStatus({
+      provider: 'dexscreener',
+      message: `📥 dexscreener collecting ${this.chainKey} pending=${p} info=${i}`,
+      current: f,
+      total: t,
+    })
   }
   toTokenLists() {
     return [...this.token.values()].reduce(
@@ -496,7 +502,11 @@ export const collect = async () => {
   ;[...parsedChainInfo.keys()].forEach((key) => {
     allChainIds.add(key)
   })
-  utils.updateStatus(`dexscreener found ${allChainIds.size} chains`)
+  updateStatus({
+    provider: 'dexscreener',
+    message: `dexscreener found ${allChainIds.size} chains`,
+    phase: 'setup',
+  })
   const chainBlacklist = new Set<string>()
   for (const chainId of allChainIds.values()) {
     const chain = chainIdToChain.get(chainId)
@@ -505,7 +515,11 @@ export const collect = async () => {
       continue
     }
   }
-  utils.updateStatus(`dexscreener blacklisted ${chainBlacklist.size} chains`)
+  updateStatus({
+    provider: 'dexscreener',
+    message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
+    phase: 'setup',
+  })
   await utils.limit.map([...parsedChainInfo.entries()], async ([key, info]) => {
     const chain = chainIdToChain.get(key)
     if (!chain) {
@@ -556,7 +570,12 @@ export const collect = async () => {
       const addressToHeaderUri = new Map<string, string>(header)
       for (let i = 0; i < all.length; i++) {
         const token = all[i]
-        utils.updateStatus(`💾 [dexscreener] total=${all.length} address=${token.address} progress=${i}`)
+        updateStatus({
+          provider: 'dexscreener',
+          message: `💾 address=${token.address}`,
+          current: i,
+          total: all.length,
+        })
         const { listToken } = await db.fetchImageAndStoreForToken({
           listId: listOfAllTokens.listId,
           providerKey: provider.providerId,

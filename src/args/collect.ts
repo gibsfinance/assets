@@ -13,7 +13,7 @@ import _ from 'lodash'
 import { type Collectable, allCollectables } from '@/collect/collectables'
 import type { ImageModeParam } from '@/types'
 import { imageMode } from '@/db/tables'
-import { updateStatus } from '@/utils'
+import { updateStatus } from '@/utils/status'
 
 /**
  * @notice RPC configuration helper for chain endpoints
@@ -44,7 +44,11 @@ const rpc = (chain: string, defaultUrl?: string) => {
  * @return Parsed and validated configuration object
  */
 export const collect = _.memoize(() => {
-  updateStatus('⚙️ Parsing command line arguments...')
+  updateStatus({
+    provider: 'system',
+    message: '⚙️ Parsing command line arguments...',
+    phase: 'setup',
+  })
   const argv = parse('collect', {
     providers: {
       type: 'array',
@@ -70,9 +74,17 @@ export const collect = _.memoize(() => {
   // get rid of the circular dependency and then you can get rid of this
   const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
-    updateStatus('⚠️ Warning: saving all images - this could collect unwanted data')
+    updateStatus({
+      provider: 'system',
+      message: '⚠️ Warning: saving all images - this could collect unwanted data',
+      phase: 'setup',
+    })
   }
-  updateStatus('✨ Arguments parsed successfully!')
+  updateStatus({
+    provider: 'system',
+    message: '✨ Arguments parsed successfully!',
+    phase: 'complete',
+  })
   return {
     providers,
     mode: argv.mode as ImageModeParam,

@@ -183,7 +183,11 @@ export const collect = async () => {
           },
         }
 
-        utils.updateStatus(`💾 [internetmoney] Storing token ${processedTokens}/${totalTokens}: ${symbol}...`)
+        updateStatus({
+          provider: 'internetmoney',
+          message: `💾 Storing token ${processedTokens}/${totalTokens}: ${symbol}...`,
+          phase: 'storing',
+        })
         await db.fetchImageAndStoreForToken(
           {
             ...insertion,
@@ -202,5 +206,9 @@ export const collect = async () => {
     })
   }
 
-  utils.updateStatus(`✨ [internetmoney] Completed processing ${totalTokens} tokens!`)
+  updateStatus({
+    provider: 'internetmoney',
+    message: `✨ Completed processing ${totalTokens} tokens!`,
+    phase: 'complete',
+  })
 }

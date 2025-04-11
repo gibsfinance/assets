@@ -14,7 +14,7 @@ import * as db from '@/db'
 import * as utils from '@/utils'
 import type { List } from 'knex/types/tables'
 import * as paths from '@/paths'
-import { StatusProps } from '@/components/Status'
+import type { StatusProps } from '@/components/Status'
 import { updateStatus } from '@/utils/status'
 import { zeroAddress, getAddress, type Hex } from 'viem'
 import promiseLimit from 'promise-limit'
@@ -50,7 +50,12 @@ const filenameToListKey = (filename: string) => {
  * 5. Enhanced error handling with detailed messages
  */
 export const collect = async () => {
-  utils.updateStatus(`🔍 [smoldapp] Reading token list...`)
+  updateStatus({
+    provider: 'smoldapp',
+    message: '🔍 Reading token list...',
+    phase: 'setup',
+  })
+
   const root = path.join(paths.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
   const chainsPath = path.join(root, 'chains')
@@ -161,7 +166,11 @@ export const collect = async () => {
           )
         })
       } else {
-        utils.updateStatus(`💾 [smoldapp] Storing PNG assets for chain ${chainId}...`)
+        updateStatus({
+          provider: 'smoldapp',
+          message: `Storing PNG assets for chain ${chainId}...`,
+          phase: 'storing',
+        })
         const img = await db.fetchImage(originalUri, providerKey, chainId)
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForList(
@@ -318,10 +327,13 @@ export const collect = async () => {
         message: `Failed to process chain ${chainIdString}: ${errorMessage}`,
         current: processedChainTokens,
         total: reverseOrderTokens.length,
-        phase: 'processing',
-      } satisfies StatusProps)
+      })
     }
   }
 
-  utils.updateStatus(`✨ [smoldapp] Collection complete!`)
+  updateStatus({
+    provider: 'smoldapp',
+    message: 'Collection complete!',
+    phase: 'complete',
+  })
 }

@@ -14,8 +14,9 @@ ENV PREVENT_WRITE_MISSING=$PREVENT_WRITE_MISSING
 # RUN git clone https://github.com/gibsfinance/assets .
 # RUN git pull --recurse-submodules
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
+RUN npm i -g pnpm
 COPY package.json package.json
-COPY package-lock.json package-lock.json
+COPY pnpm-lock.yaml pnpm-lock.yaml
 COPY .gitmodules .gitmodules
 RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
@@ -24,6 +25,6 @@ COPY src src
 COPY tsconfig.json tsconfig.json
 COPY knexfile.ts knexfile.ts
 COPY config.ts config.ts
-RUN npm i
+RUN pnpm i
 
-CMD ["npm", "run", "collect"]
+CMD ["pnpm", "run", "collect"]

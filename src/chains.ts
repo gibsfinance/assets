@@ -20,7 +20,7 @@ import {
   type Chain,
 } from 'viem/chains'
 import { collect } from '@/args'
-import { updateStatus } from '@/utils'
+import { updateStatus } from '@/utils/status'
 
 /**
  * @notice Creates chain configurations with custom RPC endpoints
@@ -32,7 +32,11 @@ import { updateStatus } from '@/utils'
  * @return Object containing configured Chain instances
  */
 export default () => {
-  updateStatus('🔗 Initializing chain configurations...')
+  updateStatus({
+    provider: 'system',
+    message: '🔗 Initializing chain configurations...',
+    phase: 'setup',
+  })
   const { rpc1, rpc369, rpc56, rpc11155111, rpc943 } = collect()
 
   // Log RPC configurations
@@ -97,6 +101,12 @@ export default () => {
       },
     },
   } as Chain
+
+  updateStatus({
+    provider: 'system',
+    message: '🔗 Chain configurations initialized',
+    phase: 'complete',
+  })
 
   return {
     mainnet,

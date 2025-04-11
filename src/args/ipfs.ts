@@ -10,7 +10,7 @@
 
 import { parse } from '@/args/utils'
 import _ from 'lodash'
-import { updateStatus } from '@/utils'
+import { updateStatus } from '@/utils/status'
 
 /**
  * @notice Main collection configuration parser
@@ -22,7 +22,11 @@ import { updateStatus } from '@/utils'
  * @return Parsed and validated configuration object
  */
 export const ipfs = _.memoize(() => {
-  updateStatus('⚙️ Parsing command line arguments...')
+  updateStatus({
+    provider: 'system',
+    message: '⚙️ Parsing command line arguments...',
+    phase: 'setup',
+  })
   const argv = parse('ipfs', {
     ipfs: {
       type: 'array',
@@ -33,7 +37,11 @@ export const ipfs = _.memoize(() => {
     },
   })
 
-  updateStatus('✨ Arguments parsed successfully!')
+  updateStatus({
+    provider: 'system',
+    message: '✨ Arguments parsed successfully!',
+    phase: 'complete',
+  })
   // process.stdout.write('\n')
   return {
     ipfs: argv.ipfs,

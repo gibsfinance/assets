@@ -16,7 +16,7 @@ import { createPublicClient, Hex, http } from 'viem'
 import * as db from '@/db'
 import * as types from '@/types'
 import * as utils from '@/utils'
-import { StatusProps } from '@/components/Status'
+import type { StatusProps } from '@/components/Status'
 import * as paths from '@/paths'
 import { updateStatus } from '@/utils/status'
 
@@ -68,7 +68,11 @@ export const collect = async () => {
     }
   }
 
-  utils.updateStatus(`✨ [${providerKey}] Collection complete!`)
+  updateStatus({
+    provider: providerKey,
+    message: 'Collection complete!',
+    phase: 'complete',
+  })
 }
 
 /**
