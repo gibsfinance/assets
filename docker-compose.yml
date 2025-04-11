@@ -20,7 +20,7 @@ services:
   gibassets-postgres-migrate:
     container_name: gibassets-postgres-migrate
     image: gibsfinance/assets:latest
-    command: sh -cx "pnpm run db:migrate-latest && pnpm run db:seed"
+    command: sh -cx "npm run db:migrate-latest && npm run db:seed"
     networks:
       - gibassets
     environment:
@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    command: ['pnpm', 'run', 'collect']
+    command: ['npm', 'run', 'collect']
     volumes:
       - ./missing:/usr/src/app/missing
       - ./src:/usr/src/app/src
@@ -51,7 +51,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ['pnpm', 'run', 'server']
+    command: ['npm', 'run', 'server']
     volumes:
       - ./src:/usr/src/app/src
     networks:

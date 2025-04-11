@@ -9,10 +9,9 @@ ARG ROOT_URI
 ENV ROOT_URI=$ROOT_URI
 
 FROM base AS build
-COPY pnpm-lock.yaml /usr/src/app/pnpm-lock.yaml
+COPY package-lock.json /usr/src/app/package-lock.json
 COPY package.json /usr/src/app/package.json
-RUN npm i -g pnpm
-RUN pnpm i
+RUN npm i
 
 COPY src /usr/src/app/src
 COPY config.ts /usr/src/app/config.ts
@@ -23,4 +22,4 @@ COPY .prettierrc /usr/src/app/.prettierrc
 
 COPY ./config.ts /usr/src/app/config.ts
 
-CMD ["pnpm", "run", "serve"]
+CMD ["npm", "run", "serve"]

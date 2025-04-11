@@ -21,7 +21,7 @@ cp .env.example .env
 3. Run the setup script:
 
 ```sh
-pnpm run setup
+npm run setup
 ```
 
 This will:
