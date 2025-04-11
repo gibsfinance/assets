@@ -23,6 +23,9 @@ export const respondWithList = async (
   if (extensions.has('bridgeInfo')) {
     q = db.addBridgeExtensions(q)
   }
+  if (extensions.has('headerUri')) {
+    q = db.addHeaderUriExtension(q)
+  }
   const tokens = await q
   // could possibly be turned into a query
   const tkns = normalizeTokens(tokens, filters, extensions)
@@ -46,7 +49,8 @@ export const normalizeTokens = (
 ): TokenEntryMetadataOptional[] => {
   const over = _.overEvery(filters)
   const bridgeInfoExtension = extensions.has('bridgeInfo')
-  const showExtensions = bridgeInfoExtension
+  const headerUriExtension = extensions.has('headerUri')
+  const showExtensions = bridgeInfoExtension || headerUriExtension
   return [
     ..._(tokens)
       .filter((a) => over(a))
@@ -89,6 +93,12 @@ export const normalizeTokens = (
                       : tkn.bridge.foreignAddress) as viem.Hex,
                   }
                 }
+              }
+              if (headerUriExtension) {
+                ext.headerUri = utils.directUri({
+                  ...tkn,
+                  imageHash: tkn.headerImageHash,
+                })
               }
               return ext
             },

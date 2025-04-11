@@ -81,9 +81,8 @@ export const main = async (providers: Collectable[]) => {
           results.successful.push(provider)
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
-          utils.updateStatus(`❌ [${index + 1}/${providers.length}] Failed collecting from ${provider}`)
-          // process.stdout.write('\n')
           dbg(`  Error: ${errorMessage}`)
+          utils.updateStatus(`❌ [${index + 1}/${providers.length}] Failed collecting from ${provider}`)
           results.failed.push({ provider, error: errorMessage })
         }
       }),

@@ -11,6 +11,7 @@
 import * as path from 'path'
 import * as viem from 'viem'
 import * as fs from 'fs'
+import * as paths from '@/paths'
 import * as utils from '@/utils'
 import _ from 'lodash'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
@@ -75,7 +76,7 @@ export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
  */
 export const collect = async () => {
   utils.updateStatus(`🔍 [pls369] Scanning asset directory...`)
-  const walkPath = path.join(utils.root, 'submodules', 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
+  const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
   const infoFiles = await walkFor(walkPath, async (file, walker) => {
     const stat = await fs.promises.stat(file)
     if (stat.isDirectory()) {
@@ -89,8 +90,8 @@ export const collect = async () => {
     return []
   })
 
-  const paths = infoFiles.map((file) => file.split(`${walkPath}`).join(''))
-  const pieces = _(paths)
+  const infoPaths = infoFiles.map((file) => file.split(`${walkPath}`).join(''))
+  const pieces = _(infoPaths)
     .map((p) => {
       const addr = p.slice(1, 43)
       if (addr !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
@@ -200,7 +201,7 @@ export const collect = async () => {
       })
 
       await db.fetchImageAndStoreForNetwork({
-        chainId: pulsechainV4.id,
+        network,
         uri: path,
         originalUri: path,
         providerKey: provider.key,

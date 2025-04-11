@@ -54,7 +54,6 @@ export default () => {
       },
     },
   } as Chain
-  updateStatus('⚡ Configured Ethereum mainnet...')
 
   const pulsechain = {
     ...viemPulsechain,
@@ -66,7 +65,6 @@ export default () => {
       },
     },
   } as Chain
-  updateStatus('⚡ Configured PulseChain...')
 
   const bsc = {
     ...viemBSC,
@@ -78,7 +76,6 @@ export default () => {
       },
     },
   } as Chain
-  updateStatus('⚡ Configured BSC...')
 
   const sepolia = {
     ...viemSepolia,
@@ -100,8 +97,6 @@ export default () => {
       },
     },
   } as Chain
-  updateStatus('✨ Chain configuration complete!')
-  // process.stdout.write('\n')
 
   return {
     mainnet,

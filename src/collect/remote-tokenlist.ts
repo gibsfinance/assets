@@ -117,7 +117,7 @@ export const collect =
                 updateStatus(`🖼️  [${providerKey}] Storing network image for ${chain.name}...`)
                 await db.fetchImageAndStoreForNetwork(
                   {
-                    chainId: item.network.id,
+                    network,
                     uri: image,
                     originalUri: item.logoURI,
                     providerKey,

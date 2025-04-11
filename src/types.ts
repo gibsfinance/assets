@@ -12,6 +12,7 @@ export type PerNetworkBridgeLink = {
   destinationBridgeAddress: viem.Hex
 }
 export type Extensions = {
+  headerUri?: string
   bridgeInfo?: Record<number, PerNetworkBridgeLink>
 }
 
@@ -30,11 +31,15 @@ export type TokenEntry = SansMetadataTokenEntry & {
 
 export type TokenEntryMetadataOptional = SansMetadataTokenEntry | TokenEntry
 
-export type InternetMoneyToken = {
+export type MinimalTokenInfo = {
   address: string
-  icon: string
+  name: string
   symbol: string
   decimals: number
+}
+
+export type MinimalTokenInfoWithLogo = MinimalTokenInfo & {
+  logoURI?: string | null
 }
 
 export type InternetMoneyNetwork = {
@@ -48,7 +53,7 @@ export type InternetMoneyNetwork = {
   testnet: number
   rpc: string
   icon: string
-  tokens: InternetMoneyToken[]
+  tokens: MinimalTokenInfo[]
 }
 
 export type TokenListVersion = {
@@ -75,13 +80,22 @@ export type Call = {
 
 export type ChainId = number | bigint | viem.Hex
 
+export type BridgeLinkInfo = {
+  bridge: Bridge
+  bridgeLink: BridgeLink
+  networkA: Network
+  networkB: Network
+  nativeToken: Token
+  bridgedToken: Token
+}
+
+export type HeaderUriInfo = {
+  headerImageHash: string
+  headerListTokenId: string
+}
+
 export type TokenInfo = Network &
   Token &
-  Image & {
-    bridge: Bridge
-    bridgeLink: BridgeLink
-    networkA: Network
-    networkB: Network
-    nativeToken: Token
-    bridgedToken: Token
-  }
+  Image &
+  BridgeLinkInfo &
+  HeaderUriInfo

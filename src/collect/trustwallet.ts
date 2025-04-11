@@ -16,10 +16,11 @@ import * as utils from '@/utils'
 import * as types from '@/types'
 import * as viem from 'viem'
 import { Image } from 'knex/types/tables'
+import * as paths from '@/paths'
 
 const providerKey = 'trustwallet'
 
-const blockchainsRoot = path.join(utils.root, 'submodules', 'trustwallet', 'blockchains')
+const blockchainsRoot = path.join(paths.submodules, 'trustwallet', 'blockchains')
 const assetsFolder = 'assets'
 
 /**

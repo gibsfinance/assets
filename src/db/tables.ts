@@ -15,6 +15,7 @@ export const tableNames = {
   listOrderItem: 'list_order_item',
   bridge: 'bridge',
   bridgeLink: 'bridge_link',
+  headerLink: 'header_link',
 } as const
 
 const tn = Object.values(tableNames)

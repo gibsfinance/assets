@@ -89,7 +89,7 @@ export const collect = async () => {
     processedChains++
     utils.updateStatus(`⚡ [smoldapp] Processing chain ${processedChains}/${chains.length}: ${chainId}...`)
 
-    await db.insertNetworkFromChainId(+chainId)
+    const network = await db.insertNetworkFromChainId(+chainId)
     const chainFolder = path.join(chainsPath, chainId)
     const folders = await utils.folderContents(chainFolder)
 
@@ -111,7 +111,7 @@ export const collect = async () => {
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForNetwork(
             {
-              chainId: +chainId,
+              network,
               uri: originalUri,
               originalUri,
               providerKey,

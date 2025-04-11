@@ -1,6 +1,7 @@
 import knex, { type Knex } from 'knex'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as paths from '../paths'
 import * as types from '../types'
 import * as viem from 'viem'
 import { config } from './config'
@@ -27,6 +28,8 @@ import type {
   Bridge,
   InsertableBridgeLink,
   BridgeLink,
+  InsertableHeaderLink,
+  HeaderLink,
 } from 'knex/types/tables'
 import { fetch } from '@/fetch'
 import _ from 'lodash'
@@ -113,7 +116,7 @@ const missingInfoPath = ({
   listId: string | null
 }) => {
   const hash = imageHash || viem.keccak256(viem.toBytes(originalUri)).slice(2)
-  return path.join(utils.root, 'missing', providerKey, `${listId}`, hash)
+  return path.join(paths.root, 'missing', providerKey, `${listId}`, hash)
 }
 
 const limit1 = promiseLimit(1)
@@ -258,7 +261,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   if (!url) {
     return null
   }
-  if (url.startsWith(utils.submodules)) {
+  if (url.startsWith(paths.submodules)) {
     return fs.promises.readFile(url).catch(() => {
       utils.failureLog('read file failed %o -> %o', providerKey, address, url, address)
       return null
@@ -335,6 +338,8 @@ export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'e
   }
   throw lastError
 }
+
+export const getNetworks = (t: Tx = db) => t.from(tableNames.network).select('*')
 
 export const insertToken = async (token: InsertableToken, t: Tx = db) => {
   const [inserted] = await t
@@ -457,12 +462,12 @@ export const getListFromId = (listId: string, t: Tx = db) =>
 
 export const fetchImageAndStoreForNetwork = async (
   {
-    chainId,
+    network,
     uri,
     originalUri,
     providerKey,
   }: {
-    chainId: number
+    network: Network
     uri: string | Buffer
     originalUri: string
     providerKey: string
@@ -472,40 +477,86 @@ export const fetchImageAndStoreForNetwork = async (
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
-  const image = await fetchImage(uri, providerKey, `chain-id:${chainId}`)
+  const image = await fetchImage(uri, providerKey, `chain-id:${network.chainId}`)
   if (!image) {
     utils.failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
-      listId: `${chainId}`,
+      listId: `${network.chainId}`,
     })
     return
   }
   return t.transaction(async (tx) => {
-    await insertNetworkFromChainId(chainId, undefined, tx)
     const img = await insertImage(
       {
         originalUri,
         image,
         providerKey,
-        listId: `${chainId}`,
+        listId: `${network.chainId}`,
       },
       tx,
     )
     if (!img) {
       return
     }
-    const [network] = await tx
+    const [ntwrk] = await tx
       .from(tableNames.network)
       .update('imageHash', img.image.imageHash)
-      .where('chainId', chainId)
+      .where('networkId', network.networkId)
       .returning<Network[]>('*')
     return {
-      network,
+      network: ntwrk,
       ...img,
     }
   })
+}
+
+export const fetchAndInsertHeader = async (
+  header: {
+    providerKey: string
+    listTokenId: string
+    uri: string | Buffer
+    originalUri: string
+  },
+  t: Tx = db,
+) => {
+  const image = await fetchImage(header.uri, header.providerKey, header.listTokenId)
+  if (!image) {
+    return
+  }
+  await t.transaction(async (tx) => {
+    const result = await insertImage(
+      {
+        providerKey: header.providerKey,
+        originalUri: header.originalUri,
+        image,
+        listId: header.listTokenId,
+      },
+      t,
+    )
+    if (!result) {
+      return
+    }
+    const { image: img } = result
+    const [inserted] = await insertHeaderLink(
+      {
+        listTokenId: header.listTokenId,
+        imageHash: img.imageHash,
+      },
+      tx,
+    )
+    return inserted
+  })
+}
+
+export const insertHeaderLink = async (header: InsertableHeaderLink, t: Tx = db) => {
+  return await t
+    .from(tableNames.headerLink)
+    .insert(header)
+    .onConflict(['listTokenId'])
+    .merge(['listTokenId'])
+    .returning<HeaderLink[]>('*')
 }
 
 export const fetchImageAndStoreForToken = async (
@@ -517,7 +568,12 @@ export const fetchImageAndStoreForToken = async (
     providerKey: string
   },
   t: Tx = db,
-) => {
+): Promise<{
+  token: Token
+  listToken: ListToken
+  link?: Link
+  image?: Image
+}> => {
   const { listId, uri, token, providerKey } = inputs
   let { originalUri } = inputs
   if (!originalUri && _.isString(uri)) {
@@ -527,6 +583,22 @@ export const fetchImageAndStoreForToken = async (
   if (viem.isAddress(providedId)) {
     providedId = viem.getAddress(token.providedId)
   }
+  const getListToken = async (tokenId: string, imageHash: string) =>
+    await t(tableNames.listToken)
+      .select<ListToken>(`${tableNames.listToken}.*`)
+      .join(tableNames.token, {
+        [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
+      })
+      .where({
+        [`${tableNames.token}.networkId`]: token.networkId,
+        [`${tableNames.token}.providedId`]: token.providedId,
+      })
+      .where({
+        listId,
+        imageHash,
+        [`${tableNames.listToken}.tokenId`]: tokenId,
+      })
+      .first<ListToken>()
   if (_.isString(uri)) {
     const existing = await getImageFromLink(uri, t)
     if (existing) {
@@ -542,22 +614,10 @@ export const fetchImageAndStoreForToken = async (
         return {
           ...existing,
           token: insertedToken,
+          listToken: await getListToken(insertedToken.tokenId, existing.image.imageHash),
         }
       }
-      const listToken = await t(tableNames.listToken)
-        .select<ListToken>(`${tableNames.listToken}.*`)
-        .join(tableNames.token, {
-          [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
-        })
-        .where({
-          [`${tableNames.token}.networkId`]: token.networkId,
-          [`${tableNames.token}.providedId`]: token.providedId,
-        })
-        .where({
-          listId,
-          imageHash: existing.image.imageHash,
-        })
-        .first<ListToken>()
+      const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
       if (listToken) {
         return {
           ...existing,
@@ -599,12 +659,13 @@ export const fetchImageAndStoreForToken = async (
     t,
   )
   if (!listId) {
-    return {
-      token: insertedToken,
-      ...img,
-    }
+    throw new Error('listId is required')
+    // return {
+    //   token: insertedToken,
+    //   ...img,
+    // }
   }
-  const listToken = await insertListToken(
+  const [listToken] = await insertListToken(
     {
       tokenId: insertedToken.tokenId,
       listId,
@@ -737,6 +798,17 @@ export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
       .orderBy('minor', 'desc')
       .orderBy('patch', 'desc')
   )
+}
+
+export const addHeaderUriExtension = (q: Knex.QueryBuilder) => {
+  return q
+    .fullOuterJoin(tableNames.headerLink, {
+      [`${tableNames.headerLink}.listTokenId`]: `${tableNames.listToken}.listTokenId`,
+    })
+    .select([
+      `${tableNames.headerLink}.list_token_id as header_list_token_id`,
+      `${tableNames.headerLink}.image_hash as header_image_hash`,
+    ])
 }
 
 export const addBridgeExtensions = (q: Knex.QueryBuilder) => {

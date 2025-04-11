@@ -35,6 +35,7 @@ import * as baofinance from './baofinance'
 import * as compound from './compound'
 import * as optimism from './optimism'
 import * as pumptires from './pumptires'
+import * as dexscreener from './dexscreener'
 import _ from 'lodash'
 
 /**
@@ -56,6 +57,7 @@ export const allCollectables = () => {
 export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
+    dexscreener: dexscreener.collect,
     pulsechain: pulsechainCollector.collect,
     trustwallet: trustwallet.collect,
     'uniswap-tokenlists': uniswapTokenlists.collect,

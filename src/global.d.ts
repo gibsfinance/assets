@@ -144,6 +144,11 @@ declare module 'knex/types/tables.js' {
     transactionHash: string
   }
   interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> {}
+  interface HeaderLink extends Timestamped {
+    listTokenId: string
+    imageHash: string
+  }
+  interface InsertableHeaderLink extends Omit<HeaderLink, TimestampKeys> {}
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network
@@ -156,5 +161,6 @@ declare module 'knex/types/tables.js' {
     [tableNames.listToken]: ListToken
     [tableNames.bridge]: Bridge
     [tableNames.bridgeLink]: BridgeLink
+    [tableNames.headerLink]: HeaderLink
   }
 }

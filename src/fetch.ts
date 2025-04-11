@@ -1,6 +1,6 @@
-import * as utils from './utils'
+import * as utils from '@/utils'
 import promiseLimit from 'promise-limit'
-import { collect } from '@/args'
+import { ipfs } from '@/args/ipfs'
 
 const controllers: [NodeJS.Timeout, AbortController][] = []
 
@@ -15,6 +15,21 @@ export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> 
   return utils.limitBy<Response>(url.host)
 }
 
+export const limitByTime = (ms: number) => {
+  let last = 0
+  const limiter = promiseLimit(1)
+  return async () => {
+    return limiter(async () => {
+      const now = Date.now()
+      const waitTime = last + ms - now
+      if (waitTime > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+      }
+      last = Date.now()
+    })
+  }
+}
+
 const userAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
@@ -22,7 +37,7 @@ const ipfsCompatableFetch = async (url: URL, options: Parameters<typeof fetch>[1
   const limiter = getLimiter(url)
   return await limiter(async () => {
     const controller = new AbortController()
-    const timeout = utils.timeout(3_000)
+    const timeout = utils.timeout(10_000)
     timeout.promise.then(() => {
       console.log('timeout %o', url.href)
       controller.abort()
@@ -47,7 +62,7 @@ export const urlToPossibleLocations = (url: string | URL) => {
   url = new URL(url as string | URL)
   if (url.protocol === 'ipfs:') {
     const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : `${url.host}${url.pathname}`
-    const ipfsDomains = collect().ipfs
+    const ipfsDomains = ipfs().ipfs
     // load balance across ipfs domains
     for (const domain of ipfsDomains) {
       urls.push(new URL(`${domain}${cid}`))
