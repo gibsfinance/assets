@@ -1,22 +1,24 @@
 import { exportImage } from '@/args'
-import * as utils from '@/utils'
+// import * as utils from '@/utils'
+import * as paths from '@/paths'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as db from '@/db'
 import { cleanup } from '@/cleanup'
 import { tableNames } from '@/db/tables'
 import { Image, List, ListToken, Network, Provider, Token } from 'knex/types/tables'
+import { failureLog } from '@gibs/utils/log'
 
 main()
   .then(cleanup)
   .catch((err) => {
-    utils.failureLog(err)
+    failureLog(err)
     return cleanup()
   })
 
 async function main() {
   const { token, chainId } = exportImage()
-  const imgExportDir = path.join(utils.root, 'image-export')
+  const imgExportDir = path.join(paths.root, 'image-export')
   await fs.promises.rm(imgExportDir, {
     force: true,
     recursive: true,

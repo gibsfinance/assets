@@ -4,10 +4,13 @@ import * as fs from 'fs'
 import _ from 'lodash'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as paths from '@/paths'
-import * as utils from '@/utils'
+import { erc20Read } from '@gibs/utils'
 import * as db from '@/db'
 import promiseLimit from 'promise-limit'
+import { chainToPublicClient, terminal } from '@/utils'
+import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
 
+const providerKey = 'pls369'
 /**
  * Configuration for mainnet and testnet token collection
  */
@@ -61,6 +64,11 @@ export const collect = async () => {
   //   message: '🔍 Scanning asset directory...',
   //   phase: 'setup',
   // })
+  const row = terminal.issue({
+    id: providerKey,
+    type: terminalRowTypes.SETUP,
+    message: 'Scanning asset directory...',
+  })
 
   const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
   const infoFiles = await walkFor(walkPath, async (file, walker) => {
@@ -98,16 +106,19 @@ export const collect = async () => {
   //   message: `Found ${pieces.length} valid assets to process`,
   //   phase: 'setup',
   // } satisfies StatusProps)
-
+  row.update({
+    message: 'inserting provider',
+  })
   const [provider] = await db.insertProvider({
     key: 'pls369',
     name: 'PLS369',
     description: 'a grass roots list curated by pulsechain users',
   })
 
-  let configIndex = 0
+  // let configIndex = 0
+  row.createCounter(terminalCounterTypes.NETWORK, configs.length)
   for (const { list, chain, fetchConfig } of configs) {
-    configIndex++
+    // configIndex++
     // updateStatus({
     //   provider: 'pls369',
     //   message: `Processing config for chain ${chain.id} (${list.name})`,
@@ -116,10 +127,7 @@ export const collect = async () => {
     //   phase: 'processing',
     // } satisfies StatusProps)
 
-    const client = viem.createClient({
-      chain: chain,
-      transport: viem.http(),
-    })
+    const client = chainToPublicClient(chain)
     const network = await db.insertNetworkFromChainId(chain.id)
     const [dbList] = await db.insertList({
       providerId: provider.providerId,
@@ -127,9 +135,10 @@ export const collect = async () => {
       ...list,
     })
 
-    let processedPieces = 0
+    // let processedPieces = 0
+    row.createCounter(terminalCounterTypes.TOKEN, pieces.length)
     for (const piece of pieces) {
-      processedPieces++
+      row.increment(terminalCounterTypes.TOKEN)
       // updateStatus({
       //   provider: 'pls369',
       //   message: `Processing token at ${piece.address}`,
@@ -138,7 +147,7 @@ export const collect = async () => {
       //   phase: 'processing',
       // } satisfies StatusProps)
 
-      const response = await utils.erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
+      const response = await erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
 
       if (!response) {
         // updateStatus({
@@ -257,6 +266,7 @@ export const collect = async () => {
         providerKey: provider.key,
       })
     }
+    row.increment(terminalCounterTypes.NETWORK)
   }
 
   // updateStatus({

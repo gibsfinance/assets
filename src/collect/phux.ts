@@ -10,7 +10,12 @@ export const collect = async () => {
         token.logoURI = `${domain}${token.logoURI}`
       }
     })
-    return await inmemoryTokenlist.collect('phux', 'exchange', l)
+    return await inmemoryTokenlist.collect({
+      providerKey: 'phux',
+      listKey: 'exchange',
+      tokenList: l,
+      isDefault: true,
+    })
   }
   throw new Error('should never get here')
 }

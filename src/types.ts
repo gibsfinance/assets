@@ -1,6 +1,7 @@
 import type { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
 import type { ImageMode } from '@/db/tables'
-import type { Hex, Abi } from 'viem'
+import type { Hex } from 'viem'
+import { MinimalTokenInfo } from '@gibs/utils'
 
 export type Todo = () => Promise<void>
 
@@ -31,17 +32,6 @@ export type TokenEntry = SansMetadataTokenEntry & {
 
 export type TokenEntryMetadataOptional = SansMetadataTokenEntry | TokenEntry
 
-export type MinimalTokenInfo = {
-  address: string
-  name: string
-  symbol: string
-  decimals: number
-}
-
-export type MinimalTokenInfoWithLogo = MinimalTokenInfo & {
-  logoURI?: string | null
-}
-
 export type InternetMoneyNetwork = {
   txnType: number
   graceBlocks: number
@@ -69,16 +59,6 @@ export type TokenList = {
   version: TokenListVersion
   tokens: TokenEntry[]
 }
-
-export type Call = {
-  allowFailure?: boolean
-  functionName: string
-  target?: Hex
-  abi?: Abi
-  args?: any[]
-}
-
-export type ChainId = number | bigint | Hex
 
 export type BridgeLinkInfo = {
   bridge: Bridge

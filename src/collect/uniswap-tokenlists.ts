@@ -4,6 +4,8 @@ import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
+import { terminalRowTypes } from '@/log/types'
+import { terminal } from '@/utils'
 
 const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 const providerKey = 'uniswap'
@@ -29,7 +31,20 @@ export const collect = async () => {
   })
 
   const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
+  const row = terminal.issue({
+    id: providerKey,
+    type: terminalRowTypes.SETUP,
+    message: 'Processing Uniswap token lists...',
+  })
+  const section = row.issue('uniswap-tokenlists', 16)
   await promiseLimit<(typeof usable)[number]>(16).map(usable, async (info) => {
+    const providerKey = `uniswap-${info.machineName}`
+    const listKey = 'hosted'
+    const id = `${providerKey}-${listKey}`
+    const task = section.task(id, {
+      type: terminalRowTypes.STORAGE,
+      id,
+    })
     if (listBlacklist.has(info.machineName)) return false
     const result = await fetch(info.uri)
       .then(async (res) => (await res.json()) as types.TokenList)
@@ -64,11 +79,15 @@ export const collect = async () => {
         token.logoURI = ''
       }
     })
-    return await inmemoryTokenlist.collect({
-      providerKey: `uniswap-${info.machineName}`,
-      listKey: 'hosted',
+    const list = await inmemoryTokenlist.collect({
+      providerKey,
+      listKey,
       tokenList: result,
+      row: task,
     })
+    task.complete()
+    task.unmount()
+    return list
   })
 
   // updateStatus({

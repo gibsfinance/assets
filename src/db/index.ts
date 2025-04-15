@@ -1,9 +1,10 @@
 import knex, { type Knex } from 'knex'
 import * as fs from 'fs'
 import * as path from 'path'
+import * as viem from 'viem'
+import { failureLog, responseToBuffer, timeout, type Timeout, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as types from '../types'
-import * as viem from 'viem'
 import { config } from './config'
 import * as fileType from 'file-type'
 import * as utils from '../utils'
@@ -164,7 +165,7 @@ const writeMissing = async ({
     await fs.promises.mkdir(folder, {
       recursive: true,
     })
-    utils.failureLog('ext missing %o %o', originalUri, folder)
+    failureLog('ext missing %o %o', originalUri, folder)
     await Promise.all([
       fs.promises.writeFile(
         path.join(folder, 'info.json'),
@@ -197,7 +198,7 @@ export const insertImage = async (
   const ext = await getExt(image, path.extname(originalUri))
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
-    utils.failureLog('no ext %o -> %o', providerKey, originalUri)
+    failureLog('no ext %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -263,18 +264,18 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   }
   if (url.startsWith(paths.submodules)) {
     return fs.promises.readFile(url).catch(() => {
-      utils.failureLog('read file failed %o -> %o', providerKey, address, url, address)
+      failureLog('read file failed %o -> %o', providerKey, address, url, address)
       return null
     })
   }
-  let innerTimeout!: utils.Timeout
-  const outerTimeout = utils.timeout(10_000)
+  let innerTimeout!: Timeout
+  const outerTimeout = timeout(10_000)
   const result = await Promise.race([
     outerTimeout.promise.then(() => null),
     fetch(url)
-      .then(utils.responseToBuffer)
+      .then(responseToBuffer)
       .catch((err: Error) => {
-        utils.failureLog('fetch failure %o -> %o', providerKey, address, url)
+        failureLog('fetch failure %o -> %o', providerKey, address, url)
         const errStr = err.toString()
         if (errStr.includes('This operation was abort')) {
           return null
@@ -282,7 +283,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
         if (errStr.includes('Invalid URL')) {
           return null
         }
-        utils.failureLog(err)
+        failureLog(err)
         return null
       }),
   ])
@@ -299,7 +300,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
  * @param type The network type (default: 'evm')
  * @param t The transaction object
  */
-export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'evm', t: Tx = db) => {
+export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t: Tx = db) => {
   // const maxRetries = 3
   // let lastError: unknown
 
@@ -430,7 +431,7 @@ export const fetchImageAndStoreForList = async (
   }
   const image = await fetchImage(uri, providerKey, `list-id:${listId}`)
   if (!image) {
-    utils.failureLog('no img %o -> %o', providerKey, originalUri)
+    failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,
@@ -483,7 +484,7 @@ export const fetchImageAndStoreForNetwork = async (
   }
   const image = await fetchImage(uri, providerKey, `chain-id:${network.chainId}`)
   if (!image) {
-    utils.failureLog('no img %o -> %o', providerKey, originalUri)
+    failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
       providerKey,
       originalUri,

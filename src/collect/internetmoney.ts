@@ -1,5 +1,7 @@
 import * as chains from 'viem/chains'
 import * as viem from 'viem'
+import { erc20Read, failureLog } from '@gibs/utils'
+
 import * as utils from '@/utils'
 import { fetch } from '@/fetch'
 import * as db from '@/db'
@@ -7,7 +9,7 @@ import { Tx } from '@/db/tables'
 import type { List, Provider } from 'knex/types/tables'
 import promiseLimit from 'promise-limit'
 import _ from 'lodash'
-import { counterTypes, rowTypes } from '@/log/types'
+import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 const CONCURRENT_TOKENS = 4 // Limit concurrent token processing
@@ -45,9 +47,8 @@ const networkToChain = (network: NetworkInfo) => {
  * Main collection function that processes Internet Money networks and tokens
  */
 export const collect = async () => {
-  const section = utils.terminal.issue(providerKey)
-  const summaryRow = section.issue({
-    type: rowTypes.SUMMARY,
+  const summaryRow = utils.terminal.issue({
+    type: terminalRowTypes.SUMMARY,
     id: providerKey,
   })
   const tasksSection = summaryRow.issue('tasks')
@@ -86,16 +87,16 @@ export const collect = async () => {
     totalTokens += network.tokens.length
   }
 
-  summaryRow.createCounter(counterTypes.NETWORK, json.length)
-  summaryRow.createCounter(counterTypes.TOKEN, totalTokens)
+  summaryRow.createCounter(terminalCounterTypes.NETWORK, json.length)
+  summaryRow.createCounter(terminalCounterTypes.TOKEN, totalTokens)
   // Process tokens in parallel with controlled concurrency
   type NetworkAndToken = [NetworkInfo, TokenInfo]
   const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
   const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
   const networkToNetworkList = await networkLimiter.map(json, async (network) => {
-    summaryRow.increment(counterTypes.NETWORK)
+    summaryRow.increment(terminalCounterTypes.NETWORK)
     const row = tasksSection.task(network.chainId.toString(), {
-      type: rowTypes.STORAGE,
+      type: terminalRowTypes.STORAGE,
       id: providerKey,
       kv: {
         chainId: network.chainId,
@@ -143,9 +144,9 @@ export const collect = async () => {
   })
 
   await limit.map(allTokens, async ([network, token]) => {
-    summaryRow.increment(counterTypes.TOKEN)
+    summaryRow.increment(terminalCounterTypes.TOKEN)
     const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
-      type: rowTypes.STORAGE,
+      type: terminalRowTypes.STORAGE,
       id: providerKey,
       kv: {
         chainId: network.chainId,
@@ -155,7 +156,7 @@ export const collect = async () => {
     const address = viem.getAddress(token.address)
     const chain = networkToChain(network)
     const client = utils.chainToPublicClient(chain)
-    const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
+    const [name, symbol, decimals] = await erc20Read(chain, client, address)
 
     const networkList = networkListByNetwork.get(network)!
     await db
@@ -193,7 +194,7 @@ export const collect = async () => {
         } else {
           row.increment('error')
         }
-        utils.failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
+        failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
       })
       .finally(() => {
         row.unmount()

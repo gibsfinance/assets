@@ -1,26 +1,25 @@
 import { Box, Text } from 'ink'
 import React from 'react'
-import type * as types from './types'
 import _ from 'lodash'
-import { logTypes } from './types'
+import * as types from './types'
 
 const emoji = {
   row: {
     summary: '🔍',
     setup: '🏗️',
     storage: '💾',
-    complete: '✨',
-  } as Record<types.RowType, string>,
+    complete: '🎉',
+  } as Record<types.TerminalRowType, string>,
   log: {
     prog: '⚡',
     warn: '⚠️',
     eror: '💥',
-  } as Record<types.LogType, string>,
+  } as Record<types.TerminalLogType, string>,
   counter: {
     token: '🪙',
     network: '💻',
     provider: '🎖️',
-  } as Record<types.CounterType, string>,
+  } as Record<types.TerminalCounterType, string>,
 } as const
 
 type Padding = {
@@ -34,8 +33,13 @@ type Padding = {
  * @returns Section component
  */
 export const Section: React.FC<types.Section & { padding: Padding }> = (props) => {
-  const toRender = [...props.rows.values()].slice(-props.limit)
-  // console.log(toRender.length, props.rows.size, props.limit)
+  const toRender = [...props.rows.values()].slice(-props.limit).sort((a, b) => {
+    const aIsComplete = a.type === types.terminalRowTypes.COMPLETE
+    const bIsComplete = b.type === types.terminalRowTypes.COMPLETE
+    if (aIsComplete && !bIsComplete) return 1
+    if (!aIsComplete && bIsComplete) return -1
+    return 0
+  })
   return (
     <Box display="flex" flexDirection="column">
       {toRender.map((row, index) => (
@@ -46,9 +50,11 @@ export const Section: React.FC<types.Section & { padding: Padding }> = (props) =
 }
 
 export const Progress: React.FC<
-  types.Counter & { total: number; progress: number; id: types.CounterType | string; isTask?: boolean }
+  types.Counter & { total: number; progress: number; id: types.TerminalCounterType | string; isTask?: boolean }
 > = (props) => {
   const progress = props.progress || undefined
+  const emojiInput = emoji.counter[props.id as types.TerminalCounterType]
+  const width = emojiInput ? 2 : undefined
   return (
     <Box width={progress ? progress * 2 + 4 : undefined} display="flex" justifyContent="flex-end">
       <Box width={progress} display="flex" justifyContent="flex-end">
@@ -59,14 +65,18 @@ export const Progress: React.FC<
         <Text dimColor={props.isTask}>{props.total}</Text>
       </Box>
       <Text dimColor={props.isTask}>=</Text>
-      <Text dimColor={props.isTask}>{emoji.counter[props.id as types.CounterType] ?? props.id}</Text>
+      <Box width={width} display="flex" justifyContent="flex-start" marginRight={1}>
+        <Text dimColor={props.isTask}>{emojiInput ?? props.id}</Text>
+      </Box>
     </Box>
   )
 }
-export const Counter: React.FC<types.Counter & { id: types.CounterType | string; isTask?: boolean }> = (props) => {
+export const Counter: React.FC<types.Counter & { id: types.TerminalCounterType | string; isTask?: boolean }> = (
+  props,
+) => {
   return (
     <Box display="flex" flexDirection="row">
-      <Text dimColor={props.isTask}>{emoji.counter[props.id as types.CounterType] ?? props.id}</Text>
+      <Text dimColor={props.isTask}>{emoji.counter[props.id as types.TerminalCounterType] ?? props.id}</Text>
       <Text dimColor={props.isTask}>=</Text>
       <Box display="flex" justifyContent="flex-end">
         <Text dimColor={props.isTask}>{props.current}</Text>
@@ -75,30 +85,38 @@ export const Counter: React.FC<types.Counter & { id: types.CounterType | string;
   )
 }
 
-export const Row: React.FC<types.Row & { padding: Padding }> = (props) => {
+export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) => {
   const kvEntries = Object.entries(props.kv ?? {})
-  const [counterEntries, logEntries] = _.partition(
+  const [logEntries, otherEntries] = _.partition(
     [...props.counters.entries()],
-    ([key]) => !logTypes[key.toUpperCase() as unknown as keyof types.LogTypes],
+    ([key]) => !!types.terminalLogTypes[key.toUpperCase() as unknown as types.TerminalLogTypeKeys],
+  )
+  const [progressEntries, counterEntries] = _.partition(
+    otherEntries,
+    ([key]) => !!types.terminalCounterTypes[key.toUpperCase() as unknown as types.TerminalCounterTypeKeys],
   )
   return (
     <Box display="flex" flexDirection="row" gap={1}>
       <Box width={2} display="flex" justifyContent="flex-end">
-        <Text dimColor={props.isTask}>{emoji.row[props.type]}</Text>
+        {props.isTask ? null : <Text dimColor={props.isTask}>{emoji.row[props.type]}</Text>}
       </Box>
       <Box minWidth={props.padding.id || undefined} display="flex" justifyContent="flex-end">
         <Text dimColor={props.isTask}>{props.id}</Text>
       </Box>
+      {progressEntries.length ? (
+        <Box display="flex" flexDirection="row" justifyContent="flex-start" gap={2}>
+          {progressEntries.map(([key, counter], index) => {
+            const progress = props.padding.progress[index]
+            return (
+              <Progress {...(counter as types.Progress)} id={key} progress={progress} key={key} isTask={props.isTask} />
+            )
+          })}
+        </Box>
+      ) : null}
       {counterEntries.length ? (
         <Box display="flex" flexDirection="row" justifyContent="flex-start" gap={2}>
-          {counterEntries.map(([key, counter], index) => {
-            const progress = props.padding.progress[index]
-            const k = `${key}-${index}`
-            return counter.total ? (
-              <Progress {...(counter as types.Progress)} id={key} progress={progress} key={k} isTask={props.isTask} />
-            ) : (
-              <Counter {...counter} id={key} key={k} isTask={props.isTask} />
-            )
+          {counterEntries.map(([key, counter]) => {
+            return <Counter {...counter} id={key} key={key} isTask={props.isTask} />
           })}
         </Box>
       ) : null}
@@ -121,7 +139,7 @@ export const Row: React.FC<types.Row & { padding: Padding }> = (props) => {
   )
 }
 
-export const RowWithSections: React.FC<types.Row> = (props) => {
+export const RowWithSections: React.FC<types.TerminalRow> = (props) => {
   const sections = props.sections ? [...props.sections.values()] : []
   const rows = sections.flatMap((section) => Array.from(section.rows.values()))
   const padding = {

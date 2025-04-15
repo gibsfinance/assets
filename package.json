@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "private": true,
   "workspaces": [
-    "frontend"
+    "frontend",
+    "packages/*"
   ],
   "scripts": {
     "setup": "docker compose build && pnpm install && pnpm run db:start && sleep 5 && pnpm run db:migrate-latest && sleep 3 && pnpm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development pnpm run collect && sleep 10 && pnpm run create-orders",
@@ -92,6 +93,8 @@
     "yargs": "^17.7.2"
   },
   "dependencies": {
+    "@gibs/utils": "workspace:*",
+    "@gibs/dexscreener": "workspace:*",
     "@types/body-parser": "^1.19.5",
     "@types/http-errors": "^2.0.4",
     "@types/react": "^18.2.66",

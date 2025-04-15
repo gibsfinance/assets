@@ -1,12 +1,11 @@
 import promiseLimit from 'promise-limit'
 import * as utils from '@/utils'
 import { type Collectable, collectables } from '@/collect/collectables'
-import { counterTypes, rowTypes } from '@/log/types'
+import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
 
 const PROVIDER_CONCURRENCY = 4
-const providerSection = utils.terminal.issue('collect')
-const progress = providerSection.issue({
-  type: rowTypes.SUMMARY,
+const progress = utils.terminal.issue({
+  type: terminalRowTypes.SUMMARY,
   id: 'collect',
 })
 /**
@@ -16,7 +15,7 @@ export const main = async (providers: Collectable[]) => {
   const c = collectables()
 
   const limit = promiseLimit<Collectable>(PROVIDER_CONCURRENCY)
-  progress.createCounter(counterTypes.PROVIDER, providers.length)
+  progress.createCounter(terminalCounterTypes.PROVIDER, providers.length)
   await limit.map(providers, async (provider) => {
     const collector = c[provider]
     if (!collector) {
@@ -32,7 +31,7 @@ export const main = async (providers: Collectable[]) => {
       }
       progress.decrement('running')
     }
-    progress.increment(counterTypes.PROVIDER)
+    progress.increment(terminalCounterTypes.PROVIDER)
   })
   progress.complete()
 }

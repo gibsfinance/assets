@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@gibs/dexscreener':
+        specifier: workspace:*
+        version: link:packages/dexscreener
+      '@gibs/utils':
+        specifier: workspace:*
+        version: link:packages/utils
       '@types/body-parser':
         specifier: ^1.19.5
         version: 1.19.5
@@ -256,6 +262,21 @@ importers:
       vite:
         specifier: ^5.0.3
         version: 5.4.18(@types/node@20.17.12)
+
+  packages/dexscreener:
+    dependencies:
+      '@gibs/utils':
+        specifier: workspace:*
+        version: link:../utils
+      dexscreener-sdk:
+        specifier: ^1.0.3
+        version: 1.0.3(debug@4.4.0)
+
+  packages/utils:
+    dependencies:
+      promise-limit:
+        specifier: ^2.7.0
+        version: 2.7.0
 
 packages:
 

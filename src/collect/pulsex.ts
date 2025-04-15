@@ -1,4 +1,5 @@
 import * as viem from 'viem'
+import { erc20Read } from '@gibs/utils'
 import * as inmemory from './inmemory-tokenlist'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as utils from '../utils'
@@ -102,7 +103,7 @@ export const collect = async () => {
     ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
       const client = utils.chainToPublicClient(chain)
       const targets = [...config.targets.values()]
-      const tokens = await Promise.all(targets.map((target) => utils.erc20Read(pulsechain, client, target)))
+      const tokens = await Promise.all(targets.map((target) => erc20Read(pulsechain, client, target)))
       const list = tokens.map(([name, symbol, decimals], index) => {
         return {
           name,

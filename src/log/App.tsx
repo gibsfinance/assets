@@ -1,8 +1,8 @@
 import * as ink from 'ink'
 import { Terminal } from './Terminal'
 import * as types from './types'
-import { counterTypes } from './types'
 import _ from 'lodash'
+import { terminalRowTypes, type TerminalSectionProxy } from './types'
 
 let terminal: ReturnType<typeof ink.render> | null = null
 let isRunning = true
@@ -72,28 +72,28 @@ export const createTerminal = () => {
     id: null,
     type: 'summary',
     lastUpdated: new Date(),
-  } as types.Row
+  } as types.TerminalRow
   globalInfo.row = row
   return readOnlyRow(globalInfo.row)
 }
 
-export const readOnlyRow = (row: types.Row) => {
+export const readOnlyRow = (row: types.TerminalRow) => {
   return {
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
-        throw new Error('section not found')
+        return null
       }
       return readOnlySection(row, section)
     },
-    update(updates: Partial<types.Row>) {
+    update(updates: Partial<types.TerminalRow>) {
       for (const [k, v] of Object.entries(updates)) {
         // @ts-expect-error
         row[k] = v
       }
       rerender()
     },
-    createCounter(key: types.CounterType, total?: number) {
+    createCounter(key: types.TerminalCounterType, total?: number) {
       const counters = (row.counters = row.counters ?? new Map())
       counters.set(key, {
         current: 0,
@@ -101,7 +101,15 @@ export const readOnlyRow = (row: types.Row) => {
       })
       rerender()
     },
-    increment(key: types.CounterType | string, amount = 1) {
+    incrementTotal(key: types.TerminalCounterType | string, amount = 1) {
+      const counter = row.counters?.get(key)
+      if (!counter) {
+        throw new Error('counter not found')
+      }
+      counter.total = (counter.total ?? 0) + amount
+      rerender()
+    },
+    increment(key: types.TerminalCounterType | string, amount = 1) {
       let counter = row.counters?.get(key)
       if (!counter) {
         counter = {
@@ -117,22 +125,22 @@ export const readOnlyRow = (row: types.Row) => {
       rerender()
       return current
     },
-    decrement(key: types.CounterType | string) {
+    decrement(key: types.TerminalCounterType | string) {
       return this.increment(key, -1)
     },
-    removeCounter(key: types.CounterType | string) {
+    removeCounter(key: types.TerminalCounterType | string) {
       row.counters?.delete(key)
       rerender()
     },
     complete() {
-      row.type = types.rowTypes.COMPLETE
+      row.type = terminalRowTypes.COMPLETE
       rerender()
     },
     remove(key: string) {
       row.sections?.delete(key)
       rerender()
     },
-    issue(id: string, limit: number = Infinity) {
+    issue(id: string, limit: number | null = null) {
       const sections = (row.sections = row.sections ?? new Map())
       const section = {
         id,
@@ -151,16 +159,16 @@ export const readOnlyRow = (row: types.Row) => {
   }
 }
 
-export const readOnlySection = (parent: types.Row, section: types.Section) => {
+export const readOnlySection = (parent: types.TerminalRow, section: types.Section): TerminalSectionProxy => {
   return {
     get(id: string) {
       const s = section.rows?.get(id)
       if (!s) {
-        throw new Error('row not found')
+        return null
       }
       return readOnlyRow(s)
     },
-    task(id: string, row: Omit<types.Row, 'isTask' | 'lastUpdated' | 'counters'>) {
+    task(id: string, row: types.TerminalTask) {
       const rows = (section.rows = section.rows ?? new Map())
       const r = {
         isTask: true,
@@ -169,12 +177,12 @@ export const readOnlySection = (parent: types.Row, section: types.Section) => {
         ...row,
       }
       rows.set(id, r)
-      readOnlyRow(parent).increment('tasks')
+      const roParent = readOnlyRow(parent)
+      roParent.increment('tasks')
       rerender()
       return {
         ...readOnlyRow(r),
         unmount: () => {
-          const roParent = readOnlyRow(parent)
           const prevVal = roParent.decrement('tasks')
           if (prevVal === 1) {
             roParent.removeCounter('tasks')
@@ -184,16 +192,16 @@ export const readOnlySection = (parent: types.Row, section: types.Section) => {
         },
       }
     },
-    issue<T extends types.RowType>(props: { type: T; id: string }) {
+    issue(props) {
       const row = {
         ...props,
         lastUpdated: new Date(),
         counters: new Map(),
-      } as types.Row
+      } as types.TerminalRow
       const rows = (section.rows = section.rows ?? new Map())
       const existing = rows.get(props.id)
       if (existing) {
-        throw new Error('duplicated row')
+        throw new Error(`duplicated row ${props.id}`)
       }
       rows.set(props.id, row)
       rerender()

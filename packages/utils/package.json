@@ -1,0 +1,24 @@
+{
+  "name": "@gibs/utils",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Utility functions for your project",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "gibs",
+  "license": "ISC",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./fetch": "./src/fetch.ts",
+    "./timeout": "./src/timeout.ts",
+    "./viem": "./src/viem.ts",
+    "./log": "./src/log.ts"
+  },
+  "dependencies": {
+    "promise-limit": "^2.7.0"
+  }
+}

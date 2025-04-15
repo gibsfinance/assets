@@ -2,31 +2,31 @@ import chains from '@/chains'
 import '@/utils'
 import * as trustwallet from './trustwallet'
 import * as pulsex from './pulsex'
-// import * as phux from './phux'
-// import * as pls369 from './pls369'
+import * as phux from './phux'
+import * as pls369 from './pls369'
 import * as internetmoney from './internetmoney'
-// import * as uniswapTokenlists from './uniswap-tokenlists'
-// import * as remoteTokenList from './remote-tokenlist'
+import * as uniswapTokenlists from './uniswap-tokenlists'
+import * as remoteTokenList from './remote-tokenlist'
 // import * as smoldapp from './smoldapp'
 // import * as omnibridge from './omnibridge'
 import * as pulsechainCollector from './pulsechain'
-// import * as nineMM from './9mm'
-// import * as levinswap from './levinswap'
-// import * as honeyswap from './honeyswap'
-// import * as pancake from './pancake'
-// import * as quickswap from './quickswap'
-// import * as roll from './roll'
-// import * as scroll from './scroll'
-// import * as set from './set'
-// import * as kleros from './kleros'
-// import * as dfyn from './dfyn'
-// import * as coingecko from './coingecko'
-// import * as uma from './uma'
-// import * as baofinance from './baofinance'
-// import * as compound from './compound'
-// import * as optimism from './optimism'
+import * as nineMM from './9mm'
+import * as levinswap from './levinswap'
+import * as honeyswap from './honeyswap'
+import * as pancake from './pancake'
+import * as quickswap from './quickswap'
+import * as roll from './roll'
+import * as scroll from './scroll'
+import * as set from './set'
+import * as kleros from './kleros'
+import * as dfyn from './dfyn'
+import * as coingecko from './coingecko'
+import * as uma from './uma'
+import * as baofinance from './baofinance'
+import * as compound from './compound'
+import * as optimism from './optimism'
 // import * as pumptires from './pumptires'
-// import * as dexscreener from './dexscreener'
+import * as dexscreener from './dexscreener'
 import _ from 'lodash'
 
 /**
@@ -42,34 +42,34 @@ export const allCollectables = () => {
 export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
-    // dexscreener: dexscreener.collect,
+    dexscreener: dexscreener.collect,
     pulsechain: pulsechainCollector.collect,
     trustwallet: trustwallet.collect,
-    // 'uniswap-tokenlists': uniswapTokenlists.collect,
-    // kleros: kleros.collect,
-    // piteas: remoteTokenList.collect({
-    //   providerKey: 'piteas',
-    //   listKey: 'exchange',
-    //   tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
-    // }),
-    // balancer: remoteTokenList.collect({
+    'uniswap-tokenlists': uniswapTokenlists.collect,
+    kleros: kleros.collect,
+    piteas: remoteTokenList.collect({
+      providerKey: 'piteas',
+      listKey: 'exchange',
+      tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
+    }),
     pulsex: pulsex.collect,
-    //   providerKey: 'balancer',
-    //   listKey: 'exchange',
-    //   tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
-    //   blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
-    // }),
+    balancer: remoteTokenList.collect({
+      providerKey: 'balancer',
+      listKey: 'exchange',
+      tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
+      blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
+    }),
     internetmoney: internetmoney.collect,
-    // phux: phux.collect,
-    // pls369: pls369.collect,
+    phux: phux.collect,
+    pls369: pls369.collect,
     // smoldapp: smoldapp.collect,
-    // levinswap: levinswap.collect,
-    // honeyswap: honeyswap.collect,
-    // pancake: pancake.collect,
-    // quickswap: quickswap.collect,
-    // roll: roll.collect,
-    // scroll: scroll.collect,
-    // set: set.collect,
+    levinswap: levinswap.collect,
+    honeyswap: honeyswap.collect,
+    pancake: pancake.collect,
+    quickswap: quickswap.collect,
+    roll: roll.collect,
+    scroll: scroll.collect,
+    set: set.collect,
     // omnibridge: omnibridge.collect([
     //   {
     //     providerPrefix: 'pulsechain',
@@ -88,13 +88,13 @@ export const collectables = _.memoize(() => {
     //     home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
     //   },
     // ]),
-    // dfyn: dfyn.collect,
-    // coingecko: coingecko.collect,
-    // '9mm': nineMM.collect,
-    // uma: uma.collect,
-    // baofinance: baofinance.collect,
-    // compound: compound.collect,
-    // optimism: optimism.collect,
+    dfyn: dfyn.collect,
+    coingecko: coingecko.collect,
+    '9mm': nineMM.collect,
+    uma: uma.collect,
+    baofinance: baofinance.collect,
+    compound: compound.collect,
+    optimism: optimism.collect,
     // pumptires: pumptires.collect,
   }
 })
