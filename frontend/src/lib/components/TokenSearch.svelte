@@ -1,23 +1,72 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
-  import type { NetworkInfo } from '$lib/types'
+  import _ from 'lodash'
+  import promiseLimit from 'promise-limit'
+  import type { FormEventHandler } from 'svelte/elements'
+
   import { getApiUrl } from '$lib/utils'
-  import { metrics } from '$lib/stores/metrics'
+  import { metrics } from '$lib/stores/metrics.svelte'
+  import type { ListDescription, SearchUpdate, Token } from '$lib/types'
+  import TokenListFilter from './TokenListFilter.svelte'
 
-  export let searchQuery = ''
-  export let isGlobalSearchActive = false
-  export let isSearching = false
-  export let selectedChain: number | null | undefined = undefined
+  type SearchUpdateExtension = Partial<SearchUpdate>
+  type Props = {
+    onsearchupdate: (state: SearchUpdate) => void
+    count: number
+    networkName: string
+    // filter props
+    selectedChain: number | null
+    onupdateopen: (open: boolean) => void
+    ontogglelist: (listId: string, enabled: boolean) => void
+    ontoggleall: (enabled: boolean) => void
+  }
 
-  const dispatch = createEventDispatcher<{
-    search: { query: string }
-    globalSearch: { query: string }
-    updateResults: { tokens: any[] }
-  }>()
+  const {
+    onsearchupdate,
+    count,
+    networkName,
+    // filter props
+    selectedChain,
+    onupdateopen,
+    ontoggleall,
+    ontogglelist,
+  }: Props = $props()
+
+  let isSearching = $state(false)
+  let isGlobalSearching = $state(false)
+  let query = $state('')
 
   let searchAbortController: AbortController | null = null
 
-  async function performGlobalSearch() {
+  const updateOutside = (update?: SearchUpdateExtension) => {
+    onsearchupdate({
+      query,
+      isSearching,
+      isGlobalSearching,
+      tokens: [],
+      isError: false,
+      ...update,
+    })
+  }
+
+  const limiter = promiseLimit<ListDescription>(4)
+
+  const sortAndUpdateOutside = (globalSearchResults: Token[]) => {
+    // Remove duplicates and update results
+    const tokens = _.uniqBy(globalSearchResults, (t) => `${t.chainId}-${t.address.toLowerCase()}`)
+
+    // Sort results
+    tokens.sort((a, b) => {
+      // Ethereum chain first
+      if (a.chainId.toString() === '1' && b.chainId.toString() !== '1') return -1
+      if (a.chainId.toString() !== '1' && b.chainId.toString() === '1') return 1
+      // Then by name
+      return a.name.localeCompare(b.name)
+    })
+
+    updateOutside({ tokens })
+  }
+
+  const performGlobalSearch = async () => {
     // Cancel any previous ongoing search
     if (searchAbortController) {
       searchAbortController.abort()
@@ -25,22 +74,24 @@
     // Create new abort controller for this search
     searchAbortController = new AbortController()
 
-    isGlobalSearchActive = true
+    isGlobalSearching = true
     isSearching = true
-    dispatch('updateResults', { tokens: [] })
-    const searchTerm = searchQuery.toLowerCase()
+    updateOutside({ tokens: [] })
+    const searchTerm = query.toLowerCase()
 
+    let globalSearchResults: Token[] = []
     try {
       // Split lists into global and chain-specific
       const response = await fetch(getApiUrl('/list'))
-      if (!response.ok) return
+      if (!response.ok) {
+        updateOutside({ isError: true })
+        return
+      }
 
-      const availableLists = await response.json()
-      const globalLists = availableLists.filter((list: any) => list.chainId === '0')
-      const chainSpecificLists = availableLists.filter((list: any) => list.chainId !== '0')
-
-      console.log('Starting global search')
-      let globalSearchResults: any[] = []
+      const lists = (await response.json()) as ListDescription[]
+      const availableLists = lists.filter((list) => list.chainType === 'evm')
+      const globalLists = availableLists.filter((list) => list.chainId === '0')
+      const chainSpecificLists = availableLists.filter((list) => list.chainId !== '0')
 
       // First, fetch all global lists (these contain tokens for all chains)
       for (const list of globalLists) {
@@ -67,8 +118,8 @@
                   sourceList: `${list.providerKey}/${list.key}`,
                   isBridgeToken: list.providerKey.includes('bridge'),
                   chainName:
-                    $metrics?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())?.name ||
-                    `Chain ${token.chainId}`,
+                    metrics.value?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())
+                      ?.name || `Chain ${token.chainId}`,
                 }))
 
               if (matchingTokens.length > 0) {
@@ -83,44 +134,50 @@
           }
           console.error(`Error searching global list ${list.providerKey}/${list.key}:`, error)
         }
+        updateOutside({ tokens: globalSearchResults })
       }
 
       // Then, fetch chain-specific lists
-      for (const list of chainSpecificLists) {
+      // for (const list of chainSpecificLists) {
+      await limiter.map(chainSpecificLists, async (list: ListDescription) => {
+        if (!searchAbortController) {
+          return
+        }
         try {
           const url = getApiUrl(`/list/${list.providerKey}/${list.key}`)
           console.log('Fetching chain-specific list:', url)
           const response = await fetch(url, {
-            signal: searchAbortController.signal,
+            signal: searchAbortController!.signal,
           })
 
-          if (response.ok) {
-            const data = await response.json()
-            if (data?.tokens && Array.isArray(data.tokens)) {
-              const matchingTokens = data.tokens
-                .filter(
-                  (token: any) =>
-                    token.name.toLowerCase().includes(searchTerm) ||
-                    token.symbol.toLowerCase().includes(searchTerm) ||
-                    token.address.toLowerCase().includes(searchTerm),
-                )
-                .map((token: any) => ({
-                  ...token,
-                  hasIcon: true,
-                  sourceList: `${list.providerKey}/${list.key}`,
-                  isBridgeToken: list.providerKey.includes('bridge'),
-                  chainName:
-                    $metrics?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())?.name ||
-                    `Chain ${token.chainId}`,
-                }))
+          if (!response.ok) {
+            return
+          }
 
-              if (matchingTokens.length > 0) {
-                globalSearchResults = [...globalSearchResults, ...matchingTokens]
-              }
-            }
-          } else if (response.status === 404) {
-            // Silently skip 404s - this is normal as not all chains have all lists
-            continue
+          const data = (await response.json()) as { tokens: Token[] }
+          const tokens = data?.tokens && Array.isArray(data.tokens) && data.tokens
+          if (!tokens) {
+            return
+          }
+          const matchingTokens = tokens
+            .filter(
+              (token) =>
+                token.name.toLowerCase().includes(searchTerm) ||
+                token.symbol.toLowerCase().includes(searchTerm) ||
+                token.address.toLowerCase().includes(searchTerm),
+            )
+            .map((token) => ({
+              ...token,
+              hasIcon: true,
+              sourceList: `${list.providerKey}/${list.key}`,
+              isBridgeToken: list.providerKey.includes('bridge'),
+              chainName:
+                metrics.value?.networks.supported.find((n) => n.chainId.toString() === token.chainId.toString())
+                  ?.name || `Chain ${token.chainId}`,
+            }))
+
+          if (matchingTokens.length > 0) {
+            globalSearchResults = [...globalSearchResults, ...matchingTokens]
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
@@ -130,27 +187,11 @@
           // Only log non-404 errors
           if (error instanceof Error && !error.message.includes('404')) {
             console.error(`Error searching chain-specific list ${list.providerKey}/${list.key}:`, error)
+            return
           }
         }
-      }
-
-      // Remove duplicates and update results
-      globalSearchResults = Array.from(
-        new Map(
-          globalSearchResults.map((token) => [`${token.chainId}-${token.address.toLowerCase()}`, token]),
-        ).values(),
-      )
-
-      // Sort results
-      globalSearchResults.sort((a, b) => {
-        // Ethereum chain first
-        if (a.chainId.toString() === '1' && b.chainId.toString() !== '1') return -1
-        if (a.chainId.toString() !== '1' && b.chainId.toString() === '1') return 1
-        // Then by name
-        return a.name.localeCompare(b.name)
+        sortAndUpdateOutside(globalSearchResults)
       })
-
-      dispatch('updateResults', { tokens: globalSearchResults })
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
         console.error('Global search error:', error)
@@ -158,28 +199,40 @@
     } finally {
       isSearching = false
     }
+    updateOutside({
+      tokens: globalSearchResults,
+    })
   }
 
-  function handleInput() {
-    if (!isGlobalSearchActive) {
-      dispatch('search', { query: searchQuery })
-    }
+  const handleInput: FormEventHandler<HTMLInputElement> = (e) => {
+    if (isGlobalSearching) return
+    query = e.currentTarget.value
+    updateOutside()
   }
 </script>
 
 <div class="flex flex-col gap-2 sm:flex-row">
   <!-- Search bar -->
-  <div class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto] rounded-container-token">
+  <div
+    class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto] rounded-t-lg rounded-b-none flex flex-row">
     <div class="input-group-shim">
       <i class="fas fa-search"></i>
     </div>
-    <input type="search" placeholder="Search tokens..." class="input" bind:value={searchQuery} on:input={handleInput} />
-    <button class="input-group-shim variant-soft-primary btn" on:click={performGlobalSearch} disabled={!searchQuery}>
+    <input
+      type="search"
+      placeholder="Search {count} tokens on {networkName}..."
+      class="input"
+      value={query}
+      oninput={handleInput} />
+    <TokenListFilter {selectedChain} {ontoggleall} {ontogglelist} {onupdateopen} />
+    <button
+      class="input-group-shim variant-soft-primary flex gap-2"
+      type="button"
+      onclick={performGlobalSearch}
+      class:cursor-not-allowed={!query}
+      disabled={!query}>
       <i class="fas fa-globe"></i>
-      <span class="ml-2 hidden sm:inline">Search All</span>
+      <span class="hidden sm:flex whitespace-pre">Search</span>
     </button>
   </div>
 </div>
-
-<!-- Slot for filter -->
-<slot name="filter" />

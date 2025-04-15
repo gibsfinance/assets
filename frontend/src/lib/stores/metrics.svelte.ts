@@ -1,7 +1,6 @@
-import type { PlatformMetrics, TokenInfo } from '$lib/types'
+import type { ListDescription, Network, PlatformMetrics, Token, TokenInfo } from '$lib/types'
 import { getApiUrl } from '$lib/utils'
 import _ from 'lodash'
-import { writable } from 'svelte/store'
 
 interface CacheEntry<T> {
   timestamp: number
@@ -24,9 +23,9 @@ interface TokenChunk {
 }
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
-const MAX_CACHE_SIZE = 4.5 * 1024 * 1024 // 4.5MB
+// const MAX_CACHE_SIZE = 4.5 * 1024 * 1024 // 4.5MB
 const MAX_ENTRY_SIZE = 500 * 1024 // 500KB for a single entry
-const MAX_TOKENS_PER_LIST = 100000 // Increased to handle large token lists
+// const MAX_TOKENS_PER_LIST = 100000 // Increased to handle large token lists
 const CHUNK_SIZE = 500 // Reduced chunk size
 const MAX_CHUNKS_PER_LIST = 5 // Limit total chunks per list
 const MINIMUM_TOKENS_FOR_CHUNKING = 1000 // Only chunk if more than 1000 tokens
@@ -35,18 +34,6 @@ function isCacheValid<T>(cache: CacheEntry<T> | null): cache is CacheEntry<T> {
   if (!cache) return false
   const now = Date.now()
   return now - cache.timestamp < CACHE_DURATION
-}
-
-// Simple compression by removing unnecessary fields and limiting precision
-function compressTokenList(tokens: TokenInfo[]): TokenInfo[] {
-  // Don't limit the number of tokens, just normalize addresses
-  return tokens.map((token) => ({
-    ...token, // Keep all original fields
-    chainId: token.chainId,
-    address: token.address.toLowerCase(), // Normalize addresses
-    name: token.name,
-    symbol: token.symbol,
-  }))
 }
 
 function chunkTokenList(tokens: TokenInfo[]): TokenChunk[] {
@@ -68,10 +55,10 @@ function filterAndCompressTokens(tokens: TokenInfo[]): TokenInfo[] {
   }))
 }
 
-function createMetricsStore() {
-  const { subscribe, set } = writable<PlatformMetrics | null>(null)
+class MetricsStore {
+  value = $state<PlatformMetrics | null>(null)
 
-  const clearCache = () => {
+  clearCache() {
     try {
       const keys = Object.keys(localStorage)
       const cacheKeys = keys.filter((key) => key.startsWith('tokenList_') || key === 'providers' || key === 'networks')
@@ -90,54 +77,54 @@ function createMetricsStore() {
     }
   }
 
-  const clearOldestCache = () => {
-    try {
-      const keys = Object.keys(localStorage).filter(
-        (key) => key.startsWith('tokenList_') || key === 'providers' || key === 'networks',
-      )
+  // const clearOldestCache = () => {
+  //   try {
+  //     const keys = Object.keys(localStorage).filter(
+  //       (key) => key.startsWith('tokenList_') || key === 'providers' || key === 'networks',
+  //     )
 
-      if (keys.length === 0) return
+  //     if (keys.length === 0) return
 
-      // Sort by timestamp
-      const entries = keys
-        .map((key) => {
-          try {
-            const item = localStorage.getItem(key)
-            if (!item) return null
-            const parsed = JSON.parse(item)
-            return { key, timestamp: parsed.timestamp }
-          } catch {
-            return null
-          }
-        })
-        .filter((entry): entry is { key: string; timestamp: number } => entry !== null)
-        .sort((a, b) => a.timestamp - b.timestamp)
+  //     // Sort by timestamp
+  //     const entries = keys
+  //       .map((key) => {
+  //         try {
+  //           const item = localStorage.getItem(key)
+  //           if (!item) return null
+  //           const parsed = JSON.parse(item)
+  //           return { key, timestamp: parsed.timestamp }
+  //         } catch {
+  //           return null
+  //         }
+  //       })
+  //       .filter((entry): entry is { key: string; timestamp: number } => entry !== null)
+  //       .sort((a, b) => a.timestamp - b.timestamp)
 
-      // Remove oldest entries until we're under the size limit
-      let currentSize = 0
-      for (const key of Object.keys(localStorage)) {
-        const value = localStorage.getItem(key)
-        if (value) {
-          currentSize += value.length * 2 // Approximate size in bytes
-        }
-      }
+  //     // Remove oldest entries until we're under the size limit
+  //     let currentSize = 0
+  //     for (const key of Object.keys(localStorage)) {
+  //       const value = localStorage.getItem(key)
+  //       if (value) {
+  //         currentSize += value.length * 2 // Approximate size in bytes
+  //       }
+  //     }
 
-      while (currentSize > MAX_CACHE_SIZE && entries.length > 0) {
-        const oldest = entries.shift()
-        if (oldest) {
-          const value = localStorage.getItem(oldest.key)
-          if (value) {
-            currentSize -= value.length * 2
-            localStorage.removeItem(oldest.key)
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error clearing cache:', error)
-    }
-  }
+  //     while (currentSize > MAX_CACHE_SIZE && entries.length > 0) {
+  //       const oldest = entries.shift()
+  //       if (oldest) {
+  //         const value = localStorage.getItem(oldest.key)
+  //         if (value) {
+  //           currentSize -= value.length * 2
+  //           localStorage.removeItem(oldest.key)
+  //         }
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error('Error clearing cache:', error)
+  //   }
+  // }
 
-  const getFromCache = <T>(key: string): T | null => {
+  getFromCache<T>(key: string): T | null {
     try {
       // Check for chunked token list
       if (key.startsWith('tokenList_')) {
@@ -184,7 +171,7 @@ function createMetricsStore() {
     }
   }
 
-  const setToCache = <T>(key: string, data: T, forceCompress = false): void => {
+  setToCache<T>(key: string, data: T) {
     try {
       // Special handling for token lists
       if (key.startsWith('tokenList_') && Array.isArray(data)) {
@@ -261,9 +248,9 @@ function createMetricsStore() {
     }
   }
 
-  const fetchTokenList = async (provider: string) => {
+  async fetchTokenList(provider: string) {
     const cacheKey = `tokenList_${provider}`
-    const cachedData = getFromCache<TokenInfo[]>(cacheKey)
+    const cachedData = this.getFromCache<TokenInfo[]>(cacheKey)
 
     if (cachedData) {
       return cachedData
@@ -278,7 +265,7 @@ function createMetricsStore() {
         }
         return []
       }
-      const data = await response.json()
+      const data = (await response.json()) as { tokens: Token[] }
       const tokens = data.tokens || []
 
       // Don't compress the tokens for metrics calculation
@@ -286,7 +273,7 @@ function createMetricsStore() {
         console.log(`Fetched ${tokens.length} tokens from ${provider}`)
       }
 
-      setToCache(cacheKey, tokens)
+      this.setToCache(cacheKey, tokens)
       return tokens
     } catch (error) {
       console.error(`Failed to fetch ${provider} list:`, error)
@@ -294,9 +281,9 @@ function createMetricsStore() {
     }
   }
 
-  async function fetchProviders() {
+  async fetchProviders() {
     const cacheKey = 'providers'
-    const cachedData = getFromCache<Provider[]>(cacheKey)
+    const cachedData = this.getFromCache<Provider[]>(cacheKey)
 
     if (cachedData) {
       return cachedData
@@ -305,8 +292,8 @@ function createMetricsStore() {
     try {
       const response = await fetch(getApiUrl('/list'))
       if (!response.ok) return []
-      const providers = await response.json()
-      setToCache(cacheKey, providers)
+      const providers = (await response.json()) as ListDescription[]
+      this.setToCache(cacheKey, providers)
       return providers as Provider[]
     } catch (error) {
       console.error('Failed to fetch providers:', error)
@@ -314,9 +301,9 @@ function createMetricsStore() {
     }
   }
 
-  async function fetchNetworks() {
+  async fetchNetworks() {
     const cacheKey = 'networks'
-    const cachedData = getFromCache<string[]>(cacheKey)
+    const cachedData = this.getFromCache<string[]>(cacheKey)
 
     if (cachedData) {
       return cachedData
@@ -324,34 +311,38 @@ function createMetricsStore() {
 
     try {
       const response = await fetch(getApiUrl('/networks'))
-      if (!response.ok) return []
-      const networks = await response.json()
-      setToCache(cacheKey, networks)
-      return networks
+      if (!response.ok) {
+        return []
+      }
+      const networks = (await response.json()) as Network[]
+      console.log(networks)
+      const values = networks.filter((n) => n.type === 'evm').map((network) => network.chainId)
+      this.setToCache(cacheKey, values)
+      return values
     } catch (error) {
       console.error('Failed to fetch networks:', error)
       return []
     }
   }
 
-  async function fetchMetrics(forceFresh = false) {
+  async fetchMetrics(forceFresh = false) {
     try {
       // Check cache first unless forceFresh is true
       if (!forceFresh) {
-        const cachedMetrics = getFromCache<PlatformMetrics>('metrics')
+        const cachedMetrics = this.getFromCache<PlatformMetrics>('metrics')
         if (cachedMetrics) {
           console.log('Using cached metrics')
-          set(cachedMetrics)
+          this.value = cachedMetrics
           return
         }
       } else {
         // Only clear cache if forceFresh is true
         console.log('Force refreshing metrics, clearing cache...')
-        clearCache()
+        this.clearCache()
       }
 
       // Fetch available networks and providers
-      const [networks, providers] = await Promise.all([fetchNetworks(), fetchProviders()])
+      const [networks, providers] = await Promise.all([this.fetchNetworks(), this.fetchProviders()])
 
       // Get unique provider keys, prioritizing certain providers
       const priorityProviders = ['coingecko', 'uniswap-uniswap-default-list']
@@ -375,8 +366,8 @@ function createMetricsStore() {
       // Fetch all token lists in parallel
       const allTokenLists = await Promise.all(
         uniqueProviders.map(async (provider) => {
-          const tokens = await fetchTokenList(provider)
-          console.log(`Fetched ${tokens.length} tokens from ${provider}`)
+          const tokens = await this.fetchTokenList(provider)
+          // console.log(`Fetched ${tokens.length} tokens from ${provider}`)
           return tokens
         }),
       )
@@ -412,7 +403,7 @@ function createMetricsStore() {
 
       // Calculate total
       const total = Object.values(byChain).reduce((sum, count) => sum + count, 0)
-      console.log('Total tokens across all chains:', total)
+      // console.log('Total tokens across all chains:', total)
 
       const metrics: PlatformMetrics = {
         tokenList: {
@@ -430,11 +421,12 @@ function createMetricsStore() {
       }
 
       // Cache the computed metrics
-      setToCache('metrics', metrics)
-      set(metrics)
+      console.log('metrics', metrics)
+      this.setToCache('metrics', metrics)
+      this.value = metrics
     } catch (error) {
       console.error('Failed to fetch metrics:', error)
-      set({
+      this.value = {
         tokenList: {
           total: 0,
           byChain: {},
@@ -443,15 +435,9 @@ function createMetricsStore() {
           supported: [],
           active: 'PulseChain',
         },
-      })
+      }
     }
-  }
-
-  return {
-    subscribe,
-    fetchMetrics,
-    clearCache,
   }
 }
 
-export const metrics = createMetricsStore()
+export const metrics = new MetricsStore()

@@ -6,12 +6,14 @@ import { cacheResult } from '@/utils'
 import { nextOnError } from '../utils'
 export const router = Router() as Router
 
-const getNetworks = cacheResult<string[]>(async () => {
-  const networks = await getDB().select<Network[]>(['chainId']).from(tableNames.network)
-  return networks.map((n) => `${n.chainId}`)
+const getNetworks = cacheResult<Network[]>(async () => {
+  return await getDB().select<Network[]>(['*']).from(tableNames.network)
 })
 
-router.get('/', nextOnError(async (_req, res) => {
-  const networks = await getNetworks()
-  res.json(networks)
-}))
+router.get(
+  '/',
+  nextOnError(async (_req, res) => {
+    const networks = await getNetworks()
+    res.json(networks)
+  }),
+)

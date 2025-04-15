@@ -12,6 +12,6 @@ db.getDB()
   .catch((err) => console.log(err))
   .then(cleanup)
   .then(() => {
-    console.log('finished')
+    // console.log('finished')
     process.exit(0)
   })

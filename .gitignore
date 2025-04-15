@@ -10,3 +10,4 @@ frontend/.env.*
 dist
 pumptires.json
 .DS_Store
+failures.json

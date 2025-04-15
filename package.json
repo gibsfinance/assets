@@ -1,7 +1,7 @@
 {
   "name": "@gibs/assets",
   "version": "1.0.0",
-  "description": "a repo for tokens, networks, and data providers",
+  "description": "a repo for gathering tokens, networks, and data providers",
   "main": "src/index.ts",
   "private": true,
   "workspaces": [

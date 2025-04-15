@@ -1,25 +1,10 @@
-/**
- * @title OmniBridge Token Collector
- * @notice Collects token information from OmniBridge contracts across networks
- * @dev Changes from original version:
- * 1. Added retry mechanism with exponential backoff
- * 2. Enhanced error handling for RPC failures
- * 3. Improved block range iteration with dynamic adjustment
- * 4. Added testnet support via prefix configuration
- */
-
 import * as db from '@/db'
-import { chainIdToNetworkId, erc20Read, publicClient } from '@/utils'
+import { chainIdToNetworkId, erc20Read, chainToPublicClient } from '@/utils'
 import _ from 'lodash'
 import * as viem from 'viem'
-import type { StatusProps } from '../components/Status'
-import { updateStatus } from '../utils/status'
 
 /**
- * @notice Configuration types for bridge endpoints
- * @dev Changes:
- * 1. Added testnetPrefix support for testnet deployments
- * 2. Enhanced typing for chain configurations
+ * Configuration types for bridge endpoints
  */
 type BridgeSideConfig = {
   address: viem.Hex
@@ -35,19 +20,14 @@ type BridgeConfig = {
 }
 
 /**
- * @notice Main collection function that processes bridge configurations
- * @dev Changes:
- * 1. Added RPC connection validation
- * 2. Implemented retry logic for failed requests
- * 3. Enhanced error handling with detailed logging
- * 4. Added dynamic block range adjustment
+ * Main collection function that processes bridge configurations
  */
 export const collect = (config: BridgeConfig[]) => async () => {
-  updateStatus({
-    provider: 'omnibridge',
-    message: 'Starting bridge collection...',
-    phase: 'setup',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: 'omnibridge',
+  //   message: 'Starting bridge collection...',
+  //   phase: 'setup',
+  // } satisfies StatusProps)
 
   await Promise.all(config.map(collectByBridgeConfig))
 }
@@ -69,8 +49,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
 
     // while (retryCount < maxRetries) {
     // try {
-    const fromClient = publicClient(fromConfig.chain)
-    const toClient = publicClient(toConfig.chain)
+    const fromClient = chainToPublicClient(fromConfig.chain)
+    const toClient = chainToPublicClient(toConfig.chain)
 
     // Test both RPC connections before proceeding
     await Promise.all([fromClient.getChainId(), toClient.getChainId()])
@@ -237,35 +217,11 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
     })
   }, 10_000n)
 
-  // break // Success, exit retry loop
-  // } catch (error: unknown) {
-  //   retryCount++
-  //   const err = error as { message?: string; details?: string; status?: number }
-
-  //   log('Error in bridge collection (attempt %d/%d): %s', retryCount, maxRetries, err.message || 'Unknown error')
-
-  //   if (retryCount === maxRetries) {
-  //     throw error // Re-throw on final attempt
-  //   }
-
-  //   // Wait longer for HTTP errors
-  //   const delay = err.status === 503 ? retryDelay * 2 : retryDelay
-  //   log('Waiting %dms before retry...', delay)
-  //   await new Promise((resolve) => setTimeout(resolve, delay))
-  // }
-  // }
-  // })
-
   await Promise.all(tasks)
 }
 
 /**
- * @notice Block range iterator with adaptive step size
- * @dev Changes:
- * 1. Added dynamic step size adjustment based on errors
- * 2. Implemented consecutive error tracking
- * 3. Added minimum step size protection
- * 4. Enhanced error handling for rate limits
+ * Block range iterator with adaptive step size
  */
 const iterateOverRange = async (
   start: bigint,

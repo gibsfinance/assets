@@ -36,7 +36,6 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { join } from './utils'
 import * as args from '@/args'
-import { updateStatus } from '@/utils/status'
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
@@ -295,53 +294,53 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
 }
 
 /**
- * @notice Network Insertion with Retry Logic
- * @dev Added robust error handling and retry mechanism:
- * - Handles transaction timeouts
- * - Implements exponential backoff
- * - Provides detailed error reporting
+ * Network Insertion with Retry Logic
  * @param chainId The chain ID to insert
  * @param type The network type (default: 'evm')
  * @param t The transaction object
  */
 export const insertNetworkFromChainId = async (chainId: types.ChainId, type = 'evm', t: Tx = db) => {
-  const maxRetries = 3
-  let lastError: unknown
+  // const maxRetries = 3
+  // let lastError: unknown
 
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const [network] = await t
-        .from(tableNames.network)
-        .insert({
-          type,
-          chainId: chainId.toString(),
-        })
-        .onConflict(['networkId'])
-        .merge(['networkId'])
-        .returning<Network[]>('*')
-      return network
-    } catch (err: unknown) {
-      lastError = err
-      // Retry on both timeout and aborted transaction errors
-      if (err && typeof err === 'object' && 'code' in err) {
-        const code = (err as { code: string }).code
-        if (code === '57014' || code === '25P02') {
-          if (i < maxRetries - 1) {
-            const delay = Math.pow(2, i) * 1000 // 1s, 2s, 4s
-            updateStatus({
-              provider: 'system',
-              message: `⚠️ Network insert error for chain ${chainId}, retrying in ${delay / 1000}s...`,
-              phase: 'setup',
-            })
-            await new Promise((resolve) => setTimeout(resolve, delay))
-            continue
-          }
-        }
-      }
-      throw lastError
-    }
-  }
-  throw lastError
+  // for (let i = 0; i < maxRetries; i++) {
+  // try {
+  const [network] = await t
+    .from(tableNames.network)
+    .insert({
+      type,
+      chainId: chainId.toString(),
+    })
+    .onConflict(['networkId'])
+    .merge(['networkId'])
+    .returning<Network[]>('*')
+  return network
+  // } catch (err: unknown) {
+  //   lastError = err
+  //   // Retry on both timeout and aborted transaction errors
+  //   if (err && typeof err === 'object' && 'code' in err) {
+  //     const code = (err as { code: string }).code
+  //     if (code === '57014' || code === '25P02') {
+  //       if (i < maxRetries - 1) {
+  //         const delay = Math.pow(2, i) * 1000 // 1s, 2s, 4s
+  //         // updateStatus({
+  //         //   provider: 'system',
+  //         //   message: `⚠️ Network insert error for chain ${chainId}, retrying in ${delay / 1000}s...`,
+  //         //   phase: 'setup',
+  //         // })
+  //         attend({
+  //           provider: 'system',
+  //           message: 'Network insert error for chain'
+  //         })
+  //         await new Promise((resolve) => setTimeout(resolve, delay))
+  //         continue
+  //       }
+  //     }
+  //   }
+  //   throw lastError
+  // }
+  // }
+  // throw lastError
 }
 
 export const getNetworks = (t: Tx = db) => t.from(tableNames.network).select('*')

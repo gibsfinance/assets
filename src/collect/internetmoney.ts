@@ -1,14 +1,3 @@
-/**
- * @title Internet Money Token List Collector
- * @notice Collects token information from Internet Money's API
- * @dev Changes from original version:
- * 1. Replaced spinner with detailed status updates
- * 2. Added progress tracking for total tokens across networks
- * 3. Improved transaction handling with clear phases
- * 4. Enhanced error handling for network processing
- * 5. Added controlled parallel processing for better performance
- */
-
 import * as chains from 'viem/chains'
 import * as viem from 'viem'
 import * as utils from '@/utils'
@@ -17,8 +6,8 @@ import * as db from '@/db'
 import { Tx } from '@/db/tables'
 import type { List, Provider } from 'knex/types/tables'
 import promiseLimit from 'promise-limit'
-import type { StatusProps } from '../components/Status'
-import { updateStatus } from '../utils/status'
+import _ from 'lodash'
+import { counterTypes, rowTypes } from '@/log/types'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 const CONCURRENT_TOKENS = 4 // Limit concurrent token processing
@@ -35,20 +24,33 @@ interface NetworkInfo {
   tokens: TokenInfo[]
 }
 
+const providerKey = 'internetmoney'
+const networkToChain = (network: NetworkInfo) => {
+  let chain = utils.findChain(network.chainId)
+  if (!chain) {
+    chain = {
+      id: network.chainId,
+      contracts: chains.mainnet.contracts,
+      rpcUrls: {
+        default: {
+          http: [network.rpc],
+        },
+      },
+    } as unknown as viem.Chain
+  }
+  return chain
+}
+
 /**
- * @notice Main collection function that processes Internet Money networks and tokens
- * @dev Changes:
- * 1. Added phase-specific status messages (setup, network, tokens)
- * 2. Implemented token count tracking across all networks
- * 3. Added controlled parallel processing with concurrency limit
- * 4. Enhanced network icon storage with clear status updates
+ * Main collection function that processes Internet Money networks and tokens
  */
 export const collect = async () => {
-  updateStatus({
-    provider: 'internetmoney',
-    message: 'Fetching network list...',
-    phase: 'setup',
-  } satisfies StatusProps)
+  const section = utils.terminal.issue(providerKey)
+  const summaryRow = section.issue({
+    type: rowTypes.SUMMARY,
+    id: providerKey,
+  })
+  const tasksSection = summaryRow.issue('tasks')
 
   const json = await fetch(baseUrl)
     .then((res): Promise<NetworkInfo[]> => res.json())
@@ -57,16 +59,11 @@ export const collect = async () => {
   let provider!: Provider
   let insertedList!: List
 
-  updateStatus({
-    provider: 'internetmoney',
-    message: 'Setting up provider and list...',
-    phase: 'setup',
-  } satisfies StatusProps)
   await db.transaction(async (tx) => {
     ;[provider] = await db.insertProvider(
       {
         name: 'Internet Money',
-        key: 'internetmoney',
+        key: providerKey,
       },
       tx,
     )
@@ -89,34 +86,24 @@ export const collect = async () => {
     totalTokens += network.tokens.length
   }
 
-  let processedTokens = 0
-  for (const network of json) {
-    let chain = utils.findChain(network.chainId)
-    if (!chain) {
-      chain = {
-        id: network.chainId,
-        contracts: chains.mainnet.contracts,
-        rpcUrls: {
-          default: {
-            http: [network.rpc],
-          },
-        },
-      } as unknown as viem.Chain
-    }
-
-    updateStatus({
-      provider: 'internetmoney',
-      message: `Processing chain ${chain.id}...`,
-      current: processedTokens,
-      total: totalTokens,
-      phase: 'processing',
-    } satisfies StatusProps)
+  summaryRow.createCounter(counterTypes.NETWORK, json.length)
+  summaryRow.createCounter(counterTypes.TOKEN, totalTokens)
+  // Process tokens in parallel with controlled concurrency
+  type NetworkAndToken = [NetworkInfo, TokenInfo]
+  const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
+  const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
+  const networkToNetworkList = await networkLimiter.map(json, async (network) => {
+    summaryRow.increment(counterTypes.NETWORK)
+    const row = tasksSection.task(network.chainId.toString(), {
+      type: rowTypes.STORAGE,
+      id: providerKey,
+      kv: {
+        chainId: network.chainId,
+      },
+    })
+    const chain = networkToChain(network)
     await db.insertNetworkFromChainId(chain.id)
 
-    const client = viem.createClient({
-      transport: viem.http(),
-      chain,
-    })
     encounteredChainIds.add(BigInt(chain.id))
 
     const insertAndGetNetworkList = (t: Tx) => {
@@ -133,15 +120,8 @@ export const collect = async () => {
     }
 
     // Store network icon
-    await db.transaction(async (tx) => {
+    const networkListItem = await db.transaction(async (tx) => {
       const [networkList] = await insertAndGetNetworkList(tx)
-      updateStatus({
-        provider: 'internetmoney',
-        message: `Storing network icon for chain ${chain.id}...`,
-        current: processedTokens,
-        total: totalTokens,
-        phase: 'storing',
-      } satisfies StatusProps)
       await db.fetchImageAndStoreForList(
         {
           listId: networkList.listId,
@@ -151,25 +131,35 @@ export const collect = async () => {
         },
         tx,
       )
+      return [network, networkList] as const
     })
+    row.unmount()
+    return networkListItem
+  })
 
-    // Process tokens in parallel with controlled concurrency
-    const limit = promiseLimit<TokenInfo>(CONCURRENT_TOKENS)
-    await limit.map(network.tokens, async (token) => {
-      processedTokens++
-      updateStatus({
-        provider: 'internetmoney',
-        message: `Processing token: ${token.address}`,
-        current: processedTokens,
-        total: totalTokens,
-        phase: 'processing',
-      } satisfies StatusProps)
+  const networkListByNetwork = new Map(networkToNetworkList)
+  const allTokens = _.flatMap(json, (network) => {
+    return network.tokens.map((tkn) => [network, tkn] as NetworkAndToken)
+  })
 
-      const address = viem.getAddress(token.address)
-      const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
+  await limit.map(allTokens, async ([network, token]) => {
+    summaryRow.increment(counterTypes.TOKEN)
+    const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
+      type: rowTypes.STORAGE,
+      id: providerKey,
+      kv: {
+        chainId: network.chainId,
+        address: token.address,
+      },
+    })
+    const address = viem.getAddress(token.address)
+    const chain = networkToChain(network)
+    const client = utils.chainToPublicClient(chain)
+    const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
 
-      await db.transaction(async (tx) => {
-        const [networkList] = await insertAndGetNetworkList(tx)
+    const networkList = networkListByNetwork.get(network)!
+    await db
+      .transaction(async (tx) => {
         const insertion = {
           uri: token.icon,
           originalUri: token.icon,
@@ -182,12 +172,6 @@ export const collect = async () => {
             providedId: address,
           },
         }
-
-        updateStatus({
-          provider: 'internetmoney',
-          message: `💾 Storing token ${processedTokens}/${totalTokens}: ${symbol}...`,
-          phase: 'storing',
-        })
         await db.fetchImageAndStoreForToken(
           {
             ...insertion,
@@ -203,12 +187,17 @@ export const collect = async () => {
           tx,
         )
       })
-    })
-  }
-
-  updateStatus({
-    provider: 'internetmoney',
-    message: `✨ Completed processing ${totalTokens} tokens!`,
-    phase: 'complete',
+      .catch((err) => {
+        if (err.message?.toLowerCase()?.includes('timeout')) {
+          row.increment('timeout')
+        } else {
+          row.increment('error')
+        }
+        utils.failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
+      })
+      .finally(() => {
+        row.unmount()
+      })
   })
+  summaryRow.complete()
 }

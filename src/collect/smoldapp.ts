@@ -1,21 +1,9 @@
-/**
- * @title Smol Dapp Token List Collector
- * @notice Collects token information and images from Smol Dapp's community-led asset collection
- * @dev Changes from original version:
- * 1. Replaced spinner with direct console status updates
- * 2. Added detailed progress tracking for chains and tokens
- * 3. Improved error handling and logging
- * 4. Added clear phase separation with status messages
- */
-
 import * as fs from 'fs'
 import * as path from 'path'
 import * as db from '@/db'
 import * as utils from '@/utils'
 import type { List } from 'knex/types/tables'
 import * as paths from '@/paths'
-import type { StatusProps } from '@/components/Status'
-import { updateStatus } from '@/utils/status'
 import { zeroAddress, getAddress, type Hex } from 'viem'
 import promiseLimit from 'promise-limit'
 
@@ -41,20 +29,14 @@ const filenameToListKey = (filename: string) => {
 }
 
 /**
- * @notice Main collection function that processes chains and tokens
- * @dev Changes:
- * 1. Added phase-specific status messages
- * 2. Implemented chain processing progress tracking
- * 3. Added token processing progress tracking
- * 4. Removed spinner in favor of direct status updates
- * 5. Enhanced error handling with detailed messages
+ * Main collection function that processes chains and tokens
  */
 export const collect = async () => {
-  updateStatus({
-    provider: 'smoldapp',
-    message: '🔍 Reading token list...',
-    phase: 'setup',
-  })
+  // updateStatus({
+  //   provider: 'smoldapp',
+  //   message: '🔍 Reading token list...',
+  //   phase: 'setup',
+  // })
 
   const root = path.join(paths.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
@@ -63,22 +45,22 @@ export const collect = async () => {
 
   const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json')).catch(() => null)
   if (!infoBuff) {
-    updateStatus({
-      provider: 'smoldapp',
-      message: 'Failed to read token list file',
-      phase: 'complete',
-    } satisfies StatusProps)
+    // updateStatus({
+    //   provider: 'smoldapp',
+    //   message: 'Failed to read token list file',
+    //   phase: 'complete',
+    // } satisfies StatusProps)
     return
   }
 
   const info = JSON.parse(infoBuff.toString()) as Info
   const { tokens } = info
 
-  updateStatus({
-    provider: 'smoldapp',
-    message: 'Setting up provider...',
-    phase: 'setup',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: 'smoldapp',
+  //   message: 'Setting up provider...',
+  //   phase: 'setup',
+  // } satisfies StatusProps)
 
   const [provider] = await db.insertProvider({
     key: providerKey,
@@ -105,13 +87,13 @@ export const collect = async () => {
     }
 
     processedChains++
-    updateStatus({
-      provider: 'smoldapp',
-      message: `Processing chain ${chainId}`,
-      current: processedChains,
-      total: chains.length,
-      phase: 'processing',
-    } satisfies StatusProps)
+    // updateStatus({
+    //   provider: 'smoldapp',
+    //   message: `Processing chain ${chainId}`,
+    //   current: processedChains,
+    //   total: chains.length,
+    //   phase: 'processing',
+    // } satisfies StatusProps)
 
     const network = await db.insertNetworkFromChainId(+chainId)
     const chainFolder = path.join(chainsPath, chainId)
@@ -119,13 +101,13 @@ export const collect = async () => {
 
     for (const file of folders) {
       const listKey = filenameToListKey(file)
-      updateStatus({
-        provider: 'smoldapp',
-        message: `Processing chain ${chainId} list: ${listKey}`,
-        current: processedChains,
-        total: chains.length,
-        phase: 'processing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: 'smoldapp',
+      //   message: `Processing chain ${chainId} list: ${listKey}`,
+      //   current: processedChains,
+      //   total: chains.length,
+      //   phase: 'processing',
+      // } satisfies StatusProps)
 
       const [networkList] = await db.insertList({
         key: `tokens-${chainId}-${listKey}`,
@@ -137,13 +119,13 @@ export const collect = async () => {
       chainIdToNetworkId.set(networkList.key, networkList)
 
       if (listKey === 'svg') {
-        updateStatus({
-          provider: 'smoldapp',
-          message: `Storing SVG assets for chain ${chainId}`,
-          current: processedChains,
-          total: chains.length,
-          phase: 'storing',
-        } satisfies StatusProps)
+        // updateStatus({
+        //   provider: 'smoldapp',
+        //   message: `Storing SVG assets for chain ${chainId}`,
+        //   current: processedChains,
+        //   total: chains.length,
+        //   phase: 'storing',
+        // } satisfies StatusProps)
 
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForNetwork(
@@ -166,11 +148,11 @@ export const collect = async () => {
           )
         })
       } else {
-        updateStatus({
-          provider: 'smoldapp',
-          message: `Storing PNG assets for chain ${chainId}...`,
-          phase: 'storing',
-        })
+        // updateStatus({
+        //   provider: 'smoldapp',
+        //   message: `Storing PNG assets for chain ${chainId}...`,
+        //   phase: 'storing',
+        // })
         const img = await db.fetchImage(originalUri, providerKey, chainId)
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForList(
@@ -203,39 +185,39 @@ export const collect = async () => {
 
   for (const [chainIdString, tokens] of reverseOrderTokens) {
     processedChainTokens++
-    updateStatus({
-      provider: 'smoldapp',
-      message: `Processing chain ${chainIdString} tokens`,
-      current: processedChainTokens,
-      total: reverseOrderTokens.length,
-      phase: 'processing',
-    } satisfies StatusProps)
+    // updateStatus({
+    //   provider: 'smoldapp',
+    //   message: `Processing chain ${chainIdString} tokens`,
+    //   current: processedChainTokens,
+    //   total: reverseOrderTokens.length,
+    //   phase: 'processing',
+    // } satisfies StatusProps)
 
     const chain = utils.findChain(+chainIdString)
     if (!chain) {
-      updateStatus({
-        provider: 'smoldapp',
-        message: `Failed to find chain ${chainIdString}`,
-        current: processedChainTokens,
-        total: reverseOrderTokens.length,
-        phase: 'processing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: 'smoldapp',
+      //   message: `Failed to find chain ${chainIdString}`,
+      //   current: processedChainTokens,
+      //   total: reverseOrderTokens.length,
+      //   phase: 'processing',
+      // } satisfies StatusProps)
       continue
     }
 
     const network = await db.insertNetworkFromChainId(+chainIdString)
     if (!network) {
-      updateStatus({
-        provider: 'smoldapp',
-        message: `Failed to find network for chain ${chainIdString}`,
-        current: processedChainTokens,
-        total: reverseOrderTokens.length,
-        phase: 'processing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: 'smoldapp',
+      //   message: `Failed to find network for chain ${chainIdString}`,
+      //   current: processedChainTokens,
+      //   total: reverseOrderTokens.length,
+      //   phase: 'processing',
+      // } satisfies StatusProps)
       continue
     }
 
-    const client = utils.publicClient(chain)
+    const client = utils.chainToPublicClient(chain)
     const limit = promiseLimit<Hex>(256)
     let processedTokens = 0
     const totalTokens = tokens.length
@@ -243,18 +225,16 @@ export const collect = async () => {
     try {
       await limit.map(tokens as Hex[], async (token) => {
         processedTokens++
-        updateStatus({
-          provider: 'smoldapp',
-          message: `Processing token ${token}`,
-          current: processedTokens,
-          total: totalTokens,
-          phase: 'processing',
-        } satisfies StatusProps)
+        // updateStatus({
+        //   provider: 'smoldapp',
+        //   message: `Processing token ${token}`,
+        //   current: processedTokens,
+        //   total: totalTokens,
+        //   phase: 'processing',
+        // } satisfies StatusProps)
 
         const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
-        const address = getAddress(
-          utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token,
-        )
+        const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
 
         const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
         const tokenImages = await utils.folderContents(tokenFolder)
@@ -286,13 +266,13 @@ export const collect = async () => {
             },
           }
 
-          updateStatus({
-            provider: 'smoldapp',
-            message: `Storing token ${symbol} (${name})`,
-            current: processedTokens,
-            total: totalTokens,
-            phase: 'storing',
-          } satisfies StatusProps)
+          // updateStatus({
+          //   provider: 'smoldapp',
+          //   message: `Storing token ${symbol} (${name})`,
+          //   current: processedTokens,
+          //   total: totalTokens,
+          //   phase: 'storing',
+          // } satisfies StatusProps)
 
           await db.transaction(async (tx) => {
             const [list] = await db.insertList(
@@ -322,18 +302,18 @@ export const collect = async () => {
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
-      updateStatus({
-        provider: 'smoldapp',
-        message: `Failed to process chain ${chainIdString}: ${errorMessage}`,
-        current: processedChainTokens,
-        total: reverseOrderTokens.length,
-      })
+      // updateStatus({
+      //   provider: 'smoldapp',
+      //   message: `Failed to process chain ${chainIdString}: ${errorMessage}`,
+      //   current: processedChainTokens,
+      //   total: reverseOrderTokens.length,
+      // })
     }
   }
 
-  updateStatus({
-    provider: 'smoldapp',
-    message: 'Collection complete!',
-    phase: 'complete',
-  })
+  // updateStatus({
+  //   provider: 'smoldapp',
+  //   message: 'Collection complete!',
+  //   phase: 'complete',
+  // })
 }

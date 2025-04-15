@@ -1,32 +1,16 @@
-/**
- * @title Command Line Argument Parser
- * @notice Manages command line arguments and environment variables for token collection
- * @dev Changes from original version:
- * 1. Enhanced RPC configuration with fallback support
- * 2. Added image mode control for storage optimization
- * 3. Improved provider selection with validation
- * 4. Added detailed status updates for argument parsing
- */
-
 import { parse } from '@/args/utils'
 import _ from 'lodash'
-import { updateStatus } from '@/utils/status'
 
 /**
- * @notice Main collection configuration parser
- * @dev Changes:
- * 1. Added status updates for parsing progress
- * 2. Enhanced provider validation and selection
- * 3. Improved IPFS gateway configuration
- * 4. Added image mode control with warnings
+ * Main collection configuration parser
  * @return Parsed and validated configuration object
  */
 export const ipfs = _.memoize(() => {
-  updateStatus({
-    provider: 'system',
-    message: '⚙️ Parsing command line arguments...',
-    phase: 'setup',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '⚙️ Parsing command line arguments...',
+  //   phase: 'setup',
+  // })
   const argv = parse('ipfs', {
     ipfs: {
       type: 'array',
@@ -37,11 +21,11 @@ export const ipfs = _.memoize(() => {
     },
   })
 
-  updateStatus({
-    provider: 'system',
-    message: '✨ Arguments parsed successfully!',
-    phase: 'complete',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '✨ Arguments parsed successfully!',
+  //   phase: 'complete',
+  // })
   // process.stdout.write('\n')
   return {
     ipfs: argv.ipfs,

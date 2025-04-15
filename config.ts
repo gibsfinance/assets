@@ -5,7 +5,7 @@ const database = {
   schema: 'public',
   ssl: false,
 }
-const rootURI = process.env.ROOT_URI || 'http://localhost:3000'
+const rootURI = process.env.ROOT_URI || 'http://localhost:3456'
 let cacheSeconds = process.env.CACHE_SECONDS
 if (!+(cacheSeconds as string)) {
   cacheSeconds = `${60 * 60}`

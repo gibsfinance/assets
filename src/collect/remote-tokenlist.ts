@@ -1,13 +1,3 @@
-/**
- * @title Remote Token List Collector
- * @notice Collects token information from remote token lists with extension support
- * @dev Changes from original version:
- * 1. Added detailed progress tracking with status updates
- * 2. Enhanced error handling for HTTP and JSON parsing
- * 3. Added debug logging for better troubleshooting
- * 4. Improved extension token processing with progress indicators
- */
-
 import * as db from '@/db'
 import { fetch } from '@/fetch'
 import * as types from '@/types'
@@ -15,9 +5,8 @@ import * as utils from '@/utils'
 import debug from 'debug'
 import _ from 'lodash'
 import * as viem from 'viem'
-import type { StatusProps } from '../components/Status'
-import { updateStatus } from '../utils/status'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
+import { KV, logTypes, rowTypes } from '@/log/types'
 
 const dbg = debug('📷:remote-tokenlist')
 
@@ -41,12 +30,7 @@ type Input = {
 }
 
 /**
- * @notice Main collection function that processes remote token lists and extensions
- * @dev Changes:
- * 1. Added status updates for each phase (fetching, processing, storing)
- * 2. Improved error handling with detailed HTTP status reporting
- * 3. Added progress tracking for extension token processing
- * 4. Enhanced debug logging for failures
+ * Main collection function that processes remote token lists and extensions
  */
 export const collect =
   ({
@@ -58,20 +42,22 @@ export const collect =
     blacklist = new Set<string>(),
   }: Input) =>
   async () => {
-    updateStatus({
-      provider: providerKey,
-      message: `Fetching token list from ${tokenListUrl}...`,
-      phase: 'setup',
-    } satisfies StatusProps)
-
+    const section = utils.terminal.issue(`${providerKey}-${listKey}`)
+    const row = section.issue({
+      type: rowTypes.SETUP,
+      id: `${providerKey}-${listKey}`,
+    })
     try {
+      row.update({
+        message: 'fetching list',
+      })
       const response = await fetch(tokenListUrl)
       if (!response.ok) {
-        updateStatus({
-          provider: providerKey,
-          message: `Failed to fetch token list: ${response.status} ${response.statusText}`,
-          phase: 'complete',
-        } satisfies StatusProps)
+        // updateStatus({
+        //   provider: providerKey,
+        //   message: `Failed to fetch token list: ${response.status} ${response.statusText}`,
+        //   phase: 'complete',
+        // } satisfies StatusProps)
         throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
       }
 
@@ -79,12 +65,12 @@ export const collect =
       try {
         tokenList = await response.json()
       } catch (e) {
-        updateStatus({
-          provider: providerKey,
-          message: `Failed to parse token list JSON: ${e}`,
-          phase: 'complete',
-        } satisfies StatusProps)
-        dbg(`Failed to parse JSON from ${tokenListUrl}:`, e)
+        // updateStatus({
+        //   provider: providerKey,
+        //   message: `Failed to parse token list JSON: ${e}`,
+        //   phase: 'complete',
+        // } satisfies StatusProps)
+        // dbg(`Failed to parse JSON from ${tokenListUrl}:`, e)
         throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
       }
 
@@ -94,23 +80,18 @@ export const collect =
           token.logoURI = ''
         }
       })
-      const tokenCount = tokenList.tokens?.length || 0
-      updateStatus({
-        provider: providerKey,
-        message: `Found ${tokenCount} tokens in list`,
-        phase: 'setup',
-      } satisfies StatusProps)
-
-      const extra = extension || []
-      if (extra.length > 0) {
-        updateStatus({
-          provider: providerKey,
-          message: `Processing ${extra.length} extension tokens...`,
-          phase: 'processing',
-        } satisfies StatusProps)
+      let kv: KV = {}
+      if (blacked.size) {
+        kv.blacklisted = blacked.size
       }
-
-      let processedCount = 0
+      row.update({
+        kv,
+      })
+      const extra = extension || []
+      kv.extensions = extra.length
+      row.update({
+        kv,
+      })
       const extras = await Promise.all(
         extra.map(async (item) => {
           if (blacked.has(item.address.toLowerCase())) {
@@ -118,7 +99,7 @@ export const collect =
           }
           try {
             const chain = utils.findChain(item.network.id) as viem.Chain
-            const client = utils.publicClient(chain)
+            const client = utils.chainToPublicClient(chain)
 
             const [image, [name, symbol, decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, providerKey, item.address),
@@ -126,17 +107,18 @@ export const collect =
             ])
 
             if (!image) {
-              dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
+              row.increment('missing')
+              // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
               return
             }
             await db.transaction(async (tx) => {
               const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
               if (item.network.isNetworkImage) {
-                updateStatus({
-                  provider: providerKey,
-                  message: `Storing network image for ${chain.name}...`,
-                  phase: 'storing',
-                } satisfies StatusProps)
+                // updateStatus({
+                //   provider: providerKey,
+                //   message: `Storing network image for ${chain.name}...`,
+                //   phase: 'storing',
+                // } satisfies StatusProps)
                 await db.fetchImageAndStoreForNetwork(
                   {
                     network,
@@ -148,11 +130,11 @@ export const collect =
                 )
               }
 
-              updateStatus({
-                provider: providerKey,
-                message: `Storing token ${name} (${symbol})...`,
-                phase: 'storing',
-              } satisfies StatusProps)
+              // updateStatus({
+              //   provider: providerKey,
+              //   message: `Storing token ${name} (${symbol})...`,
+              //   phase: 'storing',
+              // } satisfies StatusProps)
               await db.fetchImageAndStoreForToken(
                 {
                   listId: null,
@@ -171,7 +153,7 @@ export const collect =
               )
             })
 
-            processedCount++
+            // processedCount++
             return {
               chainId: item.network.id,
               logoURI: item.logoURI,
@@ -182,39 +164,47 @@ export const collect =
             }
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)
-            updateStatus({
-              provider: providerKey,
-              message: `Failed to process extension token ${item.address}: ${errorMessage}`,
-              current: processedCount + 1,
-              total: extra.length,
-              phase: 'processing',
-            } satisfies StatusProps)
-            dbg(`Failed to process extension item ${item.address}:`, err)
+            // updateStatus({
+            //   provider: providerKey,
+            //   message: `Failed to process extension token ${item.address}: ${errorMessage}`,
+            //   current: processedCount + 1,
+            //   total: extra.length,
+            //   phase: 'processing',
+            // } satisfies StatusProps)
+            // dbg(`Failed to process extension item ${item.address}:`, err)
+            row.increment(logTypes.EROR)
             return undefined
           }
         }),
       )
 
       const validExtras = _.compact(extras)
-      updateStatus({
-        provider: providerKey,
-        message: `Storing ${tokenCount + validExtras.length} total tokens...`,
-        phase: 'storing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: providerKey,
+      //   message: `Storing ${tokenCount + validExtras.length} total tokens...`,
+      //   phase: 'storing',
+      // } satisfies StatusProps)
 
       tokenList.tokens.push(...validExtras)
 
-      const result = await inmemoryTokenlist.collect(providerKey, listKey, tokenList, isDefault)
-      updateStatus({
-        provider: providerKey,
-        message: 'Collection complete!',
-        phase: 'complete',
-      } satisfies StatusProps)
+      const result = await inmemoryTokenlist.collect({
+        providerKey,
+        listKey,
+        tokenList,
+        isDefault,
+      })
+      // updateStatus({
+      //   provider: providerKey,
+      //   message: 'Collection complete!',
+      //   phase: 'complete',
+      // } satisfies StatusProps)
       // process.stdout.write('\n')
       return result
     } catch (err) {
       // process.stdout.write('\n')
       dbg(`Failed to collect tokens for ${providerKey}:`, err)
       throw err
+    } finally {
+      row.complete()
     }
   }

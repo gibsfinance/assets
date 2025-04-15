@@ -3,15 +3,10 @@ dotenvConfig()
 
 Error.stackTraceLimit = Infinity
 
-/**
- * @title Core Utility Functions
- * @notice Collection of utility functions for file handling, RPC interactions, and data processing
- * @dev This module provides core functionality used throughout the application
- */
-
 import * as chains from 'viem/chains'
 import config from 'config'
 import * as fs from 'fs'
+import * as path from 'path'
 import * as crypto from 'crypto'
 import * as viem from 'viem'
 import * as types from '@/types'
@@ -20,33 +15,31 @@ import promiseLimit from 'promise-limit'
 import { Spinner } from '@topcli/spinner'
 import { Image } from 'knex/types/tables.js'
 import { imageMode } from '@/db/tables'
+import { createTerminal } from '@/log/App'
+import * as paths from '@/paths'
 
 /**
- * @notice Failure logging system with spinner support
- * @dev Modified to suppress certain file-related errors from console output
- * while still tracking them internally
+ * Failure logging system with spinner support
  */
 type ConsoleLogParams = Parameters<typeof console.log>
 const failures: ConsoleLogParams[] = []
 export const failureLog = (...a: ConsoleLogParams) => {
   // Don't log file, extension, or image related failures to console, but still track them
-  const isFileFailure = a[0] === 'read file failed' || (typeof a[0] === 'string' && a[0].includes('read file failed'))
-  const isExtMissing = a[0] === 'ext missing' || (typeof a[0] === 'string' && a[0].includes('ext missing'))
-  const isNoImage = a[0] === 'no img' || (typeof a[0] === 'string' && a[0].includes('no img'))
-  const isNoExt = a[0] === 'no ext' || (typeof a[0] === 'string' && a[0].includes('no ext'))
-  const shouldSuppress = isFileFailure || isExtMissing || isNoImage || isNoExt
+  // const isFileFailure = a[0] === 'read file failed' || (typeof a[0] === 'string' && a[0].includes('read file failed'))
+  // const isExtMissing = a[0] === 'ext missing' || (typeof a[0] === 'string' && a[0].includes('ext missing'))
+  // const isNoImage = a[0] === 'no img' || (typeof a[0] === 'string' && a[0].includes('no img'))
+  // const isNoExt = a[0] === 'no ext' || (typeof a[0] === 'string' && a[0].includes('no ext'))
+  // const shouldSuppress = isFileFailure || isExtMissing || isNoImage || isNoExt
 
-  if (process.env.FAKE_SPINNER && !shouldSuppress) {
-    console.log(...a)
-  } else {
-    failures.push(a)
-  }
+  // if (process.env.FAKE_SPINNER && !shouldSuppress) {
+  //   console.log(...a)
+  // } else {
+  // }
+  failures.push(a)
 }
 
 export const printFailures = () => {
-  for (const failure of failures) {
-    console.log(...failure)
-  }
+  fs.writeFileSync(path.join(paths.root, 'failures.json'), JSON.stringify(failures, null, 2))
 }
 
 export const getFullChainId = (chainId: types.ChainId) => viem.toHex(chainId, { size: 32 })
@@ -73,10 +66,7 @@ export const limitBy = _.memoize(<T>(_key: string, count = 16) => {
 })
 
 /**
- * @notice Chain lookup with custom RPC support
- * @dev Modified to support custom RPC endpoints for specific chains:
- * - Added RPC for Ethereum mainnet from env
- * - Added RPC for PulseChain from env
+ * Chain lookup with custom RPC support
  */
 export const findChain = (chainId: number) => {
   const chain = Object.values(chains).find((chain) => chain.id === chainId) as viem.Chain
@@ -96,11 +86,7 @@ export const findChain = (chainId: number) => {
 }
 
 /**
- * @notice Multicall contract reader with enhanced error handling
- * @dev Modified to support:
- * - Optional target address
- * - Per-call ABI override
- * - Automatic failure handling
+ * Multicall contract reader with enhanced error handling
  */
 export const multicallRead = async <T>({
   chain,
@@ -140,11 +126,7 @@ export const multicallRead = async <T>({
 }
 
 /**
- * @notice Generic retry mechanism with exponential backoff
- * @dev Modified to:
- * - Add failure logging
- * - Support configurable delay and attempts
- * - Use timeout utility for delays
+ * Generic retry mechanism with exponential backoff
  */
 const defaultRetryOpts = {
   delay: 3_000,
@@ -216,11 +198,7 @@ type Incrementer = {
 }
 
 /**
- * @notice Progress spinner with enhanced functionality
- * @dev Modified to:
- * - Support fake spinner mode for CI/testing
- * - Add progress tracking (current/max)
- * - Include detailed failure logging
+ * Progress spinner with enhanced functionality
  */
 export const spinner = async <T>(key: string, fn: ({ incrementMax, incrementCurrent }: Incrementer) => Promise<T>) => {
   return spinnerLimit(async () => {
@@ -253,11 +231,7 @@ export const chainIdToNetworkId = (chainId: types.ChainId, type = 'evm') => toKe
 type TokenChainInfo = [string, string, number]
 
 /**
- * @notice ERC20 token data reader with fallback support
- * @dev Modified to:
- * - Support both string and bytes32 metadata
- * - Add mustExist flag for required tokens
- * - Handle null bytes in token names/symbols
+ * ERC20 token data reader with fallback support
  */
 export const erc20Read = async (
   chain: viem.Chain,
@@ -331,12 +305,7 @@ export const directUri = ({ imageHash, ext, mode, uri }: Image) =>
   mode === imageMode.LINK ? uri : imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
 
 /**
- * @notice Result caching utility with TTL
- * @dev Added to improve performance for expensive operations
- * Features:
- * - Configurable cache duration
- * - Automatic cache invalidation
- * - Promise result caching
+ * Result caching utility with TTL
  */
 export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
   let cached: null | {
@@ -359,26 +328,26 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
   })
 }
 
+const defaultBatchSettings = {
+  multicall: {
+    batchSize: 32,
+    wait: 0,
+  },
+}
+
 /**
- * @notice Memoized viem public client factory
- * @dev Added to provide consistent client instances with optimal settings:
- * - Multicall batching enabled
- * - 32 calls per batch
- * - No wait time between batches
+ * Memoized viem public client factory
  */
-export const publicClient = _.memoize((chain: viem.Chain) => {
+export const chainToPublicClient = _.memoize((chain: viem.Chain) => {
   let transport = viem.http()
   if (chain.id === 250) {
     transport = viem.http('https://fantom-rpc.publicnode.com')
   }
   return viem.createPublicClient({
     chain,
-    transport: viem.http(),
-    batch: {
-      multicall: {
-        batchSize: 32,
-        wait: 0,
-      },
-    },
+    transport,
+    batch: defaultBatchSettings,
   }) as viem.PublicClient
 })
+
+export const terminal = createTerminal()

@@ -1,4 +1,4 @@
-import { Chain, createPublicClient, defineChain, http, erc20Abi, type Hex, erc20Abi_bytes32, getAddress } from 'viem'
+import { Chain, createPublicClient, defineChain, http, erc20Abi, type Hex, erc20Abi_bytes32 } from 'viem'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as cheerio from 'cheerio'
@@ -10,10 +10,10 @@ import _ from 'lodash'
 import { fetch, limitByTime } from '@/fetch'
 import * as db from '@/db'
 import * as utils from '@/utils'
-import { MinimalTokenInfo, MinimalTokenInfoWithLogo } from '@/types'
-import type { Link, ListToken, Network } from 'knex/types/tables.js'
-import { failureLog } from '../utils'
-import { updateStatus } from '@/utils/status'
+import type { MinimalTokenInfoWithLogo } from '@/types'
+import type { Network } from 'knex/types/tables.js'
+// import { failureLog } from '../utils'
+// import { updateStatus } from '@/log/App'
 
 type ChainInfo = {
   name: string
@@ -431,18 +431,18 @@ class Collector {
     })
     this.markTokenAsFetched(tokens)
   }
-  updateStatus() {
-    const p = this.pending.size
-    const f = this.fetched.size
-    const t = p + f
-    const i = this.info.size
-    updateStatus({
-      provider: 'dexscreener',
-      message: `📥 dexscreener collecting ${this.chainKey} pending=${p} info=${i}`,
-      current: f,
-      total: t,
-    })
-  }
+  // updateStatus() {
+  // const p = this.pending.size
+  // const f = this.fetched.size
+  // const t = p + f
+  // const i = this.info.size
+  // updateStatus({
+  //   provider: 'dexscreener',
+  //   message: `📥 dexscreener collecting ${this.chainKey} pending=${p} info=${i}`,
+  //   current: f,
+  //   total: t,
+  // })
+  // }
   toTokenLists() {
     return [...this.token.values()].reduce(
       (acc, token) => {
@@ -477,12 +477,6 @@ export const collect = async () => {
     key: 'dexscreener',
     name: 'DexScreener',
   })
-  const [listOfBoostedTokens] = await db.insertList({
-    providerId: provider.providerId,
-    networkId: allNetworksId,
-    key: 'dexscreener-boosted',
-    name: 'DexScreener Boosted',
-  })
   const [latestProfiles, latestBoosted, topBoosted] = await Promise.all([
     dexscreenerApi.getLatestTokenProfiles(),
     dexscreenerApi.getLatestTokenBoosts(),
@@ -502,11 +496,11 @@ export const collect = async () => {
   ;[...parsedChainInfo.keys()].forEach((key) => {
     allChainIds.add(key)
   })
-  updateStatus({
-    provider: 'dexscreener',
-    message: `dexscreener found ${allChainIds.size} chains`,
-    phase: 'setup',
-  })
+  // updateStatus({
+  //   provider: 'dexscreener',
+  //   message: `dexscreener found ${allChainIds.size} chains`,
+  //   phase: 'setup',
+  // })
   const chainBlacklist = new Set<string>()
   for (const chainId of allChainIds.values()) {
     const chain = chainIdToChain.get(chainId)
@@ -515,11 +509,11 @@ export const collect = async () => {
       continue
     }
   }
-  updateStatus({
-    provider: 'dexscreener',
-    message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
-    phase: 'setup',
-  })
+  // updateStatus({
+  //   provider: 'dexscreener',
+  //   message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
+  //   phase: 'setup',
+  // })
   await utils.limit.map([...parsedChainInfo.entries()], async ([key, info]) => {
     const chain = chainIdToChain.get(key)
     if (!chain) {
@@ -564,18 +558,18 @@ export const collect = async () => {
       let nextKeys: Set<string> = new Set()
       while ((nextKeys = collector.getPendingTokens(16)).size) {
         await Promise.all([collector.collect(nextKeys), collector.collectDecimals(nextKeys)])
-        collector.updateStatus()
+        // collector.updateStatus()
       }
       const [all, header] = collector.toTokenLists()
       const addressToHeaderUri = new Map<string, string>(header)
       for (let i = 0; i < all.length; i++) {
         const token = all[i]
-        updateStatus({
-          provider: 'dexscreener',
-          message: `💾 address=${token.address}`,
-          current: i,
-          total: all.length,
-        })
+        // updateStatus({
+        //   provider: 'dexscreener',
+        //   message: `💾 address=${token.address}`,
+        //   current: i,
+        //   total: all.length,
+        // })
         const { listToken } = await db.fetchImageAndStoreForToken({
           listId: listOfAllTokens.listId,
           providerKey: provider.providerId,

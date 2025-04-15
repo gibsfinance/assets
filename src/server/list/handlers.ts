@@ -86,6 +86,7 @@ const getLists = async (filter: object) => {
       `${tableNames.list}.default`,
       `${tableNames.provider}.key as provider_key`,
       `${tableNames.network}.chain_id`,
+      `${tableNames.network}.type as chain_type`,
     ])
     .from(tableNames.list)
     .join(tableNames.provider, {

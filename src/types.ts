@@ -1,15 +1,15 @@
-import { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
-import * as viem from 'viem'
+import type { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
 import type { ImageMode } from '@/db/tables'
+import type { Hex, Abi } from 'viem'
 
 export type Todo = () => Promise<void>
 
 export type ImageModeParam = ImageMode | 'default'
 
 export type PerNetworkBridgeLink = {
-  tokenAddress: viem.Hex
-  originationBridgeAddress: viem.Hex
-  destinationBridgeAddress: viem.Hex
+  tokenAddress: Hex
+  originationBridgeAddress: Hex
+  destinationBridgeAddress: Hex
 }
 export type Extensions = {
   headerUri?: string
@@ -18,7 +18,7 @@ export type Extensions = {
 
 export type SansMetadataTokenEntry = {
   chainId: number
-  address: viem.Hex
+  address: Hex
   logoURI?: string
   extensions?: Extensions
 }
@@ -45,7 +45,7 @@ export type MinimalTokenInfoWithLogo = MinimalTokenInfo & {
 export type InternetMoneyNetwork = {
   txnType: number
   graceBlocks: number
-  wNativeAddress: viem.Hex
+  wNativeAddress: Hex
   networkName: string
   chainId: number
   sym: string
@@ -61,7 +61,7 @@ export type TokenListVersion = {
   minor: number
   patch: number
 }
-export type TokenMap = Record<`${number}_${viem.Hex}`, TokenEntry>
+export type TokenMap = Record<`${number}_${Hex}`, TokenEntry>
 export type TokenList = {
   logoURI?: string
   name: string
@@ -73,12 +73,12 @@ export type TokenList = {
 export type Call = {
   allowFailure?: boolean
   functionName: string
-  target?: viem.Hex
-  abi?: viem.Abi
+  target?: Hex
+  abi?: Abi
   args?: any[]
 }
 
-export type ChainId = number | bigint | viem.Hex
+export type ChainId = number | bigint | Hex
 
 export type BridgeLinkInfo = {
   bridge: Bridge
@@ -94,8 +94,4 @@ export type HeaderUriInfo = {
   headerListTokenId: string
 }
 
-export type TokenInfo = Network &
-  Token &
-  Image &
-  BridgeLinkInfo &
-  HeaderUriInfo
+export type TokenInfo = Network & Token & Image & BridgeLinkInfo & HeaderUriInfo

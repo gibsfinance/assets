@@ -1,16 +1,6 @@
 import { config as dotenvConfig } from 'dotenv'
 dotenvConfig()
 
-/**
- * @title Chain Configuration Manager
- * @notice Manages chain configurations with dynamic RPC endpoint support
- * @dev Changes from original version:
- * 1. Added dynamic RPC endpoint configuration from environment
- * 2. Enhanced status updates for chain initialization
- * 3. Improved error handling for RPC configurations
- * 4. Added support for testnet variants
- */
-
 import {
   mainnet as viemMainnet,
   pulsechain as viemPulsechain,
@@ -20,33 +10,29 @@ import {
   type Chain,
 } from 'viem/chains'
 import { collect } from '@/args'
-import { updateStatus } from '@/utils/status'
+import _ from 'lodash'
+// import { log } from './logger'
 
 /**
- * @notice Creates chain configurations with custom RPC endpoints
- * @dev Changes:
- * 1. Added status updates for each chain configuration
- * 2. Enhanced RPC endpoint logging for debugging
- * 3. Improved configuration inheritance from viem chains
- * 4. Added support for environment-based RPC fallbacks
+ * Creates chain configurations with custom RPC endpoints
  * @return Object containing configured Chain instances
  */
-export default () => {
-  updateStatus({
-    provider: 'system',
-    message: '🔗 Initializing chain configurations...',
-    phase: 'setup',
-  })
+export default _.memoize(() => {
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '🔗 Initializing chain configurations...',
+  //   phase: 'setup',
+  // })
   const { rpc1, rpc369, rpc56, rpc11155111, rpc943 } = collect()
 
   // Log RPC configurations
-  console.log('RPC Configuration:')
-  console.log('Ethereum:', rpc1.length)
-  console.log('PulseChain:', rpc369.length)
-  console.log('BSC:', rpc56.length)
-  console.log('Sepolia:', rpc11155111.length)
-  console.log('PulseChainV4:', rpc943.length)
-  console.log('---')
+  // log('RPC Configuration %o', {
+  //   [1]: rpc1.length,
+  //   [369]: rpc369.length,
+  //   [56]: rpc56.length,
+  //   [11155111]: rpc11155111.length,
+  //   [943]: rpc943.length,
+  // })
 
   const mainnet = {
     ...viemMainnet,
@@ -102,11 +88,11 @@ export default () => {
     },
   } as Chain
 
-  updateStatus({
-    provider: 'system',
-    message: '🔗 Chain configurations initialized',
-    phase: 'complete',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '🔗 Chain configurations initialized',
+  //   phase: 'complete',
+  // })
 
   return {
     mainnet,
@@ -115,4 +101,4 @@ export default () => {
     sepolia,
     pulsechainV4,
   }
-}
+})

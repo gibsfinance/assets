@@ -47,3 +47,23 @@ export interface PlatformMetrics {
     active: string
   }
 }
+
+export type SearchUpdate = {
+  query: string
+  isSearching: boolean
+  isGlobalSearching: boolean
+  isError: boolean
+  tokens: Token[]
+}
+
+export type ListDescription = {
+  key: string
+  name: string
+  description: string
+  default: boolean
+  providerKey: string
+  chainId: string
+  chainType: string
+}
+
+export type Network = { type: string; chainId: string; networkId: string }

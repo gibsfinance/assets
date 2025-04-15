@@ -100,7 +100,7 @@ export const collect = async () => {
     remoteListOriginal(),
     remoteListV1_0_2(),
     ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
-      const client = utils.publicClient(chain)
+      const client = utils.chainToPublicClient(chain)
       const targets = [...config.targets.values()]
       const tokens = await Promise.all(targets.map((target) => utils.erc20Read(pulsechain, client, target)))
       const list = tokens.map(([name, symbol, decimals], index) => {
@@ -113,7 +113,12 @@ export const collect = async () => {
           logoURI: `https://${config.domain}/images/tokens/${targets[index]}.png`,
         }
       })
-      await inmemory.collect('pulsex', 'inline', minimalList(list), config.isDefault)
+      await inmemory.collect({
+        providerKey: 'pulsex',
+        listKey: 'inline',
+        tokenList: minimalList(list),
+        isDefault: config.isDefault,
+      })
     }),
   ])
 }

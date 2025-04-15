@@ -1,19 +1,24 @@
 <script lang="ts">
   import networkNames from '$lib/networks.json' assert { type: 'json' }
-  import { metrics } from '$lib/stores/metrics'
-  import { showTestnets } from '$lib/stores/settings'
+  import { metrics } from '$lib/stores/metrics.svelte'
+  import { showTestnets } from '$lib/stores/settings.svelte'
   import type { NetworkInfo } from '$lib/types'
-  import { createEventDispatcher, onMount } from 'svelte'
+  import { onMount } from 'svelte'
 
-  const dispatch = createEventDispatcher<{
-    select: NetworkInfo
-    networkname: (chainId: number | string) => string
-  }>()
+  type Props = {
+    isOpenToStart: boolean
+    network: NetworkInfo | null
+    showTestnets: boolean
+    onselect: (network: NetworkInfo) => void
+    onnetworkname: (getName: (id: string | number) => string) => void
+  }
 
-  let {
-    isOpen = $bindable(false),
-    selectedNetwork = $bindable<NetworkInfo | null>(null)
-  } = $props()
+  const { isOpenToStart, network: selectedNetwork, onselect, onnetworkname }: Props = $props()
+
+  let isOpen = $state(isOpenToStart)
+  $effect(() => {
+    isOpen = isOpenToStart
+  })
 
   // Add click outside handler for network select
   onMount(() => {
@@ -30,11 +35,10 @@
 
   // Add this to the existing onMount
   const storedChainId = localStorage.getItem('selectedChainId')
-  if (storedChainId && $metrics) {
-    const network = $metrics.networks.supported.find((n) => n.chainId.toString() === storedChainId)
+  if (storedChainId && metrics.value) {
+    const network = metrics.value.networks.supported.find((n) => n.chainId.toString() === storedChainId)
     if (network) {
-      selectedNetwork = network
-      dispatch('select', network)
+      onselect(network)
     }
     // Clear the stored chain ID after using it
     localStorage.removeItem('selectedChainId')
@@ -69,7 +73,8 @@
 
   // Expose getNetworkName to parent
   $effect(() => {
-    dispatch('networkname', getNetworkName)
+    // dispatch('networkname', getNetworkName)
+    onnetworkname(getNetworkName)
   })
 
   // Sort networks by priority and name
@@ -78,7 +83,7 @@
 
     // Filter out testnets if showTestnets is false
     let filteredNetworks = networks
-    if (!$showTestnets) {
+    if (!showTestnets.value) {
       filteredNetworks = networks.filter(
         (network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'),
       )
@@ -109,7 +114,14 @@
     </label>
     <label class="group flex cursor-pointer items-center gap-3">
       <div class="relative">
-        <input type="checkbox" class="peer sr-only" bind:checked={$showTestnets} />
+        <input
+          type="checkbox"
+          class="peer sr-only"
+          checked={showTestnets.value}
+          onchange={(e) => {
+            const target = e.target as HTMLInputElement
+            showTestnets.value = target.checked
+          }} />
         <div class="h-6 w-11 rounded-full bg-surface-700/20 transition-colors peer-checked:bg-[#00DC82]/20"></div>
         <div
           class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-[#00DC82]"
@@ -130,21 +142,21 @@
     {:else}
       <span class="text-gray-500">Choose a network...</span>
     {/if}
-    <i class="fas fa-chevron-down ml-2 flex-shrink-0 transition-transform" class:rotate-180={isOpen}></i>
+    <i class="fas fa-chevron-down !m-0 flex-shrink-0 transition-transform flex items-center" class:rotate-180={isOpen}
+    ></i>
   </button>
 
   {#if isOpen}
     <div
       class="absolute z-50 mt-1 max-h-[300px] w-full overflow-y-auto border border-gray-200 bg-white text-sm shadow-lg rounded-container-token dark:border-surface-700/20 dark:bg-[#202633]">
-      {#if $metrics}
-        {#each sortNetworks($metrics.networks.supported) as network}
+      {#if metrics.value}
+        {#each sortNetworks(metrics.value.networks.supported) as network}
           <button
             class="flex w-full items-center justify-between px-3 py-1.5 text-left transition-colors hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20"
             class:selected={selectedNetwork?.chainId === network.chainId}
             onclick={() => {
-              selectedNetwork = network
               isOpen = false
-              dispatch('select', network)
+              onselect(network)
             }}>
             <span class="mr-2 truncate">{getNetworkName(network.chainId)}</span>
             <span class="flex-shrink-0 whitespace-nowrap text-surface-500">(Chain ID: {network.chainId})</span>

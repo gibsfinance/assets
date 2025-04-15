@@ -11,54 +11,9 @@
     <link
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
       rel="stylesheet" />
-    <script>
-      // IPFS path handling
-      ;(function () {
-        // Get IPFS gateway path
-        function getIpfsPath() {
-          const path = window.location.pathname
-          if (path.includes('/ipfs/') || path.includes('/ipns/')) {
-            const parts = path.split('/')
-            const idx = parts.findIndex((p) => p === 'ipfs' || p === 'ipns')
-            if (idx !== -1) {
-              return '/' + parts.slice(idx).join('/')
-            }
-          }
-          return path
-        }
-
-        // Set up base paths for assets
-        const ipfsPath = getIpfsPath()
-        window.__ipfsBase = ipfsPath.endsWith('/') ? ipfsPath : ipfsPath + '/'
-      })()
-    </script>
     %sveltekit.head%
   </head>
   <body data-theme="skeleton" data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>
-    <script>
-      ;(function () {
-        // Fix script paths for IPFS
-        const fixScriptPaths = () => {
-          document.querySelectorAll('script[src^="./_app/"]').forEach((script) => {
-            const src = script.getAttribute('src')
-            if (src && !src.startsWith('http')) {
-              script.src = window.__ipfsBase + src.substring(2)
-            }
-          })
-        }
-
-        // Fix dynamic imports for IPFS
-        window.__vite_is_modern_browser = true
-        window.__vite_fix_dynamic_import = (path) => {
-          if (!path.startsWith('http')) {
-            return window.__ipfsBase + path.substring(2)
-          }
-          return path
-        }
-
-        document.addEventListener('DOMContentLoaded', fixScriptPaths)
-      })()
-    </script>
   </body>
 </html>

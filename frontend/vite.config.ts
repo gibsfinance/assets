@@ -21,6 +21,6 @@ export default defineConfig({
   },
   define: {
     'process.env.VITE_API_BASE': JSON.stringify(process.env.VITE_API_BASE || 'https://gib.show'),
-    'process.env.VITE_API_LOCAL': JSON.stringify(process.env.VITE_API_LOCAL || 'http://localhost:3000'),
+    'process.env.VITE_API_LOCAL': JSON.stringify(process.env.VITE_API_LOCAL || 'http://localhost:3456'),
   },
 })

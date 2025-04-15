@@ -1,26 +1,12 @@
-/**
- * @title Command Line Argument Parser
- * @notice Manages command line arguments and environment variables for token collection
- * @dev Changes from original version:
- * 1. Enhanced RPC configuration with fallback support
- * 2. Added image mode control for storage optimization
- * 3. Improved provider selection with validation
- * 4. Added detailed status updates for argument parsing
- */
 import { parse } from '@/args/utils'
 import _ from 'lodash'
 
 import { type Collectable, allCollectables } from '@/collect/collectables'
 import type { ImageModeParam } from '@/types'
 import { imageMode } from '@/db/tables'
-import { updateStatus } from '@/utils/status'
 
 /**
- * @notice RPC configuration helper for chain endpoints
- * @dev Changes:
- * 1. Added array type support for multiple RPC endpoints
- * 2. Enhanced coercion for comma-separated values
- * 3. Improved default handling with environment fallbacks
+ * RPC configuration helper for chain endpoints
  * @param chain The chain name for documentation
  * @return Yargs option configuration object
  */
@@ -35,20 +21,10 @@ const rpc = (chain: string, defaultUrl?: string) => {
 }
 
 /**
- * @notice Main collection configuration parser
- * @dev Changes:
- * 1. Added status updates for parsing progress
- * 2. Enhanced provider validation and selection
- * 3. Improved IPFS gateway configuration
- * 4. Added image mode control with warnings
+ * Main collection configuration parser
  * @return Parsed and validated configuration object
  */
 export const collect = _.memoize(() => {
-  updateStatus({
-    provider: 'system',
-    message: '⚙️ Parsing command line arguments...',
-    phase: 'setup',
-  })
   const argv = parse('collect', {
     providers: {
       type: 'array',
@@ -74,17 +50,17 @@ export const collect = _.memoize(() => {
   // get rid of the circular dependency and then you can get rid of this
   const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
-    updateStatus({
-      provider: 'system',
-      message: '⚠️ Warning: saving all images - this could collect unwanted data',
-      phase: 'setup',
-    })
+    // updateStatus({
+    //   provider: 'system',
+    //   message: '⚠️ Warning: saving all images - this could collect unwanted data',
+    //   phase: 'setup',
+    // })
   }
-  updateStatus({
-    provider: 'system',
-    message: '✨ Arguments parsed successfully!',
-    phase: 'complete',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '✨ Arguments parsed successfully!',
+  //   phase: 'complete',
+  // })
   return {
     providers,
     mode: argv.mode as ImageModeParam,
@@ -97,16 +73,12 @@ export const collect = _.memoize(() => {
 })
 
 /**
- * @notice Provider save mode checker
- * @dev Changes:
- * 1. Added support for provider-specific save rules
- * 2. Enhanced mode handling with explicit checks
- * 3. Improved security for untrusted providers
+ * Provider save mode checker
  * @param providerKey The provider to check
  * @return Boolean indicating if provider content should be saved
  */
 // because pumptires is controlled by anyone, we don't want to collect it by default
-const defaultNotCollected = new Set<Collectable>(['pumptires'])
+const defaultNotCollected = new Set<Collectable>(['pumptires', 'dexscreener'] as unknown as Collectable[])
 
 export const checkShouldSave = _.memoize((providerKey: string) => {
   const { mode } = collect()

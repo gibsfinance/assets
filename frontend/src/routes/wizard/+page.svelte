@@ -7,25 +7,29 @@
   import TokenListSelector from '$lib/components/TokenListSelector.svelte'
   import TokenPreview from '$lib/components/TokenPreview.svelte'
   import UrlDisplay from '$lib/components/UrlDisplay.svelte'
-  import { metrics } from '$lib/stores/metrics'
-  import { showTestnets } from '$lib/stores/settings'
-  import type { ApiType, NetworkInfo } from '$lib/types'
+  import { metrics } from '$lib/stores/metrics.svelte'
+  import { showTestnets } from '$lib/stores/settings.svelte'
+  import type { ApiType, NetworkInfo, Token, SearchUpdate } from '$lib/types'
   import { getApiUrl, initializeApiBase } from '$lib/utils'
   import { onMount } from 'svelte'
   import TokenSearch from '$lib/components/TokenSearch.svelte'
   import TokenListFilter from '$lib/components/TokenListFilter.svelte'
+  import { goto } from '$app/navigation'
+  import { enabledLists, tokensByList } from '$lib/stores/token-browser.svelte'
+  import _ from 'lodash'
 
-  let getNetworkName: (chainId: number | string) => string = (chainId) => `Chain ${chainId}`
-  let selectedChain: number | null = null
-  let tokenAddress: string = ''
-  let urlType: ApiType = 'token'
-  let listName: string = 'default'
-  let generatedUrl: string = ''
-  let previewError = false
-  let iconExists = true
-  let isCircularCrop = false
-  let showTokenBrowser = true
-  let tokenPreviewComponent: TokenPreview
+  let getNetworkName: (chainId: number | string) => string = $state((chainId) => `Chain ${chainId}`)
+  let selectedChain: number | null = $state(null)
+  let tokenAddress: string = $state('')
+  let urlType = $state<ApiType>('token')
+  let listName: string = $state('default')
+  let generatedUrl: string = $state('')
+  let previewError = $state(false)
+  let iconExists = $state(true)
+  let isCircularCrop = $state(false)
+  let showTokenBrowser = $state(true)
+  let tokenPreviewComponent: TokenPreview | null = $state(null)
+  let currentSearchState = $state<SearchUpdate | null>(null)
 
   let availableLists: Array<{
     key: string
@@ -34,30 +38,26 @@
     chainId: string
     type: string
     default: boolean
-  }> = []
+  }> = $state([])
 
-  let selectedList: { key: string; providerKey: string } | null = null
-  let selectedNetwork: NetworkInfo | null = null
-  let isNetworkSelectOpen = false
+  let selectedList: { key: string; providerKey: string } | null = $state(null)
+  let selectedNetwork: NetworkInfo | null = $state(null)
 
   // TokenBrowser state
-  let filteredTokens: any[] = []
-  let enabledLists = new Set<string>()
-  let tokensByList = new Map<string, any[]>()
-  let isListFilterOpen = false
-  let searchQuery = ''
-  let isGlobalSearchActive = false
-  let isSearching = false
-  let globalSearchResults: any[] = []
-  let currentPage = 1
-  let tokensPerPage = 25
-  let backgroundColor = '#2b4f54'
-  let showColorPicker = false
+  let filteredTokens = $state<Token[]>([])
+  let isListFilterOpen = $state(false)
+  let searchQuery = $state('')
+  let isGlobalSearchActive = $state(false)
+  let globalSearchResults: Token[] = $state([])
+  let currentPage = $state(1)
+  let tokensPerPage = $state(25)
+  let backgroundColor = $state('#2b4f54')
+  let showColorPicker = $state(false)
 
   // Add missing state
-  let allTokens: any[] = []
+  let allTokens = $state<Token[]>([])
 
-  let isInitialized = false
+  let isInitialized = $state(false)
 
   // Add URL cleanup on mount
   onMount(() => {
@@ -69,10 +69,6 @@
       if (!cancelled) {
         isInitialized = true
         // Clean up URL if it contains a hash
-        if (window.location.hash) {
-          const cleanPath = window.location.pathname
-          goto(cleanPath, { replaceState: true })
-        }
         metrics.fetchMetrics()
 
         // First fetch available lists
@@ -118,9 +114,11 @@
   })
 
   // Add this reactive statement
-  $: if (selectedNetwork && urlType === 'token') {
-    tryFetchTokenLists(selectedNetwork.chainId)
-  }
+  $effect(() => {
+    if (selectedNetwork && urlType === 'token') {
+      tryFetchTokenLists(selectedNetwork.chainId)
+    }
+  })
 
   function generateUrl() {
     previewError = false
@@ -196,19 +194,16 @@
     }
   }
 
-  function handleTokenListToggle(event: CustomEvent<{ listKey: string; enabled: boolean }>) {
-    const { listKey, enabled } = event.detail
+  function handleTokenListToggle(listKey: string, enabled: boolean) {
     if (enabled) {
       enabledLists.add(listKey)
     } else {
       enabledLists.delete(listKey)
     }
-    enabledLists = enabledLists // trigger reactivity
     updateCombinedTokenList()
   }
 
-  function handleTokenListToggleAll(event: CustomEvent<{ enabled: boolean }>) {
-    const { enabled } = event.detail
+  function handleTokenListToggleAll(enabled: boolean) {
     const listsToToggle = Array.from(tokensByList.entries())
       .filter(([_, tokens]) => tokens.length > 0)
       .map(([key]) => key)
@@ -218,7 +213,6 @@
     } else {
       listsToToggle.forEach((key) => enabledLists.delete(key))
     }
-    enabledLists = enabledLists // trigger reactivity
     updateCombinedTokenList()
   }
 
@@ -281,9 +275,10 @@
   async function processListWithRetry(list: (typeof availableLists)[0], chainId: number) {
     try {
       // Add chainId parameter for chain-specific lists
-      const url = list.chainId === '0'
-        ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
-        : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
+      const url =
+        list.chainId === '0'
+          ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
+          : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
 
       const response = await fetch(url)
 
@@ -300,8 +295,6 @@
           const listKey = `${list.providerKey}/${list.key}`
           tokensByList.set(listKey, tokens)
           enabledLists.add(listKey)
-          enabledLists = enabledLists // trigger reactivity
-          tokensByList = tokensByList // trigger reactivity
           updateCombinedTokenList()
         }
       } else if (response.status === 404) {
@@ -311,8 +304,6 @@
         const listKey = `${list.providerKey}/${list.key}`
         enabledLists.delete(listKey)
         tokensByList.delete(listKey)
-        enabledLists = enabledLists // trigger reactivity
-        tokensByList = tokensByList // trigger reactivity
         updateCombinedTokenList()
       } else {
         console.error(`Failed to fetch list ${list.providerKey}/${list.key}: ${response.status} ${response.statusText}`)
@@ -320,6 +311,22 @@
     } catch (error) {
       console.error(`Network error fetching list ${list.name}:`, error)
     }
+  }
+  const list = $derived(Array.from(tokensByList.entries()))
+  const underChain = $derived(getListsWithTokensForChain(list, selectedChain))
+  const listCount = $derived(underChain.length)
+  const tokenCount = $derived(
+    _(underChain)
+      .flatMap(([, tkns]) => tkns)
+      .uniqBy((v) => v.address.toLowerCase())
+      .value().length,
+  )
+
+  function getListsWithTokensForChain(list: [string, Token[]][], selectedChain: number | null) {
+    return list.filter(([_, tokens]) => {
+      const tokensForNetwork = tokens.filter((token) => token.chainId === selectedChain)
+      return tokensForNetwork.length > 0
+    })
   }
 </script>
 
@@ -340,28 +347,28 @@
     <div class="card space-y-6 p-4 sm:p-6">
       <!-- API Type Selection -->
       <ApiTypeSelector
-        bind:urlType
-        {selectedNetwork}
-        on:select={() => {
+        {urlType}
+        network={selectedNetwork}
+        onselect={() => {
           generatedUrl = ''
           previewError = false
           showTokenBrowser = urlType === 'token'
           // Reset token selection
           tokenAddress = ''
         }}
-        on:loadTokens={() => {
+        onloadtokens={() => {
           // If we have a selected network, reload its tokens
           if (selectedNetwork) {
             tryFetchTokenLists(selectedNetwork.chainId)
           }
         }}
-        on:generateUrl={() => {
+        ongenerate={() => {
           // Generate URL for network icon
           if (selectedNetwork) {
             generateUrl()
           }
         }}
-        on:reset={() => {
+        onreset={() => {
           generatedUrl = ''
           tokenAddress = ''
           previewError = false
@@ -380,69 +387,58 @@
 
       <!-- Network Selection -->
       <NetworkSelect
-        bind:isOpen={isNetworkSelectOpen}
-        bind:selectedNetwork
-        bind:showTestnets={$showTestnets}
-        on:networkname={({ detail }) => (getNetworkName = detail)}
-        on:select={({ detail }) => selectNetwork(detail)} />
+        isOpenToStart={false}
+        network={selectedNetwork}
+        showTestnets={showTestnets.value}
+        onnetworkname={(fn) => (getNetworkName = fn)}
+        onselect={selectNetwork} />
 
       <!-- Token Browser (show when network is selected in token mode) -->
       {#if urlType === 'token' && selectedNetwork && !tokenAddress}
+        {@const networkName = selectedNetwork ? getNetworkName(selectedNetwork.chainId) : ''}
         <TokenBrowser
-          {selectedChain}
-          networkName={selectedNetwork ? getNetworkName(selectedNetwork.chainId) : ''}
-          bind:filteredTokens
-          bind:isCircularCrop
-          bind:enabledLists
-          bind:tokensByList
-          bind:isListFilterOpen
-          bind:currentPage
+          {networkName}
+          {filteredTokens}
+          {isCircularCrop}
+          {currentPage}
           {tokensPerPage}
-          {getNetworkName}
-          on:selectToken={({ detail }) => {
-            tokenAddress = detail.token.address
-            generateUrl()
+          onpagechange={(page) => {
+            currentPage = page
           }}
-          on:toggleList={handleTokenListToggle}
-          on:toggleAll={handleTokenListToggleAll}>
+          onperpageupdate={(perPage) => {
+            tokensPerPage = perPage
+          }}
+          onselecttoken={(token) => {
+            tokenAddress = token.address
+            generateUrl()
+          }}>
           <TokenSearch
-            bind:searchQuery
-            bind:isGlobalSearchActive
-            bind:isSearching
-            {selectedChain}
-            on:search={() => {
-              currentPage = 1
-              filterTokens()
+            count={tokenCount}
+            {networkName}
+            onsearchupdate={(searchState) => {
+              currentSearchState = searchState
             }}
-            on:globalSearch
-            on:updateResults={({ detail }) => {
-              globalSearchResults = detail.tokens
-              filteredTokens = detail.tokens
-            }}>
-            <TokenListFilter
-              slot="filter"
-              bind:isOpen={isListFilterOpen}
-              bind:enabledLists
-              bind:tokensByList
-              {selectedChain}
-              on:toggleList
-              on:toggleAll />
-          </TokenSearch>
+            {selectedChain}
+            ontogglelist={handleTokenListToggle}
+            ontoggleall={handleTokenListToggleAll}
+            onupdateopen={(open) => {
+              isListFilterOpen = open
+            }} />
         </TokenBrowser>
       {/if}
 
       <!-- Manual Token Input -->
       {#if urlType === 'token' && selectedNetwork && tokenAddress}
         <TokenAddressInput
-          bind:tokenAddress
-          on:back={() => {
+          address={tokenAddress}
+          onback={() => {
             tokenAddress = ''
             generatedUrl = ''
             previewError = false
             iconExists = true
           }}
-          on:input={({ detail }) => {
-            tokenAddress = detail.address
+          oninput={(address) => {
+            tokenAddress = address
             generateUrl()
           }} />
       {/if}
@@ -482,7 +478,7 @@
         {/if}
 
         <!-- Reset Button -->
-        <button class="variant-ghost-surface btn w-full" on:click={resetForm}>
+        <button class="variant-ghost-surface btn w-full" type="button" onclick={resetForm}>
           <i class="fas fa-redo mr-2"></i>
           Reset
         </button>

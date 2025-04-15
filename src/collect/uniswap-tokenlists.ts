@@ -1,26 +1,19 @@
-/**
- * @title Uniswap Token Lists Collector
- * @notice Collects token information from Uniswap's curated token lists
- */
-
 import { fetch } from '@/fetch'
 import lists from '@/harvested/uniswap/lists.json'
 import * as types from '@/types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
-import type { StatusProps } from '../components/Status'
-import { updateStatus } from '../utils/status'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 
 const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 const providerKey = 'uniswap'
 
 export const collect = async () => {
-  updateStatus({
-    provider: providerKey,
-    message: 'Processing Uniswap token lists...',
-    phase: 'setup',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: providerKey,
+  //   message: 'Processing Uniswap token lists...',
+  //   phase: 'setup',
+  // } satisfies StatusProps)
 
   const usable = Object.entries(lists).map(([key, item]) => {
     const suffixedKey = `${key}${key.slice(-4) === '.eth' ? '.link' : ''}`
@@ -71,12 +64,16 @@ export const collect = async () => {
         token.logoURI = ''
       }
     })
-    return await inmemoryTokenlist.collect(`uniswap-${info.machineName}`, 'hosted', result)
+    return await inmemoryTokenlist.collect({
+      providerKey: `uniswap-${info.machineName}`,
+      listKey: 'hosted',
+      tokenList: result,
+    })
   })
 
-  updateStatus({
-    provider: providerKey,
-    message: 'Token list collection complete',
-    phase: 'complete',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: providerKey,
+  //   message: 'Token list collection complete',
+  //   phase: 'complete',
+  // } satisfies StatusProps)
 }

@@ -1,29 +1,21 @@
-/**
- * @title In-Memory Token List Processor
- * @notice Processes token lists with enhanced reliability and performance
- * @dev Changes from original version:
- * 1. Added retry mechanism with exponential backoff
- * 2. Implemented batched processing for better memory management
- * 3. Added detailed status updates and progress tracking
- * 4. Enhanced error handling with transaction timeouts
- */
-
 import * as db from '@/db'
 import * as types from '@/types'
 import * as utils from '@/utils'
-import { updateStatus } from '@/utils/status'
 import type { List, Network, Provider } from 'knex/types/tables'
-import type { StatusProps } from '../components/Status'
 /**
- * @notice Main collection function for processing token lists
- * @dev Changes:
- * 1. Added batched processing with configurable batch size
- * 2. Implemented transaction timeouts for better error handling
- * 3. Added detailed progress tracking for tokens
- * 4. Enhanced URL handling for malformed image URLs
- * 5. Added blacklist handling for problematic images
+ * Main collection function for processing token lists
  */
-export const collect = async (providerKey: string, listKey: string, tokenList: types.TokenList, isDefault = true) => {
+export const collect = async ({
+  isDefault = false,
+  providerKey,
+  listKey,
+  tokenList,
+}: {
+  providerKey: string
+  listKey: string
+  tokenList: types.TokenList
+  isDefault?: boolean
+}) => {
   // Extract unique chain IDs from token list
   const chainIdSet = new Set<number>()
   for (const entry of tokenList.tokens) {
@@ -33,11 +25,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
   const networks = new Map<number, Network>()
 
   // Initialize database entries
-  updateStatus({
-    provider: providerKey,
-    message: 'Setting up database entries...',
-    phase: 'setup',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: providerKey,
+  //   message: 'Setting up database entries...',
+  //   phase: 'setup',
+  // } satisfies StatusProps)
   let provider!: Provider
   let list!: List
 
@@ -55,11 +47,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     // Setup networks for each chain ID
     for (const chainId of chainIds) {
       if (chainId) {
-        updateStatus({
-          provider: providerKey,
-          message: `Setting up chain ${chainId}...`,
-          phase: 'setup',
-        } satisfies StatusProps)
+        // updateStatus({
+        //   provider: providerKey,
+        //   message: `Setting up chain ${chainId}...`,
+        //   phase: 'setup',
+        // } satisfies StatusProps)
         const network = await db.insertNetworkFromChainId(chainId, undefined, tx)
         networks.set(chainId, network)
       }
@@ -89,11 +81,11 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
 
     // Store list logo if available
     if (tokenList.logoURI) {
-      updateStatus({
-        provider: providerKey,
-        message: 'Storing list logo...',
-        phase: 'storing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: providerKey,
+      //   message: 'Storing list logo...',
+      //   phase: 'storing',
+      // } satisfies StatusProps)
       await db.fetchImageAndStoreForList(
         {
           listId: list.listId,
@@ -121,11 +113,13 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     const entry = tokenList.tokens[i]
     await db.transaction(async (tx) => {
       processedTokens++
-      updateStatus({
-        provider: providerKey,
-        message: `Processing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`,
-        phase: 'processing',
-      } satisfies StatusProps)
+      // updateStatus({
+      //   provider: providerKey,
+      //   message: `token address=${entry.address} symbol=${entry.symbol}`,
+      //   current: processedTokens,
+      //   total: totalTokens,
+      //   phase: 'processing',
+      // } satisfies StatusProps)
 
       const network = networks.get(entry.chainId)!
       const token = {
@@ -144,11 +138,13 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
       // Fix malformed URLs and store token image
       const path = entry.logoURI?.replace('hhttps://', 'https://') || null
       if (path) {
-        updateStatus({
-          provider: providerKey,
-          message: `Storing token ${processedTokens}/${totalTokens}: ${entry.symbol}...`,
-          phase: 'storing',
-        } satisfies StatusProps)
+        // updateStatus({
+        //   provider: providerKey,
+        //   message: `token address=${entry.address} symbol=${entry.symbol}`,
+        //   current: processedTokens,
+        //   total: totalTokens,
+        //   phase: 'storing',
+        // } satisfies StatusProps)
       }
       await db.fetchImageAndStoreForToken(
         {
@@ -163,9 +159,9 @@ export const collect = async (providerKey: string, listKey: string, tokenList: t
     })
   }
 
-  updateStatus({
-    provider: providerKey,
-    message: `Completed processing ${totalTokens} tokens!`,
-    phase: 'complete',
-  } satisfies StatusProps)
+  // updateStatus({
+  //   provider: providerKey,
+  //   message: `Completed processing ${totalTokens} tokens!`,
+  //   phase: 'complete',
+  // } satisfies StatusProps)
 }

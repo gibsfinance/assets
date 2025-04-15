@@ -1,32 +1,18 @@
-/**
- * @title Command Line Argument Parser
- * @notice Manages command line arguments and environment variables for token collection
- * @dev Changes from original version:
- * 1. Enhanced RPC configuration with fallback support
- * 2. Added image mode control for storage optimization
- * 3. Improved provider selection with validation
- * 4. Added detailed status updates for argument parsing
- */
-
 import { parse } from '@/args/utils'
 import _ from 'lodash'
 
-import { updateStatus } from '@/utils/status'
+// import { updateStatus } from '@/log/App'
 
 /**
- * @notice Image export configuration parser
- * @dev Changes:
- * 1. Added status updates for export progress
- * 2. Enhanced parameter validation
- * 3. Improved error handling for required fields
+ * Image export configuration parser
  * @return Parsed image export configuration
  */
 export const exportImage = _.memoize(() => {
-  updateStatus({
-    provider: 'system',
-    message: '⚙️ Parsing image export arguments...',
-    phase: 'setup',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '⚙️ Parsing image export arguments...',
+  //   phase: 'setup',
+  // })
   const argv = parse('export-image', {
     token: {
       type: 'string',
@@ -39,11 +25,11 @@ export const exportImage = _.memoize(() => {
       required: true,
     },
   })
-  updateStatus({
-    provider: 'system',
-    message: '✨ Image export arguments parsed!',
-    phase: 'complete',
-  })
+  // updateStatus({
+  //   provider: 'system',
+  //   message: '✨ Image export arguments parsed!',
+  //   phase: 'complete',
+  // })
   // process.stdout.write('\n')
   return {
     token: argv.token,
