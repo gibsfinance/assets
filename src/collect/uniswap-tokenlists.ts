@@ -11,12 +11,6 @@ const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 const providerKey = 'uniswap'
 
 export const collect = async (signal: AbortSignal) => {
-  // updateStatus({
-  //   provider: providerKey,
-  //   message: 'Processing Uniswap token lists...',
-  //   phase: 'setup',
-  // } satisfies StatusProps)
-
   const usable = Object.entries(lists).map(([key, item]) => {
     const suffixedKey = `${key}${key.slice(-4) === '.eth' ? '.link' : ''}`
     const fullKey = suffixedKey.startsWith('https://') ? suffixedKey : `https://${suffixedKey}`
@@ -103,10 +97,4 @@ export const collect = async (signal: AbortSignal) => {
     return list
   })
   summaryRow.complete()
-
-  // updateStatus({
-  //   provider: providerKey,
-  //   message: 'Token list collection complete',
-  //   phase: 'complete',
-  // } satisfies StatusProps)
 }

@@ -49,14 +49,9 @@ export const taskedTokenRequests = <T, A extends object>(
       await rateLimiter()
       const result = await fn(a)
       return result
-    })
-      .catch((e) => {
-        console.log(a)
-        throw e
-      })
-      .finally(() => {
-        cache.delete(k)
-      }) as Promise<T>
+    }).finally(() => {
+      cache.delete(k)
+    }) as Promise<T>
     cache.set(k, promise)
     return promise
   }
