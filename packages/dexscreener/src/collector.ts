@@ -12,6 +12,7 @@ export class Collector {
     protected chainKey: string,
     protected chainType: ChainType,
     protected chainId: number,
+    protected signal?: AbortSignal,
   ) {}
   pending = new Set<TokenKey>()
   fetched = new Set<TokenKey>()
@@ -136,7 +137,13 @@ export class Collector {
     }
   }
   async tokenPairs(token: string) {
-    const pairs = await retry(() => dexscreenerApi.tokenPairs(this.chainKey, token))
+    const pairs = await retry(() =>
+      dexscreenerApi.tokenPairs({
+        chainId: this.chainKey,
+        tokenAddress: token,
+        signal: this.signal,
+      }),
+    )
     return pairs
   }
   async collect(tokens: Set<string>) {

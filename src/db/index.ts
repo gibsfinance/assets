@@ -255,7 +255,12 @@ export const insertImage = async (
   }
 }
 
-export const fetchImage = async (url: string | Buffer, providerKey: string | null = null, address?: string) => {
+export const fetchImage = async (
+  url: string | Buffer,
+  signal: AbortSignal | null | undefined,
+  providerKey: string | null = null,
+  address?: string,
+) => {
   if (Buffer.isBuffer(url)) {
     return url
   }
@@ -272,7 +277,7 @@ export const fetchImage = async (url: string | Buffer, providerKey: string | nul
   const outerTimeout = timeout(10_000)
   const result = await Promise.race([
     outerTimeout.promise.then(() => null),
-    fetch(url)
+    fetch(url, { signal })
       .then(responseToBuffer)
       .catch((err: Error) => {
         failureLog('fetch failure %o -> %o', providerKey, address, url)
@@ -400,11 +405,13 @@ export const fetchImageAndStoreForList = async (
     uri,
     originalUri,
     providerKey,
+    signal,
   }: {
     listId: string
     uri: string | Buffer | null
     originalUri: string | null
     providerKey: string
+    signal?: AbortSignal
   },
   t: Tx = db,
 ) => {
@@ -429,7 +436,7 @@ export const fetchImageAndStoreForList = async (
       list,
     }
   }
-  const image = await fetchImage(uri, providerKey, `list-id:${listId}`)
+  const image = await fetchImage(uri, signal, providerKey, `list-id:${listId}`)
   if (!image) {
     failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
@@ -471,18 +478,20 @@ export const fetchImageAndStoreForNetwork = async (
     uri,
     originalUri,
     providerKey,
+    signal,
   }: {
     network: Network
     uri: string | Buffer
     originalUri: string
     providerKey: string
+    signal?: AbortSignal
   },
   t: Tx = db,
 ) => {
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
-  const image = await fetchImage(uri, providerKey, `chain-id:${network.chainId}`)
+  const image = await fetchImage(uri, signal, providerKey, `chain-id:${network.chainId}`)
   if (!image) {
     failureLog('no img %o -> %o', providerKey, originalUri)
     await writeMissing({
@@ -523,10 +532,11 @@ export const fetchAndInsertHeader = async (
     listTokenId: string
     uri: string | Buffer
     originalUri: string
+    signal?: AbortSignal
   },
   t: Tx = db,
 ) => {
-  const image = await fetchImage(header.uri, header.providerKey, header.listTokenId)
+  const image = await fetchImage(header.uri, header.signal, header.providerKey, header.listTokenId)
   if (!image) {
     return
   }
@@ -571,6 +581,7 @@ export const fetchImageAndStoreForToken = async (
     token: InsertableToken
     originalUri: string | null
     providerKey: string
+    signal?: AbortSignal
   },
   t: Tx = db,
 ): Promise<{
@@ -579,7 +590,7 @@ export const fetchImageAndStoreForToken = async (
   link?: Link
   image?: Image
 }> => {
-  const { listId, uri, token, providerKey } = inputs
+  const { listId, uri, token, providerKey, signal } = inputs
   let { originalUri } = inputs
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
@@ -635,7 +646,7 @@ export const fetchImageAndStoreForToken = async (
   // list must have already been inserted to db by this point
   let img!: Awaited<ReturnType<typeof insertImage>>
   if (uri && originalUri) {
-    const image = await fetchImage(uri, providerKey, token.providedId)
+    const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
       await writeMissing({
         providerKey,
@@ -706,10 +717,10 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
     .onConflict(['listId'])
     .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch', 'default'])
     .returning('*')
-    .catch((err) => {
-      console.log('failed to insert list', list)
-      throw err
-    })
+  // .catch((err) => {
+  //   console.log('failed to insert list', list)
+  //   throw err
+  // })
 }
 
 export const updateList = (list: Partial<List>, t: Tx = db) => {

@@ -21,7 +21,6 @@ import * as paths from '@/paths'
 
 export const printFailures = () => {
   const failuresPath = path.join(paths.root, 'failures.json')
-  console.log(failuresPath)
   fs.writeFileSync(failuresPath, JSON.stringify(failures, null, 2))
 }
 
@@ -102,4 +101,5 @@ export const chainToPublicClient = _.memoize((chain: viem.Chain): viem.PublicCli
 })
 
 // main terminal section
-export const terminal = createTerminal().issue('main', Infinity)
+export const terminalRow = createTerminal()
+export const terminal = terminalRow.issue('main', Infinity)

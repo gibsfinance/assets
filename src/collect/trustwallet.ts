@@ -7,69 +7,35 @@ import * as types from '@/types'
 import * as utils from '@/utils'
 import * as paths from '@/paths'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '@/log/types'
+import { failureLog } from 'packages/utils/src'
 
 const providerKey = 'trustwallet'
-
 const blockchainsRoot = path.join(paths.submodules, providerKey, 'blockchains')
 const assetsFolder = 'assets'
 
 /**
  * Main collection function that processes all blockchain folders
  */
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
   const row = utils.terminal.issue({
     type: terminalRowTypes.SETUP,
     id: providerKey,
   })
-  row.createCounter(terminalCounterTypes.NETWORK, blockchainFolders.length)
-  let accumulated = 0
+  row.createCounter(terminalCounterTypes.NETWORK)
+  row.incrementTotal(terminalCounterTypes.NETWORK, blockchainFolders.length)
   for (const folder of blockchainFolders) {
-    row.increment(terminalCounterTypes.NETWORK)
-    // section.set('networks', {
-    //   message: 'Reading network folders',
-    //   type: 'progress',
-    //   current: processedFolders,
-    //   total: blockchainFolders.length,
-    //   kv: {
-    //     chain: folder,
-    //   },
-    // })
-    // processedFolders++
-    // updateStatus({
-    //   provider: providerKey,
-    //   message: `Processing blockchain: ${folder}`,
-    //   current: processedFolders,
-    //   total: blockchainFolders.length,
-    //   phase: 'processing',
-    // } satisfies StatusProps)
-
     try {
       const f = path.join(blockchainsRoot, folder, assetsFolder)
       const assets = await fs.promises.readdir(f).catch(() => [])
-      accumulated += assets.length
-      await entriesFromAssets(folder, utils.removedUndesirable(assets), accumulated)
+      await entriesFromAssets(folder, utils.removedUndesirable(assets), signal)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
-      row.increment(terminalLogTypes.EROR)
-      // updateStatus({
-      //   provider: providerKey,
-      //   message: `Failed to process blockchain ${folder}: ${errorMessage}`,
-      //   current: processedFolders,
-      //   total: blockchainFolders.length,
-      //   phase: 'processing',z
-      // } satisfies StatusProps)
+      failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
+      row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
     }
   }
   row.complete()
-  // section.increment('networks')
-  // updateStatus({
-  //   provider: providerKey,
-  //   message: 'Collection complete!',
-  //   phase: 'complete',
-  // })
-  // section.end('networks')
-  // section.end('tokens')
 }
 
 /**
@@ -106,15 +72,16 @@ type Info = types.TokenEntry & {
  * @param blockchainKey The blockchain identifier
  * @param assets Array of asset addresses to process
  */
-const entriesFromAssets = async (blockchainKey: string, assets: string[], accumulated: number) => {
+const entriesFromAssets = async (blockchainKey: string, assets: string[], signal: AbortSignal) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [networkInfo, networkLogoPath] = await load(info)
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
   const list = await fs.promises.readFile(tokenlistPath).catch(() => null)
-  const row = utils.terminal.get(providerKey)
+  const row = utils.terminal.get(providerKey)!
 
   if (!list) {
-    row.increment(terminalLogTypes.EROR)
+    // use the blockchain key if we error out here because we do not yet have the chain id
+    row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
     return
   }
 
@@ -130,6 +97,8 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], accumu
   }
 
   if (!chainId) {
+    // use the blockchain key if we error out here because we do not yet have the chain id
+    row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
     return
   }
 
@@ -161,14 +130,18 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], accumu
   })
 
   // let processedAssets = 0
-  row.createCounter(terminalCounterTypes.TOKEN, accumulated)
-  row.increment(terminalCounterTypes.TOKEN, accumulated - assets.length)
+  row.createCounter(terminalCounterTypes.TOKEN)
+  row.incrementTotal(terminalCounterTypes.TOKEN, assets.length)
   for (const asset of assets) {
-    row.increment(terminalCounterTypes.TOKEN)
+    if (signal.aborted) {
+      return
+    }
     const folder = path.join(blockchainsRoot, blockchainKey, assetsFolder, asset)
     const assetData = await load(folder).catch(() => null)
 
+    const chainTokenId = `${chainId}-${asset.toLowerCase()}`
     if (!assetData) {
+      row.increment('skipped', chainTokenId)
       continue
     }
 
@@ -176,7 +149,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], accumu
     const address = asset as Hex
 
     for (const list of [networkList, trustwalletList]) {
-      const file = await db.fetchImage(logoPath, networkList.key)
+      const file = await db.fetchImage(logoPath, signal, providerKey, address)
       if (!file) {
         continue
       }
@@ -195,6 +168,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], accumu
         },
       })
     }
+    row.increment(terminalCounterTypes.TOKEN, chainTokenId)
   }
   // section.increment('tokens')
 }

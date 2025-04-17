@@ -1,14 +1,20 @@
 import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
+import { limit, limitBy, retry } from '@gibs/utils'
 import * as db from '@/db'
 import * as utils from '@/utils'
 import { pulsechain } from 'viem/chains'
 import { fetch } from '@/fetch'
-import { log } from '@/logger'
 import * as chains from 'viem/chains'
 import { tableNames } from '@/db/tables'
 import { Token } from 'knex/types/tables.js'
 import type * as types from '@/types'
+import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy } from '@/log/types'
+
+const providerKey = 'pumptires'
+const listKey = 'tokens'
+
+const limiter = limitBy<number>(providerKey, 4)
 
 type Creator = {
   address: Hex
@@ -60,62 +66,80 @@ type Response = {
   message?: string
 }
 
-const collectTokens = async (knownList: Token[], listId: string, filter: string) => {
+const retrieveData = async (
+  filter: string,
+  page: number,
+  row: TerminalRowProxy,
+  section: TerminalSectionProxy,
+  signal: AbortSignal,
+) => {
+  const url = new URL('https://api.pump.tires/api/tokens')
+  url.searchParams.set('page', `${page}`)
+  url.searchParams.set('filter', filter)
+  const task = section.task(`${providerKey}-${filter}-${page}`, {
+    type: terminalRowTypes.STORAGE,
+    id: providerKey,
+    kv: {
+      filter,
+      page,
+    },
+  })
+  return await retry(async () => {
+    const res = await fetch(url, { signal })
+    const result = (await res.json()) as Response
+    // check that the list is not empty
+    const a = result.tokens[0]
+    return result
+  }).finally(() => {
+    row.increment('pages', `${filter}-${page}`)
+    task.complete()
+  })
+}
+
+const collectTokens = async (
+  knownList: Token[],
+  filter: string,
+  row: TerminalRowProxy,
+  section: TerminalSectionProxy,
+  signal: AbortSignal,
+) => {
   const relevantData: TokenInfo[] = []
   let page = 1
-  let pageCount = 0
-  // const knownList =
-  //   .limit(100)
-  do {
-    const url = new URL('https://api.pump.tires/api/tokens')
-    url.searchParams.set('page', `${page}`)
-    url.searchParams.set('filter', filter)
-    if (page % 10 === 0) {
-      log('progress %o', url.href)
+  let discontinue = false
+  const first = await retrieveData(filter, page, row, section, signal)
+  if (signal.aborted) {
+    return
+  }
+  const pageCount = first.totalPages
+  const emptyArray = _.range(1, pageCount + 1)
+  await limiter.map(emptyArray, async (index) => {
+    if (discontinue) {
+      return
     }
-    let response!: Response
-    let first: undefined | TokenInfo = undefined
-    await utils.retry(async () => {
-      const res = await fetch(url)
-      const result = (await res.json()) as Response
-      try {
-        first = result.tokens[0]
-        response = result
-      } catch (err) {
-        log(result)
-        throw err
-      }
-    })
-    if (!first) {
-      break
+    const page = index + 1
+    const response = await retrieveData(filter, page, row, section, signal)
+    if (signal.aborted) {
+      return
     }
-    // response.tokens.forEach((token) => {
-    //   if (getAddress(token.address) === getAddress('0x84601f4e914E00Dc40296Ac11CdD27926BE319f2')) {
-    //     log('token', token)
-    //   }
-    // })
     relevantData.push(...response.tokens)
-    if (pageCount !== response.totalPages) {
-      pageCount = response.totalPages
-      log('page count update %o', pageCount)
+    const last = response.tokens[response.tokens.length - 1]
+    if (!last) {
+      discontinue = true
+      return
     }
-    page += 1
-    const firstAddress = getAddress((first as TokenInfo).address)
-    if (knownList.find((t) => getAddress(t.providedId) === firstAddress)) {
-      break
+    const lastAddress = getAddress((last as TokenInfo).address)
+    if (knownList.find((t) => getAddress(t.providedId) === lastAddress)) {
+      discontinue = true
     }
-    // const firstAddress = getAddress((first as TokenInfo).address)
-    // const exists = knownList.find((t) => getAddress(t.address) === firstAddress)
-    // if (exists) {
-    //   break
-    // }
-  } while (page <= pageCount)
+  })
   return _.uniqBy(relevantData, (t) => getAddress(t.address))
 }
 
-export const collect = async () => {
-  const providerKey = 'pumptires'
-  const listKey = 'tokens'
+export const collect = async (signal: AbortSignal) => {
+  const row = utils.terminal.issue({
+    id: providerKey,
+    type: terminalRowTypes.SETUP,
+  })
   const [provider] = await db.insertProvider({
     key: providerKey,
     name: 'tokens',
@@ -150,10 +174,15 @@ export const collect = async () => {
     .getTokensUnderListId()
     .where('listId', pumptiresLaunchedList.listId)
     .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+  const tasks = row.issue('pumptires:tokens')
   const [createdTokens, launchedTokens] = await Promise.all([
-    collectTokens(knownPumptiresList, pumptiresList.listId, 'created_timestamp'),
-    collectTokens(knownLaunchedList, pumptiresList.listId, 'launch_timestamp'),
+    collectTokens(knownPumptiresList, 'created_timestamp', row, tasks, signal),
+    collectTokens(knownLaunchedList, 'launch_timestamp', row, tasks, signal),
   ])
+  if (signal.aborted || !createdTokens || !launchedTokens) {
+    return
+  }
+  row.hideSection('pumptires:tokens')
   const situation = [
     {
       factory: '0x1715a3E4A142d8b698131108995174F37aEBA10D',
@@ -167,11 +196,16 @@ export const collect = async () => {
   const wpls = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
 
   const toURI = (token: TokenInfo) => `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
-  await utils.spinner('pumptires:created', async (l) => {
-    l.incrementMax(createdTokens.length)
-    await utils.limit.map(createdTokens, async (token: TokenInfo) => {
-      const originalUri = toURI(token)
-      await db.fetchImageAndStoreForToken({
+  row.createCounter('created', true)
+  row.incrementTotal('created', createdTokens.length)
+  await limit.map(createdTokens, async (token: TokenInfo) => {
+    if (signal.aborted) {
+      return
+    }
+    const originalUri = toURI(token)
+    const chainTokenId = `${network.networkId}-${token.address.toLowerCase()}`
+    await db
+      .fetchImageAndStoreForToken({
         listId: pumptiresList.listId,
         uri: originalUri,
         originalUri,
@@ -184,13 +218,17 @@ export const collect = async () => {
           networkId: network.networkId,
         },
       })
-    })
+      .finally(() => {
+        row.increment('created', chainTokenId)
+      })
   })
-  await utils.spinner('pumptires:launched', async (l) => {
-    l.incrementMax(launchedTokens.length)
-    await utils.limit.map(launchedTokens, async (token: TokenInfo) => {
-      const originalUri = toURI(token)
-      await db.fetchImageAndStoreForToken({
+  row.createCounter('launched', true)
+  row.incrementTotal('launched', launchedTokens.length)
+  await limit.map(launchedTokens, async (token: TokenInfo) => {
+    const originalUri = toURI(token)
+    const chainTokenId = `${network.networkId}-${token.address.toLowerCase()}`
+    await db
+      .fetchImageAndStoreForToken({
         listId: pumptiresList.listId,
         uri: originalUri,
         originalUri,
@@ -203,26 +241,25 @@ export const collect = async () => {
           networkId: network.networkId,
         },
       })
-    })
+      .finally(() => {
+        row.increment('launched', chainTokenId)
+      })
   })
   // check all LAUNCHED tokens for pairing with 1b pls
-  await utils.spinner('pumptires:highcap', async (l) => {
-    const knownLaunchedList: types.TokenInfo[] = await db
-      .getTokensUnderListId()
-      .where('listId', pumptiresLaunchedList.listId)
-      .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-    l.incrementMax(knownLaunchedList.length)
-    await utils.limit.map(knownLaunchedList, async (token: types.TokenInfo) => {
-      const address = token.providedId as Hex
-      const {
-        token0,
-        // token1,
-        reserves: [rt0, rt1],
-      } = await getReserves(address, situation, wpls)
-      if (!rt0 || !rt1) {
-        l.incrementCurrent()
-        return
-      }
+  const updatedKnownLaunchedList: types.TokenInfo[] = await db
+    .getTokensUnderListId()
+    .where('listId', pumptiresLaunchedList.listId)
+    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+  row.createCounter('highcap', true)
+  row.incrementTotal('highcap', updatedKnownLaunchedList.length)
+  await limit.map(updatedKnownLaunchedList, async (token: types.TokenInfo) => {
+    const address = token.providedId as Hex
+    const {
+      token0,
+      // token1,
+      reserves: [rt0, rt1],
+    } = await getReserves(address, situation, wpls)
+    if (rt0 && rt1) {
       const wplsReserve = getAddress(token0) === getAddress(wpls) ? rt0 : rt1
       // const tokenReserve = token1 === wpls ? rt0 : rt1
       const oneBillion = 1_000_000_000n
@@ -230,7 +267,6 @@ export const collect = async () => {
       const oneBillionWei = oneBillion * oneEther
       if (wplsReserve >= oneBillionWei) {
         const originalUri = token.uri
-        log('inserting highcap token %o', token.providedId)
         await db.fetchImageAndStoreForToken({
           listId: highMarketCapList.listId,
           uri: originalUri,
@@ -245,12 +281,14 @@ export const collect = async () => {
           },
         })
       }
-      l.incrementCurrent()
-    })
+    }
+    const chainTokenId = `${network.networkId}-${address.toLowerCase()}`
+    row.increment('highcap', chainTokenId)
   })
+  row.complete()
 }
 
-const client = utils.publicClient(chains.pulsechain)
+const client = utils.chainToPublicClient(chains.pulsechain)
 
 const univ2Abi = parseAbi([
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',

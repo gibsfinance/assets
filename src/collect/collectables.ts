@@ -7,7 +7,7 @@ import * as pls369 from './pls369'
 import * as internetmoney from './internetmoney'
 import * as uniswapTokenlists from './uniswap-tokenlists'
 import * as remoteTokenList from './remote-tokenlist'
-// import * as smoldapp from './smoldapp'
+import * as smoldapp from './smoldapp'
 // import * as omnibridge from './omnibridge'
 import * as pulsechainCollector from './pulsechain'
 import * as nineMM from './9mm'
@@ -25,9 +25,10 @@ import * as uma from './uma'
 import * as baofinance from './baofinance'
 import * as compound from './compound'
 import * as optimism from './optimism'
-// import * as pumptires from './pumptires'
+import * as pumptires from './pumptires'
 import * as dexscreener from './dexscreener'
 import _ from 'lodash'
+import { Todo } from '@/types'
 
 /**
  * Helper function to get all available collector keys
@@ -42,34 +43,34 @@ export const allCollectables = () => {
 export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
-    dexscreener: dexscreener.collect,
-    pulsechain: pulsechainCollector.collect,
-    trustwallet: trustwallet.collect,
-    'uniswap-tokenlists': uniswapTokenlists.collect,
-    kleros: kleros.collect,
+    dexscreener: dexscreener.collect as Todo,
+    pulsechain: pulsechainCollector.collect as Todo,
+    trustwallet: trustwallet.collect as Todo,
+    'uniswap-tokenlists': uniswapTokenlists.collect as Todo,
+    kleros: kleros.collect as Todo,
     piteas: remoteTokenList.collect({
       providerKey: 'piteas',
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
-    }),
-    pulsex: pulsex.collect,
+    }) as Todo,
+    pulsex: pulsex.collect as Todo,
     balancer: remoteTokenList.collect({
       providerKey: 'balancer',
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
       blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
-    }),
-    internetmoney: internetmoney.collect,
-    phux: phux.collect,
-    pls369: pls369.collect,
-    // smoldapp: smoldapp.collect,
-    levinswap: levinswap.collect,
-    honeyswap: honeyswap.collect,
-    pancake: pancake.collect,
-    quickswap: quickswap.collect,
-    roll: roll.collect,
-    scroll: scroll.collect,
-    set: set.collect,
+    }) as Todo,
+    internetmoney: internetmoney.collect as Todo,
+    phux: phux.collect as Todo,
+    pls369: pls369.collect as Todo,
+    smoldapp: smoldapp.collect as Todo,
+    levinswap: levinswap.collect as Todo,
+    honeyswap: honeyswap.collect as Todo,
+    pancake: pancake.collect as Todo,
+    quickswap: quickswap.collect as Todo,
+    roll: roll.collect as Todo,
+    scroll: scroll.collect as Todo,
+    set: set.collect as Todo,
     // omnibridge: omnibridge.collect([
     //   {
     //     providerPrefix: 'pulsechain',
@@ -87,16 +88,16 @@ export const collectables = _.memoize(() => {
     //     foreign: { chain: sepolia, address: '0x546e37DAA15cdb82fd1a717E5dEEa4AF08D4349A', startBlock: 3_332_081 },
     //     home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
     //   },
-    // ]),
-    dfyn: dfyn.collect,
-    coingecko: coingecko.collect,
-    '9mm': nineMM.collect,
-    uma: uma.collect,
-    baofinance: baofinance.collect,
-    compound: compound.collect,
-    optimism: optimism.collect,
-    // pumptires: pumptires.collect,
-  }
+    // ]) as Todo,
+    dfyn: dfyn.collect as Todo,
+    coingecko: coingecko.collect as Todo,
+    '9mm': nineMM.collect as Todo,
+    uma: uma.collect as Todo,
+    baofinance: baofinance.collect as Todo,
+    compound: compound.collect as Todo,
+    optimism: optimism.collect as Todo,
+    pumptires: pumptires.collect as Todo,
+  } as const
 })
 
 /**

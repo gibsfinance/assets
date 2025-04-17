@@ -91,15 +91,15 @@ const pulsexConfig = new Map<
   ],
 ])
 
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   await db.insertProvider({
     key: 'pulsex',
     name: 'PulseX',
     description: 'the pulsex token list hosted in their code',
   })
   await Promise.all([
-    remoteListOriginal(),
-    remoteListV1_0_2(),
+    remoteListOriginal(signal),
+    remoteListV1_0_2(signal),
     ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
       const client = utils.chainToPublicClient(chain)
       const targets = [...config.targets.values()]
@@ -119,6 +119,7 @@ export const collect = async () => {
         listKey: 'inline',
         tokenList: minimalList(list),
         isDefault: config.isDefault,
+        signal,
       })
     }),
   ])

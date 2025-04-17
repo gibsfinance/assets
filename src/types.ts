@@ -3,7 +3,7 @@ import type { ImageMode } from '@/db/tables'
 import type { Hex } from 'viem'
 import { MinimalTokenInfo } from '@gibs/utils'
 
-export type Todo = () => Promise<void>
+export type Todo = (signal: AbortSignal) => Promise<void>
 
 export type ImageModeParam = ImageMode | 'default'
 

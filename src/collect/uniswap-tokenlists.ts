@@ -10,7 +10,7 @@ import { terminal } from '@/utils'
 const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 const providerKey = 'uniswap'
 
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   // updateStatus({
   //   provider: providerKey,
   //   message: 'Processing Uniswap token lists...',
@@ -31,25 +31,30 @@ export const collect = async () => {
   })
 
   const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
-  const row = terminal.issue({
+  const summaryRow = terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
-    message: 'Processing Uniswap token lists...',
   })
-  const section = row.issue('uniswap-tokenlists', 16)
-  await promiseLimit<(typeof usable)[number]>(16).map(usable, async (info) => {
+  const section = summaryRow.issue('uniswap-tokenlists', 16)
+  summaryRow.createCounter('blacklisted', true)
+  summaryRow.createCounter('complete', true)
+  await promiseLimit<(typeof usable)[number]>(4).map(usable, async (info) => {
     const providerKey = `uniswap-${info.machineName}`
     const listKey = 'hosted'
-    const id = `${providerKey}-${listKey}`
+    const id = `${providerKey}/${listKey}`
+    if (listBlacklist.has(info.machineName)) {
+      summaryRow.increment('blacklisted', info.machineName)
+      return false
+    }
     const task = section.task(id, {
       type: terminalRowTypes.STORAGE,
       id,
     })
-    if (listBlacklist.has(info.machineName)) return false
-    const result = await fetch(info.uri)
+    const result = await fetch(info.uri, { signal })
       .then(async (res) => (await res.json()) as types.TokenList)
       .catch(() => null)
     if (!result) {
+      task.unmount()
       return false
     }
     // custom domain replacement logic
@@ -79,16 +84,25 @@ export const collect = async () => {
         token.logoURI = ''
       }
     })
-    const list = await inmemoryTokenlist.collect({
-      providerKey,
-      listKey,
-      tokenList: result,
-      row: task,
-    })
-    task.complete()
+    if (signal.aborted) {
+      return
+    }
+    const list = await inmemoryTokenlist
+      .collect({
+        providerKey,
+        listKey,
+        tokenList: result,
+        row: task,
+        signal,
+      })
+      .catch((err) => {
+        task.increment('erred', info.machineName)
+      })
+    summaryRow.increment('complete', info.machineName)
     task.unmount()
     return list
   })
+  summaryRow.complete()
 
   // updateStatus({
   //   provider: providerKey,

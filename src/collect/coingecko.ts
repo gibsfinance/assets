@@ -18,6 +18,6 @@ const zksync = remoteTokenList.collect({
   tokenList: 'https://tokens.coingecko.com/zksync/all.json',
 })
 
-export const collect = async () => {
-  await Promise.all([arbitrumOne(), uniswap(), zksync()])
+export const collect = async (signal: AbortSignal) => {
+  await Promise.all([arbitrumOne(signal), uniswap(signal), zksync(signal)])
 }

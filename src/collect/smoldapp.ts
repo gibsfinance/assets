@@ -6,6 +6,10 @@ import type { List } from 'knex/types/tables'
 import * as paths from '@/paths'
 import { zeroAddress, getAddress, type Hex } from 'viem'
 import promiseLimit from 'promise-limit'
+import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
+import { erc20Read } from '@gibs/utils/viem'
+
+const oneListInsertAtATime = promiseLimit<List>(1)
 
 type Version = {
   major: number
@@ -31,69 +35,48 @@ const filenameToListKey = (filename: string) => {
 /**
  * Main collection function that processes chains and tokens
  */
-export const collect = async () => {
-  // updateStatus({
-  //   provider: 'smoldapp',
-  //   message: '🔍 Reading token list...',
-  //   phase: 'setup',
-  // })
-
+export const collect = async (signal: AbortSignal) => {
   const root = path.join(paths.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
   const chainsPath = path.join(root, 'chains')
   const providerKey = 'smoldapp'
+  const row = utils.terminal.issue({
+    id: providerKey,
+    type: terminalRowTypes.SETUP,
+  })
 
   const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json')).catch(() => null)
   if (!infoBuff) {
-    // updateStatus({
-    //   provider: 'smoldapp',
-    //   message: 'Failed to read token list file',
-    //   phase: 'complete',
-    // } satisfies StatusProps)
+    row.complete()
     return
   }
-
+  if (signal.aborted) {
+    return
+  }
   const info = JSON.parse(infoBuff.toString()) as Info
   const { tokens } = info
-
-  // updateStatus({
-  //   provider: 'smoldapp',
-  //   message: 'Setting up provider...',
-  //   phase: 'setup',
-  // } satisfies StatusProps)
 
   const [provider] = await db.insertProvider({
     key: providerKey,
     name: 'Smol Dapp',
     description: 'a communitly led initiative to collect all the evm assets',
   })
-  // const baseNetwork = await db.insertNetworkFromChainId(0)
-  // const networksList = await db.insertList({
-  //   key: 'tokens',
-  //   // default: true,
-  //   providerId: provider.providerId,
-  //   networkId: baseNetwork.networkId,
-  // })
-
   const chainIdToNetworkId = new Map<string, List>()
 
   // Process chains
   const chains = await utils.folderContents(chainsPath)
-  let processedChains = 0
-
+  if (signal.aborted) {
+    return
+  }
   for (const chainId of chains) {
+    if (signal.aborted) {
+      return
+    }
     if (path.extname(chainId) === '.json') {
+      row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
+      row.increment('skipped', `${providerKey}-${chainId}`)
       continue // handles the _info.json file (not a chain)
     }
-
-    processedChains++
-    // updateStatus({
-    //   provider: 'smoldapp',
-    //   message: `Processing chain ${chainId}`,
-    //   current: processedChains,
-    //   total: chains.length,
-    //   phase: 'processing',
-    // } satisfies StatusProps)
 
     const network = await db.insertNetworkFromChainId(+chainId)
     const chainFolder = path.join(chainsPath, chainId)
@@ -101,14 +84,6 @@ export const collect = async () => {
 
     for (const file of folders) {
       const listKey = filenameToListKey(file)
-      // updateStatus({
-      //   provider: 'smoldapp',
-      //   message: `Processing chain ${chainId} list: ${listKey}`,
-      //   current: processedChains,
-      //   total: chains.length,
-      //   phase: 'processing',
-      // } satisfies StatusProps)
-
       const [networkList] = await db.insertList({
         key: `tokens-${chainId}-${listKey}`,
         providerId: provider.providerId,
@@ -119,14 +94,6 @@ export const collect = async () => {
       chainIdToNetworkId.set(networkList.key, networkList)
 
       if (listKey === 'svg') {
-        // updateStatus({
-        //   provider: 'smoldapp',
-        //   message: `Storing SVG assets for chain ${chainId}`,
-        //   current: processedChains,
-        //   total: chains.length,
-        //   phase: 'storing',
-        // } satisfies StatusProps)
-
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForNetwork(
             {
@@ -148,12 +115,7 @@ export const collect = async () => {
           )
         })
       } else {
-        // updateStatus({
-        //   provider: 'smoldapp',
-        //   message: `Storing PNG assets for chain ${chainId}...`,
-        //   phase: 'storing',
-        // })
-        const img = await db.fetchImage(originalUri, providerKey, chainId)
+        const img = await db.fetchImage(originalUri, signal, providerKey, chainId)
         await db.transaction(async (tx) => {
           await db.fetchImageAndStoreForList(
             {
@@ -178,142 +140,108 @@ export const collect = async () => {
       }
     }
   }
-
+  if (signal.aborted) {
+    return
+  }
   // Process tokens
   const reverseOrderTokens = Object.entries(tokens).reverse()
-  let processedChainTokens = 0
-
-  for (const [chainIdString, tokens] of reverseOrderTokens) {
-    processedChainTokens++
-    // updateStatus({
-    //   provider: 'smoldapp',
-    //   message: `Processing chain ${chainIdString} tokens`,
-    //   current: processedChainTokens,
-    //   total: reverseOrderTokens.length,
-    //   phase: 'processing',
-    // } satisfies StatusProps)
-
-    const chain = utils.findChain(+chainIdString)
-    if (!chain) {
-      // updateStatus({
-      //   provider: 'smoldapp',
-      //   message: `Failed to find chain ${chainIdString}`,
-      //   current: processedChainTokens,
-      //   total: reverseOrderTokens.length,
-      //   phase: 'processing',
-      // } satisfies StatusProps)
-      continue
+  const totalTokensCount = reverseOrderTokens.reduce((acc, [_, tokens]) => acc + tokens.length, 0)
+  row.createCounter(terminalCounterTypes.TOKEN)
+  row.incrementTotal(terminalCounterTypes.TOKEN, totalTokensCount)
+  row.createCounter(terminalCounterTypes.NETWORK)
+  row.incrementTotal(terminalCounterTypes.NETWORK, reverseOrderTokens.length)
+  const tokenLimit = promiseLimit<Hex>(16)
+  const section = row.issue(providerKey)
+  await promiseLimit<[string, string[]]>(4).map(reverseOrderTokens, async ([chainIdString, tokens]) => {
+    if (signal.aborted) {
+      return
     }
+    const chain = utils.findChain(+chainIdString)
 
-    const network = await db.insertNetworkFromChainId(+chainIdString)
+    const network = chain && (await db.insertNetworkFromChainId(+chainIdString))
     if (!network) {
-      // updateStatus({
-      //   provider: 'smoldapp',
-      //   message: `Failed to find network for chain ${chainIdString}`,
-      //   current: processedChainTokens,
-      //   total: reverseOrderTokens.length,
-      //   phase: 'processing',
-      // } satisfies StatusProps)
-      continue
+      row.increment('skipped', `${providerKey}-${chainIdString}`)
+      row.increment(terminalCounterTypes.TOKEN, new Set(tokens.map((t) => `${chainIdString}-${t.toLowerCase()}`)))
+      return
     }
 
     const client = utils.chainToPublicClient(chain)
-    const limit = promiseLimit<Hex>(256)
-    let processedTokens = 0
-    const totalTokens = tokens.length
+    await tokenLimit.map(tokens as Hex[], async (token) => {
+      const task = section.task(`${chainIdString}-${token}`, {
+        id: '',
+        type: terminalRowTypes.STORAGE,
+        kv: {
+          chainId: chainIdString,
+          token,
+        },
+      })
+      const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
+      const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
 
-    try {
-      await limit.map(tokens as Hex[], async (token) => {
-        processedTokens++
-        // updateStatus({
-        //   provider: 'smoldapp',
-        //   message: `Processing token ${token}`,
-        //   current: processedTokens,
-        //   total: totalTokens,
-        //   phase: 'processing',
-        // } satisfies StatusProps)
+      const [name, symbol, decimals] = await erc20Read(chain, client, address)
+      const tokenImages = await utils.folderContents(tokenFolder)
 
-        const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
-        const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
-
-        const [name, symbol, decimals] = await utils.erc20Read(chain, client, address)
-        const tokenImages = await utils.folderContents(tokenFolder)
-
-        for (const imageName of tokenImages) {
-          const listKey = filenameToListKey(imageName)
-          const networkKey = `tokens-${chain.id}-${listKey}`
-          const networkList =
-            chainIdToNetworkId.get(networkKey) ||
-            (await db
+      const firstImageName = tokenImages[0]
+      const listKey = filenameToListKey(firstImageName)
+      const networkKey = `tokens-${chain.id}-${listKey}`
+      const networkList =
+        chainIdToNetworkId.get(networkKey) ||
+        (await oneListInsertAtATime(
+          async () =>
+            await db
               .insertList({
                 key: networkKey,
                 providerId: provider.providerId,
                 networkId: utils.chainIdToNetworkId(chain.id),
               })
-              .then((list) => list?.[0] as List))!
-
-          const uri = path.join(tokenFolder, imageName)
-          const baseInput = {
-            uri,
-            originalUri: uri,
-            providerKey: provider.key,
-            token: {
-              providedId: address,
-              networkId: networkList.networkId!,
-              name,
-              symbol,
-              decimals,
-            },
-          }
-
-          // updateStatus({
-          //   provider: 'smoldapp',
-          //   message: `Storing token ${symbol} (${name})`,
-          //   current: processedTokens,
-          //   total: totalTokens,
-          //   phase: 'storing',
-          // } satisfies StatusProps)
-
-          await db.transaction(async (tx) => {
-            const [list] = await db.insertList(
-              {
-                providerId: provider.providerId,
-                key: `tokens-${listKey}`,
-                default: listKey === 'svg',
-              },
-              tx,
-            )
-            await db.fetchImageAndStoreForToken(
-              {
-                listId: list.listId,
-                ...baseInput,
-              },
-              tx,
-            )
-            await db.fetchImageAndStoreForToken(
-              {
-                listId: networkList.listId,
-                ...baseInput,
-              },
-              tx,
-            )
-          })
+              .then((list) => list?.[0] as List),
+        )!)
+      for (const imageName of tokenImages) {
+        const uri = path.join(tokenFolder, imageName)
+        const baseInput = {
+          uri,
+          originalUri: uri,
+          providerKey: provider.key,
+          token: {
+            providedId: address,
+            networkId: networkList.networkId!,
+            name,
+            symbol,
+            decimals,
+          },
         }
-      })
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      // updateStatus({
-      //   provider: 'smoldapp',
-      //   message: `Failed to process chain ${chainIdString}: ${errorMessage}`,
-      //   current: processedChainTokens,
-      //   total: reverseOrderTokens.length,
-      // })
-    }
-  }
-
-  // updateStatus({
-  //   provider: 'smoldapp',
-  //   message: 'Collection complete!',
-  //   phase: 'complete',
-  // })
+        if (signal.aborted) {
+          return
+        }
+        await db.transaction(async (tx) => {
+          const [list] = await db.insertList(
+            {
+              providerId: provider.providerId,
+              key: `tokens-${listKey}`,
+              default: listKey === 'svg',
+            },
+            tx,
+          )
+          await db.fetchImageAndStoreForToken(
+            {
+              listId: list.listId,
+              ...baseInput,
+            },
+            tx,
+          )
+          await db.fetchImageAndStoreForToken(
+            {
+              listId: networkList.listId,
+              ...baseInput,
+            },
+            tx,
+          )
+        })
+      }
+      task.complete()
+      row.increment(terminalCounterTypes.TOKEN, `${chainIdString}-${token.toLowerCase()}`)
+    })
+    row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
+  })
+  row.complete()
 }

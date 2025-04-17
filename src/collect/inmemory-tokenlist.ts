@@ -3,6 +3,7 @@ import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '@/log/
 import * as types from '@/types'
 import * as utils from '@/utils'
 import type { List, Network, Provider } from 'knex/types/tables'
+import { retry } from '@gibs/utils'
 /**
  * Main collection function for processing token lists
  */
@@ -12,14 +13,16 @@ export const collect = async ({
   listKey,
   tokenList,
   row: ro,
+  signal,
 }: {
   providerKey: string
   listKey: string
   tokenList: types.TokenList
   isDefault?: boolean
   row?: TerminalRowProxy
+  signal: AbortSignal
 }) => {
-  const id = `${providerKey}-${listKey}`
+  const id = `${providerKey}/${listKey}`
   const row =
     ro ??
     utils.terminal.get(id) ??
@@ -27,9 +30,6 @@ export const collect = async ({
       type: terminalRowTypes.SETUP,
       id,
     })
-  row.update({
-    message: 'Setting up networks',
-  })
   // Extract unique chain IDs from token list
   const chainIdSet = new Set<number>()
   for (const entry of tokenList.tokens) {
@@ -39,11 +39,6 @@ export const collect = async ({
   const networks = new Map<number, Network>()
 
   // Initialize database entries
-  // updateStatus({
-  //   provider: providerKey,
-  //   message: 'Setting up database entries...',
-  //   phase: 'setup',
-  // } satisfies StatusProps)
   let provider!: Provider
   let list!: List
 
@@ -55,22 +50,21 @@ export const collect = async ({
    * 4. Stores list logo if available
    */
   // Setup networks for each chain ID
-  row.createCounter(terminalCounterTypes.NETWORK, chainIds.length)
+  row.createCounter(terminalCounterTypes.NETWORK)
+  row.incrementTotal(terminalCounterTypes.NETWORK, chainIds.length)
   for (const chainId of chainIds) {
     if (chainId) {
-      // updateStatus({
-      //   provider: providerKey,
-      //   message: `Setting up chain ${chainId}...`,
-      //   phase: 'setup',
-      // } satisfies StatusProps)
       const network = await db.insertNetworkFromChainId(chainId, undefined)
+      if (signal.aborted) {
+        return
+      }
       networks.set(chainId, network)
-      row.increment(terminalCounterTypes.NETWORK)
+      row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
     }
   }
-  row.update({
-    message: 'Setting up lists',
-  })
+  if (signal.aborted) {
+    return
+  }
   await db.transaction(async (tx) => {
     // Setup default network (chainId 0)
     await db.insertNetworkFromChainId(0, undefined, tx)
@@ -119,28 +113,22 @@ export const collect = async ({
   // Process tokens in batches
   const totalTokens = tokenList.tokens.length
   const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
-  row.createCounter(terminalCounterTypes.TOKEN, totalTokens)
+  row.createCounter(terminalCounterTypes.TOKEN)
+  row.incrementTotal(terminalCounterTypes.TOKEN, totalTokens)
   /**
    * Token processing:
    * 1. Process tokens in batches to manage memory and database load
    * 2. Each token is processed in its own transaction with retry logic
    * 3. Stores token information and associated images
    */
-  row.update({
-    message: 'Processing tokens',
-  })
   for (let i = 0; i < totalTokens; i++) {
     const entry = tokenList.tokens[i]
-    await db
-      .transaction(async (tx) => {
-        // updateStatus({
-        //   provider: providerKey,
-        //   message: `token address=${entry.address} symbol=${entry.symbol}`,
-        //   current: processedTokens,
-        //   total: totalTokens,
-        //   phase: 'processing',
-        // } satisfies StatusProps)
-
+    const chainTokenId = `${entry.chainId}-${entry.address.toLowerCase()}`
+    if (signal.aborted) {
+      return
+    }
+    await retry(async () => {
+      await db.transaction(async (tx) => {
         const network = networks.get(entry.chainId)!
         const token = {
           name: entry.name,
@@ -157,15 +145,6 @@ export const collect = async ({
 
         // Fix malformed URLs and store token image
         const path = entry.logoURI?.replace('hhttps://', 'https://') || null
-        if (path) {
-          // updateStatus({
-          //   provider: providerKey,
-          //   message: `token address=${entry.address} symbol=${entry.symbol}`,
-          //   current: processedTokens,
-          //   total: totalTokens,
-          //   phase: 'storing',
-          // } satisfies StatusProps)
-        }
         await db.fetchImageAndStoreForToken(
           {
             listId: list.listId,
@@ -177,14 +156,16 @@ export const collect = async ({
           tx,
         )
       })
+    })
       .finally(() => {
-        row.increment(terminalCounterTypes.TOKEN)
+        row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+      })
+      .catch((err) => {
+        row.increment('erred', chainTokenId)
+        throw err
       })
   }
   row.complete()
-  row.update({
-    message: '',
-  })
 
   // updateStatus({
   //   provider: providerKey,

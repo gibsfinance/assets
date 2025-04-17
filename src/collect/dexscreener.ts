@@ -26,29 +26,30 @@ class TerminalLinkedCollector extends Collector {
     protected chainType: ChainType,
     protected chainId: number,
     protected row: TerminalRowProxy,
+    protected signal?: AbortSignal,
   ) {
-    super(chainKey, chainType, chainId)
+    super(chainKey, chainType, chainId, signal)
   }
   setInfo(address: string, info: IInfo) {
     super.setInfo(address, info)
     if (!this.infoCheck.has(address)) {
       this.infoCheck.add(address)
-      this.row.increment('image')
+      this.row.increment('image', new Set([address]))
     }
   }
   setToken(token: IToken) {
     const result = super.setToken(token)
     if (result) {
-      this.row.incrementTotal(terminalCounterTypes.TOKEN)
+      this.row.incrementTotal(terminalCounterTypes.TOKEN, 1)
     }
     return result
   }
   async tokenPairs(token: string) {
-    const section = this.row.get(providerKey)
-    const task = section.task(`${this.chainKey}-${token.toLowerCase()}`, {
+    const section = this.row.get(providerKey)!
+    const chainTokenId = `${this.chainId}-${token.toLowerCase()}`
+    const task = section.task(chainTokenId, {
       type: terminalRowTypes.STORAGE,
-      id: providerKey,
-      message: 'pairs',
+      id: 'pairs',
       kv: {
         type: this.chainType,
         address: token,
@@ -58,7 +59,7 @@ class TerminalLinkedCollector extends Collector {
     })
     // should always finish within 200ms (rate limit)
     const pairs = await super.tokenPairs(token)
-    this.row.increment(terminalCounterTypes.TOKEN)
+    this.row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     task.complete()
     return pairs
   }
@@ -81,7 +82,7 @@ const parseSidebarChainInfo = () => {
   return chainInfo
 }
 
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   const row = utils.terminal.issue({
     type: terminalRowTypes.SUMMARY,
     id: providerKey,
@@ -98,9 +99,9 @@ export const collect = async () => {
     name: 'DexScreener',
   })
   const [latestProfiles, latestBoosted, topBoosted] = await Promise.all([
-    dexscreenerApi.getLatestTokenProfiles(),
-    dexscreenerApi.getLatestTokenBoosts(),
-    dexscreenerApi.getTopTokenBoosts(),
+    dexscreenerApi.getLatestTokenProfiles({ signal }),
+    dexscreenerApi.getLatestTokenBoosts({ signal }),
+    dexscreenerApi.getTopTokenBoosts({ signal }),
   ])
   const allChainIds = new Set<string>()
   latestProfiles.forEach((profile) => {
@@ -134,7 +135,8 @@ export const collect = async () => {
   //   message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
   //   phase: 'setup',
   // })
-  row.increment('blacklisted', chainBlacklist.size)
+  row.createCounter('blacklisted', true)
+  row.increment('blacklisted', chainBlacklist)
   await limit.map([...parsedChainInfo.entries()], async ([key, info]) => {
     const chain = chainIdToChain.get(key)
     if (!chain) {
@@ -165,8 +167,11 @@ export const collect = async () => {
     return key === 'pulsechain' || key === 'ethereum'
   })
   const section = row.issue(providerKey)
-  row.createCounter(terminalCounterTypes.NETWORK, relevantChains.length)
-  row.createCounter(terminalCounterTypes.TOKEN, 0)
+  row.createCounter(terminalCounterTypes.NETWORK)
+  row.incrementTotal(terminalCounterTypes.NETWORK, relevantChains.length)
+  row.createCounter(terminalCounterTypes.TOKEN)
+  row.incrementTotal(terminalCounterTypes.TOKEN, 0)
+  row.createCounter('image', true)
   await Promise.all(
     relevantChains.map(async ([key, chain]) => {
       const filter = {
@@ -174,9 +179,10 @@ export const collect = async () => {
         chainId: chain.id.toString(),
       }
       const network = await db.getNetworks().where(filter).first<Network>()
+      const k = chain.id.toString()
       if (!network) {
-        row.increment(terminalLogTypes.EROR)
-        row.increment(terminalCounterTypes.NETWORK)
+        row.increment(terminalLogTypes.EROR, new Set([k]))
+        row.increment(terminalCounterTypes.NETWORK, new Set([k]))
         return
       }
       const startingTokens = (nativeTokens.get(`${chain.type}-${chain.id}`) ?? nativeTokens.get(chain.type))!
@@ -193,6 +199,7 @@ export const collect = async () => {
       const addressToHeaderUri = new Map<string, string>(header)
       for (let i = 0; i < all.length; i++) {
         const token = all[i]
+        const chainTokenId = `${chain.id}-${token.address.toLowerCase()}`
         const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
           id: providerKey,
@@ -241,14 +248,14 @@ export const collect = async () => {
             providerKey: provider.providerId,
           })
           .catch((e) => {
-            row.increment(terminalLogTypes.EROR)
+            row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
             throw e
           })
           .finally(() => {
             headTask.complete()
           })
       }
-      row.increment(terminalCounterTypes.NETWORK)
+      row.increment(terminalCounterTypes.NETWORK, new Set([k]))
     }),
   )
   row.remove(providerKey)

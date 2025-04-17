@@ -24,7 +24,7 @@ export const limitBy = _.memoize(<T>(_key: string, count = 16) => {
  */
 const defaultRetryOpts = {
   delay: 3_000,
-  attempts: 3,
+  attempts: 5,
 }
 
 export const retry = async <T>(fn: () => Promise<T>, options = {}) => {

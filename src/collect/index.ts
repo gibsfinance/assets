@@ -2,36 +2,42 @@ import promiseLimit from 'promise-limit'
 import * as utils from '@/utils'
 import { type Collectable, collectables } from '@/collect/collectables'
 import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
+import { failureLog } from 'packages/utils/src'
 
 const PROVIDER_CONCURRENCY = 4
-const progress = utils.terminal.issue({
-  type: terminalRowTypes.SUMMARY,
-  id: 'collect',
-})
 /**
  * Main collection function that orchestrates data collection from multiple providers
  */
 export const main = async (providers: Collectable[]) => {
+  const controller = new AbortController()
   const c = collectables()
 
   const limit = promiseLimit<Collectable>(PROVIDER_CONCURRENCY)
-  progress.createCounter(terminalCounterTypes.PROVIDER, providers.length)
+  utils.terminalRow.update({
+    id: 'collect',
+    type: terminalRowTypes.SUMMARY,
+  })
+  utils.terminalRow.createCounter(terminalCounterTypes.PROVIDER)
+  utils.terminalRow.incrementTotal(terminalCounterTypes.PROVIDER, providers.length)
   await limit.map(providers, async (provider) => {
+    if (controller.signal.aborted) {
+      return
+    }
     const collector = c[provider]
     if (!collector) {
-      progress.increment('skipped')
+      utils.terminalRow.increment('skipped', provider)
     } else {
-      progress.increment('running')
+      utils.terminalRow.increment('running', provider)
       try {
-        await collector()
+        await collector(controller.signal)
+        utils.terminalRow.increment('success', provider)
       } catch (err) {
-        console.log(err)
-        progress.increment('erred')
-        // erred.push({ provider, err })
+        utils.terminalRow.increment('erred', provider)
+        failureLog('failed to collect', provider, (err as Error).message)
       }
-      progress.decrement('running')
+      utils.terminalRow.decrement('running', provider)
     }
-    progress.increment(terminalCounterTypes.PROVIDER)
+    utils.terminalRow.increment(terminalCounterTypes.PROVIDER, provider)
   })
-  progress.complete()
+  utils.terminalRow.complete()
 }

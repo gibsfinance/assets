@@ -6,25 +6,26 @@ import { terminalRowTypes, type TerminalSectionProxy } from './types'
 
 let terminal: ReturnType<typeof ink.render> | null = null
 let isRunning = true
+let isMunging = 0
 const globalDefaultLimit = 4
 
 // Handle Ctrl+C gracefully
-// process.on('SIGINT', () => {
-//   stop('Stopped by user')
-// })
+process.on('SIGINT', () => {
+  stop('Stopped by user')
+})
 
-// export const stop = (message: string) => {
-//   isRunning = false
-//   if (!terminal) {
-//     return
-//   }
-//   globalInfo.finalNote = message
-//   globalInfo.terminated = true
-//   rerender()
-//   setTimeout(() => {
-//     unmount()
-//   }, 100)
-// }
+export const stop = (message: string) => {
+  isRunning = false
+  if (!terminal) {
+    return
+  }
+  globalInfo.finalNote = message
+  globalInfo.terminated = true
+  rerender()
+  // setTimeout(() => {
+  //   unmount()
+  // }, 100)
+}
 
 // export const reset = () => {
 //   globalInfo.sections.clear()
@@ -46,6 +47,8 @@ const globalInfo = {
   row: null,
 } as types.RenderState
 
+const counterKeys = new Set(Object.values(types.terminalCounterTypes))
+
 export const getGlobalInfo = () => ({
   ...globalInfo,
 })
@@ -60,7 +63,17 @@ const doRerender = _.throttle(() => {
 
 export const rerender = () => {
   if (!isRunning) return
+  if (isMunging) return
   doRerender()
+  isRunning = !globalInfo.terminated
+}
+
+export const rerenderAfter = <T extends unknown>(fn: () => T) => {
+  isMunging++
+  const res = fn()
+  isMunging--
+  rerender()
+  return res
 }
 
 export const createTerminal = () => {
@@ -74,142 +87,212 @@ export const createTerminal = () => {
     lastUpdated: new Date(),
   } as types.TerminalRow
   globalInfo.row = row
-  return readOnlyRow(globalInfo.row)
+  return readOnlyRow(null, globalInfo.row)
 }
 
-export const readOnlyRow = (row: types.TerminalRow) => {
+export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: types.TerminalRow) => {
   return {
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
         return null
       }
-      return readOnlySection(row, section)
+      return readOnlySection(readOnlyRow(parent, row), section)
     },
     update(updates: Partial<types.TerminalRow>) {
-      for (const [k, v] of Object.entries(updates)) {
-        // @ts-expect-error
-        row[k] = v
-      }
-      rerender()
-    },
-    createCounter(key: types.TerminalCounterType, total?: number) {
-      const counters = (row.counters = row.counters ?? new Map())
-      counters.set(key, {
-        current: 0,
-        total: total ?? null,
-      })
-      rerender()
-    },
-    incrementTotal(key: types.TerminalCounterType | string, amount = 1) {
-      const counter = row.counters?.get(key)
-      if (!counter) {
-        throw new Error('counter not found')
-      }
-      counter.total = (counter.total ?? 0) + amount
-      rerender()
-    },
-    increment(key: types.TerminalCounterType | string, amount = 1) {
-      let counter = row.counters?.get(key)
-      if (!counter) {
-        counter = {
-          current: 0,
-          total: null,
+      rerenderAfter(() => {
+        for (const [k, v] of Object.entries(updates)) {
+          // @ts-expect-error
+          row[k] = v
         }
-      }
-      const current = counter.current
-      row.counters.set(key, {
-        ...counter,
-        current: current + amount,
       })
-      rerender()
-      return current
     },
-    decrement(key: types.TerminalCounterType | string) {
-      return this.increment(key, -1)
+    createCounter(key: types.TerminalCounterType | string, stayLocal?: boolean) {
+      rerenderAfter(() => {
+        if (!stayLocal) parent?.createCounter(key, stayLocal)
+        const counters = (row.counters = row.counters ?? new Map())
+        const create = (key: types.TerminalCounterType) => {
+          if (counters.has(key)) {
+            return
+          }
+          counters.set(key, {
+            current: new Set(),
+            total: null,
+          })
+        }
+        let createAter = false
+        for (const k of counterKeys) {
+          if (!createAter) {
+            if (k !== key) continue
+          }
+          create(k)
+          createAter = true
+        }
+        const exists = counters.get(key)
+        if (exists) {
+          return exists
+        }
+        counters.set(key, {
+          current: new Set(),
+          total: null,
+        })
+      })
+    },
+    hasCounter(key: types.TerminalCounterType | string) {
+      return row.counters?.has(key)
+    },
+    incrementTotal(key: types.TerminalCounterType | string, num?: number) {
+      rerenderAfter(() => {
+        const n = num ?? 1
+        const counter = row.counters?.get(key)
+        if (!counter) {
+          throw new Error('counter not found')
+        }
+        parent?.incrementTotal(key, n)
+        counter.total = (counter.total ?? 0) + n
+      })
+    },
+    increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement = false) {
+      return rerenderAfter(() => {
+        if (!row.counters.has(key)) {
+          this.createCounter(key)
+        }
+        const counter = row.counters.get(key)
+        if (!counter) {
+          throw new Error('counter not found')
+        }
+        const current = counter.current
+        parent?.increment(key, ids, decrement)
+        const idSet = typeof ids === 'string' ? new Set([ids]) : ids
+        const updatedSet = decrement ? current.difference(idSet) : current.union(idSet)
+        row.counters.set(key, {
+          ...counter,
+          current: updatedSet,
+        })
+        return updatedSet
+      })
+    },
+    decrement(key: types.TerminalCounterType | string, ids: Set<string> | string) {
+      return this.increment(key, ids, true)
     },
     removeCounter(key: types.TerminalCounterType | string) {
-      row.counters?.delete(key)
-      rerender()
+      rerenderAfter(() => {
+        row.counters?.delete(key)
+      })
+    },
+    hide() {
+      rerenderAfter(() => {
+        row.hide = true
+      })
+    },
+    hideSection(key: string) {
+      rerenderAfter(() => {
+        const section = row.sections?.get(key)
+        if (!section) {
+          return
+        }
+        section.hide = true
+      })
     },
     complete() {
-      row.type = terminalRowTypes.COMPLETE
-      rerender()
+      rerenderAfter(() => {
+        row.type = terminalRowTypes.COMPLETE
+      })
     },
     remove(key: string) {
-      row.sections?.delete(key)
-      rerender()
+      rerenderAfter(() => {
+        row.sections?.delete(key)
+      })
     },
     issue(id: string, limit: number | null = null) {
-      const sections = (row.sections = row.sections ?? new Map())
-      const section = {
-        id,
-        limit: limit ?? globalDefaultLimit,
-        rows: new Map(),
-      } as types.Section
-      const existing = sections.get(id)
-      if (existing) {
-        console.log(id)
-        throw new Error('duplicate key')
-      }
-      sections.set(id, section)
-      rerender()
-      return readOnlySection(row, section)
+      return rerenderAfter(() => {
+        const sections = (row.sections = row.sections ?? new Map())
+        const section = {
+          id,
+          limit: limit ?? globalDefaultLimit,
+          rows: new Map(),
+        } as types.Section
+        const existing = sections.get(id)
+        if (existing) {
+          console.log(id)
+          throw new Error('duplicate key')
+        }
+        sections.set(id, section)
+        return readOnlySection(readOnlyRow(parent, row), section)
+      })
     },
-  }
+  } as types.TerminalRowProxy
 }
 
-export const readOnlySection = (parent: types.TerminalRow, section: types.Section): TerminalSectionProxy => {
+export const readOnlySection = (parent: types.TerminalRowProxy, section: types.Section): types.TerminalSectionProxy => {
   return {
     get(id: string) {
-      const s = section.rows?.get(id)
+      const s = section.rows.get(id)
       if (!s) {
         return null
       }
-      return readOnlyRow(s)
+      return readOnlyRow(readOnlySection(parent, section), s)
     },
     task(id: string, row: types.TerminalTask) {
-      const rows = (section.rows = section.rows ?? new Map())
-      const r = {
-        isTask: true,
-        lastUpdated: new Date(),
-        counters: new Map(),
-        ...row,
-      }
-      rows.set(id, r)
-      const roParent = readOnlyRow(parent)
-      roParent.increment('tasks')
-      rerender()
-      return {
-        ...readOnlyRow(r),
-        unmount: () => {
-          const prevVal = roParent.decrement('tasks')
-          if (prevVal === 1) {
-            roParent.removeCounter('tasks')
-          }
-          rows.delete(id)
-          rerender()
-        },
-      }
+      return rerenderAfter(() => {
+        const r = {
+          isTask: true,
+          lastUpdated: new Date(),
+          counters: new Map(),
+          ...row,
+        }
+        section.rows.set(id, r)
+        const ro = readOnlyRow(readOnlySection(parent, section), r)
+        parent.increment('tasks', new Set([id]))
+        return {
+          ...ro,
+          unmount: () => {
+            const prevVal = parent.increment('tasks', new Set([id]), true)
+            if (prevVal.size === 0) {
+              parent.removeCounter('tasks')
+            }
+            section.rows.delete(id)
+            // assume this is outside of a rerender context - call directly
+            rerender()
+          },
+        }
+      })
     },
     issue(props) {
-      const row = {
-        ...props,
-        lastUpdated: new Date(),
-        counters: new Map(),
-      } as types.TerminalRow
-      const rows = (section.rows = section.rows ?? new Map())
-      const existing = rows.get(props.id)
-      if (existing) {
-        throw new Error(`duplicated row ${props.id}`)
-      }
-      rows.set(props.id, row)
-      rerender()
-      return readOnlyRow(row)
+      return rerenderAfter(() => {
+        const row = {
+          ...props,
+          lastUpdated: new Date(),
+          counters: new Map(),
+          sections: new Map(),
+        } as types.TerminalRow
+        const existing = section.rows.get(props.id)
+        if (existing) {
+          throw new Error(`duplicated row ${props.id}`)
+        }
+        section.rows.set(props.id, row)
+        return readOnlyRow(readOnlySection(parent, section), row)
+      })
     },
     removeRow(key: string) {
-      section.rows?.delete(key)
-      rerender()
+      return rerenderAfter(() => {
+        section.rows.delete(key)
+      })
     },
-  }
+    increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement?: boolean) {
+      return !parent.hasCounter(key) ? 0 : parent.increment(key, ids, decrement)
+    },
+    incrementTotal(key: types.TerminalCounterType | string, num: number) {
+      if (parent.hasCounter(key)) {
+        parent.incrementTotal(key, num)
+      }
+    },
+    decrement(key: types.TerminalCounterType | string, ids: Set<string> | string) {
+      if (parent.hasCounter(key)) parent.decrement(key, ids)
+    },
+    createCounter(key: types.TerminalCounterType | string, stayLocal?: boolean) {
+      if (stayLocal) return
+      return parent.createCounter(key, stayLocal)
+    },
+  } as types.TerminalSectionProxy
 }

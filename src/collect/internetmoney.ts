@@ -46,20 +46,22 @@ const networkToChain = (network: NetworkInfo) => {
 /**
  * Main collection function that processes Internet Money networks and tokens
  */
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   const summaryRow = utils.terminal.issue({
     type: terminalRowTypes.SUMMARY,
     id: providerKey,
   })
   const tasksSection = summaryRow.issue('tasks')
 
-  const json = await fetch(baseUrl)
+  const json = await fetch(baseUrl, { signal })
     .then((res): Promise<NetworkInfo[]> => res.json())
     .then((res) => (Array.isArray(res) ? res : []))
   const encounteredChainIds = new Set<bigint>()
   let provider!: Provider
   let insertedList!: List
-
+  if (signal.aborted) {
+    return
+  }
   await db.transaction(async (tx) => {
     ;[provider] = await db.insertProvider(
       {
@@ -87,14 +89,16 @@ export const collect = async () => {
     totalTokens += network.tokens.length
   }
 
-  summaryRow.createCounter(terminalCounterTypes.NETWORK, json.length)
-  summaryRow.createCounter(terminalCounterTypes.TOKEN, totalTokens)
+  summaryRow.createCounter(terminalCounterTypes.NETWORK)
+  summaryRow.incrementTotal(terminalCounterTypes.NETWORK, json.length)
+  summaryRow.createCounter(terminalCounterTypes.TOKEN)
+  summaryRow.incrementTotal(terminalCounterTypes.TOKEN, totalTokens)
   // Process tokens in parallel with controlled concurrency
   type NetworkAndToken = [NetworkInfo, TokenInfo]
   const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
   const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
   const networkToNetworkList = await networkLimiter.map(json, async (network) => {
-    summaryRow.increment(terminalCounterTypes.NETWORK)
+    summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
     const row = tasksSection.task(network.chainId.toString(), {
       type: terminalRowTypes.STORAGE,
       id: providerKey,
@@ -144,7 +148,7 @@ export const collect = async () => {
   })
 
   await limit.map(allTokens, async ([network, token]) => {
-    summaryRow.increment(terminalCounterTypes.TOKEN)
+    summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
     const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
       type: terminalRowTypes.STORAGE,
       id: providerKey,
@@ -190,9 +194,9 @@ export const collect = async () => {
       })
       .catch((err) => {
         if (err.message?.toLowerCase()?.includes('timeout')) {
-          row.increment('timeout')
+          row.increment('timeout', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
         } else {
-          row.increment('error')
+          row.increment('error', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
         }
         failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
       })

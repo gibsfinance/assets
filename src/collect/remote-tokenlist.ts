@@ -1,4 +1,4 @@
-import { erc20Read } from '@gibs/utils'
+import { erc20Read, failureLog } from '@gibs/utils'
 import * as db from '@/db'
 import { fetch } from '@/fetch'
 import * as types from '@/types'
@@ -7,7 +7,7 @@ import debug from 'debug'
 import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { KV, terminalLogTypes, terminalRowTypes } from '@/log/types'
+import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '@/log/types'
 
 const dbg = debug('📷:remote-tokenlist')
 
@@ -42,8 +42,8 @@ export const collect =
     isDefault = true,
     blacklist = new Set<string>(),
   }: Input) =>
-  async () => {
-    const id = `${providerKey}-${listKey}`
+  async (signal: AbortSignal) => {
+    const id = `${providerKey}/${listKey}`
     const row =
       utils.terminal.get(id) ??
       utils.terminal.issue({
@@ -53,13 +53,8 @@ export const collect =
     row.update({
       message: 'fetching list',
     })
-    const response = await fetch(tokenListUrl)
+    const response = await fetch(tokenListUrl, { signal })
     if (!response.ok) {
-      // updateStatus({
-      //   provider: providerKey,
-      //   message: `Failed to fetch token list: ${response.status} ${response.statusText}`,
-      //   phase: 'complete',
-      // } satisfies StatusProps)
       throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
     }
 
@@ -67,13 +62,12 @@ export const collect =
     try {
       tokenList = await response.json()
     } catch (e) {
-      // updateStatus({
-      //   provider: providerKey,
-      //   message: `Failed to parse token list JSON: ${e}`,
-      //   phase: 'complete',
-      // } satisfies StatusProps)
-      // dbg(`Failed to parse JSON from ${tokenListUrl}:`, e)
-      throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
+      failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
+      return
+      // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
+    }
+    if (signal.aborted) {
+      return
     }
 
     const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
@@ -98,6 +92,9 @@ export const collect =
     }
     const extras = await Promise.all(
       extra.map(async (item) => {
+        if (signal.aborted) {
+          return
+        }
         if (blacked.has(item.address.toLowerCase())) {
           item.logoURI = ''
         }
@@ -106,12 +103,12 @@ export const collect =
           const client = utils.chainToPublicClient(chain)
 
           const [image, [name, symbol, decimals]] = await Promise.all([
-            db.fetchImage(item.logoURI, providerKey, item.address),
+            db.fetchImage(item.logoURI, signal, providerKey, item.address),
             erc20Read(chain, client, item.address),
           ])
 
           if (!image) {
-            row.increment('missing')
+            row.increment('missing', `${item.network.id}-${item.address.toLowerCase()}`)
             // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
             return
           }
@@ -134,11 +131,6 @@ export const collect =
               )
             }
 
-            // updateStatus({
-            //   provider: providerKey,
-            //   message: `Storing token ${name} (${symbol})...`,
-            //   phase: 'storing',
-            // } satisfies StatusProps)
             await db.fetchImageAndStoreForToken(
               {
                 listId: null,
@@ -156,8 +148,6 @@ export const collect =
               tx,
             )
           })
-
-          // processedCount++
           return {
             chainId: item.network.id,
             logoURI: item.logoURI,
@@ -168,16 +158,11 @@ export const collect =
           }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
-          // updateStatus({
-          //   provider: providerKey,
-          //   message: `Failed to process extension token ${item.address}: ${errorMessage}`,
-          //   current: processedCount + 1,
-          //   total: extra.length,
-          //   phase: 'processing',
-          // } satisfies StatusProps)
-          // dbg(`Failed to process extension item ${item.address}:`, err)
-          row.increment(terminalLogTypes.EROR)
+          failureLog('provider=%o list=%o item=%o error=%o', providerKey, listKey, item, errorMessage)
+          row.increment(terminalLogTypes.EROR, `${item.network.id}-${item.address.toLowerCase()}`)
           return undefined
+        } finally {
+          row.increment(terminalCounterTypes.TOKEN, `${item.network.id}-${item.address.toLowerCase()}`)
         }
       }),
     )
@@ -191,11 +176,15 @@ export const collect =
 
     tokenList.tokens.push(...validExtras)
 
+    if (signal.aborted) {
+      return
+    }
     const result = await inmemoryTokenlist.collect({
       providerKey,
       listKey,
       tokenList,
       isDefault,
+      signal,
     })
     // updateStatus({
     //   provider: providerKey,

@@ -1,16 +1,37 @@
 import * as path from 'path'
-import * as viem from 'viem'
+import { type Hex, isAddress, getAddress, zeroAddress } from 'viem'
+import { type Chain } from 'viem/chains'
 import * as fs from 'fs'
 import _ from 'lodash'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as paths from '@/paths'
-import { erc20Read } from '@gibs/utils'
+import { erc20Read, timeout } from '@gibs/utils'
 import * as db from '@/db'
 import promiseLimit from 'promise-limit'
 import { chainToPublicClient, terminal } from '@/utils'
 import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
 
 const providerKey = 'pls369'
+type Piece = {
+  address: Hex
+  path: string
+  fullPath: string
+}
+type Config = {
+  list: {
+    default: boolean
+    key: string
+    name: string
+    description: string
+  }
+  fetchConfig: {
+    mustExist: boolean
+    skipBytes32: boolean
+  }
+  chain: Chain
+}
+const tokenAccessLimit = promiseLimit<Piece>(32)
+const networkLimiter = promiseLimit<Config>(2)
 /**
  * Configuration for mainnet and testnet token collection
  */
@@ -59,15 +80,9 @@ export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
  * Main collection function that processes PulseChain assets
  */
 export const collect = async () => {
-  // updateStatus({
-  //   provider: 'pls369',
-  //   message: '🔍 Scanning asset directory...',
-  //   phase: 'setup',
-  // })
-  const row = terminal.issue({
+  const summaryRow = terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
-    message: 'Scanning asset directory...',
   })
 
   const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
@@ -88,12 +103,13 @@ export const collect = async () => {
   const pieces = _(infoPaths)
     .map((p) => {
       const addr = p.slice(1, 43)
-      if (addr !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
+      if (!isAddress(addr)) {
+        summaryRow.createCounter('skipped', true)
+        summaryRow.increment('skipped', `${providerKey}-${addr.toLowerCase()}`)
         return null
       }
-      if (!viem.isAddress(addr)) return null
       return {
-        address: viem.getAddress(addr),
+        address: getAddress(addr),
         path: p,
         fullPath: path.join(walkPath, p),
       }
@@ -101,14 +117,6 @@ export const collect = async () => {
     .compact()
     .value()
 
-  // updateStatus({
-  //   provider: 'pls369',
-  //   message: `Found ${pieces.length} valid assets to process`,
-  //   phase: 'setup',
-  // } satisfies StatusProps)
-  row.update({
-    message: 'inserting provider',
-  })
   const [provider] = await db.insertProvider({
     key: 'pls369',
     name: 'PLS369',
@@ -116,17 +124,14 @@ export const collect = async () => {
   })
 
   // let configIndex = 0
-  row.createCounter(terminalCounterTypes.NETWORK, configs.length)
-  for (const { list, chain, fetchConfig } of configs) {
-    // configIndex++
-    // updateStatus({
-    //   provider: 'pls369',
-    //   message: `Processing config for chain ${chain.id} (${list.name})`,
-    //   current: configIndex,
-    //   total: configs.length,
-    //   phase: 'processing',
-    // } satisfies StatusProps)
-
+  summaryRow.createCounter(terminalCounterTypes.NETWORK)
+  summaryRow.incrementTotal(terminalCounterTypes.NETWORK, configs.length)
+  const section = summaryRow.issue(providerKey)
+  await networkLimiter.map(configs, async ({ list, chain, fetchConfig }) => {
+    const row = section.task(`${providerKey}-${chain.id}`, {
+      id: `chainId=${chain.id}`,
+      type: terminalRowTypes.SETUP,
+    })
     const client = chainToPublicClient(chain)
     const network = await db.insertNetworkFromChainId(chain.id)
     const [dbList] = await db.insertList({
@@ -135,143 +140,58 @@ export const collect = async () => {
       ...list,
     })
 
-    // let processedPieces = 0
-    row.createCounter(terminalCounterTypes.TOKEN, pieces.length)
-    for (const piece of pieces) {
-      row.increment(terminalCounterTypes.TOKEN)
-      // updateStatus({
-      //   provider: 'pls369',
-      //   message: `Processing token at ${piece.address}`,
-      //   current: processedPieces,
-      //   total: pieces.length,
-      //   phase: 'processing',
-      // } satisfies StatusProps)
-
-      const response = await erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
-
-      if (!response) {
-        // updateStatus({
-        //   provider: 'pls369',
-        //   message: `Failed to read token at ${piece.address}`,
-        //   current: processedPieces,
-        //   total: pieces.length,
-        //   phase: 'processing',
-        // } satisfies StatusProps)
-        continue
-      }
-
-      const [name, symbol, decimals] = response
-      const path = piece.fullPath.replace('hhttps://', 'https://')
-
-      // updateStatus({
-      //   provider: 'pls369',
-      //   message: `Storing token ${symbol} (${name})`,
-      //   current: processedPieces,
-      //   total: pieces.length,
-      //   phase: 'storing',
-      // } satisfies StatusProps)
-
-      await db.fetchImageAndStoreForToken({
-        listId: dbList.listId,
-        uri: path,
-        originalUri: path,
-        providerKey: provider.key,
-        token: {
-          name,
-          symbol,
-          decimals,
-          networkId: network.networkId,
-          providedId: piece.address,
-        },
-      })
-
-      if (chain.id !== 369 || piece.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27') {
-        continue
-      }
-
-      // updateStatus({
-      //   provider: 'pls369',
-      //   message: `Processing testnet variants for ${symbol}`,
-      //   current: processedPieces,
-      //   total: pieces.length,
-      //   phase: 'processing',
-      // } satisfies StatusProps)
-
-      const testNetwork = await db.insertNetworkFromChainId(pulsechainV4.id)
-      const [dbList2] = await db.insertList({
-        providerId: provider.providerId,
-        networkId: testNetwork.networkId,
-        ...list,
-      })
-
-      const testnetAddresses = ['0x70499adEBB11Efd915E3b69E700c331778628707', viem.zeroAddress]
-      for (const testAddress of testnetAddresses) {
-        // updateStatus({
-        //   provider: 'pls369',
-        //   message: `Storing testnet variant at ${testAddress}`,
-        //   current: processedPieces,
-        //   total: pieces.length,
-        //   phase: 'storing',
-        // } satisfies StatusProps)
-
-        await db.fetchImageAndStoreForToken({
-          listId: dbList2.listId,
-          uri: path,
-          originalUri: path,
-          providerKey: provider.key,
-          token: {
-            name,
-            symbol,
-            decimals,
-            networkId: testNetwork.networkId,
-            providedId: testAddress,
+    row.createCounter(terminalCounterTypes.TOKEN)
+    row.incrementTotal(terminalCounterTypes.TOKEN, pieces.length)
+    const networkSection = row.issue(`${providerKey}-${chain.id}`)
+    await tokenAccessLimit
+      .map(pieces, async (piece: Piece) => {
+        const chainTokenId = `${chain.id}-${piece.address.toLowerCase()}`
+        row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+        const task = networkSection.task(chainTokenId, {
+          id: '',
+          type: terminalRowTypes.STORAGE,
+          kv: {
+            address: piece.address,
           },
         })
-      }
+        const response = await erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
 
-      // updateStatus({
-      //   provider: 'pls369',
-      //   message: 'Storing mainnet zero address variant',
-      //   current: processedPieces,
-      //   total: pieces.length,
-      //   phase: 'storing',
-      // } satisfies StatusProps)
+        if (!response) {
+          row.increment('skipped', chainTokenId)
+          task.unmount()
+          return
+        }
 
-      await db.fetchImageAndStoreForToken({
-        listId: dbList.listId,
-        uri: path,
-        originalUri: path,
-        providerKey: provider.key,
-        token: {
-          name,
-          symbol,
-          decimals,
-          networkId: network.networkId,
-          providedId: viem.zeroAddress,
-        },
+        const [name, symbol, decimals] = response
+        const path = piece.fullPath.replace('hhttps://', 'https://')
+
+        await db
+          .fetchImageAndStoreForToken({
+            listId: dbList.listId,
+            uri: path,
+            originalUri: path,
+            providerKey: provider.key,
+            token: {
+              name,
+              symbol,
+              decimals,
+              networkId: network.networkId,
+              providedId: piece.address,
+            },
+          })
+          .finally(() => {
+            task.complete()
+          })
       })
-
-      // updateStatus({
-      //   provider: 'pls369',
-      //   message: 'Storing network icon',
-      //   current: processedPieces,
-      //   total: pieces.length,
-      //   phase: 'storing',
-      // } satisfies StatusProps)
-
-      await db.fetchImageAndStoreForNetwork({
-        network,
-        uri: path,
-        originalUri: path,
-        providerKey: provider.key,
+      .catch((e) => {
+        row.increment('erred', `${chain.id}`)
+        summaryRow.increment('erred', `${chain.id}`)
+        throw e
       })
-    }
-    row.increment(terminalCounterTypes.NETWORK)
-  }
-
-  // updateStatus({
-  //   provider: 'pls369',
-  //   message: '✨ Collection complete!',
-  //   phase: 'complete',
-  // })
+    row.hideSection(`${providerKey}-${chain.id}`)
+    row.hide()
+    row.complete()
+    summaryRow.increment(terminalCounterTypes.NETWORK, `${chain.id}`)
+  })
+  summaryRow.complete()
 }

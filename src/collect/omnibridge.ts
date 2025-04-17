@@ -1,7 +1,8 @@
-import * as db from '@/db'
-import { chainIdToNetworkId, erc20Read, chainToPublicClient } from '@/utils'
 import _ from 'lodash'
 import * as viem from 'viem'
+import { erc20Read } from '@gibs/utils/viem'
+import * as db from '@/db'
+import { chainIdToNetworkId, chainToPublicClient } from '@/utils'
 
 /**
  * Configuration types for bridge endpoints

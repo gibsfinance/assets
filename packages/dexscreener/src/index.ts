@@ -30,23 +30,28 @@ export type LatestDexSearch = Omit<dexscreenerSDK.PairsResponse, 'pairs'> & {
 // up to 64 requests in flight at the same time
 const apiLimiter = promiseLimit<any>(64)
 
-export const taskedTokenRequests = <T, A extends unknown[]>(perMinute: number, fn: (...a: A) => Promise<T>) => {
+export const taskedTokenRequests = <T, A extends object>(
+  perMinute: number,
+  keys: (keyof A)[],
+  fn: (a: { signal?: AbortSignal } & A) => Promise<T>,
+) => {
   const cache = new Map<string, null | Promise<T>>()
   const minMs = Math.ceil(60_000 / perMinute)
   const rateLimiter = limitByTime(minMs)
-  return (...args: A) => {
-    const k = args.join('-')
+  return (args?: { signal?: AbortSignal } & A) => {
+    const a = args ?? ({} as A)
+    const k = keys.map((k) => a[k]).join('-')
     const cached = cache.get(k)
     if (cached) {
       return cached
     }
     const promise = apiLimiter(async () => {
       await rateLimiter()
-      const result = await fn(...args)
+      const result = await fn(a)
       return result
     })
       .catch((e) => {
-        console.log(args)
+        console.log(a)
         throw e
       })
       .finally(() => {
@@ -57,111 +62,127 @@ export const taskedTokenRequests = <T, A extends unknown[]>(perMinute: number, f
   }
 }
 export const origin = new URL('https://api.dexscreener.com')
-export const directFetchJSON = async <T>(url: URL) => {
-  return fetch(url).then((res) => res.json() as Promise<T>)
+export const directFetchJSON = async <T>(url: URL, signal?: AbortSignal) => {
+  return fetch(url, { signal }).then((res) => res.json() as Promise<T>)
 }
 
 export type ChainKey = `${string}-${string}`
 export const chainKey = (chainId: string, tokenAddress: string) =>
   `${chainId}-${tokenAddress}`.toLowerCase() as ChainKey
 export const dexscreenerApi = {
-  getLatestTokenProfiles: taskedTokenRequests<TokenProfile[], []>(60, () =>
-    directFetchJSON<TokenProfile[]>(new URL('/token-profiles/latest/v1', origin)),
+  getLatestTokenProfiles: taskedTokenRequests<TokenProfile[], {}>(60, [], ({ signal }) =>
+    directFetchJSON<TokenProfile[]>(new URL('/token-profiles/latest/v1', origin), signal),
   ),
-  getLatestTokenBoosts: taskedTokenRequests<TokenBoost[], []>(60, () =>
-    directFetchJSON<TokenBoost[]>(new URL('/token-boosts/latest/v1', origin)),
+  getLatestTokenBoosts: taskedTokenRequests<TokenBoost[], {}>(60, [], ({ signal }) =>
+    directFetchJSON<TokenBoost[]>(new URL('/token-boosts/latest/v1', origin), signal),
   ),
-  getTopTokenBoosts: taskedTokenRequests<TokenBoost[], []>(60, () =>
-    directFetchJSON<TokenBoost[]>(new URL('/token-boosts/top/v1', origin)),
+  getTopTokenBoosts: taskedTokenRequests<TokenBoost[], {}>(60, [], ({ signal }) =>
+    directFetchJSON<TokenBoost[]>(new URL('/token-boosts/top/v1', origin), signal),
   ),
-  getOrdersForToken: taskedTokenRequests<dexscreenerSDK.Order[], [string, string]>(300, (chainId, tokenAddress) =>
-    directFetchJSON<dexscreenerSDK.Order[]>(new URL(`/orders/v1/${chainId}/${tokenAddress}`, origin)),
-  ),
-  getPairById: taskedTokenRequests<PairsResponse, [string, string]>(300, (chainId, pairId) =>
-    directFetchJSON<PairsResponse>(new URL(`/latest/dex/pairs/${chainId}/${pairId}`, origin)),
-  ),
-  latestDexSearch: taskedTokenRequests<LatestDexSearch, [`${string}/${string}`]>(60, (q) =>
-    directFetchJSON<LatestDexSearch>(new URL(`/latest/dex/search?q=${q}`, origin)),
-  ),
-  tokenPairs: taskedTokenRequests<TokenPairsResponse, [string, string]>(300, (chainId, tokenAddress) =>
-    directFetchJSON<TokenPairsResponse>(new URL(`/token-pairs/v1/${chainId}/${tokenAddress}`, origin)),
-  ),
-  pairsByTokenAddresses: taskedTokenRequests<TokenPairsResponse, [string, string[]]>(
+  getOrdersForToken: taskedTokenRequests<dexscreenerSDK.Order[], { chainId: string; tokenAddress: string }>(
     300,
-    ((c) => async (chainId, tokenAddresses) => {
-      const [found, missing] = _.partition(tokenAddresses, (tokenAddress) => {
-        const info = c.get(chainKey(chainId, tokenAddress))
-        return info?.direct ?? false
-      })
-      if (!missing.length) {
-        const resolvers = await Promise.all(
-          _.map(found, (tokenAddress) => c.get(chainKey(chainId, tokenAddress))!.promise),
+    ['chainId', 'tokenAddress'],
+    ({ signal, chainId, tokenAddress }) =>
+      directFetchJSON<dexscreenerSDK.Order[]>(new URL(`/orders/v1/${chainId}/${tokenAddress}`, origin), signal),
+  ),
+  getPairById: taskedTokenRequests<PairsResponse, { chainId: string; pairId: string }>(
+    300,
+    ['chainId', 'pairId'],
+    ({ signal, chainId, pairId }) =>
+      directFetchJSON<PairsResponse>(new URL(`/latest/dex/pairs/${chainId}/${pairId}`, origin), signal),
+  ),
+  latestDexSearch: taskedTokenRequests<LatestDexSearch, { q: `${string}/${string}` }>(60, ['q'], ({ signal, q }) =>
+    directFetchJSON<LatestDexSearch>(new URL(`/latest/dex/search?q=${q}`, origin), signal),
+  ),
+  tokenPairs: taskedTokenRequests<TokenPairsResponse, { chainId: string; tokenAddress: string }>(
+    300,
+    ['chainId', 'tokenAddress'],
+    ({ signal, chainId, tokenAddress }) =>
+      directFetchJSON<TokenPairsResponse>(new URL(`/token-pairs/v1/${chainId}/${tokenAddress}`, origin), signal),
+  ),
+  pairsByTokenAddresses: taskedTokenRequests<TokenPairsResponse, { chainId: string; tokenAddresses: string[] }>(
+    300,
+    ['chainId', 'tokenAddresses'],
+    (
+      (c) =>
+      async ({ signal, chainId, tokenAddresses }) => {
+        const [found, missing] = _.partition(tokenAddresses, (tokenAddress) => {
+          const info = c.get(chainKey(chainId, tokenAddress))
+          return info?.direct ?? false
+        })
+        if (!missing.length) {
+          const resolvers = await Promise.all(
+            _.map(found, (tokenAddress) => c.get(chainKey(chainId, tokenAddress))!.promise),
+          )
+          return _(resolvers)
+            .map((r) => r())
+            .flatten()
+            .uniq()
+            .value()
+        }
+        const createCache = (addr: string, direct: boolean = false) => {
+          const k = chainKey(chainId, addr)
+          if (c.has(k)) {
+            return
+          }
+          let resolve!: (value: unknown) => void
+          let list: TokenPairsResponse = []
+          const promise = new Promise((res) => {
+            resolve = res
+          }).then(() => () => list)
+          c.set(k, {
+            direct,
+            list,
+            promise,
+            resolve: (l) => {
+              list.push(...l)
+              list = _.uniqBy(list, (i) => i.pairAddress.toLowerCase())
+              resolve(undefined)
+            },
+          })
+        }
+        for (const tokenAddress of missing) {
+          createCache(tokenAddress, true)
+        }
+        const addrs = encodeURIComponent(tokenAddresses.join(','))
+        const result = await directFetchJSON<TokenPairsResponse>(
+          new URL(`/tokens/v1/${chainId}/${addrs}`, origin),
+          signal,
         )
+        const addTokenToList = (acc: Record<string, Pair[]>, pair: Pair, token: dexscreenerSDK.IToken) => {
+          const key = chainKey(pair.chainId, token.address)
+          acc[key] = acc[key] ?? []
+          acc[key].push(pair)
+        }
+        const byKey = _.reduce(
+          result,
+          (acc, pair) => {
+            addTokenToList(acc, pair, pair.baseToken)
+            addTokenToList(acc, pair, pair.quoteToken)
+            return acc
+          },
+          {} as Record<ChainKey, Pair[]>,
+        )
+        const tokenAddressesSet = new Set<string>(tokenAddresses.map((address) => address.toLowerCase()))
+        for (const [key, pairs] of Object.entries(byKey)) {
+          const k = key as ChainKey
+          const addr = k.split('-')[1]
+          if (!c.has(k)) {
+            createCache(addr)
+          }
+          const info = c.get(k)!
+          if (tokenAddressesSet.has(addr)) {
+            info.direct = true
+          }
+          info!.resolve(pairs)
+        }
+        const resolvers = await Promise.all(tokenAddresses.map((address) => c.get(chainKey(chainId, address))!.promise))
         return _(resolvers)
           .map((r) => r())
           .flatten()
-          .uniq()
           .value()
       }
-      const createCache = (addr: string, direct: boolean = false) => {
-        const k = chainKey(chainId, addr)
-        if (c.has(k)) {
-          return
-        }
-        let resolve!: (value: unknown) => void
-        let list: TokenPairsResponse = []
-        const promise = new Promise((res) => {
-          resolve = res
-        }).then(() => () => list)
-        c.set(k, {
-          direct,
-          list,
-          promise,
-          resolve: (l) => {
-            list.push(...l)
-            list = _.uniqBy(list, (i) => i.pairAddress.toLowerCase())
-            resolve(undefined)
-          },
-        })
-      }
-      for (const tokenAddress of missing) {
-        createCache(tokenAddress, true)
-      }
-      const addrs = encodeURIComponent(tokenAddresses.join(','))
-      const result = await directFetchJSON<TokenPairsResponse>(new URL(`/tokens/v1/${chainId}/${addrs}`, origin))
-      const addTokenToList = (acc: Record<string, Pair[]>, pair: Pair, token: dexscreenerSDK.IToken) => {
-        const key = chainKey(pair.chainId, token.address)
-        acc[key] = acc[key] ?? []
-        acc[key].push(pair)
-      }
-      const byKey = _.reduce(
-        result,
-        (acc, pair) => {
-          addTokenToList(acc, pair, pair.baseToken)
-          addTokenToList(acc, pair, pair.quoteToken)
-          return acc
-        },
-        {} as Record<ChainKey, Pair[]>,
-      )
-      const tokenAddressesSet = new Set<string>(tokenAddresses.map((address) => address.toLowerCase()))
-      for (const [key, pairs] of Object.entries(byKey)) {
-        const k = key as ChainKey
-        const addr = k.split('-')[1]
-        if (!c.has(k)) {
-          createCache(addr)
-        }
-        const info = c.get(k)!
-        if (tokenAddressesSet.has(addr)) {
-          info.direct = true
-        }
-        info!.resolve(pairs)
-      }
-      const resolvers = await Promise.all(tokenAddresses.map((address) => c.get(chainKey(chainId, address))!.promise))
-      return _(resolvers)
-        .map((r) => r())
-        .flatten()
-        .value()
-    })(
+    )(
       new Map<
         ChainKey,
         {
