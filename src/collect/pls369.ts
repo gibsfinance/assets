@@ -8,7 +8,7 @@ import * as paths from '@/paths'
 import { erc20Read, timeout } from '@gibs/utils'
 import * as db from '@/db'
 import promiseLimit from 'promise-limit'
-import { chainToPublicClient, terminal } from '@/utils'
+import { chainToPublicClient, counterId, mapToSet, terminal } from '@/utils'
 import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
 
 const providerKey = 'pls369'
@@ -62,7 +62,7 @@ const configs = [
     },
     chain: pulsechainV4,
   },
-] as const
+] as Config[]
 
 type Walker = (target: string, doWalk: () => Promise<string[]>) => Promise<string[]>
 
@@ -79,7 +79,7 @@ export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
 /**
  * Main collection function that processes PulseChain assets
  */
-export const collect = async () => {
+export const collect = async (signal: AbortSignal) => {
   const summaryRow = terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
@@ -123,11 +123,16 @@ export const collect = async () => {
     description: 'a grass roots list curated by pulsechain users',
   })
 
-  // let configIndex = 0
   summaryRow.createCounter(terminalCounterTypes.NETWORK)
-  summaryRow.incrementTotal(terminalCounterTypes.NETWORK, configs.length)
+  summaryRow.incrementTotal(
+    terminalCounterTypes.NETWORK,
+    mapToSet.network(configs, (c) => c.chain.id),
+  )
   const section = summaryRow.issue(providerKey)
   await networkLimiter.map(configs, async ({ list, chain, fetchConfig }) => {
+    if (signal.aborted) {
+      return
+    }
     const row = section.task(`${providerKey}-${chain.id}`, {
       id: `chainId=${chain.id}`,
       type: terminalRowTypes.SETUP,
@@ -141,11 +146,17 @@ export const collect = async () => {
     })
 
     row.createCounter(terminalCounterTypes.TOKEN)
-    row.incrementTotal(terminalCounterTypes.TOKEN, pieces.length)
+    row.incrementTotal(
+      terminalCounterTypes.TOKEN,
+      mapToSet.token(pieces, (v) => [chain.id, v.address]),
+    )
     const networkSection = row.issue(`${providerKey}-${chain.id}`)
     await tokenAccessLimit
       .map(pieces, async (piece: Piece) => {
-        const chainTokenId = `${chain.id}-${piece.address.toLowerCase()}`
+        if (signal.aborted) {
+          return
+        }
+        const chainTokenId = counterId.token([chain.id, piece.address])
         row.increment(terminalCounterTypes.TOKEN, chainTokenId)
         const task = networkSection.task(chainTokenId, {
           id: '',
@@ -171,6 +182,7 @@ export const collect = async () => {
             uri: path,
             originalUri: path,
             providerKey: provider.key,
+            signal,
             token: {
               name,
               symbol,

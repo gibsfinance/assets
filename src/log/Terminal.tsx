@@ -77,7 +77,7 @@ export const Progress: React.FC<
       </Box>
       <Text dimColor={props.isTask}>/</Text>
       <Box minWidth={progress} display="flex" justifyContent="flex-start">
-        <Text dimColor={props.isTask}>{props.total}</Text>
+        <Text dimColor={props.isTask}>{props.total.size}</Text>
       </Box>
       <Text dimColor={props.isTask}>=</Text>
       <Box minWidth={width} display="flex" justifyContent="flex-start" marginRight={1}>
@@ -113,7 +113,6 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
     otherEntries,
     ([key]) => !!types.terminalCounterTypes[key.toUpperCase() as unknown as types.TerminalCounterTypeKeys],
   )
-  if (props.isTask) return <></>
   return (
     <Box display="flex" flexDirection="row" gap={1}>
       <Box width={3} display="flex" justifyContent="flex-end">
@@ -126,15 +125,18 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
       </Box>
       {progressEntries.length ? (
         <Box display="flex" flexDirection="row" justifyContent="flex-start" gap={2}>
-          {progressEntries.map(([key, counter]) => (
-            <Progress
-              {...(counter as types.Progress)}
-              id={key}
-              key={key}
-              isTask={props.isTask}
-              minWidth={widths.get(counter)}
-            />
-          ))}
+          {progressEntries.map(
+            ([key, counter]) =>
+              counter.total && (
+                <Progress
+                  {...(counter as types.Progress)}
+                  id={key}
+                  key={key}
+                  isTask={props.isTask}
+                  minWidth={widths.get(counter)}
+                />
+              ),
+          )}
         </Box>
       ) : null}
       {counterEntries.length ? (
@@ -164,13 +166,13 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
 }
 
 export const RowWithSections: React.FC<types.TerminalRow & { padding: Padding }> = (props) => {
-  const sections = props.sections ? [...props.sections.values()] : []
+  const sections = [...props.sections.values()]
   const rows = sections.flatMap((section) => Array.from(section.rows.values()))
   const childPadding = {
     id: rows.reduce((len, rows) => Math.max(rows.id === null ? 0 : rows.id.length, len), props.padding.id),
     progress: rows.reduce((accum, row) => {
       return [...row.counters.values()].reduce((accum, counter, index) => {
-        const len = Math.max(accum[index] ?? 0, `${counter.total ?? counter.current.size}`.length)
+        const len = Math.max(accum[index] ?? 0, `${counter.total?.size ?? counter.current.size}`.length)
         accum[index] = len
         return accum
       }, accum)
@@ -188,7 +190,5 @@ export const RowWithSections: React.FC<types.TerminalRow & { padding: Padding }>
 
 export const Terminal: React.FC<types.RenderState> = (props) => {
   if (!props.row) return <></>
-  // console.log([...[...props.row.sections!.values()]?.[0]?.rows.values()][0].counters.entries())
-  // return
   return <RowWithSections {...props.row} padding={{ id: 0, progress: [] }} />
 }

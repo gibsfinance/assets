@@ -2,7 +2,9 @@ import _ from 'lodash'
 import * as viem from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
 import * as db from '@/db'
-import { chainIdToNetworkId, chainToPublicClient } from '@/utils'
+import { chainIdToNetworkId, chainToPublicClient, counterId, mapToSet, terminal } from '@/utils'
+import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
+import { MinimalTokenInfo } from 'packages/utils/src'
 
 /**
  * Configuration types for bridge endpoints
@@ -20,22 +22,34 @@ type BridgeConfig = {
   foreign: BridgeSideConfig
 }
 
+const providerKey = 'omnibridge'
+
+const term = _.memoize(() => {
+  const row = terminal.issue({
+    id: providerKey,
+    type: terminalRowTypes.SETUP,
+  })
+  const section = row.issue(providerKey, 6)
+  return { row, section }
+})
+
 /**
  * Main collection function that processes bridge configurations
  */
-export const collect = (config: BridgeConfig[]) => async () => {
-  // updateStatus({
-  //   provider: 'omnibridge',
-  //   message: 'Starting bridge collection...',
-  //   phase: 'setup',
-  // } satisfies StatusProps)
-
-  await Promise.all(config.map(collectByBridgeConfig))
+export const collect = (config: BridgeConfig[]) => async (signal: AbortSignal) => {
+  const { row } = term()
+  await Promise.all(
+    config.map((c) => {
+      return collectByBridgeConfig(c, signal)
+    }),
+  )
+  row.complete()
 }
 
 const abi = viem.parseAbi(['event NewTokenRegistered(address indexed native, address indexed bridged)'])
 
-export const collectByBridgeConfig = async (config: BridgeConfig) => {
+export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortSignal) => {
+  const { row, section } = term()
   const tasks = [config.home, config.foreign].map(async (fromConfig) => {
     let key = `${config.providerPrefix}-bridge`
     if (config.testnetPrefix) {
@@ -44,17 +58,25 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
     const fromHome = fromConfig === config.home
     const toConfig = fromHome ? config.foreign : config.home
 
-    // let retryCount = 0
-    // const maxRetries = 3
-    // const retryDelay = 5000
-
-    // while (retryCount < maxRetries) {
-    // try {
+    const bridgeDirectionId = `${key}-${fromConfig.chain.id}->${toConfig.chain.id}`
+    const configRow = section.task(bridgeDirectionId, {
+      id: `${config.providerPrefix}: ${fromConfig.chain.id}->${toConfig.chain.id}`,
+      type: terminalRowTypes.SETUP,
+      kv: {
+        from: fromConfig.chain.id,
+        to: toConfig.chain.id,
+      },
+    })
+    configRow.createCounter(terminalCounterTypes.TOKEN)
     const fromClient = chainToPublicClient(fromConfig.chain)
     const toClient = chainToPublicClient(toConfig.chain)
 
     // Test both RPC connections before proceeding
     await Promise.all([fromClient.getChainId(), toClient.getChainId()])
+    if (signal.aborted) {
+      configRow.unmount()
+      return
+    }
 
     const toOmnibridge = viem.getContract({
       address: toConfig.address,
@@ -63,7 +85,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
     })
 
     let fromBlock = BigInt(toConfig.startBlock)
-    const latestBlock = await toClient.getBlock({
+    const finalizedBlock = await toClient.getBlock({
       blockTag: 'finalized',
     })
 
@@ -115,9 +137,23 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
     if (currentToBlockNumber && currentToBlockNumber > fromBlock) {
       fromBlock = currentToBlockNumber
     }
+    // console.log(bridgeBlockKey, fromBlock, finalizedBlock.number)
 
-    // log('provider=%o, %o->%o updating=%o', provider.key, fromList.key, toList.key, bridgeBlockKey)
-    await iterateOverRange(fromBlock, latestBlock.number, async (fromBlock, toBlock) => {
+    const blocksSection = configRow.issue(providerKey, 1)
+    configRow.createCounter(terminalCounterTypes.TOKEN)
+    await iterateOverRange(fromBlock, finalizedBlock.number, async (fromBlock, toBlock) => {
+      if (signal.aborted) {
+        return
+      }
+      const task = blocksSection.task(`${bridgeDirectionId}-${fromBlock}-${toBlock}`, {
+        id: '',
+        type: terminalRowTypes.SETUP,
+        kv: {
+          final: finalizedBlock.number,
+          from: fromBlock,
+          to: toBlock,
+        },
+      })
       const events = await toOmnibridge.getEvents.NewTokenRegistered(
         {},
         {
@@ -126,14 +162,20 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
         },
       )
       if (!events.length) {
+        task.unmount()
         await db.updateBridgeBlockProgress(bridge.bridgeId, {
           [bridgeBlockKey]: `${toBlock}`,
         })
         return
       }
-      // log('provider=%o events=%o from=%o to=%o', provider.key, events.length, Number(fromBlock), Number(toBlock))
+      if (signal.aborted) {
+        return
+      }
       const collectedData = await Promise.all(
         events.map(async (event) => {
+          if (signal.aborted) {
+            return
+          }
           const native = event.args.native as viem.Hex
           const bridged = event.args.bridged as viem.Hex
           const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
@@ -141,11 +183,15 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           const [name, symbol, decimals] = await erc20Read(fromConfig.chain, fromClient, native)
           const [bridgedName, bridgedSymbol, bridgedDecimals] = await erc20Read(toConfig.chain, toClient, bridged)
           const metadata = {
+            address: native,
+            chainId: fromConfig.chain.id,
             name,
             symbol,
             decimals,
           }
           const bridgedMetadata = {
+            address: bridged,
+            chainId: toConfig.chain.id,
             name: bridgedName,
             symbol: bridgedSymbol,
             decimals: bridgedDecimals,
@@ -156,14 +202,11 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           ] as const
         }),
       )
-      const collectedDataForTokens = new Map<
-        string,
-        {
-          decimals: number
-          symbol: string
-          name: string
-        }
-      >(_.flatten(collectedData))
+      if (signal.aborted) {
+        return
+      }
+      const tokenData = _.flatten(_.compact(collectedData))
+      const collectedDataForTokens = new Map<string, MinimalTokenInfo>(tokenData)
       await db.transaction(async (tx) => {
         for (const event of events) {
           const [native, bridged] = await Promise.all(
@@ -175,6 +218,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
                 if (!metadata) {
                   return
                 }
+
                 const { token } = await db.fetchImageAndStoreForToken(
                   {
                     // no images to associate
@@ -182,14 +226,18 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
                     originalUri: null,
                     listId: toList.listId,
                     providerKey: provider.key,
+                    signal,
                     token: {
                       networkId,
                       providedId,
-                      ...metadata,
+                      name: metadata.name,
+                      symbol: metadata.symbol,
+                      decimals: metadata.decimals,
                     },
                   },
                   tx,
                 )
+                configRow.increment(terminalCounterTypes.TOKEN, counterId.token([chainId, providedId]))
                 return token
               },
             ),
@@ -206,6 +254,12 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
             },
             tx,
           )
+          configRow.increment(
+            terminalCounterTypes.TOKEN,
+            counterId.token(
+              native ? [fromConfig.chain.id, native.providedId] : [toConfig.chain.id, bridged.providedId],
+            ),
+          )
         }
         await db.updateBridgeBlockProgress(
           bridge.bridgeId,
@@ -215,8 +269,10 @@ export const collectByBridgeConfig = async (config: BridgeConfig) => {
           tx,
         )
       })
+      task.unmount()
     })
-  }, 10_000n)
+    configRow.unmount()
+  })
 
   await Promise.all(tasks)
 }
@@ -228,23 +284,30 @@ const iterateOverRange = async (
   start: bigint,
   end: bigint,
   iterator: (a: bigint, b: bigint) => Promise<void>,
-  step = 100n,
+  step = 10_000n,
 ) => {
   let fromBlock = start
   let consecutiveErrors = 0
   const maxConsecutiveErrors = 3
   const minStep = 25n
+  const maxStep = 10_000n
   let currentStep = step
 
   do {
     try {
-      let toBlock = fromBlock + currentStep
+      if (currentStep > maxStep) {
+        currentStep = maxStep
+      }
+      let toBlock = fromBlock + currentStep - 1n
       if (toBlock > end) {
         toBlock = end
       }
 
       await iterator(fromBlock, toBlock)
-      fromBlock = toBlock + 1n
+      if (toBlock === end) {
+        break
+      }
+      fromBlock = toBlock
       consecutiveErrors = 0
 
       if (currentStep < step && consecutiveErrors === 0) {
@@ -273,7 +336,7 @@ const iterateOverRange = async (
         fromBlock = fromBlock + currentStep
       }
 
-      const delay = isLimitError ? 2000 : 5000
+      const delay = isLimitError ? 200 : 5000
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   } while (fromBlock <= end)

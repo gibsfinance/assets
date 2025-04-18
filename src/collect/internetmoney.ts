@@ -84,15 +84,19 @@ export const collect = async (signal: AbortSignal) => {
     )
   })
 
-  let totalTokens = 0
-  for (const network of json) {
-    totalTokens += network.tokens.length
-  }
-
   summaryRow.createCounter(terminalCounterTypes.NETWORK)
-  summaryRow.incrementTotal(terminalCounterTypes.NETWORK, json.length)
-  summaryRow.createCounter(terminalCounterTypes.TOKEN)
-  summaryRow.incrementTotal(terminalCounterTypes.TOKEN, totalTokens)
+  summaryRow.incrementTotal(
+    terminalCounterTypes.NETWORK,
+    utils.mapToSet.network(json, (n) => n.chainId),
+  )
+
+  summaryRow.incrementTotal(
+    terminalCounterTypes.TOKEN,
+    utils.mapToSet.token(
+      json.flatMap((n) => n.tokens.map((t) => [n.chainId, t.address] as [number, string])),
+      (t) => t,
+    ),
+  )
   // Process tokens in parallel with controlled concurrency
   type NetworkAndToken = [NetworkInfo, TokenInfo]
   const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
@@ -133,6 +137,7 @@ export const collect = async (signal: AbortSignal) => {
           uri: network.icon,
           originalUri: network.icon,
           providerKey: provider.key,
+          signal,
         },
         tx,
       )
@@ -181,6 +186,7 @@ export const collect = async (signal: AbortSignal) => {
           {
             ...insertion,
             listId: networkList.listId,
+            signal,
           },
           tx,
         )
@@ -188,6 +194,7 @@ export const collect = async (signal: AbortSignal) => {
           {
             ...insertion,
             listId: insertedList.listId,
+            signal,
           },
           tx,
         )

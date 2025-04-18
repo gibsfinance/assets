@@ -9,7 +9,7 @@ import * as chains from 'viem/chains'
 import { tableNames } from '@/db/tables'
 import { Token } from 'knex/types/tables.js'
 import type * as types from '@/types'
-import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy } from '@/log/types'
+import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy, terminalCounterTypes } from '@/log/types'
 
 const providerKey = 'pumptires'
 const listKey = 'tokens'
@@ -175,6 +175,8 @@ export const collect = async (signal: AbortSignal) => {
     .where('listId', pumptiresLaunchedList.listId)
     .orderBy(`${tableNames.listToken}.created_at`, 'desc')
   const tasks = row.issue('pumptires:tokens')
+  row.createCounter(terminalCounterTypes.NETWORK)
+  row.incrementTotal(terminalCounterTypes.NETWORK, `${369}`)
   const [createdTokens, launchedTokens] = await Promise.all([
     collectTokens(knownPumptiresList, 'created_timestamp', row, tasks, signal),
     collectTokens(knownLaunchedList, 'launch_timestamp', row, tasks, signal),
@@ -197,19 +199,23 @@ export const collect = async (signal: AbortSignal) => {
 
   const toURI = (token: TokenInfo) => `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
   row.createCounter('created', true)
-  row.incrementTotal('created', createdTokens.length)
+  const tokenIDs = utils.mapToSet.token(createdTokens, (t) => [+network.chainId, t.address])
+  row.incrementTotal('created', tokenIDs)
+  row.increment(terminalCounterTypes.TOKEN, tokenIDs)
   await limit.map(createdTokens, async (token: TokenInfo) => {
     if (signal.aborted) {
       return
     }
+    row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([+network.chainId, token.address]))
     const originalUri = toURI(token)
-    const chainTokenId = `${network.networkId}-${token.address.toLowerCase()}`
+    const chainTokenId = utils.counterId.token([+network.chainId, token.address])
     await db
       .fetchImageAndStoreForToken({
         listId: pumptiresList.listId,
         uri: originalUri,
         originalUri,
         providerKey,
+        signal,
         token: {
           name: token.name,
           symbol: token.symbol,
@@ -223,7 +229,10 @@ export const collect = async (signal: AbortSignal) => {
       })
   })
   row.createCounter('launched', true)
-  row.incrementTotal('launched', launchedTokens.length)
+  row.incrementTotal(
+    'launched',
+    utils.mapToSet.token(launchedTokens, (t) => [+network.chainId, t.address]),
+  )
   await limit.map(launchedTokens, async (token: TokenInfo) => {
     const originalUri = toURI(token)
     const chainTokenId = `${network.networkId}-${token.address.toLowerCase()}`
@@ -233,6 +242,7 @@ export const collect = async (signal: AbortSignal) => {
         uri: originalUri,
         originalUri,
         providerKey,
+        signal,
         token: {
           name: token.name,
           symbol: token.symbol,
@@ -251,7 +261,10 @@ export const collect = async (signal: AbortSignal) => {
     .where('listId', pumptiresLaunchedList.listId)
     .orderBy(`${tableNames.listToken}.created_at`, 'desc')
   row.createCounter('highcap', true)
-  row.incrementTotal('highcap', updatedKnownLaunchedList.length)
+  row.incrementTotal(
+    'highcap',
+    utils.mapToSet.token(updatedKnownLaunchedList, (t) => [+network.networkId, t.providedId]),
+  )
   await limit.map(updatedKnownLaunchedList, async (token: types.TokenInfo) => {
     const address = token.providedId as Hex
     const {
@@ -272,6 +285,7 @@ export const collect = async (signal: AbortSignal) => {
           uri: originalUri,
           originalUri,
           providerKey,
+          signal,
           token: {
             name: token.name,
             symbol: token.symbol,
@@ -285,6 +299,7 @@ export const collect = async (signal: AbortSignal) => {
     const chainTokenId = `${network.networkId}-${address.toLowerCase()}`
     row.increment('highcap', chainTokenId)
   })
+  row.increment(terminalCounterTypes.NETWORK, `${369}`)
   row.complete()
 }
 

@@ -51,7 +51,10 @@ export const collect = async ({
    */
   // Setup networks for each chain ID
   row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(terminalCounterTypes.NETWORK, chainIds.length)
+  row.incrementTotal(
+    terminalCounterTypes.NETWORK,
+    utils.mapToSet.network(chainIds, (id) => id),
+  )
   for (const chainId of chainIds) {
     if (chainId) {
       const network = await db.insertNetworkFromChainId(chainId, undefined)
@@ -111,19 +114,21 @@ export const collect = async ({
   })
 
   // Process tokens in batches
-  const totalTokens = tokenList.tokens.length
   const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
   row.createCounter(terminalCounterTypes.TOKEN)
-  row.incrementTotal(terminalCounterTypes.TOKEN, totalTokens)
+  row.incrementTotal(
+    terminalCounterTypes.TOKEN,
+    utils.mapToSet.token(tokenList.tokens, (t) => [t.chainId, t.address]),
+  )
   /**
    * Token processing:
    * 1. Process tokens in batches to manage memory and database load
    * 2. Each token is processed in its own transaction with retry logic
    * 3. Stores token information and associated images
    */
-  for (let i = 0; i < totalTokens; i++) {
+  for (let i = 0; i < tokenList.tokens.length; i++) {
     const entry = tokenList.tokens[i]
-    const chainTokenId = `${entry.chainId}-${entry.address.toLowerCase()}`
+    const chainTokenId = utils.counterId.token([entry.chainId, entry.address])
     if (signal.aborted) {
       return
     }

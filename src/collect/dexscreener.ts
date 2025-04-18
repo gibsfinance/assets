@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as cheerio from 'cheerio'
 import _ from 'lodash'
-import { limit, responseToBuffer } from '@gibs/utils/fetch'
+import { limit, limitBy, responseToBuffer } from '@gibs/utils/fetch'
 import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey } from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
@@ -40,13 +40,13 @@ class TerminalLinkedCollector extends Collector {
   setToken(token: IToken) {
     const result = super.setToken(token)
     if (result) {
-      this.row.incrementTotal(terminalCounterTypes.TOKEN, 1)
+      this.row.incrementTotal(terminalCounterTypes.TOKEN, `${this.chainId}-${token.address.toLowerCase()}`)
     }
     return result
   }
   async tokenPairs(token: string) {
     const section = this.row.get(providerKey)!
-    const chainTokenId = `${this.chainId}-${token.toLowerCase()}`
+    const chainTokenId = utils.counterId.token([this.chainId, token])
     const task = section.task(chainTokenId, {
       type: terminalRowTypes.STORAGE,
       id: 'pairs',
@@ -84,7 +84,7 @@ const parseSidebarChainInfo = () => {
 
 export const collect = async (signal: AbortSignal) => {
   const row = utils.terminal.issue({
-    type: terminalRowTypes.SUMMARY,
+    type: terminalRowTypes.SETUP,
     id: providerKey,
   })
   const [provider] = await db.insertProvider({
@@ -137,7 +137,7 @@ export const collect = async (signal: AbortSignal) => {
   // })
   row.createCounter('blacklisted', true)
   row.increment('blacklisted', chainBlacklist)
-  await limit.map([...parsedChainInfo.entries()], async ([key, info]) => {
+  await limitBy<[string, ChainInfo]>('dexscreener', 32).map([...parsedChainInfo.entries()], async ([key, info]) => {
     const chain = chainIdToChain.get(key)
     if (!chain) {
       return
@@ -168,9 +168,12 @@ export const collect = async (signal: AbortSignal) => {
   })
   const section = row.issue(providerKey)
   row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(terminalCounterTypes.NETWORK, relevantChains.length)
+  row.incrementTotal(
+    terminalCounterTypes.NETWORK,
+    utils.mapToSet.network(relevantChains, ([, c]) => c.id),
+  )
   row.createCounter(terminalCounterTypes.TOKEN)
-  row.incrementTotal(terminalCounterTypes.TOKEN, 0)
+  row.incrementTotal(terminalCounterTypes.TOKEN, new Set())
   row.createCounter('image', true)
   await Promise.all(
     relevantChains.map(async ([key, chain]) => {
@@ -199,7 +202,7 @@ export const collect = async (signal: AbortSignal) => {
       const addressToHeaderUri = new Map<string, string>(header)
       for (let i = 0; i < all.length; i++) {
         const token = all[i]
-        const chainTokenId = `${chain.id}-${token.address.toLowerCase()}`
+        const chainTokenId = utils.counterId.token([chain.id, token.address])
         const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
           id: providerKey,
@@ -216,6 +219,7 @@ export const collect = async (signal: AbortSignal) => {
           providerKey: provider.providerId,
           uri: token.logoURI ?? null,
           originalUri: token.logoURI ?? null,
+          signal,
           token: {
             type: 'erc20',
             symbol: token.symbol,

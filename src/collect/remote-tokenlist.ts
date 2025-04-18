@@ -50,9 +50,6 @@ export const collect =
         type: terminalRowTypes.SETUP,
         id,
       })
-    row.update({
-      message: 'fetching list',
-    })
     const response = await fetch(tokenListUrl, { signal })
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
@@ -126,6 +123,7 @@ export const collect =
                   uri: image,
                   originalUri: item.logoURI,
                   providerKey,
+                  signal,
                 },
                 tx,
               )
@@ -137,6 +135,7 @@ export const collect =
                 uri: image,
                 originalUri: item.logoURI,
                 providerKey,
+                signal,
                 token: {
                   name,
                   symbol,
@@ -186,15 +185,5 @@ export const collect =
       isDefault,
       signal,
     })
-    // updateStatus({
-    //   provider: providerKey,
-    //   message: 'Collection complete!',
-    //   phase: 'complete',
-    // } satisfies StatusProps)
-    // process.stdout.write('\n')
     return result
-    // } catch (err) {
-    // process.stdout.write('\n')
-    // dbg(`Failed to collect tokens for ${providerKey}:`, err)
-    // throw err
   }

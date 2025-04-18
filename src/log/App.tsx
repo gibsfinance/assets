@@ -1,8 +1,9 @@
 import * as ink from 'ink'
+import _ from 'lodash'
 import { Terminal } from './Terminal'
 import * as types from './types'
-import _ from 'lodash'
-import { terminalRowTypes, type TerminalSectionProxy } from './types'
+import { terminalRowTypes } from './types'
+import { controller, terminalRow } from '@/utils'
 
 let terminal: ReturnType<typeof ink.render> | null = null
 let isRunning = true
@@ -21,10 +22,22 @@ export const stop = (message: string) => {
   }
   globalInfo.finalNote = message
   globalInfo.terminated = true
-  rerender()
-  // setTimeout(() => {
-  //   unmount()
-  // }, 100)
+  controller.abort()
+  rerenderAfter(() => {
+    const markUndefinedStatus = (row: types.TerminalRow) => {
+      if (row.type !== terminalRowTypes.COMPLETE) {
+        row.type = terminalRowTypes['-']
+      }
+      for (const section of row.sections.values()) {
+        for (const row of section.rows.values()) {
+          markUndefinedStatus(row)
+        }
+      }
+    }
+    if (globalInfo.row) {
+      markUndefinedStatus(globalInfo.row)
+    }
+  })
 }
 
 // export const reset = () => {
@@ -53,13 +66,15 @@ export const getGlobalInfo = () => ({
   ...globalInfo,
 })
 
-const doRerender = _.throttle(() => {
+export const forceRerender = () => {
   if (!terminal) {
     terminal = ink.render(<Terminal {...globalInfo} />)
   } else {
     terminal.rerender(<Terminal {...globalInfo} />)
   }
-}, 200)
+}
+
+const doRerender = _.throttle(forceRerender, 200)
 
 export const rerender = () => {
   if (!isRunning) return
@@ -85,6 +100,8 @@ export const createTerminal = () => {
     id: null,
     type: 'summary',
     lastUpdated: new Date(),
+    counters: new Map(),
+    sections: new Map(),
   } as types.TerminalRow
   globalInfo.row = row
   return readOnlyRow(null, globalInfo.row)
@@ -121,7 +138,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           })
         }
         let createAter = false
-        for (const k of counterKeys) {
+        for (const k of counterKeys.values()) {
           if (!createAter) {
             if (k !== key) continue
           }
@@ -141,15 +158,24 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     hasCounter(key: types.TerminalCounterType | string) {
       return row.counters?.has(key)
     },
-    incrementTotal(key: types.TerminalCounterType | string, num?: number) {
+    updateCounter(key: types.TerminalCounterType | string, updates: Partial<types.Counter>) {
       rerenderAfter(() => {
-        const n = num ?? 1
         const counter = row.counters?.get(key)
         if (!counter) {
           throw new Error('counter not found')
         }
-        parent?.incrementTotal(key, n)
-        counter.total = (counter.total ?? 0) + n
+        row.counters.set(key, { ...counter, ...updates })
+      })
+    },
+    incrementTotal(key: types.TerminalCounterType | string, expected: string | Set<string>) {
+      rerenderAfter(() => {
+        const list = typeof expected === 'string' ? new Set([expected]) : expected
+        const counter = row.counters?.get(key)
+        if (!counter) {
+          throw new Error('counter not found')
+        }
+        parent?.incrementTotal(key, list)
+        counter.total = (counter.total ?? new Set()).union(list)
       })
     },
     increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement = false) {
@@ -195,6 +221,9 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       })
     },
     complete() {
+      if (globalInfo.terminated) {
+        return
+      }
       rerenderAfter(() => {
         row.type = terminalRowTypes.COMPLETE
       })
@@ -233,12 +262,13 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
       }
       return readOnlyRow(readOnlySection(parent, section), s)
     },
-    task(id: string, row: types.TerminalTask) {
+    task(id: string, row: Omit<types.TerminalTask, 'sections'>) {
       return rerenderAfter(() => {
         const r = {
           isTask: true,
           lastUpdated: new Date(),
           counters: new Map(),
+          sections: new Map(),
           ...row,
         }
         section.rows.set(id, r)
@@ -247,8 +277,8 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
         return {
           ...ro,
           unmount: () => {
-            const prevVal = parent.increment('tasks', new Set([id]), true)
-            if (prevVal.size === 0) {
+            const nextVal = parent.increment('tasks', new Set([id]), true)
+            if (nextVal.size === 0) {
               parent.removeCounter('tasks')
             }
             section.rows.delete(id)
@@ -282,7 +312,7 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
     increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement?: boolean) {
       return !parent.hasCounter(key) ? 0 : parent.increment(key, ids, decrement)
     },
-    incrementTotal(key: types.TerminalCounterType | string, num: number) {
+    incrementTotal(key: types.TerminalCounterType | string, num: Set<string> | string) {
       if (parent.hasCounter(key)) {
         parent.incrementTotal(key, num)
       }
@@ -293,6 +323,11 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
     createCounter(key: types.TerminalCounterType | string, stayLocal?: boolean) {
       if (stayLocal) return
       return parent.createCounter(key, stayLocal)
+    },
+    updateCounter(key: types.TerminalCounterType | string, updates: Partial<types.Counter>) {
+      if (parent.hasCounter(key)) {
+        parent.updateCounter(key, updates)
+      }
     },
   } as types.TerminalSectionProxy
 }

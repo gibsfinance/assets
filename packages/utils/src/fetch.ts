@@ -3,7 +3,6 @@ import _ from 'lodash'
 import * as utils from './'
 import promiseLimit from 'promise-limit'
 import { timeout } from './timeout'
-import type * as types from './types'
 import { failureLog } from './log'
 
 export const responseToBuffer = async (res: Response) => {
@@ -15,7 +14,7 @@ export const responseToBuffer = async (res: Response) => {
 
 export const limit = promiseLimit(16) as ReturnType<typeof promiseLimit<any>>
 
-export const limitBy = _.memoize(<T>(_key: string, count = 16) => {
+export const limitBy = _.memoize(<T extends unknown>(_key: string, count = 16) => {
   return promiseLimit<T>(count) as ReturnType<typeof promiseLimit<T>>
 })
 
@@ -103,8 +102,8 @@ const ipfsCompatableFetch = async (url: URL, options: Parameters<typeof fetch>[1
   return await limiter(async () => {
     const controller = new AbortController()
     const { promise, clear } = timeout(10_000)
+    // console.log(url.href)
     promise.then(() => {
-      // console.log('timeout %o', url.href)
       controller.abort()
     })
     const fetchOptions = {

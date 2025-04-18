@@ -1,15 +1,15 @@
 import promiseLimit from 'promise-limit'
 import * as utils from '@/utils'
 import { type Collectable, collectables } from '@/collect/collectables'
-import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
-import { failureLog } from 'packages/utils/src'
+import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '@/log/types'
+import { failureLog } from '@gibs/utils'
+import { forceRerender } from '@/log/App'
 
 const PROVIDER_CONCURRENCY = 4
 /**
  * Main collection function that orchestrates data collection from multiple providers
  */
 export const main = async (providers: Collectable[]) => {
-  const controller = new AbortController()
   const c = collectables()
 
   const limit = promiseLimit<Collectable>(PROVIDER_CONCURRENCY)
@@ -18,9 +18,9 @@ export const main = async (providers: Collectable[]) => {
     type: terminalRowTypes.SUMMARY,
   })
   utils.terminalRow.createCounter(terminalCounterTypes.PROVIDER)
-  utils.terminalRow.incrementTotal(terminalCounterTypes.PROVIDER, providers.length)
+  utils.terminalRow.incrementTotal(terminalCounterTypes.PROVIDER, new Set(providers))
   await limit.map(providers, async (provider) => {
-    if (controller.signal.aborted) {
+    if (utils.controller.signal.aborted) {
       return
     }
     const collector = c[provider]
@@ -29,10 +29,10 @@ export const main = async (providers: Collectable[]) => {
     } else {
       utils.terminalRow.increment('running', provider)
       try {
-        await collector(controller.signal)
+        await collector(utils.controller.signal)
         utils.terminalRow.increment('success', provider)
       } catch (err) {
-        utils.terminalRow.increment('erred', provider)
+        utils.terminalRow.increment(terminalLogTypes.EROR, provider)
         failureLog('failed to collect', provider, (err as Error).message)
       }
       utils.terminalRow.decrement('running', provider)
@@ -40,4 +40,5 @@ export const main = async (providers: Collectable[]) => {
     utils.terminalRow.increment(terminalCounterTypes.PROVIDER, provider)
   })
   utils.terminalRow.complete()
+  forceRerender()
 }

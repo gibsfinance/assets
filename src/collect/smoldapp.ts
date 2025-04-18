@@ -145,11 +145,18 @@ export const collect = async (signal: AbortSignal) => {
   }
   // Process tokens
   const reverseOrderTokens = Object.entries(tokens).reverse()
-  const totalTokensCount = reverseOrderTokens.reduce((acc, [_, tokens]) => acc + tokens.length, 0)
+  // const totalTokensCount = reverseOrderTokens.reduce((acc, [_, tokens]) => acc + tokens.length, 0)
   row.createCounter(terminalCounterTypes.TOKEN)
-  row.incrementTotal(terminalCounterTypes.TOKEN, totalTokensCount)
+  // row.incrementTotal(
+  //   terminalCounterTypes.TOKEN,
+  //   new Set(reverseOrderTokens.flatMap(([_, tokens]) => tokens)),
+  //   // utils.mapToSet.token(reverseOrderTokens, ([, t]) => [+t.chainId, t.address]),
+  // )
   row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(terminalCounterTypes.NETWORK, reverseOrderTokens.length)
+  row.incrementTotal(
+    terminalCounterTypes.NETWORK,
+    utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => +chainIdString),
+  )
   const tokenLimit = promiseLimit<Hex>(16)
   const section = row.issue(providerKey)
   await promiseLimit<[string, string[]]>(4).map(reverseOrderTokens, async ([chainIdString, tokens]) => {
@@ -157,13 +164,17 @@ export const collect = async (signal: AbortSignal) => {
       return
     }
     const chain = utils.findChain(+chainIdString)
-
     const network = chain && (await db.insertNetworkFromChainId(+chainIdString))
     if (!network) {
       row.increment('skipped', `${providerKey}-${chainIdString}`)
       row.increment(terminalCounterTypes.TOKEN, new Set(tokens.map((t) => `${chainIdString}-${t.toLowerCase()}`)))
       return
     }
+
+    row.incrementTotal(
+      terminalCounterTypes.TOKEN,
+      utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
+    )
 
     const client = utils.chainToPublicClient(chain)
     await tokenLimit.map(tokens as Hex[], async (token) => {
@@ -226,6 +237,7 @@ export const collect = async (signal: AbortSignal) => {
             {
               listId: list.listId,
               ...baseInput,
+              signal,
             },
             tx,
           )
@@ -233,6 +245,7 @@ export const collect = async (signal: AbortSignal) => {
             {
               listId: networkList.listId,
               ...baseInput,
+              signal,
             },
             tx,
           )

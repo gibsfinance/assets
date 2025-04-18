@@ -3,6 +3,7 @@ export const terminalRowTypes = {
   SETUP: 'setup',
   STORAGE: 'storage',
   COMPLETE: 'complete',
+  ['-']: '-',
 } as const
 export type TerminalRowTypes = typeof terminalRowTypes
 export type TerminalRowTypeKeys = keyof TerminalRowTypes
@@ -27,7 +28,7 @@ export type TerminalLogTypes = typeof terminalLogTypes
 export type TerminalLogTypeKeys = keyof TerminalLogTypes
 export type TerminalLogType = TerminalLogTypes[keyof TerminalLogTypes]
 export type KV = Record<string, any>
-export type Counter = { current: Set<string>; total: number | null }
+export type Counter = { current: Set<string>; total: Set<string> | null }
 export type Progress = Counter & { total: number }
 export type Sections = Map<string, Section>
 export type TerminalRows = Map<string, TerminalRow>
@@ -56,7 +57,7 @@ export type RenderState = {
 export type TerminalRowProxy = {
   update: (updates: Partial<TerminalRow>) => void
   createCounter: (key: TerminalCounterType | string, stayLocal?: boolean) => void
-  incrementTotal: (key: TerminalCounterType | string, amount?: number) => void
+  incrementTotal: (key: TerminalCounterType | string, ids: Set<string> | string) => void
   increment: (key: TerminalCounterType | string, ids: Set<string> | string, decrement?: boolean) => Set<string>
   decrement: (key: TerminalCounterType | string, ids: Set<string> | string) => Set<string>
   removeCounter: (key: TerminalCounterType | string) => void
@@ -67,6 +68,7 @@ export type TerminalRowProxy = {
   issue: (id: string, limit?: number) => TerminalSectionProxy
   get: (key: string) => TerminalSectionProxy | null
   hasCounter: (key: TerminalCounterType | string) => boolean
+  updateCounter: (key: TerminalCounterType | string, updates: Partial<Counter>) => void
 }
 export type TerminalSectionProxy = {
   get: (id: string) => TerminalRowProxy | null
@@ -86,7 +88,8 @@ export type TerminalSectionProxy = {
   removeRow: (key: string) => void
   increment: (key: TerminalCounterType | string, ids: Set<string> | string, decrement?: boolean) => Set<string>
   decrement: (key: TerminalCounterType | string, ids: Set<string> | string) => Set<string>
-  incrementTotal: (key: TerminalCounterType | string, num?: number) => void
+  incrementTotal: (key: TerminalCounterType | string, expected: string | Set<string>) => void
   createCounter: (key: TerminalCounterType | string, stayLocal?: boolean) => void
+  updateCounter: (key: TerminalCounterType | string, updates: Partial<Counter>) => void
 }
 export type TerminalTask = Omit<TerminalRow, 'isTask' | 'lastUpdated' | 'counters'>

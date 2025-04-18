@@ -103,3 +103,15 @@ export const chainToPublicClient = _.memoize((chain: viem.Chain): viem.PublicCli
 // main terminal section
 export const terminalRow = createTerminal()
 export const terminal = terminalRow.issue('main', Infinity)
+
+export const counterId = {
+  network: (id: number) => `${id}`,
+  token: ([chainId, address]: [number, string]) => `${chainId}-${address.toLowerCase()}`,
+}
+export const mapToSet = {
+  network: <I extends unknown>(list: I[], fn: (v: I) => number) =>
+    new Set<string>(_(list).map(fn).map(counterId.network).value()),
+  token: <I extends unknown>(list: I[], fn: (v: I) => [number, string]) =>
+    new Set<string>(_(list).map<[number, string]>(fn).map(counterId.token).value()),
+}
+export const controller = new AbortController()
