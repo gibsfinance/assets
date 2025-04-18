@@ -146,7 +146,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], signal
     return
   }
 
-  const tokenList = JSON.parse(list.toString()) as types.TokenList
+  // const tokenList = JSON.parse(list.toString()) as types.TokenList
   const chainId = networkNameToChainId.get(blockchainKey)!
 
   const [provider] = await db.insertProvider({
@@ -176,13 +176,11 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], signal
     providerKey,
   })
 
-  // let processedAssets = 0
   row.createCounter(terminalCounterTypes.TOKEN)
   row.incrementTotal(
     terminalCounterTypes.TOKEN,
     utils.mapToSet.token(assets, (a) => [chainId, a]),
   )
-  // console.log('provider=%o folder=%o chainId=%o', providerKey, blockchainKey, chainId)
   for (const asset of assets) {
     if (signal.aborted) {
       return

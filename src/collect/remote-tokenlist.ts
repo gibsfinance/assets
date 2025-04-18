@@ -105,7 +105,7 @@ export const collect =
           ])
 
           if (!image) {
-            row.increment('missing', `${item.network.id}-${item.address.toLowerCase()}`)
+            row.increment('missing', utils.counterId.token([item.network.id, item.address]))
             // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
             return
           }
@@ -158,10 +158,10 @@ export const collect =
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
           failureLog('provider=%o list=%o item=%o error=%o', providerKey, listKey, item, errorMessage)
-          row.increment(terminalLogTypes.EROR, `${item.network.id}-${item.address.toLowerCase()}`)
+          row.increment(terminalLogTypes.EROR, utils.counterId.token([item.network.id, item.address]))
           return undefined
         } finally {
-          row.increment(terminalCounterTypes.TOKEN, `${item.network.id}-${item.address.toLowerCase()}`)
+          row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([item.network.id, item.address]))
         }
       }),
     )

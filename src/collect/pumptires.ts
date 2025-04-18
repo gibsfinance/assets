@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
-import { limit, limitBy, retry } from '@gibs/utils'
+import { limit, limitBy, retry, timeout } from '@gibs/utils'
 import * as db from '@/db'
 import * as utils from '@/utils'
 import { pulsechain } from 'viem/chains'
@@ -14,7 +14,7 @@ import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy, terminalCount
 const providerKey = 'pumptires'
 const listKey = 'tokens'
 
-const limiter = limitBy<number>(providerKey, 4)
+const limiter = limitBy<number>(providerKey, 1)
 
 type Creator = {
   address: Hex
@@ -88,12 +88,21 @@ const retrieveData = async (
     const res = await fetch(url, { signal })
     const result = (await res.json()) as Response
     // check that the list is not empty
+    if (result.message === 'Too many read requests, please try again later.') {
+      await timeout(10_000).promise
+      throw new Error(result.message)
+    }
     const a = result.tokens[0]
     return result
-  }).finally(() => {
-    row.increment('pages', `${filter}-${page}`)
-    task.complete()
   })
+    .catch((err) => {
+      console.log(err)
+      throw err
+    })
+    .finally(() => {
+      row.increment('pages', `${filter}-${page}`)
+      task.complete()
+    })
 }
 
 const collectTokens = async (
@@ -174,17 +183,17 @@ export const collect = async (signal: AbortSignal) => {
     .getTokensUnderListId()
     .where('listId', pumptiresLaunchedList.listId)
     .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-  const tasks = row.issue('pumptires:tokens')
+  const tasks = row.issue(providerKey)
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(terminalCounterTypes.NETWORK, `${369}`)
   const [createdTokens, launchedTokens] = await Promise.all([
     collectTokens(knownPumptiresList, 'created_timestamp', row, tasks, signal),
     collectTokens(knownLaunchedList, 'launch_timestamp', row, tasks, signal),
   ])
+  row.hideSection(providerKey)
   if (signal.aborted || !createdTokens || !launchedTokens) {
     return
   }
-  row.hideSection('pumptires:tokens')
   const situation = [
     {
       factory: '0x1715a3E4A142d8b698131108995174F37aEBA10D',
@@ -235,7 +244,7 @@ export const collect = async (signal: AbortSignal) => {
   )
   await limit.map(launchedTokens, async (token: TokenInfo) => {
     const originalUri = toURI(token)
-    const chainTokenId = `${network.networkId}-${token.address.toLowerCase()}`
+    const chainTokenId = utils.counterId.token([+network.chainId, token.address])
     await db
       .fetchImageAndStoreForToken({
         listId: pumptiresList.listId,
@@ -296,7 +305,7 @@ export const collect = async (signal: AbortSignal) => {
         })
       }
     }
-    const chainTokenId = `${network.networkId}-${address.toLowerCase()}`
+    const chainTokenId = utils.counterId.token([+network.chainId, address])
     row.increment('highcap', chainTokenId)
   })
   row.increment(terminalCounterTypes.NETWORK, `${369}`)

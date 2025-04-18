@@ -39,8 +39,7 @@ type Padding = {
  * @returns Section component
  */
 export const Section: React.FC<types.Section & { padding: Padding }> = (props) => {
-  if (props.hide) return null
-  // console.log(props.id, props.limit)
+  if (props.hide) return <></>
   const toRender = [...props.rows.values()]
     .sort((a, b) => {
       const aIsComplete = a.type === types.terminalRowTypes.COMPLETE
@@ -101,7 +100,7 @@ export const Counter: React.FC<
 }
 
 export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) => {
-  if (props.hide) return null
+  if (props.hide) return <></>
   const kvEntries = Object.entries(props.kv ?? {})
   const counters = [...props.counters.entries()]
   const widths = new Map(counters.map(([_k, counter], i) => [counter, props.padding.progress[i]] as const))

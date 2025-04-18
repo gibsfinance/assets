@@ -31,18 +31,20 @@ export const retry = async <T>(fn: () => Promise<T>, options = {}) => {
     ...defaultRetryOpts,
     ...options,
   }
+  let lastErr: Error | null = null
   do {
     try {
       return await fn()
     } catch (err) {
-      failureLog(err)
+      lastErr = err as Error
+      failureLog(lastErr.message)
     }
     opts.attempts -= 1
     if (opts.attempts) {
       await timeout(opts.delay).promise
     }
   } while (opts.attempts)
-  throw new Error('unable to complete task')
+  throw lastErr
 }
 
 /**
@@ -143,15 +145,17 @@ const iterativeIpfsCompatableFetch = async (
   options?: Parameters<typeof fetch>[1],
   ipfsDomains: string[] = [],
 ) => {
+  let lastErr: Error | null = null
   const urls = urlToPossibleLocations(url, ipfsDomains)
   for (const url of urls) {
     try {
       return await ipfsCompatableFetch(url, options)
     } catch (err) {
-      failureLog(err)
+      lastErr = err as Error
+      failureLog(lastErr.message)
     }
   }
-  throw new Error(`failed to fetch ${url}`)
+  throw lastErr
 }
 
 export { iterativeIpfsCompatableFetch as fetch }

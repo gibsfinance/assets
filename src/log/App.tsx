@@ -213,7 +213,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     },
     hideSection(key: string) {
       rerenderAfter(() => {
-        const section = row.sections?.get(key)
+        const section = row.sections.get(key)
         if (!section) {
           return
         }

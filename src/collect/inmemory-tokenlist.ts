@@ -161,14 +161,11 @@ export const collect = async ({
           tx,
         )
       })
+      row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+    }).catch((err) => {
+      row.increment('erred', chainTokenId)
+      throw err
     })
-      .finally(() => {
-        row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-      })
-      .catch((err) => {
-        row.increment('erred', chainTokenId)
-        throw err
-      })
   }
   row.complete()
 

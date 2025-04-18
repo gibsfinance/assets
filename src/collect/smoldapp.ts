@@ -145,13 +145,7 @@ export const collect = async (signal: AbortSignal) => {
   }
   // Process tokens
   const reverseOrderTokens = Object.entries(tokens).reverse()
-  // const totalTokensCount = reverseOrderTokens.reduce((acc, [_, tokens]) => acc + tokens.length, 0)
   row.createCounter(terminalCounterTypes.TOKEN)
-  // row.incrementTotal(
-  //   terminalCounterTypes.TOKEN,
-  //   new Set(reverseOrderTokens.flatMap(([_, tokens]) => tokens)),
-  //   // utils.mapToSet.token(reverseOrderTokens, ([, t]) => [+t.chainId, t.address]),
-  // )
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(
     terminalCounterTypes.NETWORK,
@@ -167,7 +161,11 @@ export const collect = async (signal: AbortSignal) => {
     const network = chain && (await db.insertNetworkFromChainId(+chainIdString))
     if (!network) {
       row.increment('skipped', `${providerKey}-${chainIdString}`)
-      row.increment(terminalCounterTypes.TOKEN, new Set(tokens.map((t) => `${chainIdString}-${t.toLowerCase()}`)))
+      row.increment(
+        terminalCounterTypes.TOKEN,
+        utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
+      )
+      row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
       return
     }
 
@@ -252,9 +250,10 @@ export const collect = async (signal: AbortSignal) => {
         })
       }
       task.complete()
-      row.increment(terminalCounterTypes.TOKEN, `${chainIdString}-${token.toLowerCase()}`)
+      row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([+chainIdString, token]))
     })
     row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
   })
+  row.hideSection(providerKey)
   row.complete()
 }
