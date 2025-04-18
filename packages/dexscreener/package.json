@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Dexscreener api wrapper for efficient token list collection",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "build": "tsc"
+  },
   "keywords": [],
   "author": "gibs",
   "license": "ISC",
@@ -14,6 +16,6 @@
   },
   "dependencies": {
     "dexscreener-sdk": "^1.0.3",
-    "@gibs/utils": "workspace:*"
+    "@gibs/utils": "^1.0.0"
   }
 }
