@@ -4,8 +4,8 @@ import supertest from 'supertest'
 import { tableNames } from '../src/db/tables'
 import type { List, Provider } from 'knex/types/tables'
 import assert from 'assert'
-import * as testUtils from './utils.ts'
-import { TokenList } from '../src/types.ts'
+import * as testUtils from './utils'
+import { TokenList } from '../src/types'
 import _ from 'lodash'
 
 test('/list', async (t) => {
@@ -25,7 +25,7 @@ test('/list', async (t) => {
       const res = await supertest(app).get(`/list/${provider.key}/${list.key}`).expect(200)
       baseline = res.body
     })
-    await t.test('/:listKey?', async () => {
+    await t.test('{/:listKey}', async () => {
       assert.ok(baseline.tokens.length > 0)
     })
     await t.test('filter by chain id', async () => {

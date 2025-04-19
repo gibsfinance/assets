@@ -1,3 +1,4 @@
+import React from 'react'
 import * as ink from 'ink'
 import _ from 'lodash'
 import { Terminal } from './Terminal'

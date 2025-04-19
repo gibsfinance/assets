@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+
+@import '@skeletonlabs/skeleton';
+@import '@skeletonlabs/skeleton/optional/presets';
+@import '@skeletonlabs/skeleton/themes/vintage';
+
+@source '../node_modules/@skeletonlabs/skeleton-svelte/dist';
+
+/* html,
+body {
+  @apply h-full;
+}
+
+body {
+  @apply overflow-y-auto bg-gray-50 text-gray-900 dark:bg-[#1a1f2b] dark:text-white;
+} */

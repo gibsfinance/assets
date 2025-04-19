@@ -23,3 +23,5 @@ coverage/
 pnpm-lock.yaml
 frontend/pnpm-lock.yaml
 src/harvested
+missing
+failures.json

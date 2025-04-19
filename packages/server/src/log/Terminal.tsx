@@ -1,5 +1,5 @@
-import { Box, Text } from 'ink'
 import React from 'react'
+import { Box, Text } from 'ink'
 import _ from 'lodash'
 import * as types from './types'
 
