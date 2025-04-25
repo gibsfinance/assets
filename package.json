@@ -9,7 +9,8 @@
     "frontend:dev": "npm run dev:static --workspace=packages/frontend",
     "frontend:preview": "npm run preview --workspace=packages/frontend",
     "server:dev": "npm run dev --workspace=packages/server",
-    "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres"
+    "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres",
+    "test": "npm run test --workspace=packages/server"
   },
   "workspaces": [
     "packages/utils",
