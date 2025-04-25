@@ -20,8 +20,8 @@ build/
 # Other
 .DS_Store
 coverage/
-pnpm-lock.yaml
-frontend/pnpm-lock.yaml
+package-lock.json
+frontend/package-lock.json
 src/harvested
 missing
 failures.json

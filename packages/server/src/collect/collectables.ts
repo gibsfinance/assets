@@ -1,5 +1,5 @@
-import chains from '@/chains'
-import '@/utils'
+import chains from '../chains'
+import '../utils'
 import * as trustwallet from './trustwallet'
 import * as pulsex from './pulsex'
 import * as phux from './phux'
@@ -28,7 +28,7 @@ import * as optimism from './optimism'
 import * as pumptires from './pumptires'
 import * as dexscreener from './dexscreener'
 import _ from 'lodash'
-import { Todo } from '@/types'
+import type { Todo } from '../types'
 
 /**
  * Helper function to get all available collector keys

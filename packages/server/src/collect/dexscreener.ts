@@ -5,11 +5,11 @@ import { limitBy, responseToBuffer } from '@gibs/utils/fetch'
 import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey } from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
-import { fetch } from '@/fetch'
-import * as db from '@/db'
-import * as utils from '@/utils'
+import { fetch } from '../fetch'
+import * as db from '../db'
+import * as utils from '../utils'
 import type { Network } from 'knex/types/tables.js'
-import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '@/log/types'
+import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
 
 const providerKey = 'dexscreener'
 

@@ -9,7 +9,7 @@ import {
   pulsechainV4 as viemPulsechainV4,
   type Chain,
 } from 'viem/chains'
-import { collect } from '@/args'
+import { collect } from './args'
 import _ from 'lodash'
 // import { log } from './logger'
 

@@ -3,9 +3,9 @@ import { erc20Read } from '@gibs/utils'
 import * as inmemory from './inmemory-tokenlist'
 import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as utils from '../utils'
-import { minimalList } from '@/server/list/utils'
+import { minimalList } from '../server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
-import * as db from '@/db'
+import * as db from '../db'
 
 const remoteListOriginal = remoteTokenList.collect({
   providerKey: 'pulsex',

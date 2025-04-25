@@ -1,10 +1,10 @@
 import _ from 'lodash'
 import * as viem from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
-import * as db from '@/db'
-import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '@/utils'
-import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
-import { MinimalTokenInfo } from 'packages/utils/src'
+import * as db from '../db'
+import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
+import { terminalCounterTypes, terminalRowTypes } from '../log/types'
+import type { MinimalTokenInfo } from '@gibs/utils'
 
 /**
  * Configuration types for bridge endpoints

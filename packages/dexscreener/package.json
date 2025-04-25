@@ -15,7 +15,10 @@
     "./collector": "./src/collector.ts"
   },
   "dependencies": {
-    "dexscreener-sdk": "^1.0.3",
-    "@gibs/utils": "^1.0.0"
+    "@gibs/utils": "^1.0.0",
+    "dexscreener-sdk": "^1.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }

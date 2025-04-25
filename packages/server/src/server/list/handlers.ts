@@ -1,8 +1,8 @@
 import createError from 'http-errors'
-import * as db from '@/db'
+import * as db from '../../db'
 import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
-import { tableNames } from '@/db/tables'
+import { tableNames } from '../../db/tables'
 import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
 

@@ -1,7 +1,7 @@
-import * as db from '@/db'
-import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '@/log/types'
-import * as types from '@/types'
-import * as utils from '@/utils'
+import * as db from '../db'
+import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
+import * as types from '../types'
+import * as utils from '../utils'
 import type { List, Network, Provider } from 'knex/types/tables'
 import { retry } from '@gibs/utils'
 /**

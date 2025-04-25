@@ -1,6 +1,6 @@
-import * as server from '@/server'
-import * as db from '@/db'
-import { cleanup } from '@/cleanup'
+import * as server from '../server'
+import * as db from '../db'
+import { cleanup } from '../cleanup'
 
 db.getDB()
   .migrate.latest()

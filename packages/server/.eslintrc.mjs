@@ -18,8 +18,7 @@ export default tseslint.config(
       'package',
       '.env*',
       '!.env.example',
-      'pnpm-lock.yaml',
-      'frontend/pnpm-lock.yaml',
+      'frontend/package-lock.json',
       '.eslintrc.mjs',
     ],
     rules: {

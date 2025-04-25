@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { cacheResult } from '@gibs/utils'
-import { getDB } from '@/db/index'
-import { tableNames } from '@/db/tables'
+import { getDB } from '../../db/index'
+import { tableNames } from '../../db/tables'
 import { Network } from 'knex/types/tables.js'
 import { nextOnError } from '../utils'
 export const router = Router() as Router

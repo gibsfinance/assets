@@ -1,9 +1,9 @@
 import promiseLimit from 'promise-limit'
-import * as utils from '@/utils'
-import { type Collectable, collectables } from '@/collect/collectables'
-import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '@/log/types'
+import * as utils from '../utils'
+import { type Collectable, collectables } from '../collect/collectables'
+import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog } from '@gibs/utils'
-import { forceRerender } from '@/log/App'
+import { forceRerender } from '../log/App'
 
 const PROVIDER_CONCURRENCY = 4
 /**

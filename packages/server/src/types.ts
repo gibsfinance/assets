@@ -1,5 +1,5 @@
 import type { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
-import type { ImageMode } from '@/db/tables'
+import type { ImageMode } from './db/tables'
 import type { Hex } from 'viem'
 import { MinimalTokenInfo } from '@gibs/utils'
 

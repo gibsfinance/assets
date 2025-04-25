@@ -4,7 +4,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "paths": {
-      "@/*": ["packages/server/src/*"]
+      "@/*": ["./src/*"]
     }
   }
 }

@@ -1,4 +1,4 @@
-import { ipfs } from '@/args/ipfs'
+import { ipfs } from './args/ipfs'
 import { fetch as ipfsFetch } from '@gibs/utils/fetch'
 
 /** use these ipfs origins when fetching ipfs:// content */

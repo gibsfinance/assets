@@ -32,11 +32,11 @@ import type {
   InsertableHeaderLink,
   HeaderLink,
 } from 'knex/types/tables'
-import { fetch } from '@/fetch'
+import { fetch } from '../fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { join } from './utils'
-import * as args from '@/args'
+import * as args from '../args'
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),

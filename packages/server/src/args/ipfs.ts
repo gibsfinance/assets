@@ -1,4 +1,4 @@
-import { parse } from '@/args/utils'
+import { parse } from './utils'
 import _ from 'lodash'
 
 /**

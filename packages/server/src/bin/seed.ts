@@ -1,4 +1,4 @@
-import { getDB } from '@/db'
+import { getDB } from '../db'
 
 async function main() {
   const db = getDB()

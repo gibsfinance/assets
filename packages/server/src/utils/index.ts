@@ -4,7 +4,7 @@ dotenvConfig()
 Error.stackTraceLimit = Infinity
 
 import * as chains from 'viem/chains'
-import config from '@/../config'
+import config from '../../config'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
@@ -13,11 +13,11 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { failures, type ChainId } from '@gibs/utils'
 
-import type { TokenEntry } from '@/types'
+import type { TokenEntry } from '../types'
 import { Image } from 'knex/types/tables.js'
-import { imageMode } from '@/db/tables'
-import { createTerminal } from '@/log/App'
-import * as paths from '@/paths'
+import { imageMode } from '../db/tables'
+import { createTerminal } from '../log/App'
+import * as paths from '../paths'
 
 export const printFailures = () => {
   const failuresPath = path.join(paths.root, 'failures.json')

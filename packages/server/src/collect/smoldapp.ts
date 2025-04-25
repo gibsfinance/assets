@@ -1,12 +1,12 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import * as db from '@/db'
-import * as utils from '@/utils'
+import * as db from '../db'
+import * as utils from '../utils'
 import type { List } from 'knex/types/tables'
-import * as paths from '@/paths'
+import * as paths from '../paths'
 import { zeroAddress, getAddress, type Hex } from 'viem'
 import promiseLimit from 'promise-limit'
-import { terminalCounterTypes, terminalRowTypes } from '@/log/types'
+import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
 
 const oneListInsertAtATime = promiseLimit<List>(1)

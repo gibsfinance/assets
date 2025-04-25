@@ -1,7 +1,5 @@
-import { parse } from '@/args/utils'
+import { parse } from './utils'
 import _ from 'lodash'
-
-// import { updateStatus } from '@/log/App'
 
 /**
  * Image export configuration parser

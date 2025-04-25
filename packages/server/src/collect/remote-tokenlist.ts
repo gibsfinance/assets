@@ -1,12 +1,12 @@
 import { erc20Read, failureLog } from '@gibs/utils'
-import * as db from '@/db'
-import { fetch } from '@/fetch'
-import * as types from '@/types'
-import * as utils from '@/utils'
+import * as db from '../db'
+import { fetch } from '../fetch'
+import * as types from '../types'
+import * as utils from '../utils'
 import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '@/log/types'
+import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 
 type Extension = {
   address: viem.Hex

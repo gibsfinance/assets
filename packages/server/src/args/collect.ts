@@ -1,9 +1,9 @@
-import { parse } from '@/args/utils'
+import { parse } from './utils'
 import _ from 'lodash'
 
-import { type Collectable, allCollectables } from '@/collect/collectables'
-import type { ImageModeParam } from '@/types'
-import { imageMode } from '@/db/tables'
+import { type Collectable, allCollectables } from '../collect/collectables'
+import type { ImageModeParam } from '../types'
+import { imageMode } from '../db/tables'
 
 /**
  * RPC configuration helper for chain endpoints

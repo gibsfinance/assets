@@ -1,5 +1,5 @@
 import * as fs from 'fs'
-import * as paths from '@/paths'
+import * as paths from '../paths'
 
 const getPlatforms = async (key: string) => {
   const response = await fetch(`https://api.coingecko.com/api/v3/asset_platforms?x_cg_demo_api_key=${key}`)

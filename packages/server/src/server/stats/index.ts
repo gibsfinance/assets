@@ -1,5 +1,5 @@
-import { getDB } from '@/db'
-import { tableNames } from '@/db/tables'
+import { getDB } from '../../db'
+import { tableNames } from '../../db/tables'
 import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npm run build --workspace=*",
     "collect": "npm run collect --workspace=packages/server",
-    "server": "npm run build && npm run server --workspace=packages/server",
+    "server": "npm run server --workspace=packages/server",
     "frontend:dev": "npm run dev:static --workspace=packages/frontend",
     "frontend:preview": "npm run preview --workspace=packages/frontend",
     "server:dev": "npm run dev --workspace=packages/server",
@@ -19,6 +19,7 @@
   ],
   "packageManager": "npm@11.2.0",
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
   }
 }

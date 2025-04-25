@@ -4,7 +4,7 @@ import _ from 'lodash'
 import { Terminal } from './Terminal'
 import * as types from './types'
 import { terminalRowTypes } from './types'
-import { controller, terminalRow } from '@/utils'
+import { controller } from '../utils'
 
 let terminal: ReturnType<typeof ink.render> | null = null
 let isRunning = true

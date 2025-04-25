@@ -1,11 +1,11 @@
-import * as db from '@/db'
-import * as utils from '@/utils'
+import * as db from '../../db'
+import * as utils from '../../utils'
 import { Response } from 'express'
 import * as viem from 'viem'
 import type { Image, List, Network, Token } from 'knex/types/tables'
 import { Knex } from 'knex'
-import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '@/types'
-import { tableNames } from '@/db/tables'
+import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
+import { tableNames } from '../../db/tables'
 import _ from 'lodash'
 
 export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
