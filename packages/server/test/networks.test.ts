@@ -15,7 +15,7 @@ test('networks', async (t) => {
       .expect('Content-Type', /json/)
       .expect(200)
     assert.ok(networks.body.length > 0, 'networks should be an array')
-    for (const chainId of networks.body) {
+    for (const { chainId } of networks.body) {
       assert.ok(_.isString(chainId), `all networks should be strings ${JSON.stringify(networks.body)}`)
     }
   })
