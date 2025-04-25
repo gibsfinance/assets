@@ -16,4 +16,6 @@ COPY package.json package.json
 COPY packages packages
 RUN npm i
 
+RUN npm run build
+
 CMD ["npm", "run", "server"]
