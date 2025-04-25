@@ -23,4 +23,5 @@ RUN /usr/local/bin/update_submodules.sh
 COPY packages packages
 RUN npm i
 
+RUN npm run build
 CMD ["npm", "run", "collect"]
