@@ -1,7 +1,7 @@
 FROM node:23.6.1 AS base
 
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
+RUN mkdir -p /app
+WORKDIR /app
 
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV

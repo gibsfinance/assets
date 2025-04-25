@@ -17,7 +17,7 @@
     "packages/dexscreener",
     "packages/server",
     "packages/frontend"
-  ],
+    ],
   "packageManager": "npm@11.2.0",
   "devDependencies": {
     "concurrently": "^9.1.2",
