@@ -20,10 +20,7 @@ COPY .gitmodules .gitmodules
 RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
 RUN /usr/local/bin/update_submodules.sh
-COPY packages/server/src src
-COPY packages/server/tsconfig.json tsconfig.json
-COPY packages/server/knexfile.ts knexfile.ts
-COPY packages/server/config.ts config.ts
+COPY packages packages
 RUN npm i
 
 CMD ["npm", "run", "collect"]
