@@ -47,7 +47,7 @@
     </span>
   {/snippet}
   {#snippet content()}
-    <div class="list-filter-dropdown card bg-surface-100-800-token absolute right-0 z-50 mt-1 w-64 p-2">
+    <div class="list-filter-dropdown card bg-surface-100-900 absolute right-0 z-50 mt-1 w-64 p-2">
       <div class="space-y-3 p-2">
         <div class="flex items-center justify-between">
           <h3 class="h4">Token Lists</h3>

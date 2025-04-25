@@ -4,7 +4,8 @@ import _ from 'lodash'
 import { untrack } from 'svelte'
 import { browser } from './page.svelte'
 
-export const defaultAfter = <T>(_v: T) => {}
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const defaultAfter = <T>(_v: T): void => {}
 
 export type Actions<T> = {
   validation: typeof _.isEqual

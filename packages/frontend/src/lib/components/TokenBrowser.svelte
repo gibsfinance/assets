@@ -5,7 +5,7 @@
   import { getApiUrl } from '../utils'
   import Icon from '@iconify/svelte'
   import type { Snippet } from 'svelte'
-    import _ from 'lodash'
+  import _ from 'lodash'
 
   type Props = {
     networkName: string
@@ -51,23 +51,23 @@
     <div class="p-4 text-center text-gray-500"> Loading tokens... </div>
   {:else}
     <!-- Token Table with responsive design -->
-    <div class="table-container">
-      <table class="token-table">
+    <div class="table-wrap">
+      <table class="table">
         <thead>
           <tr>
             <th>Token</th>
             <th>Symbol</th>
-            <th>Address</th>
             <th>Network</th>
+            <th>Address</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="[&>tr]:hover:preset-tonal-primary">
           {#each filteredTokens.slice((currentPage - 1) * tokensPerPage, currentPage * tokensPerPage) as token}
             <tr
               class="cursor-pointer transition-colors hover:bg-[#00DC82]/10 dark:hover:bg-[#00DC82]/20"
               onclick={() => onselecttoken(token)}>
               <td class="p-1">
-                <div class="flex items-center gap-2 w-[200px]">
+                <div class="flex items-center gap-2">
                   <div
                     class="relative flex h-10 min-h-[40px] w-10 min-w-[40px] items-center justify-center {isCircularCrop
                       ? 'rounded-full'
@@ -96,11 +96,11 @@
               <td title={token.symbol} class="px-1">
                 <span>{token.symbol}</span>
               </td>
-              <td title={token.address} class="px-1">
-                <code class="text-xs">{token.address}</code>
-              </td>
               <td title={networkName} class="px-1">
                 <span class="text-sm">{networkName}</span>
+              </td>
+              <td title={token.address} class="px-1">
+                <code class="text-xs">{token.address}</code>
               </td>
             </tr>
           {/each}

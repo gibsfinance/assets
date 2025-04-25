@@ -149,7 +149,7 @@ class MetricsStore {
                 allTokens.push(...chunk.data.tokens)
               }
             } catch (error) {
-              console.warn(`Failed to read chunk ${i}`)
+              console.warn(`Failed to read chunk ${i}`, error)
             }
           }
 
@@ -205,7 +205,7 @@ class MetricsStore {
               }
             } catch (error) {
               // Individual chunk failed, continue with others
-              console.warn(`Skipping chunk ${index} due to storage error`)
+              console.warn(`Skipping chunk ${index} due to storage error`, error)
             }
           })
 
@@ -222,7 +222,7 @@ class MetricsStore {
             try {
               localStorage.setItem(`${key}_meta`, JSON.stringify(metaEntry))
             } catch (error) {
-              console.warn('Failed to store chunk metadata')
+              console.warn('Failed to store chunk metadata', error)
             }
           }
           return
@@ -327,20 +327,24 @@ class MetricsStore {
   async fetchMetrics(forceFresh = false) {
     try {
       // Check cache first unless forceFresh is true
-      // if (!forceFresh) {
-      //   const cachedMetrics = this.getFromCache<PlatformMetrics>('metrics')
-      //   if (cachedMetrics) {
-      //     this.value = cachedMetrics
-      //     return
-      //   }
-      // } else {
-      //   // Only clear cache if forceFresh is true
-      //   console.log('Force refreshing metrics, clearing cache...')
-      //   this.clearCache()
-      // }
+      if (!forceFresh) {
+        const cachedMetrics = this.getFromCache<PlatformMetrics>('metrics')
+        if (cachedMetrics) {
+          this.value = cachedMetrics
+          return
+        }
+      } else {
+        // Only clear cache if forceFresh is true
+        console.log('Force refreshing metrics, clearing cache...')
+        this.clearCache()
+      }
 
       // Fetch available networks and providers
-      const [networks, providers] = await Promise.all([this.fetchNetworks(), this.fetchProviders()])
+      const [
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _networks,
+        providers,
+      ] = await Promise.all([this.fetchNetworks(), this.fetchProviders()])
 
       // Get unique provider keys, prioritizing certain providers
       const priorityProviders = ['coingecko', 'uniswap-uniswap-default-list']
@@ -404,7 +408,6 @@ class MetricsStore {
       const total = Object.values(byChain).reduce((sum, count) => sum + count, 0)
       // console.log('Total tokens across all chains:', total)
 
-      console.log('networks', networks)
       const metrics: PlatformMetrics = {
         tokenList: {
           total,

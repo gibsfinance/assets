@@ -1,5 +1,5 @@
 <script lang="ts">
-    import CodeBlock from "../../components/CodeBlock.svelte"
+  import CodeBlock from '../../components/CodeBlock.svelte'
 
   const endpoints = {
     tokenInfo: [
@@ -40,9 +40,10 @@
     ],
   }
 
+  const htmlCodeExamples = `<img src="https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" />`
+
   const codeExamples = `// Get a token image (e.g. WBTC on Ethereum)
-const baseUrl = window.location.hostname === 'localhost' ? 'https://gib.show' : '';
-fetch(\`\${baseUrl}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
+fetch(\`https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
     .then(response => response.blob())
     .then(blob => {
         const imageUrl = URL.createObjectURL(blob);
@@ -72,7 +73,7 @@ fetch('https://gib.show/list/pulsex/extended')
     });
 
 // Get a specific network icon (e.g. Ethereum)
-fetch(\`\${baseUrl}/image/1\`)
+fetch(\`https://gib.show/image/1\`)
     .then(response => response.blob())
     .then(blob => {
         const imageUrl = URL.createObjectURL(blob);
@@ -165,8 +166,9 @@ fetch(\`\${baseUrl}/image/1\`)
   <!-- Example Usage -->
   <section class="space-y-6">
     <h2 class="h2">Example Usage</h2>
-    <div class="card variant-ghost p-6">
-      <pre class="overflow-x-auto text-sm"><CodeBlock code={codeExamples} lang="js" /></pre>
+    <div class="card variant-ghost p-6 gap-4 flex flex-col">
+      <CodeBlock code={htmlCodeExamples} lang="html" />
+      <CodeBlock code={codeExamples} lang="js" />
     </div>
   </section>
 

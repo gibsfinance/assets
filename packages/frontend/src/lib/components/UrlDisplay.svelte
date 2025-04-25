@@ -13,7 +13,7 @@
   }
 </script>
 
-<div class="card variant-ghost space-y-2 p-4">
+<div class="card variant-ghost space-y-2">
   <div class="flex items-center justify-between">
     <span class="label">Generated URL</span>
     <button class="variant-soft btn btn-sm" on:click={copyToClipboard}>

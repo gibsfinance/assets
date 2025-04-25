@@ -9,7 +9,7 @@ let githash = process.env.RAILWAY_GIT_COMMIT_SHA
 if (!githash) {
   try {
     githash = child_process.execSync('git rev-parse HEAD').toString().trim()
-  } catch (err) {
+  } catch {
     // console.error(err)
   }
 }

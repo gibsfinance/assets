@@ -6,11 +6,7 @@
 
 @source '../node_modules/@skeletonlabs/skeleton-svelte/dist';
 
-/* html,
+html,
 body {
   @apply h-full;
 }
-
-body {
-  @apply overflow-y-auto bg-gray-50 text-gray-900 dark:bg-[#1a1f2b] dark:text-white;
-} */

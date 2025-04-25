@@ -79,7 +79,8 @@ window.addEventListener('popstate', handleHashChange)
 window.addEventListener('load', handleHashChange)
 handleHashChange()
 
-export const pushState = async (path: string, state?: Record<string, unknown>) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const pushState = async (path: string, _state?: Record<string, unknown>) => {
   await goto(path)
 }
 

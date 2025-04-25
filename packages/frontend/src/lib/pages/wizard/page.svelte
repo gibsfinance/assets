@@ -336,13 +336,13 @@
     </div>
   </div>
 {:else}
-  <div class="container mx-auto max-w-3xl space-y-8 p-4 sm:p-8">
+  <div class="container mx-auto max-w-3xl p-4 sm:p-8">
     <div class="space-y-4 text-center">
       <h1 class="h1">URL Wizard</h1>
       <p class="text-lg">Generate URLs for the Gib Assets API</p>
     </div>
 
-    <div class="card space-y-6 p-4 sm:p-6">
+    <div class="card space-y-6">
       <!-- API Type Selection -->
       <ApiTypeSelector
         {urlType}
@@ -455,9 +455,7 @@
             {generatedUrl} />
         {:else if urlType !== 'list' && ((!showTokenBrowser && urlType === 'network') || (urlType === 'token' && tokenAddress))}
           <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="label">Preview</span>
-            </div>
+            <!-- get rid of these binds -->
             <TokenPreview
               url={generatedUrl}
               bind:this={tokenPreviewComponent}

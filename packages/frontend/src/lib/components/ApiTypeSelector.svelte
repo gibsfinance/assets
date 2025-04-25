@@ -32,12 +32,14 @@
 <div class="space-y-2">
   <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
     <button
+      type="button"
       class="btn {urlType === 'token' ? 'variant-filled-primary' : 'variant-ghost'}"
       onclick={() => selectType('token')}>
       <i class="fas fa-coins mr-2"></i>
       Token Icon
     </button>
     <button
+      type="button"
       class="btn {urlType === 'network' ? 'variant-filled-primary' : 'variant-ghost'}"
       onclick={() => selectType('network')}>
       <i class="fas fa-network-wired mr-2"></i>

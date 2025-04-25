@@ -7,20 +7,29 @@
     generatedUrl?: string
     onsubmitissue?: () => void
   }
-  const { urlType = 'token', chainId = null, networkName = '', tokenAddress = '', generatedUrl = '', onsubmitissue = () => {} }: Props = $props()
+  const {
+    urlType = 'token',
+    chainId = null,
+    networkName = '',
+    tokenAddress = '',
+    generatedUrl = '',
+    onsubmitissue = () => {},
+  }: Props = $props()
 
   const GITHUB_REPO_URL = 'https://github.com/gibsfinance/assets'
 
   // Create the issue URL with pre-filled template values
-  const params = $derived(new URLSearchParams({
-    template: 'missing-asset.yml',
-    title: `[Missing Asset]: ${urlType === 'token' ? `Token icon for ${tokenAddress}` : `Network icon for ${networkName}`}`,
-    'asset-type': urlType === 'token' ? 'Token Icon' : 'Network Icon',
-    'network-name': networkName,
-    'chain-id': chainId?.toString() || '',
-    'token-address': tokenAddress,
-    'attempted-url': generatedUrl,
-  }))
+  const params = $derived(
+    new URLSearchParams({
+      template: 'missing-asset.yml',
+      title: `[Missing Asset]: ${urlType === 'token' ? `Token icon for ${tokenAddress}` : `Network icon for ${networkName}`}`,
+      'asset-type': urlType === 'token' ? 'Token Icon' : 'Network Icon',
+      'network-name': networkName,
+      'chain-id': chainId?.toString() || '',
+      'token-address': tokenAddress,
+      'attempted-url': generatedUrl,
+    }),
+  )
 
   const issueUrl = $derived(`${GITHUB_REPO_URL}/issues/new?${params.toString()}`)
 </script>

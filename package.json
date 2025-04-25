@@ -6,8 +6,10 @@
     "build": "npm run build --workspace=*",
     "collect": "npm run collect --workspace=packages/server",
     "server": "npm run build && npm run server --workspace=packages/server",
-    "frontend:preview": "npm run dev:static --workspace=packages/frontend",
-    "server:dev": "npm run dev --workspace=packages/server"
+    "frontend:dev": "npm run dev:static --workspace=packages/frontend",
+    "frontend:preview": "npm run preview --workspace=packages/frontend",
+    "server:dev": "npm run dev --workspace=packages/server",
+    "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres"
   },
   "workspaces": [
     "packages/utils",

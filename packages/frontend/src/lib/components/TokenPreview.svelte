@@ -88,13 +88,13 @@
   }
 </script>
 
-<div class="card variant-ghost space-y-2 p-4">
+<div class="card variant-ghost space-y-2">
   <div class="flex items-center justify-between">
     <span class="label">Preview</span>
     <div class="flex gap-2">
       <button
         class="variant-soft-surface btn btn-sm"
-        on:click={handleZoomOut}
+        onclick={handleZoomOut}
         disabled={zoomLevel <= 0.5}
         aria-label="Zoom out">
         <i class="fas fa-minus"></i>
@@ -104,7 +104,7 @@
       </span>
       <button
         class="variant-soft-surface btn btn-sm"
-        on:click={handleZoomIn}
+        onclick={handleZoomIn}
         disabled={zoomLevel >= 4}
         aria-label="Zoom in">
         <i class="fas fa-plus"></i>
@@ -118,11 +118,11 @@
         ? ''
         : 'checkerboard'} border border-surface-700/20"
       style="background-color: {showColorPicker ? backgroundColor : ''}"
-      on:mousedown={handleMouseDown}
-      on:mousemove={handleMouseMove}
-      on:mouseup={handleMouseUp}
-      on:mouseleave={handleMouseUp}
-      on:wheel={handleWheel}
+      onmousedown={handleMouseDown}
+      onmousemove={handleMouseMove}
+      onmouseup={handleMouseUp}
+      onmouseleave={handleMouseUp}
+      onwheel={handleWheel}
       role="slider"
       aria-label="Token preview zoom control"
       aria-valuemin="50"
@@ -136,7 +136,7 @@
           ? 'rounded-full'
           : ''}"
         style="transform: translate(calc(-50% + {translateX}px), calc(-50% + {translateY}px)) scale({zoomLevel})"
-        size={128}
+        size={64}
         onerror={handleImageError}>
         {#snippet fallback()}
           <Icon icon="nrk:404" class="h-12 w-12" />
@@ -150,14 +150,14 @@
 </div>
 
 <!-- Preview Options -->
-<div class="card variant-ghost space-y-4 p-4">
+<div class="card variant-ghost space-y-4">
   <span class="label">Preview Options</span>
   <div class="flex flex-col gap-4">
     <!-- Crop Option -->
     <div class="flex items-center gap-2">
       <button
         class="variant-soft btn btn-sm transition-all {isCircularCrop ? 'shadow-lg shadow-[#00DC82]/15' : ''}"
-        on:click={() => (isCircularCrop = !isCircularCrop)}>
+        onclick={() => (isCircularCrop = !isCircularCrop)}>
         <i class="fas fa-circle mr-2"></i>
         Circle Crop
       </button>
@@ -168,7 +168,7 @@
       <div class="flex items-center gap-2">
         <button
           class="variant-soft btn btn-sm transition-all {showColorPicker ? 'shadow-lg shadow-[#00DC82]/15' : ''}"
-          on:click={() => (showColorPicker = !showColorPicker)}>
+          onclick={() => (showColorPicker = !showColorPicker)}>
           <i class="fas fa-fill-drip mr-2"></i>
           {showColorPicker ? 'Hide Color Options' : 'Custom Background'}
         </button>
@@ -184,7 +184,7 @@
               type="color"
               class="h-10 w-full cursor-pointer rounded"
               value={backgroundColor}
-              on:input={handleColorInput} />
+              oninput={handleColorInput} />
           </div>
 
           <!-- Color Input -->
@@ -196,7 +196,7 @@
               class="input"
               placeholder="#HEX, rgb(), rgba()"
               value={backgroundColor}
-              on:input={handleColorTextInput} />
+              oninput={handleColorTextInput} />
             <p class="text-xs opacity-75"> Supports HEX (#RRGGBB), RGB (rgb(r,g,b)), and RGBA (rgba(r,g,b,a)) </p>
           </div>
         </div>
@@ -204,14 +204,14 @@
     </div>
   </div>
 </div>
-<!--
+
 <style lang="postcss">
   /* Checkerboard pattern for transparent image background */
   .checkerboard {
     background-color: #fff;
-    background-image: linear-gradient(45deg, #ddd 25%, transparent 25%),
-      linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%),
-      linear-gradient(-45deg, transparent 75%, #ddd 75%);
+    background-image:
+      linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%);
     background-size: 16px 16px;
     background-position:
       0 0,
@@ -223,9 +223,9 @@
   /* Dark mode version - using more subtle colors */
   :global(.dark) .checkerboard {
     background-color: #1a1a1a;
-    background-image: linear-gradient(45deg, #252525 25%, transparent 25%),
-      linear-gradient(-45deg, #252525 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #252525 75%),
-      linear-gradient(-45deg, transparent 75%, #252525 75%);
+    background-image:
+      linear-gradient(45deg, #252525 25%, transparent 25%), linear-gradient(-45deg, #252525 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #252525 75%), linear-gradient(-45deg, transparent 75%, #252525 75%);
   }
 
   :global(.user-drag-none) {
@@ -235,4 +235,4 @@
     -webkit-user-select: none;
     -ms-user-select: none;
   }
-</style> -->
+</style>

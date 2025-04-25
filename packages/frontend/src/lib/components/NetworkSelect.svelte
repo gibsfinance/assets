@@ -3,6 +3,7 @@
   import { metrics } from '../stores/metrics.svelte'
   import { showTestnets } from '../stores/settings.svelte'
   import type { NetworkInfo } from '../types'
+  import { Modal } from '@skeletonlabs/skeleton-svelte'
   import { onMount } from 'svelte'
 
   type Props = {
@@ -16,22 +17,6 @@
   const { isOpenToStart, network: selectedNetwork, onselect, onnetworkname }: Props = $props()
 
   let isOpen = $state(isOpenToStart)
-  $effect(() => {
-    isOpen = isOpenToStart
-  })
-
-  // Add click outside handler for network select
-  onMount(() => {
-    const handler = (e: MouseEvent) => {
-      if (isOpen && !(e.target as HTMLElement).closest('.select')) {
-        isOpen = false
-      }
-    }
-    document.addEventListener('click', handler)
-    return () => {
-      document.removeEventListener('click', handler)
-    }
-  })
 
   // Add this to the existing onMount
   const storedChainId = localStorage.getItem('selectedChainId')
@@ -108,12 +93,9 @@
 </script>
 
 <div class="relative w-full">
-  <div class="mb-2 flex items-center justify-between">
-    <label for="network-select" class="label">
-      <span class="leading-5">Select Network</span>
-    </label>
-    <label class="group flex cursor-pointer items-center gap-3">
-      <div class="relative">
+  <div class="mb-2 flex items-center justify-end">
+    <label class="group flex cursor-pointer items-center gap-3 flex-row">
+      <div class="relative flex">
         <input
           type="checkbox"
           class="peer sr-only"
@@ -129,47 +111,45 @@
       </div>
       <span
         class="text-sm font-medium text-surface-600 transition-colors group-hover:text-secondary-600 dark:text-surface-300"
-        >Show Testnets</span>
+        >Show&nbsp;Testnets</span>
     </label>
   </div>
-  <button
-    type="button"
-    id="network-select"
-    class="select flex w-full items-center justify-between px-3 py-2 text-left text-sm leading-6"
-    onclick={() => (isOpen = !isOpen)}>
-    {#if selectedNetwork}
-      <span class="truncate">{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
-    {:else}
-      <span class="text-gray-500">Choose a network...</span>
-    {/if}
-    <i class="fas fa-chevron-down !m-0 flex-shrink-0 transition-transform flex items-center" class:rotate-180={isOpen}
-    ></i>
-  </button>
-
-  {#if isOpen}
-    <div
-      class="absolute z-50 mt-1 max-h-[300px] w-full overflow-y-auto border border-gray-200 bg-white text-sm shadow-lg rounded-container-token dark:border-surface-600 dark:bg-[#202633]">
-      {#if metrics.value}
-        {#each sortNetworks(metrics.value.networks.supported) as network}
-          <button
-            class="flex w-full items-center justify-between px-3 py-1.5 text-left transition-colors hover:bg-secondary-600/10 dark:hover:bg-secondary-600/20"
-            class:selected={selectedNetwork?.chainId === network.chainId}
-            onclick={() => {
-              isOpen = false
-              onselect(network)
-            }}>
-            <span class="mr-2 truncate">{getNetworkName(network.chainId)}</span>
-            <span class="flex-shrink-0 whitespace-nowrap text-surface-500">(Chain ID: {network.chainId})</span>
-          </button>
-        {/each}
+  <Modal
+    open={isOpen}
+    onOpenChange={(e) => (isOpen = e.open)}
+    triggerBase="btn preset-tonal w-full justify-between px-3 py-2 text-left text-sm leading-6 border border-gray-500 hover:border-gray-300 items-center rounded-lg select-network"
+    contentBase="bg-surface-100-900 space-y-4 shadow-xl w-[480px] h-screen left-0 overflow-y-auto"
+    positionerJustify="justify-start"
+    positionerAlign=""
+    positionerPadding=""
+    transitionsPositionerIn={{ x: -480, duration: 200 }}
+    transitionsPositionerOut={{ x: -480, duration: 200 }}>
+    {#snippet trigger()}
+      {#if selectedNetwork}
+        <span class="truncate">{getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})</span>
+      {:else}
+        <span class="text-gray-500">Choose a network...</span>
       {/if}
-    </div>
-  {/if}
+      <i class="fas fa-chevron-down !m-0 flex-shrink-0 transition-transform flex items-center" class:rotate-180={isOpen}
+      ></i>
+    {/snippet}
+    {#snippet content()}
+      <article>
+        {#if metrics.value}
+          {#each sortNetworks(metrics.value.networks.supported) as network}
+            <button
+              class="flex w-full items-center justify-between px-3 py-1.5 text-left transition-colors hover:bg-secondary-600 dark:hover:bg-secondary-600"
+              class:selected={selectedNetwork?.chainId === network.chainId}
+              onclick={() => {
+                isOpen = false
+                onselect(network)
+              }}>
+              <span class="mr-2 truncate">{getNetworkName(network.chainId)}</span>
+              <span class="flex-shrink-0 whitespace-nowrap text-surface-500">(Chain ID: {network.chainId})</span>
+            </button>
+          {/each}
+        {/if}
+      </article>
+    {/snippet}
+  </Modal>
 </div>
-<!--
-<style lang="postcss">
-  @references '../app.css';
-  .selected {
-    @apply bg-secondary-600/20;
-  }
-</style> -->

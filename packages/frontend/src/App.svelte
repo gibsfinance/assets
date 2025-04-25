@@ -8,10 +8,10 @@
 
 <Layout>
   {#if page.route.id === '/'}
-  <Home />
+    <Home />
   {:else if page.route.id === '/wizard'}
-  <Wizard />
+    <Wizard />
   {:else if page.route.id === '/docs'}
-  <Docs />
+    <Docs />
   {/if}
 </Layout>

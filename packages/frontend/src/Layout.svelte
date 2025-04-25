@@ -12,8 +12,8 @@
   const isWizardPage = $derived(page.url.pathname === '/wizard' || page.url.hash === '#/wizard')
 </script>
 
-<div class="app min-h-full overflow-x-hidden bg-surface-950">
-  <header class="sticky top-0 z-50 border-b border-gray-200/50 bg-surface-900">
+<div class="min-h-full overflow-x-hidden bg-surface-950">
+  <header class="top-0 z-50 border-b border-gray-200/50 bg-surface-900">
     <nav class="mx-auto p-4">
       <div class="flex items-center justify-between">
         <a
@@ -28,7 +28,7 @@
               onclick={() => {
                 goto('#/wizard')
               }}
-              class="btn bg-secondary-600 text-black shadow-lg transition-all hover:-translate-y-0.5 hover:bg-secondary-600/80">
+              class="btn bg-secondary-600 text-black shadow-lg transition-all hover:bg-secondary-600/80">
               <i class="fas fa-hat-wizard mr-2"></i>
               Wizard
             </button>
@@ -39,7 +39,7 @@
     </nav>
   </header>
 
-  <main class="mx-auto">
+  <main class="mx-auto min-h-screen">
     {@render children?.()}
   </main>
 </div>

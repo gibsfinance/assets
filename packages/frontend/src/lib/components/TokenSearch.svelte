@@ -1,7 +1,7 @@
 <script lang="ts">
   import _ from 'lodash'
   import promiseLimit from 'promise-limit'
-  import type { FormEventHandler } from 'svelte/elements'
+  import type { FormEventHandler, KeyboardEventHandler } from 'svelte/elements'
 
   import { getApiUrl } from '../utils'
   import { metrics } from '../stores/metrics.svelte'
@@ -204,9 +204,14 @@
     })
   }
 
-  const handleInput: FormEventHandler<HTMLInputElement> = (e) => {
+  const handleInput: KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (isGlobalSearching) return
+    if (e.key === 'Enter') {
+      performGlobalSearch()
+      return
+    }
     query = e.currentTarget.value
+    console.log('handleInput', e.currentTarget.value)
     updateOutside()
   }
 </script>
@@ -215,18 +220,18 @@
   <!-- Search bar -->
   <div
     class="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto] rounded-t-lg rounded-b-none flex flex-row items-center gap-2">
-    <div class="input-group-shim">
+    <div class="input-group-shim px-2">
       <i class="fas fa-search"></i>
     </div>
     <input
       type="search"
       placeholder="Search {count} tokens on {networkName}..."
-      class="input !border-none !ring-0 !focus:ring-0 !focus:border-none"
+      class="input border-none ring-0 pl-0 outline-none"
       value={query}
-      oninput={handleInput} />
+      oninput={handleInput as FormEventHandler<HTMLInputElement>} />
     <TokenListFilter {selectedChain} {ontoggleall} {ontogglelist} {onupdateopen} />
     <button
-      class="input-group-shim variant-soft-primary flex gap-2 items-center"
+      class="input-group-shim variant-soft-primary flex gap-2 items-center pr-2"
       type="button"
       onclick={performGlobalSearch}
       class:cursor-not-allowed={!query}

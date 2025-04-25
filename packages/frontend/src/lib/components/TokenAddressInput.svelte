@@ -16,7 +16,6 @@
     tokenAddress = input.value.trim()
     oninput(tokenAddress)
   }
-
 </script>
 
 <div class="space-y-2">
@@ -27,13 +26,7 @@
       Back to Token Browser
     </button>
   </div>
-  <input
-    id="token-address"
-    type="text"
-    class="input"
-    placeholder="0x..."
-    value={tokenAddress}
-    oninput={handleInput} />
+  <input id="token-address" type="text" class="input" placeholder="0x..." value={tokenAddress} oninput={handleInput} />
 </div>
 <!--
 <style lang="postcss">

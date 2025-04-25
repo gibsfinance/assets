@@ -600,7 +600,6 @@
 </style> -->
 
 <style lang="postcss">
-
   @keyframes float-right {
     0% {
       opacity: 0;
@@ -643,5 +642,4 @@
   .animate-float[style*='--direction: -1'] {
     animation: float-left var(--duration) linear infinite !important;
   }
-
 </style>
