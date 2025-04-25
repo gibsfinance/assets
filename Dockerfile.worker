@@ -21,6 +21,7 @@ RUN git config --global user.email "you@example.com"
 RUN git config --global user.name "Your Name"
 RUN /usr/local/bin/update_submodules.sh
 COPY packages packages
+COPY tsconfig.json tsconfig.json
 RUN npm i
 
 RUN npm run build

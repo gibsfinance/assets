@@ -11,6 +11,7 @@ ENV ROOT_URI=$ROOT_URI
 FROM base AS build
 COPY package-lock.json package-lock.json
 COPY package.json package.json
+COPY tsconfig.json tsconfig.json
 
 # Copy and build frontend first
 COPY packages packages
