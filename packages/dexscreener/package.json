@@ -1,0 +1,24 @@
+{
+  "name": "@gibs/dexscreener",
+  "version": "1.0.0",
+  "description": "Dexscreener api wrapper for efficient token list collection",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "gibs",
+  "license": "ISC",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./collector": "./src/collector.ts"
+  },
+  "dependencies": {
+    "@gibs/utils": "^1.0.0",
+    "dexscreener-sdk": "^1.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

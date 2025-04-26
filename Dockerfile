@@ -1,7 +1,7 @@
 FROM node:23.6.1 AS base
 
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
+RUN mkdir -p /app
+WORKDIR /app
 
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV
@@ -9,18 +9,14 @@ ARG ROOT_URI
 ENV ROOT_URI=$ROOT_URI
 
 FROM base AS build
-COPY pnpm-lock.yaml /usr/src/app/pnpm-lock.yaml
-COPY package.json /usr/src/app/package.json
-RUN npm i -g pnpm
-RUN pnpm i
+COPY package-lock.json package-lock.json
+COPY package.json package.json
+COPY tsconfig.json tsconfig.json
 
-COPY src /usr/src/app/src
-COPY config.ts /usr/src/app/config.ts
-COPY knexfile.ts /usr/src/app/knexfile.ts
-COPY tsconfig.json /usr/src/app/tsconfig.json
-COPY .eslintrc.mjs /usr/src/app/.eslintrc.mjs
-COPY .prettierrc /usr/src/app/.prettierrc
+# Copy and build frontend first
+COPY packages packages
+RUN npm i
 
-COPY ./config.ts /usr/src/app/config.ts
+RUN npm run build
 
-CMD ["pnpm", "run", "serve"]
+CMD ["npm", "run", "server"]
