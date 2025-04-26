@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "docker:build": "docker compose build",
     "build": "npm run build --workspace=*",
     "collect": "npm run collect --workspace=packages/server",
     "server": "npm run server --workspace=packages/server",
