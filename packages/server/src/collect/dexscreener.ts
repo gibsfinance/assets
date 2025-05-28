@@ -25,9 +25,8 @@ class TerminalLinkedCollector extends Collector {
     protected chainType: ChainType,
     protected chainId: number,
     protected row: TerminalRowProxy,
-    protected signal?: AbortSignal,
   ) {
-    super(chainKey, chainType, chainId, signal)
+    super(chainKey, chainType, chainId)
   }
   setInfo(address: string, info: IInfo) {
     super.setInfo(address, info)
@@ -81,7 +80,7 @@ const parseSidebarChainInfo = () => {
   return chainInfo
 }
 
-export const collect = async (signal: AbortSignal) => {
+export const collect = async (signal?: AbortSignal) => {
   const row = utils.terminal.issue({
     type: terminalRowTypes.SETUP,
     id: providerKey,
@@ -113,9 +112,9 @@ export const collect = async (signal: AbortSignal) => {
     allChainIds.add(boost.chainId)
   })
   const parsedChainInfo = parseSidebarChainInfo()
-  ;[...parsedChainInfo.keys()].forEach((key) => {
-    allChainIds.add(key)
-  })
+    ;[...parsedChainInfo.keys()].forEach((key) => {
+      allChainIds.add(key)
+    })
   // updateStatus({
   //   provider: 'dexscreener',
   //   message: `dexscreener found ${allChainIds.size} chains`,
@@ -195,7 +194,10 @@ export const collect = async (signal: AbortSignal) => {
       }
       let nextKeys = new Set<string>()
       while ((nextKeys = collector.getPendingTokens(16)).size) {
-        await Promise.all([collector.collect(nextKeys), collector.collectDecimals(nextKeys)])
+        await Promise.all([
+          collector.collect(nextKeys, signal),
+          collector.collectDecimals(nextKeys),
+        ])
       }
       const [all, header] = collector.toTokenLists()
       const addressToHeaderUri = new Map<string, string>(header)
