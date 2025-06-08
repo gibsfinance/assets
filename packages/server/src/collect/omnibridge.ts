@@ -213,7 +213,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       const tokenData = _.flatten(_.compact(collectedData))
       const collectedDataForTokens = new Map<string, MinimalTokenInfo>(tokenData)
       await db.transaction(async (tx) => {
-        for (const event of events) {
+        for (const [i, event] of events.entries()) {
           const [native, bridged] = await Promise.all(
             [[fromConfig.chain.id, event.args.native] as const, [toConfig.chain.id, event.args.bridged] as const].map(
               async ([chainId, addr]) => {
@@ -231,6 +231,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                     originalUri: null,
                     listId: toList.listId,
                     providerKey: provider.key,
+                    listTokenOrderId: i,
                     signal,
                     token: {
                       networkId,

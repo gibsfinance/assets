@@ -89,6 +89,7 @@ declare module 'knex/types/tables.js' {
     listId: string
     imageHash: string
     listTokenId: string
+    listTokenOrderId: number
   }
   interface InsertableListToken extends Omit<ListToken, TimestampKeys | 'listTokenId'> {
     imageHash?: string

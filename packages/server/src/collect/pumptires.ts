@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
-import { limit, limitBy, retry, timeout } from '@gibs/utils'
+import { limitBy, retry, timeout } from '@gibs/utils'
 import * as db from '../db'
 import * as utils from '../utils'
 import { pulsechain } from 'viem/chains'
@@ -15,6 +15,10 @@ const providerKey = 'pumptires'
 const listKey = 'tokens'
 
 const limiter = limitBy<number>(providerKey, 1)
+const limitTokens = limitBy<[TokenInfo, number]>(`${providerKey}-tokens`, 16)
+const limitHighCapSorting = limitBy<types.TokenInfo>(`${providerKey}-highcap`, 16)
+type InsertHighCapToken = Omit<Parameters<typeof db.fetchImageAndStoreForToken>[0], 'listTokenOrderId'> & { listTokenOrderId: bigint }
+const insertHighCapTokens = limitBy<[InsertHighCapToken, number]>(`${providerKey}-highcap-inserts`, 16)
 
 type Creator = {
   address: Hex
@@ -208,9 +212,10 @@ export const collect = async (signal: AbortSignal) => {
   const toURI = (token: TokenInfo) => `https://ipfs-pump-tires.b-cdn.net/ipfs/${token.image_cid}`
   row.createCounter('created', true)
   const tokenIDs = utils.mapToSet.token(createdTokens, (t) => [+network.chainId, t.address])
+  const indexedTokenIds = Array.from(createdTokens).map((t, i) => [t, knownPumptiresList.length + i] as [TokenInfo, number])
   row.incrementTotal('created', tokenIDs)
   row.increment(terminalCounterTypes.TOKEN, tokenIDs)
-  await limit.map(createdTokens, async (token: TokenInfo) => {
+  await limitTokens.map(indexedTokenIds, async ([token, i]) => {
     if (signal.aborted) {
       return
     }
@@ -223,6 +228,7 @@ export const collect = async (signal: AbortSignal) => {
         uri: originalUri,
         originalUri,
         providerKey,
+        listTokenOrderId: i,
         signal,
         token: {
           name: token.name,
@@ -241,7 +247,8 @@ export const collect = async (signal: AbortSignal) => {
     'launched',
     utils.mapToSet.token(launchedTokens, (t) => [+network.chainId, t.address]),
   )
-  await limit.map(launchedTokens, async (token: TokenInfo) => {
+  const indexedLaunchedTokens = Array.from(launchedTokens).map((t, i) => [t, knownLaunchedList.length + i] as [TokenInfo, number])
+  await limitTokens.map(indexedLaunchedTokens, async ([token, i]) => {
     const originalUri = toURI(token)
     const chainTokenId = utils.counterId.token([+network.chainId, token.address])
     await db
@@ -250,6 +257,7 @@ export const collect = async (signal: AbortSignal) => {
         uri: originalUri,
         originalUri,
         providerKey,
+        listTokenOrderId: i,
         signal,
         token: {
           name: token.name,
@@ -267,19 +275,20 @@ export const collect = async (signal: AbortSignal) => {
   const updatedKnownLaunchedList: types.TokenInfo[] = await db
     .getTokensUnderListId()
     .where('listId', pumptiresLaunchedList.listId)
-    .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-  row.createCounter('highcap', true)
+  // .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+  row.createCounter('filter', true)
   row.incrementTotal(
-    'highcap',
+    'filter',
     utils.mapToSet.token(updatedKnownLaunchedList, (t) => [+network.networkId, t.providedId]),
   )
-  await limit.map(updatedKnownLaunchedList, async (token: types.TokenInfo) => {
+  const highCapTokens = await limitHighCapSorting.map(updatedKnownLaunchedList, async (token): Promise<InsertHighCapToken | null> => {
     const address = token.providedId as Hex
     const {
       token0,
       // token1,
       reserves: [rt0, rt1],
     } = await getReserves(address, situation, wpls)
+    let result: null | InsertHighCapToken = null
     if (rt0 && rt1) {
       const wplsReserve = getAddress(token0) === getAddress(wpls) ? rt0 : rt1
       // const tokenReserve = token1 === wpls ? rt0 : rt1
@@ -288,12 +297,13 @@ export const collect = async (signal: AbortSignal) => {
       const oneBillionWei = oneBillion * oneEther
       if (wplsReserve >= oneBillionWei) {
         const originalUri = token.uri
-        await db.fetchImageAndStoreForToken({
+        result = {
           listId: highMarketCapList.listId,
           uri: originalUri,
           originalUri,
           providerKey,
           signal,
+          listTokenOrderId: wplsReserve,
           token: {
             name: token.name,
             symbol: token.symbol,
@@ -301,11 +311,29 @@ export const collect = async (signal: AbortSignal) => {
             providedId: token.providedId,
             networkId: network.networkId,
           },
-        })
+        }
       }
     }
     const chainTokenId = utils.counterId.token([+network.chainId, address])
-    row.increment('highcap', chainTokenId)
+    row.increment('filter', chainTokenId)
+    return result
+  })
+  const sortedInserts = _(highCapTokens).compact()
+    .sortBy(a => -a.listTokenOrderId)
+    .map((value, index) => [value, index] as [InsertHighCapToken, number])
+    .value()
+  row.createCounter('highcap', true)
+
+  row.incrementTotal(
+    'highcap',
+    utils.mapToSet.token(sortedInserts, ([t]) => [+network.networkId, t.token.providedId]),
+  )
+  await insertHighCapTokens.map(sortedInserts, async ([insert, index]) => {
+    await db.fetchImageAndStoreForToken({
+      ...insert,
+      listTokenOrderId: index,
+    })
+    row.increment('highcap', utils.counterId.token([+network.chainId, insert.token.providedId]))
   })
   row.increment(terminalCounterTypes.NETWORK, `${369}`)
   row.complete()
@@ -333,10 +361,20 @@ const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex
   const results = await client.multicall({
     contracts: calls,
   })
+  // we can do this because the same rules govern the order of the tokens in the pair
+  // the order of the tokens in the pair is the same for both situations
+  const reserves = results.reduce((acc, result) => {
+    if (result.status === 'success') {
+      const [rt0, rt1, _] = result.result
+      acc[0] += rt0
+      acc[1] += rt1
+    }
+    return acc
+  }, [0n, 0n, 0] as [bigint, bigint, number])
   return {
     token0,
     token1,
-    reserves: results.find((r) => r.status === 'success')?.result ?? [0n, 0n, 0],
+    reserves,
   }
 }
 

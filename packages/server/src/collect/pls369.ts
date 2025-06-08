@@ -30,7 +30,7 @@ type Config = {
   }
   chain: Chain
 }
-const tokenAccessLimit = promiseLimit<Piece>(32)
+const tokenAccessLimit = promiseLimit<[Piece, number]>(32)
 const networkLimiter = promiseLimit<Config>(2)
 /**
  * Configuration for mainnet and testnet token collection
@@ -101,18 +101,18 @@ export const collect = async (signal: AbortSignal) => {
 
   const infoPaths = infoFiles.map((file) => file.split(`${walkPath}`).join(''))
   const pieces = _(infoPaths)
-    .map((p) => {
+    .map((p, index) => {
       const addr = p.slice(1, 43)
       if (!isAddress(addr)) {
         summaryRow.createCounter('skipped', true)
         summaryRow.increment('skipped', `${providerKey}-${addr.toLowerCase()}`)
         return null
       }
-      return {
+      return [{
         address: getAddress(addr),
         path: p,
         fullPath: path.join(walkPath, p),
-      }
+      }, index] as [Piece, number]
     })
     .compact()
     .value()
@@ -148,11 +148,11 @@ export const collect = async (signal: AbortSignal) => {
     row.createCounter(terminalCounterTypes.TOKEN)
     row.incrementTotal(
       terminalCounterTypes.TOKEN,
-      mapToSet.token(pieces, (v) => [chain.id, v.address]),
+      mapToSet.token(pieces, ([v]) => [chain.id, v.address]),
     )
     const networkSection = row.issue(`${providerKey}-${chain.id}`)
     await tokenAccessLimit
-      .map(pieces, async (piece: Piece) => {
+      .map(pieces, async ([piece, i]) => {
         if (signal.aborted) {
           return
         }
@@ -182,6 +182,7 @@ export const collect = async (signal: AbortSignal) => {
             uri: path,
             originalUri: path,
             providerKey: provider.key,
+            listTokenOrderId: i,
             signal,
             token: {
               name,

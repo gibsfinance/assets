@@ -38,15 +38,14 @@ export const collect = async (signal?: AbortSignal) => {
     networkId: network.networkId,
     default: true,
   })
-  const limit = limitBy<Country>(providerKey, 20)
+  const limit = limitBy<[Country, number]>(providerKey, 20)
   row.createCounter(providerKey, true)
   row.createCounter('tasks')
   row.createCounter('skipped', true)
   row.incrementTotal(providerKey, new Set(countries.map((country) => country.code)))
-  await limit.map(countries, async (country) => {
+  await limit.map(countries.map((country, i) => [country, i]), async ([country, i]) => {
     row.increment(providerKey, new Set([country.code]))
     if (!country.flag) {
-      // console.log(country.code, country.flag)\
       row.incrementTotal('skipped', new Set([country.code]))
       return
     }
@@ -73,6 +72,7 @@ export const collect = async (signal?: AbortSignal) => {
       originalUri: country.flag,
       providerKey,
       signal,
+      listTokenOrderId: i,
       token: {
         name: country.country,
         symbol: country.code,

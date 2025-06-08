@@ -96,11 +96,6 @@ export const collect = async ({
 
     // Store list logo if available
     if (tokenList.logoURI) {
-      // updateStatus({
-      //   provider: providerKey,
-      //   message: 'Storing list logo...',
-      //   phase: 'storing',
-      // } satisfies StatusProps)
       await db.fetchImageAndStoreForList(
         {
           listId: list.listId,
@@ -126,7 +121,7 @@ export const collect = async ({
    * 2. Each token is processed in its own transaction with retry logic
    * 3. Stores token information and associated images
    */
-  for (const entry of tokenList.tokens) {
+  for (const [i, entry] of tokenList.tokens.entries()) {
     const chainTokenId = utils.counterId.token([entry.chainId, entry.address])
     if (signal.aborted) {
       return
@@ -156,6 +151,7 @@ export const collect = async ({
             originalUri: path,
             providerKey,
             token,
+            listTokenOrderId: i,
           },
           tx,
         )

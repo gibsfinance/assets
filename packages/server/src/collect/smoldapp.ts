@@ -144,16 +144,18 @@ export const collect = async (signal: AbortSignal) => {
     return
   }
   // Process tokens
-  const reverseOrderTokens = Object.entries(tokens).reverse()
+  const reverseOrderTokens = Object.entries(tokens).map(([chainIdString, tokens], i) => [chainIdString, tokens, i] as [string, string[], number])
   row.createCounter(terminalCounterTypes.TOKEN)
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(
     terminalCounterTypes.NETWORK,
     utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => +chainIdString),
   )
-  const tokenLimit = promiseLimit<Hex>(16)
+  const networkLimiter = promiseLimit<[string, string[], number]>(4)
+  const tokenLimit = promiseLimit<[Hex, number]>(16)
   const section = row.issue(providerKey)
-  await promiseLimit<[string, string[]]>(4).map(reverseOrderTokens, async ([chainIdString, tokens]) => {
+  let globalOrderId = 0
+  await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens, i]) => {
     if (signal.aborted) {
       return
     }
@@ -174,8 +176,9 @@ export const collect = async (signal: AbortSignal) => {
       utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
     )
 
+    const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
     const client = utils.chainToPublicClient(chain)
-    await tokenLimit.map(tokens as Hex[], async (token) => {
+    await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
       const task = section.task(`${chainIdString}-${token}`, {
         id: '',
         type: terminalRowTypes.STORAGE,
@@ -188,7 +191,7 @@ export const collect = async (signal: AbortSignal) => {
       const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
 
       const [name, symbol, decimals] = await erc20Read(chain, client, address)
-      const tokenImages = await utils.folderContents(tokenFolder)
+      const tokenImages = await utils.folderContents(tokenFolder) as string[]
 
       const firstImageName = tokenImages[0]
       const listKey = filenameToListKey(firstImageName)
@@ -211,6 +214,7 @@ export const collect = async (signal: AbortSignal) => {
           uri,
           originalUri: uri,
           providerKey: provider.key,
+          listTokenOrderId: i,
           token: {
             providedId: address,
             networkId: networkList.networkId!,
@@ -235,6 +239,7 @@ export const collect = async (signal: AbortSignal) => {
             {
               listId: list.listId,
               ...baseInput,
+              listTokenOrderId: globalOrderId++,
               signal,
             },
             tx,

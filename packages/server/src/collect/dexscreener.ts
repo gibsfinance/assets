@@ -201,12 +201,11 @@ export const collect = async (signal?: AbortSignal) => {
       }
       const [all, header] = collector.toTokenLists()
       const addressToHeaderUri = new Map<string, string>(header)
-      for (const token of all) {
+      for (const [i, token] of all.entries()) {
         const chainTokenId = utils.counterId.token([chain.id, token.address])
         const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
           id: providerKey,
-          message: 'save',
           kv: {
             key,
             chainId: chain.id,
@@ -220,6 +219,7 @@ export const collect = async (signal?: AbortSignal) => {
           uri: token.logoURI ?? null,
           originalUri: token.logoURI ?? null,
           signal,
+          listTokenOrderId: i,
           token: {
             type: 'erc20',
             symbol: token.symbol,

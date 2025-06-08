@@ -84,6 +84,7 @@ export const collect =
           kv,
         })
       }
+      row.createCounter(terminalCounterTypes.NETWORK)
       const extras = await Promise.all(
         extra.map(async (item) => {
           if (signal.aborted) {

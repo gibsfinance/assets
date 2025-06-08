@@ -26,7 +26,7 @@ export const respondWithList = async (
   if (extensions.has('headerUri')) {
     q = db.addHeaderUriExtension(q)
   }
-  const tokens = await q
+  const tokens = await q.orderBy('listTokenOrderId', 'asc')
   // could possibly be turned into a query
   const tkns = normalizeTokens(tokens, filters, extensions)
   res.json({
