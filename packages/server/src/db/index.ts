@@ -802,13 +802,13 @@ export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
       .where(
         listKey
           ? {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.key`]: listKey,
-            }
+            [`${tableNames.provider}.key`]: providerKey,
+            [`${tableNames.list}.key`]: listKey,
+          }
           : {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.default`]: true,
-            },
+            [`${tableNames.provider}.key`]: providerKey,
+            [`${tableNames.list}.default`]: true,
+          },
       )
       .orderBy('major', 'desc')
       .orderBy('minor', 'desc')

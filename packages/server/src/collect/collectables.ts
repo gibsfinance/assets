@@ -1,5 +1,6 @@
 import chains from '../chains'
 import '../utils'
+import * as countries from './countries'
 import * as trustwallet from './trustwallet'
 import * as pulsex from './pulsex'
 import * as phux from './phux'
@@ -44,6 +45,7 @@ export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
     dexscreener: dexscreener.collect as Todo,
+    countries: countries.collect as Todo,
     pulsechain: pulsechainCollector.collect as Todo,
     trustwallet: trustwallet.collect as Todo,
     'uniswap-tokenlists': uniswapTokenlists.collect as Todo,

@@ -39,148 +39,123 @@ export const collect =
     isDefault = true,
     blacklist = new Set<string>(),
   }: Input) =>
-  async (signal: AbortSignal) => {
-    const id = `${providerKey}/${listKey}`
-    const row =
-      utils.terminal.get(id) ??
-      utils.terminal.issue({
-        type: terminalRowTypes.SETUP,
-        id,
-      })
-    const response = await fetch(tokenListUrl, { signal })
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
-    }
-
-    let tokenList: types.TokenList
-    try {
-      tokenList = await response.json()
-    } catch (e) {
-      failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
-      return
-      // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
-    }
-    if (signal.aborted) {
-      return
-    }
-
-    const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
-    tokenList.tokens.forEach((token) => {
-      if (blacked.has(token.address.toLowerCase())) {
-        token.logoURI = ''
+    async (signal: AbortSignal) => {
+      const id = `${providerKey}/${listKey}`
+      const row =
+        utils.terminal.get(id) ??
+        utils.terminal.issue({
+          type: terminalRowTypes.SETUP,
+          id,
+        })
+      const response = await fetch(tokenListUrl, { signal })
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
       }
-    })
-    const kv: KV = {}
-    if (blacked.size) {
-      kv.blacklisted = blacked.size
-    }
-    row.update({
-      kv,
-    })
-    const extra = extension || []
-    if (extra.length) {
-      kv.extensions = extra.length
+
+      let tokenList: types.TokenList
+      try {
+        tokenList = await response.json()
+      } catch (e) {
+        failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
+        return
+        // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
+      }
+      if (signal.aborted) {
+        return
+      }
+
+      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
+      tokenList.tokens.forEach((token) => {
+        if (blacked.has(token.address.toLowerCase())) {
+          token.logoURI = ''
+        }
+      })
+      const kv: KV = {}
+      if (blacked.size) {
+        kv.blacklisted = blacked.size
+      }
       row.update({
         kv,
       })
-    }
-    const extras = await Promise.all(
-      extra.map(async (item) => {
-        if (signal.aborted) {
-          return
-        }
-        if (blacked.has(item.address.toLowerCase())) {
-          item.logoURI = ''
-        }
-        try {
-          const chain = utils.findChain(item.network.id) as viem.Chain
-          const client = utils.chainToPublicClient(chain)
-
-          const [image, [name, symbol, decimals]] = await Promise.all([
-            db.fetchImage(item.logoURI, signal, providerKey, item.address),
-            erc20Read(chain, client, item.address),
-          ])
-
-          if (!image) {
-            row.increment('missing', utils.counterId.token([item.network.id, item.address]))
-            // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
+      const extra = extension || []
+      if (extra.length) {
+        kv.extensions = extra.length
+        row.update({
+          kv,
+        })
+      }
+      const extras = await Promise.all(
+        extra.map(async (item) => {
+          if (signal.aborted) {
             return
           }
-          await db.transaction(async (tx) => {
-            const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
-            if (item.network.isNetworkImage) {
-              // updateStatus({
-              //   provider: providerKey,
-              //   message: `Storing network image for ${chain.name}...`,
-              //   phase: 'storing',
-              // } satisfies StatusProps)
-              await db.fetchImageAndStoreForNetwork(
-                {
-                  network,
-                  uri: image,
-                  originalUri: item.logoURI,
-                  providerKey,
-                  signal,
-                },
-                tx,
-              )
-            }
-
-            await db.fetchImageAndStoreForToken(
-              {
-                listId: null,
-                uri: image,
-                originalUri: item.logoURI,
-                providerKey,
-                signal,
-                token: {
-                  name,
-                  symbol,
-                  decimals,
-                  providedId: item.address,
-                  networkId: network.networkId,
-                },
-              },
-              tx,
-            )
-          })
-          return {
-            chainId: item.network.id,
-            logoURI: item.logoURI,
-            name,
-            symbol,
-            decimals,
-            address: item.address,
+          if (blacked.has(item.address.toLowerCase())) {
+            item.logoURI = ''
           }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err)
-          failureLog('provider=%o list=%o item=%o error=%o', providerKey, listKey, item, errorMessage)
-          row.increment(terminalLogTypes.EROR, utils.counterId.token([item.network.id, item.address]))
-          return undefined
-        } finally {
-          row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([item.network.id, item.address]))
-        }
-      }),
-    )
+          try {
+            const chain = utils.findChain(item.network.id) as viem.Chain
+            const client = utils.chainToPublicClient(chain)
 
-    const validExtras = _.compact(extras)
-    // updateStatus({
-    //   provider: providerKey,
-    //   message: `Storing ${tokenCount + validExtras.length} total tokens...`,
-    //   phase: 'storing',
-    // } satisfies StatusProps)
+            const [image, [name, symbol, decimals]] = await Promise.all([
+              db.fetchImage(item.logoURI, signal, providerKey, item.address),
+              erc20Read(chain, client, item.address),
+            ])
 
-    tokenList.tokens.push(...validExtras)
+            if (!image) {
+              row.increment('missing', utils.counterId.token([item.network.id, item.address]))
+              // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
+              return
+            }
+            await db.transaction(async (tx) => {
+              const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
+              if (item.network.isNetworkImage) {
+                // updateStatus({
+                //   provider: providerKey,
+                //   message: `Storing network image for ${chain.name}...`,
+                //   phase: 'storing',
+                // } satisfies StatusProps)
+                await db.fetchImageAndStoreForNetwork(
+                  {
+                    network,
+                    uri: image,
+                    originalUri: item.logoURI,
+                    providerKey,
+                    signal,
+                  },
+                  tx,
+                )
+              }
+            })
+            return {
+              chainId: item.network.id,
+              logoURI: item.logoURI,
+              name,
+              symbol,
+              decimals,
+              address: item.address,
+            }
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            failureLog('provider=%o list=%o item=%o error=%o', providerKey, listKey, item, errorMessage)
+            row.increment(terminalLogTypes.EROR, utils.counterId.token([item.network.id, item.address]))
+            return undefined
+          } finally {
+            row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([item.network.id, item.address]))
+          }
+        }),
+      )
+      if (signal.aborted) {
+        return
+      }
 
-    if (signal.aborted) {
-      return
+      const validExtras = _.compact(extras)
+      tokenList.tokens = _.uniqBy([...validExtras, ...tokenList.tokens], 'address')
+      const result = await inmemoryTokenlist.collect({
+        providerKey,
+        listKey,
+        tokenList,
+        isDefault,
+        signal,
+      })
+      return result
     }
-    const result = await inmemoryTokenlist.collect({
-      providerKey,
-      listKey,
-      tokenList,
-      isDefault,
-      signal,
-    })
-    return result
-  }
