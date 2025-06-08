@@ -54,13 +54,12 @@ export const normalizeTokens = (
   return [
     ..._(tokens)
       .filter((a) => over(a))
-      .filter((tkn) => viem.isAddress(tkn.providedId))
-      .groupBy((tkn) => `${tkn.chainId}-${viem.getAddress(tkn.providedId)}`)
+      .groupBy((tkn) => `${tkn.chainId}-${tkn.providedId.toLowerCase()}`)
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
         const baseline: TokenEntryMetadataOptional = {
           chainId: +tkn.chainId,
-          address: tkn.providedId as viem.Hex,
+          address: tkn.providedId.toLowerCase() as viem.Hex,
           logoURI: utils.directUri(tkn),
         }
         if (!extensions.has('sansMetadata')) {
@@ -75,7 +74,7 @@ export const normalizeTokens = (
             tkns,
             (ext, tkn) => {
               if (bridgeInfoExtension) {
-                if (tkn.bridge.bridgeId) {
+                if (tkn.bridge.bridgeId && viem.isAddress(tkn.providedId)) {
                   everAddedExtension = true
                   const networkNotSelf = +tkn.chainId === +tkn.networkA.chainId ? tkn.networkB : tkn.networkA
                   const tokenNotSelf =
