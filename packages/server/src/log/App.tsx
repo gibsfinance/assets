@@ -133,7 +133,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           row[k] = v
         }
         doLog(() => {
-          log(`updating key=%o, row=%o`, row.id, { ...row })
+          log(`updating row id=%o, kv=%o`, row.id, row.kv)
         })
       })
     },
@@ -193,7 +193,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         }
         parent?.incrementTotal(key, list)
         counter.total = (counter.total ?? new Set()).union(list)
-        logCounter(key, 'incrementing total', counter)
+        // logCounter(key, 'incrementing total', counter)
       })
     },
     increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement = false) {
@@ -213,7 +213,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           ...counter,
           current: updatedSet,
         })
-        logCounter(key, 'incrementing', row.counters.get(key)!)
+        // logCounter(key, 'incrementing', row.counters.get(key)!)
         return updatedSet
       })
     },
@@ -253,7 +253,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       rerenderAfter(() => {
         row.type = terminalRowTypes.COMPLETE
         doLog(() => {
-          log(`completing row key=%o`, row.id)
+          log(`completing row key=%o kv=%o`, row.id, row.kv)
         })
       })
     },
