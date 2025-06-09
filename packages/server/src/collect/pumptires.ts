@@ -189,6 +189,7 @@ export const collect = async (signal: AbortSignal) => {
   const tasks = row.issue(providerKey)
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(terminalCounterTypes.NETWORK, `${369}`)
+  row.createCounter('pages', true)
   const [createdTokens, launchedTokens] = await Promise.all([
     collectTokens(knownPumptiresList, 'created_timestamp', row, tasks, signal),
     collectTokens(knownLaunchedList, 'launch_timestamp', row, tasks, signal),

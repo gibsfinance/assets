@@ -142,7 +142,6 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     if (currentToBlockNumber && currentToBlockNumber > fromBlock) {
       fromBlock = currentToBlockNumber
     }
-    // console.log(bridgeBlockKey, fromBlock, finalizedBlock.number)
 
     const blocksSection = configRow.issue(providerKey, 1)
     configRow.createCounter(terminalCounterTypes.TOKEN)
@@ -185,8 +184,14 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           const bridged = event.args.bridged as viem.Hex
           const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
           const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
-          const [name, symbol, decimals] = await erc20Read(fromConfig.chain, fromClient, native)
-          const [bridgedName, bridgedSymbol, bridgedDecimals] = await erc20Read(toConfig.chain, toClient, bridged)
+          const [
+            [name, symbol, decimals],
+            [bridgedName, bridgedSymbol, bridgedDecimals],
+          ] = await Promise.all([
+            erc20Read(fromConfig.chain, fromClient, native),
+            erc20Read(toConfig.chain, toClient, bridged),
+          ])
+
           const metadata = {
             address: native,
             chainId: fromConfig.chain.id,
@@ -213,9 +218,14 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       const tokenData = _.flatten(_.compact(collectedData))
       const collectedDataForTokens = new Map<string, MinimalTokenInfo>(tokenData)
       await db.transaction(async (tx) => {
-        for (const [i, event] of events.entries()) {
+        const toBridge = await db.getBridge(bridge.bridgeId, tx)
+        let count = toBridge.bridgeLinkOrderId
+        for (const event of events) {
           const [native, bridged] = await Promise.all(
-            [[fromConfig.chain.id, event.args.native] as const, [toConfig.chain.id, event.args.bridged] as const].map(
+            ([
+              [fromConfig.chain.id, event.args.native],
+              [toConfig.chain.id, event.args.bridged],
+            ] as const).map(
               async ([chainId, addr]) => {
                 const providedId = viem.getAddress(addr as viem.Hex)
                 const networkId = chainIdToNetworkId(chainId)
@@ -223,7 +233,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                 if (!metadata) {
                   return
                 }
-
+                // this should not err because we are not storing any image data
                 const { token } = await db.fetchImageAndStoreForToken(
                   {
                     // no images to associate
@@ -231,7 +241,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                     originalUri: null,
                     listId: toList.listId,
                     providerKey: provider.key,
-                    listTokenOrderId: i,
+                    listTokenOrderId: count++,
                     signal,
                     token: {
                       networkId,
@@ -271,6 +281,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           bridge.bridgeId,
           {
             [bridgeBlockKey]: `${toBlock}`,
+            bridgeLinkOrderId: count,
           },
           tx,
         )

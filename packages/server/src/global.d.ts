@@ -21,7 +21,7 @@ declare module 'knex/types/tables.js' {
     type: string
     chainId: string
   }
-  interface InsertableNetwork extends Omit<Network, TimestampKeys | 'networkId'> {}
+  interface InsertableNetwork extends Omit<Network, TimestampKeys | 'networkId'> { }
   interface Image {
     imageHash: string
     content: Buffer
@@ -98,7 +98,7 @@ declare module 'knex/types/tables.js' {
     uri: string
     imageHash: string
   }
-  interface InsertableLink extends Omit<Link, TimestampKeys> {}
+  interface InsertableLink extends Omit<Link, TimestampKeys> { }
   interface ListOrder extends Timestamped {
     providerId: string
     key: string
@@ -121,7 +121,7 @@ declare module 'knex/types/tables.js' {
   interface InsertableListOrderItem extends Omit<ListOrderItem, TimestampKeys> {
     listId?: string
   }
-  interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> {}
+  interface BackfillableInsertableListOrderItem extends Omit<InsertableListOrderItem, 'listOrderId'> { }
   interface Bridge extends Timestamped {
     bridgeId: string
     foreignAddress: string
@@ -132,10 +132,12 @@ declare module 'knex/types/tables.js' {
     providerId: string
     currentForeignBlockNumber: string
     currentHomeBlockNumber: string
+    bridgeLinkOrderId: number
   }
   interface InsertableBridge extends Omit<Bridge, TimestampKeys | 'bridgeId'> {
     currentHomeBlockNumber?: string
     currentForeignBlockNumber?: string
+    bridgeLinkOrderId?: number
   }
   interface BridgeLink {
     bridgeLinkId: string
@@ -144,12 +146,12 @@ declare module 'knex/types/tables.js' {
     bridgeId: string
     transactionHash: string
   }
-  interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> {}
+  interface InsertableBridgeLink extends Omit<BridgeLink, 'bridgeLinkId'> { }
   interface HeaderLink extends Timestamped {
     listTokenId: string
     imageHash: string
   }
-  interface InsertableHeaderLink extends Omit<HeaderLink, TimestampKeys> {}
+  interface InsertableHeaderLink extends Omit<HeaderLink, TimestampKeys> { }
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network

@@ -919,3 +919,16 @@ export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx =
 
 export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx: Tx = getDB()) =>
   tx(tableNames.bridge).update(updates).where('bridgeId', bridgeId)
+
+export const getBridge = (bridgeId: string, tx: Tx = getDB()) =>
+  tx(tableNames.bridge).where('bridgeId', bridgeId).first<Bridge>()
+
+export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
+  tx(tableNames.bridgeLink)
+    .join(tableNames.token, {
+      [`${tableNames.token}.tokenId`]: `${tableNames.bridgeLink}.bridgedTokenId`,
+    })
+    .count('*')
+    .where('bridgeId', bridgeId)
+    .orderBy('bridgeLinkId', 'desc')
+    .first()

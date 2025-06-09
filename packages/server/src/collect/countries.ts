@@ -87,20 +87,6 @@ export const collect = async (signal?: AbortSignal) => {
       // console.log(country, err)
       // throw err
     })
-    if (result) {
-      if (result.link) {
-        row.increment('link', new Set([result.link.imageHash]))
-      }
-      if (result.image) {
-        row.increment('image', new Set([result.image.imageHash]))
-      }
-      if (result.token) {
-        row.increment('token', new Set([result.token.providedId]))
-      }
-      if (result.listToken) {
-        row.increment('listToken', new Set([result.listToken.listTokenId]))
-      }
-    }
     task.complete()
     section.removeRow(`saving-${country.code}`)
   })
