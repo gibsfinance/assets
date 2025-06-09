@@ -62,6 +62,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
+  console.log(list, req.params)
   if (!list) {
     return next(
       createError.NotFound(

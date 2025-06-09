@@ -254,7 +254,7 @@ export const collect = async (signal: AbortSignal) => {
     const chainTokenId = utils.counterId.token([+network.chainId, token.address])
     await db
       .fetchImageAndStoreForToken({
-        listId: pumptiresList.listId,
+        listId: pumptiresLaunchedList.listId,
         uri: originalUri,
         originalUri,
         providerKey,
@@ -282,6 +282,7 @@ export const collect = async (signal: AbortSignal) => {
     'filter',
     utils.mapToSet.token(updatedKnownLaunchedList, (t) => [+network.networkId, t.providedId]),
   )
+  console.log(updatedKnownLaunchedList.length)
   const highCapTokens = await limitHighCapSorting.map(updatedKnownLaunchedList, async (token): Promise<InsertHighCapToken | null> => {
     const address = token.providedId as Hex
     const {
@@ -319,6 +320,7 @@ export const collect = async (signal: AbortSignal) => {
     row.increment('filter', chainTokenId)
     return result
   })
+  console.log(highCapTokens)
   const sortedInserts = _(highCapTokens).compact()
     .sortBy(a => -a.listTokenOrderId)
     .map((value, index) => [value, index] as [InsertHighCapToken, number])
