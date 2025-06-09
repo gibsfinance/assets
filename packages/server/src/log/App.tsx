@@ -149,7 +149,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
             current: new Set(),
             total: null,
           })
-          logCounter(key, 'creating', counters.get(key)!)
+          // logCounter(key, 'creating', counters.get(key)!)
         }
         let createAter = false
         for (const k of counterKeys.values()) {
@@ -163,7 +163,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         if (exists) {
           return exists
         }
-        logCounter(key, 'creating', counters.get(key)!)
+        // logCounter(key, 'creating', counters.get(key)!)
         counters.set(key, {
           current: new Set(),
           total: null,

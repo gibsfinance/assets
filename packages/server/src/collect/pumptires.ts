@@ -93,6 +93,7 @@ const retrieveData = async (
     const result = (await res.json()) as Response
     // check that the list is not empty
     if (result.message === 'Too many read requests, please try again later.') {
+      console.log(result)
       await timeout(10_000).promise
       throw new Error(result.message)
     }
