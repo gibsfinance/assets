@@ -22,7 +22,7 @@ export const limitBy = _.memoize(<T extends unknown>(_key: string, count = 16) =
  * Generic retry mechanism with exponential backoff
  */
 const defaultRetryOpts = {
-  delay: 3_000,
+  delay: 10_000,
   attempts: 5,
 }
 
