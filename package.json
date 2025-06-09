@@ -3,7 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "docker:build": "docker compose build",
+    "docker:build": "docker build -t gibsfinance/assets:latest .",
+    "docker:push": "docker push gibsfinance/assets:latest",
     "build": "npm run build --workspace=*",
     "collect": "npm run collect --workspace=packages/server",
     "server": "npm run server --workspace=packages/server",
@@ -13,6 +14,7 @@
     "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres",
     "test": "npm run test --workspace=packages/server",
     "db:migrate-latest": "npm run db:migrate-latest --workspace=packages/server",
+    "db:seed": "npm run db:seed --workspace=packages/server",
     "db:migrate-make": "npm run db:migrate-make --workspace=packages/server"
   },
   "workspaces": [
