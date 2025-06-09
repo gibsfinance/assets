@@ -4,15 +4,14 @@ import * as db from '.'
 // this is out of the seed folder because it has to be run after
 // providers and lists are seeded by the worker. can't be done in 1 tx
 export async function seedOrders(): Promise<void> {
+  const [gibsProvider] = await db.insertProvider(
+    {
+      key: 'gibs',
+      name: 'Gibs',
+      description: 'lists curated by gibs contributors',
+    },
+  )
   await db.transaction(async (trx) => {
-    const [gibsProvider] = await db.insertProvider(
-      {
-        key: 'gibs',
-        name: 'Gibs',
-        description: 'lists curated by gibs contributors',
-      },
-      trx,
-    )
     const pulsechainProvider = await db.insertProvider(
       {
         key: 'pulsechain',
