@@ -1,23 +1,20 @@
 import { get, writable } from 'svelte/store'
+import { root } from '../config'
 
 export const apiBase = writable<string | null>(null)
 
 export async function initializeApiBase(): Promise<string> {
   const currentBase = get(apiBase)
   if (currentBase) return currentBase
-
-  // These values are defined in vite.config.ts
-  const baseUrl = process.env.PUBLIC_BASE_URL as string
-
-  console.log(`🌐 API: Using server at ${baseUrl}`)
-  apiBase.set(baseUrl)
-  return baseUrl
+  console.log(`🌐 API: Using server at ${root}`)
+  apiBase.set(root)
+  return root
 }
 
 export function getApiUrl(path: string): string {
   const base = get(apiBase)
   if (!base) {
-    return `https://gib.show${path}`
+    return `${root}${path}`
   }
   return `${base}${path}`
 }

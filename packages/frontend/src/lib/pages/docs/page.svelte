@@ -1,5 +1,6 @@
 <script lang="ts">
   import CodeBlock from '../../components/CodeBlock.svelte'
+    import { root } from '../../config'
 
   const endpoints = {
     tokenInfo: [
@@ -40,10 +41,10 @@
     ],
   }
 
-  const htmlCodeExamples = `<img src="https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" />`
+  const htmlCodeExamples = `<img src="${root}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" />`
 
   const codeExamples = `// Get a token image (e.g. WBTC on Ethereum)
-fetch(\`https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
+fetch(\`${root}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
     .then(response => response.blob())
     .then(blob => {
         const imageUrl = URL.createObjectURL(blob);
@@ -52,7 +53,7 @@ fetch(\`https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
     });
 
 // Example 2: Get all available token lists
-fetch('https://gib.show/list')
+fetch('${root}/list')
     .then(res => res.json())
     .then(lists => {
         // Lists contain information about available token lists:
@@ -65,7 +66,7 @@ fetch('https://gib.show/list')
     });
 
 // Example 3: Get tokens from a specific list
-fetch('https://gib.show/list/pulsex/extended')
+fetch('${root}/list/pulsex/extended')
     .then(res => res.json())
     .then(data => {
         // Use the token list data
@@ -73,7 +74,7 @@ fetch('https://gib.show/list/pulsex/extended')
     });
 
 // Get a specific network icon (e.g. Ethereum)
-fetch(\`https://gib.show/image/1\`)
+fetch(\`${root}/image/1\`)
     .then(response => response.blob())
     .then(blob => {
         const imageUrl = URL.createObjectURL(blob);

@@ -9,6 +9,7 @@
   import { onMount } from 'svelte'
   import { showTestnets } from '../stores/settings.svelte'
   import { goto } from '../stores/page.svelte'
+    import { root } from '../config'
 
   const shouldShowTestnet = $derived(showTestnets.value)
   let metricsData: PlatformMetrics | null = $derived(metrics.value)
@@ -87,21 +88,21 @@
       title: 'Token Images',
       description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
       code: getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-      displayUrl: 'gib.show/image/1/0x2260...',
+      displayUrl: `${root}/image/1/0x2260...`,
     },
     {
       icon: 'fa-network-wired',
       title: 'Network Logos',
       description: 'Get chain/network logos and metadata. Perfect for network selectors.',
       code: getApiUrl('/image/1'),
-      displayUrl: 'gib.show/image/1',
+      displayUrl: `${root}/image/1`,
     },
     {
       icon: 'fa-list',
       title: 'Token Lists',
       description: 'Get curated token lists with optional network filtering.',
       code: getApiUrl('/list/coingecko'),
-      displayUrl: 'gib.show/list/coingecko',
+      displayUrl: `${root}/list/coingecko`,
     },
   ]
 

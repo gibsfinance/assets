@@ -149,6 +149,10 @@ const collectTokens = async (
 }
 
 export const collect = async (signal: AbortSignal) => {
+  await retry(() => collectAttempt(signal), 3)
+}
+
+export const collectAttempt = async (signal: AbortSignal) => {
   const row = utils.terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
