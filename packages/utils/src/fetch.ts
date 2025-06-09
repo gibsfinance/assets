@@ -102,19 +102,15 @@ export const limitByTime = (ms: number) => {
 const ipfsCompatableFetch = async (url: URL, options: Parameters<typeof fetch>[1]) => {
   const limiter = getLimiter(url)
   return await limiter(async () => {
-    const controller = new AbortController()
-    const { promise, clear } = timeout(10_000)
-    // console.log(url.href)
-    promise.then(() => {
-      controller.abort()
-    })
+    const timeoutSignal = AbortSignal.timeout(10_000)
+    const anyAborted = options && options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal
     const fetchOptions = {
       redirect: 'follow',
-      signal: controller.signal,
+      signal: anyAborted,
       // used to get around certain domains that check user agents
       ...options,
     } as const
-    return fetch(url, fetchOptions).finally(clear)
+    return fetch(url, fetchOptions)
   })
 }
 
