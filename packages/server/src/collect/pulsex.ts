@@ -194,7 +194,7 @@ export const collect = async (signal: AbortSignal) => {
         logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
         network: {
           id: pulsechainV4.id,
-          isNetworkImage: true,
+          isNetworkImage: false,
         },
       },
       ...inlineTokensV4.filter((token) => token.address !== '0x70499adEBB11Efd915E3b69E700c331778628707'),
