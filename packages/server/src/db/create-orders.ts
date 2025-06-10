@@ -11,6 +11,11 @@ export async function seedOrders(): Promise<void> {
       description: 'lists curated by gibs contributors',
     },
   )
+  await db.insertProvider({
+    key: 'trustwallet',
+    name: 'Trust Wallet',
+  })
+
   await db.transaction(async (trx) => {
     const pulsechainProvider = await db.insertProvider(
       {
