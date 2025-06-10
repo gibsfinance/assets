@@ -119,6 +119,7 @@ export const logCounter = (key: types.TerminalCounterType | string, action: stri
 
 export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: types.TerminalRow) => {
   return {
+    fullId: _.compact([parent?.fullId, row.id]).join(' '),
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
@@ -133,7 +134,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           row[k] = v
         }
         doLog(() => {
-          log(`updating row id=%o, kv=%o`, row.id, row.kv)
+          log(`updating row id=%o, kv=%o`, row.fullId, row.kv)
         })
       })
     },
@@ -287,6 +288,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
 
 export const readOnlySection = (parent: types.TerminalRowProxy, section: types.Section): types.TerminalSectionProxy => {
   return {
+    fullId: _.compact([parent.fullId, section.id]).join('.'),
     get(id: string) {
       const s = section.rows.get(id)
       if (!s) {
@@ -294,13 +296,14 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
       }
       return readOnlyRow(readOnlySection(parent, section), s)
     },
-    task(id: string, row: Omit<types.TerminalTask, 'sections'>) {
+    task(id: string, row: Omit<types.TerminalTask, 'sections' | 'fullId'>) {
       return rerenderAfter(() => {
         const r = {
           isTask: true,
           lastUpdated: new Date(),
           counters: new Map(),
           sections: new Map(),
+          fullId: _.compact([parent.fullId, id]).join('.'),
           ...row,
         }
         section.rows.set(id, r)

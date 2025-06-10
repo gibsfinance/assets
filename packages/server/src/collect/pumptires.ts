@@ -70,13 +70,21 @@ type Response = {
   message?: string
 }
 
-const retrieveData = async (
-  filter: string,
-  page: number,
-  row: TerminalRowProxy,
-  section: TerminalSectionProxy,
-  signal: AbortSignal,
-) => {
+const retrieveData = async ({
+  filter,
+  page,
+  pageCount,
+  row,
+  section,
+  signal,
+}: {
+  filter: string
+  page: number
+  pageCount: number | null
+  row: TerminalRowProxy
+  section: TerminalSectionProxy
+  signal: AbortSignal
+}) => {
   const url = new URL('https://api.pump.tires/api/tokens')
   url.searchParams.set('page', `${page}`)
   url.searchParams.set('filter', filter)
@@ -85,15 +93,21 @@ const retrieveData = async (
     id: providerKey,
     kv: {
       filter,
+      total: pageCount,
       page,
     },
   })
   return await retry(async () => {
-    const res = await fetch(url, { signal })
-    const result = (await res.json()) as Response
+    const res = await fetch(url, { signal }).catch((err: Error) => {
+      console.log('fetch error', err)
+      throw err
+    })
+    const result = (await res.json().catch((err: Error) => {
+      console.log('json error', err)
+      throw err
+    })) as Response
     // check that the list is not empty
     if (result.message === 'Too many read requests, please try again later.') {
-      console.log(result)
       await timeout(10_000).promise
       throw new Error(result.message)
     }
@@ -119,7 +133,9 @@ const collectTokens = async (
 ) => {
   const relevantData: TokenInfo[] = []
   let discontinue = false
-  const first = await retrieveData(filter, 1, row, section, signal)
+  const first = await retrieveData({
+    filter, pageCount: null, page: 1, row, section, signal,
+  })
   if (signal.aborted) {
     return
   }
@@ -130,7 +146,9 @@ const collectTokens = async (
       return
     }
     const page = index + 1
-    const response = await retrieveData(filter, page, row, section, signal)
+    const response = await retrieveData({
+      filter, pageCount, page, row, section, signal,
+    })
     if (signal.aborted) {
       return
     }
