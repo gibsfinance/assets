@@ -7,6 +7,7 @@
     "runtime": "V2",
     "numReplicas": 1,
     "cronSchedule": "0 */6 * * *",
+    "dockerfile": "Dockerfile.worker",
     "startCommand": "npm run collect --workspace packages/server -- --logger=pretty",
     "sleepApplication": false,
     "restartPolicyType": "ON_FAILURE",
