@@ -102,7 +102,7 @@ export const collect = async (signal: AbortSignal) => {
   })
   const remoteListOriginalComposite = remoteTokenList.collect({
     providerKey: 'pulsex',
-    listKey: 'composite-extended',
+    listKey: 'extended-composite',
     tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
     isDefault: false,
     extension: [
@@ -143,6 +143,9 @@ export const collect = async (signal: AbortSignal) => {
       {
         address: viem.zeroAddress,
         logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+        name: 'Pulse',
+        symbol: 'PLS',
+        decimals: 18,
         network: {
           id: pulsechain.id,
           isNetworkImage: true,
@@ -183,6 +186,9 @@ export const collect = async (signal: AbortSignal) => {
     extension: [
       {
         address: viem.zeroAddress,
+        name: 'V4 Pulse',
+        symbol: 'V4PLS',
+        decimals: 18,
         logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
         network: {
           id: pulsechainV4.id,

@@ -11,6 +11,9 @@ import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '..
 type Extension = {
   address: viem.Hex
   logoURI: string
+  name?: string
+  symbol?: string
+  decimals?: number
   network: {
     id: number
     isNetworkImage: boolean
@@ -97,10 +100,20 @@ export const collect =
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.chainToPublicClient(chain)
 
-            const [image, [name, symbol, decimals]] = await Promise.all([
+            let [image, [name = item.name, symbol = item.symbol, decimals = item.decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, signal, providerKey, item.address),
               erc20Read(chain, client, item.address),
             ])
+            if (item.network.isNetworkImage && (!name || !symbol)) {
+              name = item.name!
+              symbol = item.symbol!
+              decimals = item.decimals!
+            }
+            if (!name || !symbol || !decimals) {
+              console.log(item, { name, symbol, decimals })
+              row.increment('missing', utils.counterId.token([item.network.id, item.address]))
+              return
+            }
 
             if (!image) {
               row.increment('missing', utils.counterId.token([item.network.id, item.address]))

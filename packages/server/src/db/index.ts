@@ -631,12 +631,14 @@ export const fetchImageAndStoreForToken = async (
         t,
       )) as Token
       if (listId) {
-        const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
-        if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
-          return {
-            ...existing,
-            listToken,
-            token: insertedToken,
+        if (insertedToken.name === token.name && insertedToken.symbol === token.symbol && insertedToken.decimals === token.decimals) {
+          const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
+          if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
+            return {
+              ...existing,
+              listToken,
+              token: insertedToken,
+            }
           }
         }
       }

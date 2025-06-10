@@ -9,6 +9,10 @@ export const responseToBuffer = async (res: Response) => {
   if (!res.ok) {
     return null
   }
+  const text = await res.text()
+  if (text.includes('window')) {
+    throw new Error('redirected')
+  }
   return Buffer.from(await res.arrayBuffer())
 }
 
