@@ -576,10 +576,11 @@ export const insertHeaderLink = async (header: InsertableHeaderLink, t: Tx = db)
 
 export const fetchImageAndStoreForToken = async (
   inputs: {
-    listId: string | null
+    listId: string
+    listTokenOrderId: number
     uri: string | Buffer | null
-    token: InsertableToken
     originalUri: string | null
+    token: InsertableToken
     providerKey: string
     signal?: AbortSignal
   },
@@ -590,7 +591,10 @@ export const fetchImageAndStoreForToken = async (
   link?: Link
   image?: Image
 }> => {
-  const { listId, uri, token, providerKey, signal } = inputs
+  const { listId, uri, token, providerKey, signal, listTokenOrderId } = inputs
+  if (!listId) {
+    throw new Error('listId is required')
+  }
   let { originalUri } = inputs
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
@@ -626,19 +630,14 @@ export const fetchImageAndStoreForToken = async (
         },
         t,
       )) as Token
-      if (!listId) {
-        return {
-          ...existing,
-          token: insertedToken,
-          listToken: await getListToken(insertedToken.tokenId, existing.image.imageHash),
-        }
-      }
-      const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
-      if (listToken) {
-        return {
-          ...existing,
-          listToken,
-          token: insertedToken,
+      if (listId) {
+        const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
+        if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
+          return {
+            ...existing,
+            listToken,
+            token: insertedToken,
+          }
         }
       }
     }
@@ -674,18 +673,12 @@ export const fetchImageAndStoreForToken = async (
     },
     t,
   )
-  if (!listId) {
-    throw new Error('listId is required')
-    // return {
-    //   token: insertedToken,
-    //   ...img,
-    // }
-  }
   const [listToken] = await insertListToken(
     {
       tokenId: insertedToken.tokenId,
       listId,
       imageHash: img?.image.imageHash,
+      listTokenOrderId,
     },
     t,
   )
@@ -717,10 +710,6 @@ export const insertList = async (list: InsertableList, t: Tx = db) => {
     .onConflict(['listId'])
     .merge(['listId', 'providerId', 'key', 'major', 'minor', 'patch', 'default'])
     .returning('*')
-  // .catch((err) => {
-  //   console.log('failed to insert list', list)
-  //   throw err
-  // })
 }
 
 export const updateList = (list: Partial<List>, t: Tx = db) => {
@@ -802,13 +791,13 @@ export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
       .where(
         listKey
           ? {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.key`]: listKey,
-            }
+            [`${tableNames.provider}.key`]: providerKey,
+            [`${tableNames.list}.key`]: listKey,
+          }
           : {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.default`]: true,
-            },
+            [`${tableNames.provider}.key`]: providerKey,
+            [`${tableNames.list}.default`]: true,
+          },
       )
       .orderBy('major', 'desc')
       .orderBy('minor', 'desc')
@@ -897,6 +886,7 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
         .orderBy(`${tableNames.list}.major`, 'desc')
         .orderBy(`${tableNames.list}.minor`, 'desc')
         .orderBy(`${tableNames.list}.patch`, 'desc')
+        .orderBy(`${tableNames.listToken}.listTokenOrderId`, 'asc')
         .partitionBy([
           `${tableNames.token}.token_id`,
           `${tableNames.token}.network_id`,
@@ -929,3 +919,16 @@ export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx =
 
 export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx: Tx = getDB()) =>
   tx(tableNames.bridge).update(updates).where('bridgeId', bridgeId)
+
+export const getBridge = (bridgeId: string, tx: Tx = getDB()) =>
+  tx(tableNames.bridge).where('bridgeId', bridgeId).first<Bridge>()
+
+export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
+  tx(tableNames.bridgeLink)
+    .join(tableNames.token, {
+      [`${tableNames.token}.tokenId`]: `${tableNames.bridgeLink}.bridgedTokenId`,
+    })
+    .count('*')
+    .where('bridgeId', bridgeId)
+    .orderBy('bridgeLinkId', 'desc')
+    .first()

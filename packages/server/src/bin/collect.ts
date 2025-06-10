@@ -3,7 +3,10 @@ import * as args from '../args'
 import { cleanup } from '../cleanup'
 import * as db from '../db'
 import { seedOrders } from '../db/create-orders'
-const { providers } = args.collect()
+import { setDoesRender } from '../log/App'
+const { providers, logger } = args.collect()
+
+setDoesRender(logger === 'terminal')
 
 db.getDB()
   .migrate.latest()

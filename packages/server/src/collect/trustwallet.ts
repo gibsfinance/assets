@@ -32,13 +32,20 @@ export const collect = async (signal: AbortSignal) => {
     terminalCounterTypes.NETWORK,
     utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
   )
+  let globalCount = 0
   for (const folder of blockchainFolders) {
     const chainId = networkNameToChainId.get(folder)
     if (!chainId) continue
     try {
       const f = path.join(blockchainsRoot, folder, assetsFolder)
       const assets = await fs.promises.readdir(f).catch(() => [])
-      await entriesFromAssets(folder, utils.removedUndesirable(assets), signal)
+      await entriesFromAssets({
+        blockchainKey: folder,
+        assets: utils.removedUndesirable(assets),
+        signal,
+        globalCount,
+      })
+      globalCount += assets.length
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       // console.log(errorMessage)
@@ -131,12 +138,19 @@ const loadChainId = async (blockchainKey: string) => {
   networkNameToChainId.set(blockchainKey, chainId)
 }
 
+type EntriesFromAssetsArgs = {
+  blockchainKey: string
+  assets: string[]
+  signal: AbortSignal
+  globalCount: number
+}
+
 /**
  * Processes assets for a specific blockchain and stores them in the database
  * @param blockchainKey The blockchain identifier
  * @param assets Array of asset addresses to process
  */
-const entriesFromAssets = async (blockchainKey: string, assets: string[], signal: AbortSignal) => {
+const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }: EntriesFromAssetsArgs) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [, networkLogoPath] = await load(info)
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
@@ -184,7 +198,7 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], signal
     terminalCounterTypes.TOKEN,
     utils.mapToSet.token(assets, (a) => [chainId, a]),
   )
-  for (const asset of assets) {
+  for (const [i, asset] of assets.entries()) {
     if (signal.aborted) {
       return
     }
@@ -200,18 +214,18 @@ const entriesFromAssets = async (blockchainKey: string, assets: string[], signal
     const [info, logoPath] = assetData
     const address = asset as Hex
 
-    for (const list of [networkList, trustwalletList]) {
-      const file = await db.fetchImage(logoPath, signal, providerKey, address)
-      if (!file) {
-        continue
-      }
-
+    const file = await db.fetchImage(logoPath, signal, providerKey, address)
+    if (!file) {
+      continue
+    }
+    for (const [list, index] of [[networkList, i], [trustwalletList, globalCount + i]] as const) {
       await db.fetchImageAndStoreForToken({
         listId: list.listId,
         uri: file,
         originalUri: logoPath,
         providerKey,
         signal,
+        listTokenOrderId: index,
         token: {
           providedId: address,
           networkId: network.networkId,

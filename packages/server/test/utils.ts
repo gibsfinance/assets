@@ -92,6 +92,7 @@ export const setup = async () => {
       tokensUnderNetworkId.set(network.networkId, tokens)
     }
     const listTokens: InsertableListToken[] = []
+    let count = 0
     for (const lists of providerToList.values()) {
       for (const list of lists) {
         for (const tokens of tokensUnderNetworkId.values()) {
@@ -99,6 +100,7 @@ export const setup = async () => {
             listTokens.push({
               tokenId: token.tokenId,
               listId: list.listId,
+              listTokenOrderId: count++,
             })
           }
         }

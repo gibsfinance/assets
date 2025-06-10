@@ -28,7 +28,7 @@ export default defineConfig({
   ],
   base: './',
   preview: {
-    allowedHosts: ['gib.show', 'assets-staging.up.railway.app', 'healthcheck.railway.app'],
+    allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },
   build: {
     rollupOptions: {

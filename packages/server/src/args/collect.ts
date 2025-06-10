@@ -39,6 +39,13 @@ export const collect = _.memoize(() => {
       default: 'mixed',
       choices: ['mixed', 'save', 'link'],
     },
+    logger: {
+      type: 'string',
+      describe: 'the logger to use',
+      required: false,
+      default: 'terminal',
+      choices: ['terminal', 'pretty'],
+    },
     rpc1: rpc('ethereum', 'https://rpc-ethereum.g4mm4.io'),
     rpc369: rpc('pulsechain', 'https://rpc-pulsechain.g4mm4.io'),
     rpc56: rpc('bsc'),
@@ -64,6 +71,7 @@ export const collect = _.memoize(() => {
   return {
     providers,
     mode: argv.mode as ImageModeParam,
+    logger: argv.logger,
     rpc1: argv.rpc1,
     rpc369: argv.rpc369,
     rpc56: argv.rpc56,

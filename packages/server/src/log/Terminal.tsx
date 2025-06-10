@@ -24,9 +24,6 @@ const emoji = {
     provider: '🎖️',
   } as Record<types.TerminalCounterType, string>,
 } as const
-// console.log(
-//   JSON.stringify(Object.entries(emoji).map(([k, v]) => [k, Object.entries(v).map(([k, v]) => [k, v.length])])),
-// )
 
 type Padding = {
   id: number

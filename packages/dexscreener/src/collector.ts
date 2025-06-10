@@ -12,7 +12,6 @@ export class Collector {
     protected chainKey: string,
     protected chainType: ChainType,
     protected chainId: number,
-    protected signal?: AbortSignal,
   ) {}
   pending = new Set<TokenKey>()
   fetched = new Set<TokenKey>()
@@ -136,20 +135,20 @@ export class Collector {
       this.decimals.set(this.toKey(missing[i]), decimal)
     }
   }
-  async tokenPairs(token: string) {
+  async tokenPairs(token: string, signal?: AbortSignal) {
     const pairs = await retry(() =>
       dexscreenerApi.tokenPairs({
         chainId: this.chainKey,
         tokenAddress: token,
-        signal: this.signal,
+        signal,
       }),
     )
     return pairs
   }
-  async collect(tokens: Set<string>) {
+  async collect(tokens: Set<string>, signal?: AbortSignal) {
     const matchingTokensPairsDeep: TokenPairsResponse[] = []
     for (const token of tokens.values()) {
-      const pairs = await this.tokenPairs(token)
+      const pairs = await this.tokenPairs(token, signal)
       matchingTokensPairsDeep.push(pairs)
     }
     const pairs = _.flatten(matchingTokensPairsDeep)

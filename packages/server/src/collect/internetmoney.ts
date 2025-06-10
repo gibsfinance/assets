@@ -71,17 +71,17 @@ export const collect = async (signal: AbortSignal) => {
       tx,
     )
     await db.insertNetworkFromChainId(0, undefined, tx)
-    ;[insertedList] = await db.insertList(
-      {
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(0),
-        key: 'wallet',
-        name: 'default wallet list',
-        description: 'the list that loads by default in the wallet',
-        default: true,
-      },
-      tx,
-    )
+      ;[insertedList] = await db.insertList(
+        {
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(0),
+          key: 'wallet',
+          name: 'default wallet list',
+          description: 'the list that loads by default in the wallet',
+          default: true,
+        },
+        tx,
+      )
   })
 
   summaryRow.createCounter(terminalCounterTypes.NETWORK)
@@ -98,7 +98,12 @@ export const collect = async (signal: AbortSignal) => {
     ),
   )
   // Process tokens in parallel with controlled concurrency
-  type NetworkAndToken = [NetworkInfo, TokenInfo]
+  type NetworkAndToken = {
+    network: NetworkInfo
+    token: TokenInfo
+    globalOrderId: number
+    scopedOrderId: number
+  }
   const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
   const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
   const networkToNetworkList = await networkLimiter.map(json, async (network) => {
@@ -148,11 +153,19 @@ export const collect = async (signal: AbortSignal) => {
   })
 
   const networkListByNetwork = new Map(networkToNetworkList)
+  let globalOrderId = 0
   const allTokens = _.flatMap(json, (network) => {
-    return network.tokens.map((tkn) => [network, tkn] as NetworkAndToken)
+    return network.tokens.map((tkn, i) => {
+      return {
+        network,
+        token: tkn,
+        globalOrderId: globalOrderId++,
+        scopedOrderId: i,
+      }
+    })
   })
 
-  await limit.map(allTokens, async ([network, token]) => {
+  await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
     summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
     const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
       type: terminalRowTypes.STORAGE,
@@ -186,6 +199,7 @@ export const collect = async (signal: AbortSignal) => {
           {
             ...insertion,
             listId: networkList.listId,
+            listTokenOrderId: scopedOrderId,
             signal,
           },
           tx,
@@ -194,6 +208,7 @@ export const collect = async (signal: AbortSignal) => {
           {
             ...insertion,
             listId: insertedList.listId,
+            listTokenOrderId: globalOrderId,
             signal,
           },
           tx,

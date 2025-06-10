@@ -5,11 +5,23 @@ import { Terminal } from './Terminal'
 import * as types from './types'
 import { terminalRowTypes } from './types'
 import { controller } from '../utils'
+import { log } from '../logger'
 
 let terminal: ReturnType<typeof ink.render> | null = null
 let isRunning = true
 let isMunging = 0
 const globalDefaultLimit = 4
+
+let doesRender = true
+
+export const setDoesRender = (doesRenderArg: boolean) => {
+  doesRender = doesRenderArg
+}
+
+export const doLog = (fn: () => void) => {
+  if (doesRender) return
+  fn()
+}
 
 // Handle Ctrl+C gracefully
 process.on('SIGINT', () => {
@@ -41,20 +53,6 @@ export const stop = (message: string) => {
   })
 }
 
-// export const reset = () => {
-//   globalInfo.sections.clear()
-//   globalInfo.terminated = false
-//   globalInfo.finalNote = null
-//   rerender()
-// }
-
-// export const unmount = () => {
-//   if (terminal) {
-//     terminal.unmount()
-//     terminal = null
-//   }
-// }
-
 const globalInfo = {
   terminated: false,
   finalNote: null,
@@ -68,6 +66,7 @@ export const getGlobalInfo = () => ({
 })
 
 export const forceRerender = () => {
+  if (!doesRender) return
   if (!terminal) {
     terminal = ink.render(<Terminal {...globalInfo} />)
   } else {
@@ -108,8 +107,19 @@ export const createTerminal = () => {
   return readOnlyRow(null, globalInfo.row)
 }
 
+export const logCounter = (key: types.TerminalCounterType | string, action: string, counter?: types.Counter) => {
+  doLog(() => {
+    log(`${action} counter %o`, _.omitBy({
+      key,
+      current: counter?.current?.size,
+      total: counter?.total?.size,
+    }, _.isNil))
+  })
+}
+
 export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: types.TerminalRow) => {
   return {
+    fullId: _.compact([parent?.fullId, row.id]).join(' '),
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
@@ -123,6 +133,9 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           // @ts-expect-error
           row[k] = v
         }
+        doLog(() => {
+          log(`updating row id=%o, kv=%o`, row.fullId, row.kv)
+        })
       })
     },
     createCounter(key: types.TerminalCounterType | string, stayLocal?: boolean) {
@@ -137,6 +150,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
             current: new Set(),
             total: null,
           })
+          // logCounter(key, 'creating', counters.get(key)!)
         }
         let createAter = false
         for (const k of counterKeys.values()) {
@@ -150,6 +164,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         if (exists) {
           return exists
         }
+        // logCounter(key, 'creating', counters.get(key)!)
         counters.set(key, {
           current: new Set(),
           total: null,
@@ -165,7 +180,9 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         if (!counter) {
           throw new Error('counter not found')
         }
-        row.counters.set(key, { ...counter, ...updates })
+        const updated = { ...counter, ...updates }
+        row.counters.set(key, updated)
+        logCounter(key, 'updating', updated)
       })
     },
     incrementTotal(key: types.TerminalCounterType | string, expected: string | Set<string>) {
@@ -177,6 +194,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         }
         parent?.incrementTotal(key, list)
         counter.total = (counter.total ?? new Set()).union(list)
+        // logCounter(key, 'incrementing total', counter)
       })
     },
     increment(key: types.TerminalCounterType | string, ids: Set<string> | string, decrement = false) {
@@ -196,6 +214,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           ...counter,
           current: updatedSet,
         })
+        // logCounter(key, 'incrementing', row.counters.get(key)!)
         return updatedSet
       })
     },
@@ -205,11 +224,15 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     removeCounter(key: types.TerminalCounterType | string) {
       rerenderAfter(() => {
         row.counters?.delete(key)
+        logCounter(key, 'removing')
       })
     },
     hide() {
       rerenderAfter(() => {
         row.hide = true
+        doLog(() => {
+          log(`hiding row key=%o`, row.id)
+        })
       })
     },
     hideSection(key: string) {
@@ -219,6 +242,9 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           return
         }
         section.hide = true
+        doLog(() => {
+          log(`hiding section key=%o`, key)
+        })
       })
     },
     complete() {
@@ -227,11 +253,17 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       }
       rerenderAfter(() => {
         row.type = terminalRowTypes.COMPLETE
+        doLog(() => {
+          log(`completing row key=%o kv=%o`, row.id, row.kv)
+        })
       })
     },
     remove(key: string) {
       rerenderAfter(() => {
         row.sections?.delete(key)
+        doLog(() => {
+          log(`removing section key=%o`, key)
+        })
       })
     },
     issue(id: string, limit: number | null = null) {
@@ -256,6 +288,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
 
 export const readOnlySection = (parent: types.TerminalRowProxy, section: types.Section): types.TerminalSectionProxy => {
   return {
+    fullId: _.compact([parent.fullId, section.id]).join('.'),
     get(id: string) {
       const s = section.rows.get(id)
       if (!s) {
@@ -263,13 +296,14 @@ export const readOnlySection = (parent: types.TerminalRowProxy, section: types.S
       }
       return readOnlyRow(readOnlySection(parent, section), s)
     },
-    task(id: string, row: Omit<types.TerminalTask, 'sections'>) {
+    task(id: string, row: Omit<types.TerminalTask, 'sections' | 'fullId'>) {
       return rerenderAfter(() => {
         const r = {
           isTask: true,
           lastUpdated: new Date(),
           counters: new Map(),
           sections: new Map(),
+          fullId: _.compact([parent.fullId, id]).join('.'),
           ...row,
         }
         section.rows.set(id, r)

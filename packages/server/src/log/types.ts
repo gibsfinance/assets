@@ -33,6 +33,7 @@ export type Progress = Counter & { total: number }
 export type Sections = Map<string, Section>
 export type TerminalRows = Map<string, TerminalRow>
 export type TerminalRow = {
+  fullId: string
   type: TerminalRowType
   id: string | null
   lastUpdated: Date
@@ -55,6 +56,7 @@ export type RenderState = {
   row: TerminalRow | null
 }
 export type TerminalRowProxy = {
+  fullId: string
   update: (updates: Partial<TerminalRow>) => void
   createCounter: (key: TerminalCounterType | string, stayLocal?: boolean) => void
   incrementTotal: (key: TerminalCounterType | string, ids: Set<string> | string) => void
@@ -71,6 +73,7 @@ export type TerminalRowProxy = {
   updateCounter: (key: TerminalCounterType | string, updates: Partial<Counter>) => void
 }
 export type TerminalSectionProxy = {
+  fullId: string
   get: (id: string) => TerminalRowProxy | null
   /**
    * create a task that will be displayed in the terminal
@@ -78,13 +81,13 @@ export type TerminalSectionProxy = {
    * @param row the row metadata for the task
    * @returns a proxy for the task
    */
-  task: (id: string, row: Omit<TerminalTask, 'sections'>) => TerminalRowProxy & { unmount: () => void }
+  task: (id: string, row: Omit<TerminalTask, 'sections' | 'fullId'>) => TerminalRowProxy & { unmount: () => void }
   /**
    * create a row that to be displayed in the terminal
    * @param props the row metadata for the row
    * @returns a proxy for the row
    */
-  issue: (props: Omit<TerminalTask & { id: string }, 'sections'>) => TerminalRowProxy
+  issue: (props: Omit<TerminalTask & { id: string }, 'sections' | 'fullId'>) => TerminalRowProxy
   removeRow: (key: string) => void
   increment: (key: TerminalCounterType | string, ids: Set<string> | string, decrement?: boolean) => Set<string>
   decrement: (key: TerminalCounterType | string, ids: Set<string> | string) => Set<string>
