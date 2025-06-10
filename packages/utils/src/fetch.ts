@@ -9,7 +9,11 @@ export const responseToBuffer = async (res: Response) => {
   if (!res.ok) {
     return null
   }
-  return Buffer.from(await res.arrayBuffer())
+  const buffer = Buffer.from(await res.arrayBuffer())
+  if (buffer.toString('utf-8').includes('window')) {
+    throw new Error('redirected')
+  }
+  return buffer
 }
 
 export const limit = promiseLimit(16) as ReturnType<typeof promiseLimit<any>>

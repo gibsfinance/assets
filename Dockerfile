@@ -7,6 +7,8 @@ ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV
 ARG ROOT_URI
 ENV ROOT_URI=$ROOT_URI
+ARG PUBLIC_BASE_URL
+ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 
 COPY package-lock.json package-lock.json
 COPY package.json package.json

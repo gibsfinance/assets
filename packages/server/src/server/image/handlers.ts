@@ -95,40 +95,40 @@ export const splitExt = (filename: string): FilenameParts => {
 
 const getListImage =
   (parseOrder: boolean) =>
-  async ({
-    chainId,
-    address: addressParam,
-    order: orderParam,
-  }: {
-    chainId: number
-    address: string
-    order?: string
-  }) => {
-    if (!+chainId) {
-      throw httpErrors.BadRequest('chainId')
+    async ({
+      chainId,
+      address: addressParam,
+      order: orderParam,
+    }: {
+      chainId: number
+      address: string
+      order?: string
+    }) => {
+      if (!+chainId) {
+        throw httpErrors.BadRequest('chainId')
+      }
+      const { filename: address, exts } = splitExt(addressParam)
+      if (!viem.isAddress(address)) {
+        throw httpErrors.BadRequest('address')
+      }
+      const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
+      const { img } = await getListTokens(+chainId, address, listOrderId, exts)
+      if (!img) {
+        throw httpErrors.NotFound('list image missing')
+      }
+      return img
     }
-    const { filename: address, exts } = splitExt(addressParam)
-    if (!viem.isAddress(address)) {
-      throw httpErrors.BadRequest('address')
-    }
-    const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
-    const { img } = await getListTokens(+chainId, address, listOrderId, exts)
-    if (!img) {
-      throw httpErrors.NotFound('list image missing')
-    }
-    return img
-  }
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-  async (req, res) => {
-    const img = await getListImage(parseOrder)({
-      chainId: Number(req.params.chainId),
-      address: req.params.address as viem.Hex,
-      order: req.params.order,
-    })
-    sendImage(res, img)
-  }
+    async (req, res) => {
+      const img = await getListImage(parseOrder)({
+        chainId: Number(req.params.chainId),
+        address: req.params.address as viem.Hex,
+        order: req.params.order,
+      })
+      sendImage(res, img)
+    }
 
 export const getImageAndFallback: RequestHandler = async (req, res) => {
   let img = await getListImage(true)({
@@ -216,6 +216,7 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
       }).catch(ignoreNotFound)
     }
     if (img) {
+      console.log('best guess network image', img)
       return sendImage(res, img)
     }
   }
