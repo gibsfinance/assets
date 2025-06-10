@@ -25,7 +25,7 @@ export const collect = async (signal: AbortSignal) => {
     }
   })
 
-  const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko'])
+  const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko', 'agora-datafi-tokens'])
   const summaryRow = terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
@@ -81,6 +81,9 @@ export const collect = async (signal: AbortSignal) => {
     })
     if (signal.aborted) {
       return
+    }
+    if (listKey === 'hosted' && providerKey === 'uniswap-agora-datafi-tokens') {
+      console.log(result.tokens)
     }
     const list = await inmemoryTokenlist
       .collect({

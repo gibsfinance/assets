@@ -141,11 +141,19 @@ export const collect = async (signal: AbortSignal) => {
     isDefault: true,
     extension: [
       {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+        address: viem.zeroAddress,
         logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
         network: {
           id: pulsechain.id,
           isNetworkImage: true,
+        },
+      },
+      {
+        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+        network: {
+          id: pulsechain.id,
+          isNetworkImage: false,
         },
       },
       ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
@@ -173,6 +181,14 @@ export const collect = async (signal: AbortSignal) => {
     tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
     isDefault: false,
     extension: [
+      {
+        address: viem.zeroAddress,
+        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+        network: {
+          id: pulsechainV4.id,
+          isNetworkImage: true,
+        },
+      },
       {
         address: '0x70499adEBB11Efd915E3b69E700c331778628707',
         logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
