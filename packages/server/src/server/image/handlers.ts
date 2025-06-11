@@ -216,7 +216,6 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
       }).catch(ignoreNotFound)
     }
     if (img) {
-      console.log('best guess network image', img)
       return sendImage(res, img)
     }
   }
