@@ -17,6 +17,7 @@ type BridgeSideConfig = {
 
 type BridgeConfig = {
   providerPrefix: string
+  type?: string
   testnetPrefix?: string
   home: BridgeSideConfig
   foreign: BridgeSideConfig
@@ -120,7 +121,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       )
       const bridge = await db.insertBridge(
         {
-          type: 'omnibridge',
+          type: config.type ?? 'omnibridge',
           providerId: provider.providerId,
           homeNetworkId: chainIdToNetworkId(config.home.chain.id),
           homeAddress: viem.getAddress(config.home.address),
