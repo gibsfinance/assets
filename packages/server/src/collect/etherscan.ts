@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio'
 import { createPublicClient, http, type Chain, type Address, erc20Abi } from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
 import { limitBy } from '@gibs/utils'
-import puppeteer, { type Browser } from 'puppeteer'
+import puppeteer, { type Browser } from 'puppeteer-core'
 import {
   mainnet,
   polygon,
@@ -61,15 +61,16 @@ async function getSharedBrowser(): Promise<Browser> {
   if (!sharedBrowser || !sharedBrowser.connected) {
     sharedBrowser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-      ],
+      browserWSEndpoint: process.env.BROWSER_WS_ENDPOINT ?? undefined,
+      // args: [
+      //   '--no-sandbox',
+      //   '--disable-setuid-sandbox',
+      //   '--disable-dev-shm-usage',
+      //   '--disable-accelerated-2d-canvas',
+      //   '--no-first-run',
+      //   '--no-zygote',
+      //   '--disable-gpu',
+      // ],
     })
   }
   return sharedBrowser
