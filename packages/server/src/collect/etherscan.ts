@@ -59,19 +59,35 @@ let sharedBrowser: Browser | null = null
  */
 async function getSharedBrowser(): Promise<Browser> {
   if (!sharedBrowser || !sharedBrowser.connected) {
-    sharedBrowser = await puppeteer.launch({
-      headless: true,
-      browserWSEndpoint: process.env.BROWSER_WS_ENDPOINT ?? undefined,
-      // args: [
-      //   '--no-sandbox',
-      //   '--disable-setuid-sandbox',
-      //   '--disable-dev-shm-usage',
-      //   '--disable-accelerated-2d-canvas',
-      //   '--no-first-run',
-      //   '--no-zygote',
-      //   '--disable-gpu',
-      // ],
-    })
+    const browserWSEndpoint = process.env.BROWSER_WS_ENDPOINT
+
+    if (browserWSEndpoint) {
+      // Connect to external browserless service
+      console.log('Connecting to external browser service:', browserWSEndpoint)
+      sharedBrowser = await puppeteer.connect({
+        browserWSEndpoint,
+      })
+    } else {
+      // Launch local browser with container-friendly settings
+      console.log('Launching local browser instance')
+      sharedBrowser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+        ],
+      })
+    }
   }
   return sharedBrowser
 }
@@ -81,7 +97,13 @@ async function getSharedBrowser(): Promise<Browser> {
  */
 async function closeSharedBrowser() {
   if (sharedBrowser && sharedBrowser.connected) {
-    await sharedBrowser.close()
+    if (process.env.BROWSER_WS_ENDPOINT) {
+      // For external browser service, just disconnect
+      await sharedBrowser.disconnect()
+    } else {
+      // For local browser, close completely
+      await sharedBrowser.close()
+    }
     sharedBrowser = null
   }
 }
