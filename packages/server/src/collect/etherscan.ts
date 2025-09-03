@@ -585,6 +585,7 @@ export const collect = async (signal?: AbortSignal) => {
       networkId: allNetworks.networkId,
       key: 'top-tokens',
       name: 'Top Tokens by Volume',
+      default: true,
     })
 
     // Get enabled chains from Etherscan API (fail if unavailable)
