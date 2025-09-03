@@ -37,8 +37,12 @@
   }
 
   onMount(() => {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    isDark.set(prefersDark)
+    // Only set system preference if no stored preference exists
+    const storedTheme = localStorage.getItem('theme')
+    if (!storedTheme) {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      isDark.set(prefersDark)
+    }
   })
 
   $: if (typeof document !== 'undefined') {
