@@ -4,10 +4,6 @@
   "description": "a repo for gathering tokens, networks, and data providers",
   "main": "src/index.ts",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "packages/*"
-  ],
   "scripts": {
     "setup": "docker compose build && yarn install && yarn run db:start && sleep 5 && yarn run db:migrate-latest && sleep 3 && yarn run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development yarn run collect && sleep 10 && yarn run create-orders",
     "docker:build": "docker build -t gibsfinance/assets:latest .",
@@ -26,6 +22,7 @@
     "db:seed": "tsx src/bin/seed",
     "build": "tsc",
     "collect": "tsx src/bin/collect",
+    "collect:dev": "tsx --watch src/bin/collect",
     "harvest": "tsx src/bin/harvest",
     "server": "tsx ./src/bin/server.ts",
     "dev": "tsx watch ./src/bin/server.ts",
@@ -84,7 +81,6 @@
     "tsx": "^4.11.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^7.12.0",
-    "viem": "^2.26.2",
     "yargs": "^17.7.2"
   },
   "dependencies": {
@@ -104,9 +100,11 @@
     "hardhat": "^2.23.0",
     "ink": "^4.4.1",
     "node-fetch": "^3.3.2",
+    "puppeteer": "^24.20.0",
     "puppeteer-core": "^24.17.1",
     "react": "^18.2.0",
-    "response-time": "^2.3.2"
+    "response-time": "^2.3.2",
+    "viem": "^2.37.5"
   },
   "engines": {
     "node": ">=22"

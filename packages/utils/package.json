@@ -19,7 +19,8 @@
     "./log": "./src/log.ts"
   },
   "dependencies": {
-    "promise-limit": "^2.7.0"
+    "promise-limit": "^2.7.0",
+    "viem": "^2.37.5"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

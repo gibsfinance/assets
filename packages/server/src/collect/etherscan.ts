@@ -1,8 +1,10 @@
 import * as cheerio from 'cheerio'
-import { createPublicClient, http, type Chain, type Address, erc20Abi } from 'viem'
+import * as fs from 'fs'
+import { createPublicClient, http, type Chain, type Address } from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
 import { limitBy } from '@gibs/utils'
-import puppeteer, { type Browser } from 'puppeteer-core'
+import puppeteer, { type Browser } from 'puppeteer'
+import puppeteerCore from 'puppeteer-core'
 import {
   mainnet,
   polygon,
@@ -29,10 +31,13 @@ import {
 import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
-import type { Network } from 'knex/types/tables.js'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
+import * as path from 'path'
+import * as paths from '../paths'
 
 const providerKey = 'etherscan'
+
+const pageDir = path.join(paths.harvested, providerKey)
 
 /**
  * Delay utility to add pauses between requests
@@ -42,7 +47,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 /**
  * Concurrency limiter for chain processing
  */
-const chainLimiter = limitBy<ChainConfig>(`${providerKey}-chains`, 8)
+const chainLimiter = limitBy<ChainConfig>(`${providerKey}-chains`, 1)
 
 /**
  * Concurrency limiter for puppeteer operations (more conservative)
@@ -58,13 +63,13 @@ let sharedBrowser: Browser | null = null
  * Get or create shared browser instance
  */
 async function getSharedBrowser(): Promise<Browser> {
-  if (!sharedBrowser || !sharedBrowser.connected) {
+  if (!sharedBrowser || !sharedBrowser.isConnected()) {
     const browserWSEndpoint = process.env.BROWSER_WS_ENDPOINT
 
     if (browserWSEndpoint) {
       // Connect to external browserless service
       console.log('Connecting to external browser service:', browserWSEndpoint)
-      sharedBrowser = await puppeteer.connect({
+      sharedBrowser = await puppeteerCore.connect({
         browserWSEndpoint,
       })
     } else {
@@ -72,6 +77,7 @@ async function getSharedBrowser(): Promise<Browser> {
       console.log('Launching local browser instance')
       sharedBrowser = await puppeteer.launch({
         headless: true,
+        // executablePath: '/usr/bin/google-chrome',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -96,7 +102,7 @@ async function getSharedBrowser(): Promise<Browser> {
  * Close shared browser instance
  */
 async function closeSharedBrowser() {
-  if (sharedBrowser && sharedBrowser.connected) {
+  if (sharedBrowser && sharedBrowser.isConnected()) {
     if (process.env.BROWSER_WS_ENDPOINT) {
       // For external browser service, just disconnect
       await sharedBrowser.disconnect()
@@ -225,6 +231,7 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
   // Common chain mappings
   const chainMappings: Record<number, Chain> = {
     1: mainnet,
+    10: optimism,
     56: bsc,
     137: polygon,
     42161: arbitrum,
@@ -316,7 +323,7 @@ async function fetchTopTokensViaPuppeteer({
     page = await browser.newPage()
 
     // Set realistic browser settings
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')
     await page.setViewport({ width: 1920, height: 1080 })
 
     // Set extra headers
@@ -326,12 +333,18 @@ async function fetchTopTokensViaPuppeteer({
     })
 
     const url = `${explorerBaseUrl}/tokens?sort=24h_volume_usd&order=desc&ps=100`
+    console.log('navigating to', url)
 
     // Navigate to the page with timeout
     await page.goto(url, {
-      waitUntil: 'networkidle2',
+      waitUntil: 'networkidle0',
       timeout: 30000,
     })
+    await page.setViewport({
+      width: 1080,
+      height: 1024,
+      deviceScaleFactor: 1,
+    });
 
     await delay(3000)
     // Check if we're still on a Cloudflare page
@@ -342,19 +355,27 @@ async function fetchTopTokensViaPuppeteer({
     })
 
     if (isCloudflareChallenge) {
+      console.log('Cloudflare challenge detected', url)
       // Wait for potential Cloudflare challenge to complete
       await delay(3000)
 
-      // Check if we're still on a Cloudflare page
-      const isCloudflareChallenge = await page.evaluate(() => {
-        return document.body.innerHTML.includes('Checking your browser') ||
-          document.body.innerHTML.includes('DDoS protection') ||
-          document.title.includes('Just a moment')
-      })
+      let count = 5
+      while (count > 0) {
+        // Check if we're still on a Cloudflare page
+        const isCloudflareChallenge = await page.evaluate(() => {
+          return document.body.innerHTML.includes('Checking your browser') ||
+            document.body.innerHTML.includes('DDoS protection') ||
+            document.title.includes('Just a moment')
+        })
 
-      if (isCloudflareChallenge) {
-        // Wait longer for Cloudflare challenge to complete
-        await delay(10000)
+        if (isCloudflareChallenge) {
+          console.log('Cloudflare challenge detected 2', url)
+          // Wait longer for Cloudflare challenge to complete
+          await delay(10000)
+          count--
+          continue
+        }
+        break
       }
     }
 
@@ -363,6 +384,9 @@ async function fetchTopTokensViaPuppeteer({
     if (!html) {
       return []
     }
+
+    await fs.promises.mkdir(pageDir, { recursive: true })
+    await fs.promises.writeFile(path.join(pageDir, `${chainId}.html`), html)
 
     // Parse with cheerio
     const $ = cheerio.load(html)
@@ -412,7 +436,9 @@ async function fetchTopTokensViaPuppeteer({
     return []
   } finally {
     if (page) {
+      console.log('closing page', chainId)
       await page.close()
+      page = null
     }
   }
 }
@@ -490,6 +516,7 @@ async function processChainTokens({
     })
 
     if (tokenData.length === 0) {
+      console.log(`No tokens found for chain ${chain.id} ${explorerBaseUrl}`)
       row.increment(terminalLogTypes.WARN, new Set([`${chain.id}-no-tokens`]))
       return
     }
@@ -513,7 +540,7 @@ async function processChainTokens({
         },
       })
 
-      row.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
+      task.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
       try {
         // Fetch token metadata from RPC
         const metadata = await fetchTokenMetadata({ chain, address, signal })
@@ -594,9 +621,6 @@ export const collect = async (signal?: AbortSignal) => {
     if (enabledChains.length === 0) {
       throw new Error('Failed to fetch supported chains from Etherscan API. Cannot proceed without chain configuration.')
     }
-
-    // console.log(`Found ${enabledChains.length} supported chains from Etherscan`)
-
     // Setup counters
     const section = row.issue(providerKey)
     row.createCounter(terminalCounterTypes.NETWORK)
@@ -614,7 +638,6 @@ export const collect = async (signal?: AbortSignal) => {
     await chainLimiter.map(enabledChains, async (chainConfig) => {
       if (signal?.aborted) return
 
-      // console.log(`Processing ${chainConfig.chain.name} (${chainConfig.chain.id})...`)
       return processChainTokens({
         chainConfig,
         row,

@@ -9,7 +9,7 @@ import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
 
-const oneListInsertAtATime = promiseLimit<List>(1)
+const oneListInsertAtATime = promiseLimit<List>(2)
 
 type Version = {
   major: number
@@ -31,6 +31,7 @@ const filenameToListKey = (filename: string) => {
   const noPrefix = noExt.split('logo-').join('')
   return `png${noPrefix}`
 }
+const providerKey = 'smoldapp'
 
 /**
  * Main collection function that processes chains and tokens
@@ -39,7 +40,6 @@ export const collect = async (signal: AbortSignal) => {
   const root = path.join(paths.submodules, 'smoldapp-tokenassets')
   const tokensPath = path.join(root, 'tokens')
   const chainsPath = path.join(root, 'chains')
-  const providerKey = 'smoldapp'
   const row = utils.terminal.issue({
     id: providerKey,
     type: terminalRowTypes.SETUP,
@@ -151,15 +151,19 @@ export const collect = async (signal: AbortSignal) => {
     terminalCounterTypes.NETWORK,
     utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => +chainIdString),
   )
-  const networkLimiter = promiseLimit<[string, string[], number]>(4)
-  const tokenLimit = promiseLimit<[Hex, number]>(16)
+  const networkLimiter = promiseLimit<[string, string[], number]>(1)
+  const tokenLimit = promiseLimit<[Hex, number]>(4)
   const section = row.issue(providerKey)
   let globalOrderId = 0
-  await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens, i]) => {
+  for (const [chainIdString, tokens, i] of reverseOrderTokens) {
     if (signal.aborted) {
       return
     }
     const chain = utils.findChain(+chainIdString)
+    if (!chain) {
+      row.increment('skipped', `${providerKey}-${chainIdString}`)
+      continue
+    }
     const network = chain && (await db.insertNetworkFromChainId(+chainIdString))
     if (!network) {
       row.increment('skipped', `${providerKey}-${chainIdString}`)
@@ -168,19 +172,62 @@ export const collect = async (signal: AbortSignal) => {
         utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
       )
       row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
-      return
+      continue
     }
 
     row.incrementTotal(
       terminalCounterTypes.TOKEN,
       utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
     )
+  }
+  await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens, i]) => {
+    if (signal.aborted) {
+      console.log('signal aborted', chainIdString)
+      return
+    }
+    const chain = utils.findChain(+chainIdString)
+    if (!chain) {
+      return
+    }
+    const network = await db.insertNetworkFromChainId(+chainIdString)
+    if (!network) {
+      return
+    }
+
+    // Pre-compute all possible network lists for this chain to avoid per-token database calls
+    const networkListCache = new Map<string, List>()
+    const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
+
+    try {
+      for (const listKey of possibleListKeys) {
+        const networkKey = `tokens-${chain.id}-${listKey}`
+        if (!chainIdToNetworkId.has(networkKey)) {
+          const networkList = await oneListInsertAtATime(
+            async () =>
+              await db
+                .insertList({
+                  key: networkKey,
+                  providerId: provider.providerId,
+                  networkId: utils.chainIdToNetworkId(chain.id),
+                })
+                .then((list) => list?.[0] as List),
+          )!
+          chainIdToNetworkId.set(networkKey, networkList)
+          networkListCache.set(listKey, networkList)
+        } else {
+          networkListCache.set(listKey, chainIdToNetworkId.get(networkKey)!)
+        }
+      }
+    } catch (err) {
+      console.error(`Error building network list cache for chain ${chainIdString}:`, err)
+      return
+    }
 
     const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
     const client = utils.chainToPublicClient(chain)
     await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
       const task = section.task(`${chainIdString}-${token}`, {
-        id: '',
+        id: providerKey,
         type: terminalRowTypes.STORAGE,
         kv: {
           chainId: chainIdString,
@@ -190,24 +237,31 @@ export const collect = async (signal: AbortSignal) => {
       const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
       const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
 
-      const [name, symbol, decimals] = await erc20Read(chain, client, address)
-      const tokenImages = await utils.folderContents(tokenFolder) as string[]
+      const metadata = await erc20Read(chain, client, address).catch((error) => {
+        console.log(error)
+        return null
+      })
+      if (!metadata) {
+        row.increment('missing', utils.counterId.token([+chainIdString, token]))
+        task.complete()
+        row.increment('skipped', `${providerKey}-${chainIdString}-${token}-read-error`)
+        return
+      }
+      const [name, symbol, decimals] = metadata
+      const tokenImages = await utils.folderContents(tokenFolder).catch((err) => {
+        console.error(`Error getting folder contents for token ${token} on chain ${chainIdString}:`, err)
+        return []
+      }) as string[]
 
       const firstImageName = tokenImages[0]
       const listKey = filenameToListKey(firstImageName)
-      const networkKey = `tokens-${chain.id}-${listKey}`
-      const networkList =
-        chainIdToNetworkId.get(networkKey) ||
-        (await oneListInsertAtATime(
-          async () =>
-            await db
-              .insertList({
-                key: networkKey,
-                providerId: provider.providerId,
-                networkId: utils.chainIdToNetworkId(chain.id),
-              })
-              .then((list) => list?.[0] as List),
-        )!)
+      const networkList = networkListCache.get(listKey)
+      if (!networkList) {
+        console.error(`Network list not found for listKey: ${listKey} on chain ${chainIdString}`)
+        task.complete()
+        row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-network-list`)
+        return
+      }
       for (const imageName of tokenImages) {
         const uri = path.join(tokenFolder, imageName)
         const baseInput = {
@@ -226,33 +280,48 @@ export const collect = async (signal: AbortSignal) => {
         if (signal.aborted) {
           return
         }
-        await db.transaction(async (tx) => {
-          const [list] = await db.insertList(
-            {
-              providerId: provider.providerId,
-              key: `tokens-${listKey}`,
-              default: listKey === 'svg',
-            },
-            tx,
-          )
-          await db.fetchImageAndStoreForToken(
-            {
-              listId: list.listId,
-              ...baseInput,
-              listTokenOrderId: globalOrderId++,
-              signal,
-            },
-            tx,
-          )
-          await db.fetchImageAndStoreForToken(
-            {
-              listId: networkList.listId,
-              ...baseInput,
-              signal,
-            },
-            tx,
-          )
-        })
+        // Batch database operations to reduce transaction overhead
+        try {
+          const [list] = await db.insertList({
+            providerId: provider.providerId,
+            key: `tokens-${listKey}`,
+            default: listKey === 'svg',
+          }).catch((err) => {
+            console.error(`Error inserting list for token ${token} on chain ${chainIdString}:`, err)
+            return [null]
+          })
+          if (!list) {
+            console.error(`List not found for token ${token} on chain ${chainIdString}`)
+            task.complete()
+            row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-list`)
+            return
+          }
+
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForToken(
+              {
+                listId: list.listId,
+                ...baseInput,
+                listTokenOrderId: globalOrderId++,
+                signal,
+              },
+              tx,
+            )
+            await db.fetchImageAndStoreForToken(
+              {
+                listId: networkList.listId,
+                ...baseInput,
+                signal,
+              },
+              tx,
+            )
+          })
+        } catch (dbError) {
+          console.error(`Database error for token ${token} on chain ${chainIdString}:`, dbError)
+          task.complete()
+          row.increment('skipped', `${providerKey}-${chainIdString}-${token}-db-error`)
+          return
+        }
       }
       task.complete()
       row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([+chainIdString, token]))

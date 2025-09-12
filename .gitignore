@@ -12,3 +12,4 @@ pumptires.json
 .DS_Store
 failures.json
 .turbo
+packages/server/src/harvested/etherscan/
