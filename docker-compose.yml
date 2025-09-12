@@ -20,7 +20,7 @@ services:
   gibassets-postgres-migrate:
     container_name: gibassets-postgres-migrate
     image: gibsfinance/assets:latest
-    command: sh -cx "npm run db:migrate-latest && npm run db:seed"
+    command: sh -cx "yarn run db:migrate-latest && yarn run db:seed"
     networks:
       - gibassets
     depends_on:
@@ -35,10 +35,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    command: ['npm', 'run', 'collect']
+    command: ['yarn', 'run', 'collect']
     volumes:
       - ./missing:/usr/src/app/missing
-      - ./src:/usr/src/app/src
+      - ./packages:/usr/src/app/packages
       - ./submodules:/usr/src/app/submodules
     depends_on:
       - gibassets-postgres
@@ -55,9 +55,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ['npm', 'run', 'server']
+    command: ['yarn', 'run', 'server']
     volumes:
-      - ./src:/usr/src/app/src
+      - ./packages:/usr/src/app/packages
     networks:
       - gibassets
     environment:

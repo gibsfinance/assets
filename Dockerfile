@@ -3,6 +3,8 @@ FROM node:23.6.1 AS base
 RUN mkdir -p /app
 WORKDIR /app
 
+RUN npm install -g yarn
+
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV
 ARG ROOT_URI
@@ -16,8 +18,8 @@ COPY tsconfig.json tsconfig.json
 
 # Copy and build frontend first
 COPY packages packages
-RUN npm i
+RUN yarn --frozen-lockfile
 
-RUN npm run build
+RUN yarn run build
 
-CMD ["npm", "run", "server"]
+CMD ["yarn", "run", "server"]

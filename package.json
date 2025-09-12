@@ -5,27 +5,27 @@
   "scripts": {
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
-    "build": "npm run build --workspace=*",
-    "collect": "npm run collect --workspace=packages/server",
-    "server": "npm run server --workspace=packages/server",
-    "frontend:dev": "npm run dev:static --workspace=packages/frontend",
-    "frontend:preview": "npm run preview --workspace=packages/frontend",
-    "server:dev": "npm run dev --workspace=packages/server",
+    "build": "yarn workspace @gibs/utils run build && yarn workspace @gibs/dexscreener run build && yarn workspace ui run build && yarn workspace server run build",
+    "collect": "yarn workspace server run collect",
+    "server": "yarn workspace server run server",
+    "ui:dev": "yarn workspace ui run dev:static",
+    "ui:preview": "yarn workspace ui run preview",
+    "server:dev": "yarn workspace server run dev",
     "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres",
-    "test": "npm run test --workspace=packages/server",
-    "db:migrate-latest": "npm run db:migrate-latest --workspace=packages/server",
-    "db:seed": "npm run db:seed --workspace=packages/server",
-    "db:migrate-make": "npm run db:migrate-make --workspace=packages/server"
+    "test": "yarn workspace server run test",
+    "db:migrate-latest": "yarn workspace server run db:migrate-latest",
+    "db:seed": "yarn workspace server run db:seed",
+    "db:migrate-make": "yarn workspace server run db:migrate-make"
   },
   "workspaces": [
     "packages/utils",
     "packages/dexscreener",
-    "packages/server",
-    "packages/frontend"
-    ],
-  "packageManager": "npm@11.2.0",
+    "packages/ui",
+    "packages/server"
+  ],
   "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

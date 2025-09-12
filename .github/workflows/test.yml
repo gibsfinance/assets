@@ -9,11 +9,11 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: 23.6.1
-      - run: npm install
+      - run: yarn --frozen-lockfile
       # start the docker database
       # start node server
-      - run: npm run build
+      - run: yarn run build
       - run: docker compose build
       - run: docker compose up -d gibassets-postgres gibassets-collect gibassets-server
       - run: sleep 30
-      - run: npm test
+      - run: yarn run test

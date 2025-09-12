@@ -1,5 +1,5 @@
 {
-  "name": "@gibs/assets",
+  "name": "server",
   "version": "1.0.0",
   "description": "a repo for gathering tokens, networks, and data providers",
   "main": "src/index.ts",
@@ -9,16 +9,16 @@
     "packages/*"
   ],
   "scripts": {
-    "setup": "docker compose build && npm install && npm run db:start && sleep 5 && npm run db:migrate-latest && sleep 3 && npm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development npm run collect && sleep 10 && npm run create-orders",
+    "setup": "docker compose build && yarn install && yarn run db:start && sleep 5 && yarn run db:migrate-latest && sleep 3 && yarn run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development yarn run collect && sleep 10 && yarn run create-orders",
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
-    "db:prepare": "npm run db:start && npm run db:migrate-up",
+    "db:prepare": "yarn run db:start && yarn run db:migrate-up",
     "db:start": "docker compose up -d gibassets-postgres",
     "db:stop": "docker compose down",
     "db:migrate-down-all": "tsx ./node_modules/.bin/knex migrate:rollback --all",
     "db:migrate-down": "tsx ./node_modules/.bin/knex migrate:down",
     "db:migrate-rollback": "tsx ./node_modules/.bin/knex migrate:rollback",
-    "db:migrate-reset": "npm run db:migrate-down-all && npm run db:migrate-latest",
+    "db:migrate-reset": "yarn run db:migrate-down-all && yarn run db:migrate-latest",
     "db:migrate-up": "tsx src/bin/migrate",
     "db:migrate-latest": "tsx src/bin/migrate",
     "db:migrate-make": "tsx ./node_modules/.bin/knex migrate:make --esm",
@@ -109,6 +109,6 @@
     "response-time": "^2.3.2"
   },
   "engines": {
-    "node": ">=23.6.1"
+    "node": ">=22"
   }
 }
