@@ -39,6 +39,11 @@
   resolved "https://registry.yarnpkg.com/@borewit/text-codec/-/text-codec-0.1.1.tgz#7e7f27092473d5eabcffef693a849f2cc48431da"
   integrity sha512-5L/uBxmjaCIX5h8Z+uu+kA9BQLkc/Wl06UGR5ajNRxu+/XjonB5i8JpgFMrPj3LXTCPA0pv8yxUvbUi+QthGGA==
 
+"@coingecko/coingecko-typescript@^1.13.0":
+  version "1.13.0"
+  resolved "https://registry.yarnpkg.com/@coingecko/coingecko-typescript/-/coingecko-typescript-1.13.0.tgz#27e688031a4540b112577e759c08b668d3cb7763"
+  integrity sha512-k1kFgBtuGVjtUXzbLktM2oNzeyNOUkT8D1pp7Tjkg2uZuFgjlXbDlG6dbHoPBjilEoVXn0xvUzLnFNWzIlQ0OQ==
+
 "@emnapi/core@^1.4.3", "@emnapi/core@^1.4.5":
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/@emnapi/core/-/core-1.5.0.tgz#85cd84537ec989cebb2343606a1ee663ce4edaf0"
@@ -2600,6 +2605,13 @@ code-excerpt@^4.0.0:
   dependencies:
     convert-to-spaces "^2.0.1"
 
+coingecko-api-v3@^0.0.31:
+  version "0.0.31"
+  resolved "https://registry.yarnpkg.com/coingecko-api-v3/-/coingecko-api-v3-0.0.31.tgz#1584082d40e7d12d8a23d018dce9bcda9a4ee80c"
+  integrity sha512-X+9SdZivtX0xKfmIl6ST3/Z+T5sFIQF00e599rg0vgxAR4wNBq6RnAVzo8HgLZm7H77RX7vApFdluR7vPKLbGQ==
+  dependencies:
+    https "^1.0.0"
+
 color-convert@^2.0.1:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/color-convert/-/color-convert-2.0.1.tgz#72d3a68d598c9bdb3af2ad1e84f21d896abd4de3"
@@ -3968,6 +3980,11 @@ https-proxy-agent@^7.0.6:
   dependencies:
     agent-base "^7.1.2"
     debug "4"
+
+https@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/https/-/https-1.0.0.tgz#3c37c7ae1a8eeb966904a2ad1e975a194b7ed3a4"
+  integrity sha512-4EC57ddXrkaF0x83Oj8sM6SLQHAWXw90Skqu2M4AEWENZ3F02dFJE/GARA8igO79tcgYqGrD7ae4f5L3um2lgg==
 
 iconv-lite@0.4.24:
   version "0.4.24"

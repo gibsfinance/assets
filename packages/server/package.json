@@ -84,6 +84,7 @@
     "yargs": "^17.7.2"
   },
   "dependencies": {
+    "@coingecko/coingecko-typescript": "^1.13.0",
     "@gibs/dexscreener": "^1.0.0",
     "@gibs/utils": "^1.0.0",
     "@types/body-parser": "^1.19.5",
@@ -91,6 +92,7 @@
     "@types/http-errors": "^2.0.4",
     "@types/react": "^18.2.66",
     "cheerio": "^1.0.0",
+    "coingecko-api-v3": "^0.0.31",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dexscreener-sdk": "^1.0.3",

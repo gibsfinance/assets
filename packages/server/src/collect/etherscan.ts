@@ -332,7 +332,7 @@ async function fetchTopTokensViaPuppeteer({
       'Accept-Encoding': 'gzip, deflate, br',
     })
 
-    const url = `${explorerBaseUrl}/tokens?sort=24h_volume_usd&order=desc&ps=100`
+    const url = `${explorerBaseUrl}/tokens?sort=24h_volume_usd&order=desc&ps=100&apikey=${process.env.ETHERSCAN_API_KEY}`
     console.log('navigating to', url)
 
     // Navigate to the page with timeout
