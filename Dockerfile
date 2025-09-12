@@ -3,7 +3,7 @@ FROM node:23.6.1 AS base
 RUN mkdir -p /app
 WORKDIR /app
 
-RUN npm install -g yarn
+# Yarn is already included in the node:23.6.1 image
 
 ARG NODE_ENV
 ENV NODE_ENV=$NODE_ENV
@@ -12,7 +12,7 @@ ENV ROOT_URI=$ROOT_URI
 ARG PUBLIC_BASE_URL
 ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 
-COPY package-lock.json package-lock.json
+COPY yarn.lock yarn.lock
 COPY package.json package.json
 COPY tsconfig.json tsconfig.json
 
