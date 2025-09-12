@@ -5,6 +5,7 @@
   "scripts": {
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
+    "db:build": "docker compose build gibassets-postgres",
     "build": "yarn workspace @gibs/utils run build && yarn workspace @gibs/dexscreener run build && yarn workspace ui run build && yarn workspace server run build",
     "collect": "yarn workspace server run collect",
     "server": "yarn workspace server run server",

@@ -17,16 +17,26 @@ services:
       - POSTGRES_DB=gibassets
       - POSTGRES_USER=gibassets
       - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gibassets -d gibassets"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   gibassets-postgres-migrate:
     container_name: gibassets-postgres-migrate
-    image: gibsfinance/assets:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: sh -cx "yarn run db:migrate-latest && yarn run db:seed"
     networks:
       - gibassets
     depends_on:
-      - gibassets-postgres
+      gibassets-postgres:
+        condition: service_healthy
     volumes:
       - ./packages:/usr/src/app/packages
+      - ./package.json:/usr/src/app/package.json
+      - ./yarn.lock:/usr/src/app/yarn.lock
     environment:
       DEBUG: '${DEBUG:-📷*}'
       DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
@@ -41,7 +51,8 @@ services:
       - ./packages:/usr/src/app/packages
       - ./submodules:/usr/src/app/submodules
     depends_on:
-      - gibassets-postgres
+      gibassets-postgres:
+        condition: service_healthy
     networks:
       - gibassets
     environment:
@@ -50,7 +61,8 @@ services:
       RPC_56: $RPC_56
   gibassets-server:
     depends_on:
-      - gibassets-postgres
+      gibassets-postgres:
+        condition: service_healthy
     container_name: gibassets-server
     build:
       context: .
