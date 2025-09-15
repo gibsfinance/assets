@@ -68,17 +68,20 @@ export const collect = async (signal: AbortSignal) => {
   if (signal.aborted) {
     return
   }
-  for (const chainId of chains) {
+  for (const cID of chains) {
+    const chainIdIsNumber = !!(+cID)
+    const chainId = chainIdIsNumber ? cID : '0'
     if (signal.aborted) {
       return
     }
+    const type = chainIdIsNumber ? 'evm' : 'btc'
     if (path.extname(chainId) === '.json') {
       row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
       row.increment('skipped', `${providerKey}-${chainId}`)
       continue // handles the _info.json file (not a chain)
     }
 
-    const network = await db.insertNetworkFromChainId(+chainId)
+    const network = await db.insertNetworkFromChainId(+chainId, type)
     const chainFolder = path.join(chainsPath, chainId)
     const folders = await utils.folderContents(chainFolder)
 
@@ -149,7 +152,7 @@ export const collect = async (signal: AbortSignal) => {
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(
     terminalCounterTypes.NETWORK,
-    utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => +chainIdString),
+    utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => chainIdString),
   )
   const networkLimiter = promiseLimit<[string, string[], number]>(1)
   const tokenLimit = promiseLimit<[Hex, number]>(4)
@@ -164,16 +167,6 @@ export const collect = async (signal: AbortSignal) => {
       row.increment('skipped', `${providerKey}-${chainIdString}`)
       continue
     }
-    const network = chain && (await db.insertNetworkFromChainId(+chainIdString))
-    if (!network) {
-      row.increment('skipped', `${providerKey}-${chainIdString}`)
-      row.increment(
-        terminalCounterTypes.TOKEN,
-        utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
-      )
-      row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
-      continue
-    }
 
     row.incrementTotal(
       terminalCounterTypes.TOKEN,
@@ -185,22 +178,20 @@ export const collect = async (signal: AbortSignal) => {
       console.log('signal aborted', chainIdString)
       return
     }
-    const chain = utils.findChain(+chainIdString)
-    if (!chain) {
-      return
-    }
-    const network = await db.insertNetworkFromChainId(+chainIdString)
-    if (!network) {
-      return
-    }
 
+    const chainIdIsNumber = !!(+chainIdString)
+    // const chainId = chainIdIsNumber ? chainIdString : '0'
+    // if (signal.aborted) {
+    //   return
+    // }
+    const type = chainIdIsNumber ? 'evm' : 'btc'
     // Pre-compute all possible network lists for this chain to avoid per-token database calls
     const networkListCache = new Map<string, List>()
     const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
 
     try {
       for (const listKey of possibleListKeys) {
-        const networkKey = `tokens-${chain.id}-${listKey}`
+        const networkKey = `tokens-${chainIdString}-${listKey}`
         if (!chainIdToNetworkId.has(networkKey)) {
           const networkList = await oneListInsertAtATime(
             async () =>
@@ -208,7 +199,7 @@ export const collect = async (signal: AbortSignal) => {
                 .insertList({
                   key: networkKey,
                   providerId: provider.providerId,
-                  networkId: utils.chainIdToNetworkId(chain.id),
+                  networkId: utils.chainIdToNetworkId(+chainIdString, type),
                 })
                 .then((list) => list?.[0] as List),
           )!
@@ -224,7 +215,6 @@ export const collect = async (signal: AbortSignal) => {
     }
 
     const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
-    const client = utils.chainToPublicClient(chain)
     await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
       const task = section.task(`${chainIdString}-${token}`, {
         id: providerKey,
@@ -236,11 +226,19 @@ export const collect = async (signal: AbortSignal) => {
       })
       const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
       const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
-
-      const metadata = await erc20Read(chain, client, address).catch((error) => {
-        console.log(error)
-        return null
-      })
+      let metadata: [string, string, number] | null = null
+      if (chainIdIsNumber) {
+        const chain = utils.findChain(+chainIdString)
+        if (!chain) {
+          return
+        }
+        metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
+          console.log(error)
+          return null
+        })
+      } else if (type === 'btc') {
+        metadata = ['Bitcoin', 'BTC', 8]
+      }
       if (!metadata) {
         row.increment('missing', utils.counterId.token([+chainIdString, token]))
         task.complete()

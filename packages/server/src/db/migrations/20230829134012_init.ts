@@ -14,7 +14,10 @@ export async function up(knex: Knex): Promise<void> {
 RETURNS TEXT AS $$
 import sha3
 k = sha3.keccak_256()
-k.update(input.encode('utf-8'))
+if input is None:
+    k.update(b'')
+else:
+    k.update(input.encode('utf-8'))
 return k.hexdigest()
 $$ LANGUAGE plpython3u`)
   log('✅ Created keccak256 function with plpython3u')

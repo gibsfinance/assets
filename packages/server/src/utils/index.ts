@@ -67,7 +67,7 @@ export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => toKeccakBy
 
 const folderAccessLimit = promiseLimit<any>(256)
 
-export const folderContents = async (folder: string, fn?: (i: string) => any) => {
+export const folderContents = async <T = string>(folder: string, fn?: (i: string) => T) => {
   const blockchainFolders = removedUndesirable(await fs.promises.readdir(folder))
   if (!fn) return blockchainFolders
   return await folderAccessLimit.map(blockchainFolders, async (f) => fn(f))
@@ -105,11 +105,11 @@ export const terminalRow = createTerminal()
 export const terminal = terminalRow.issue('main', Infinity)
 
 export const counterId = {
-  network: (id: number) => `${id}`,
+  network: (id: number | string) => `${id}`,
   token: ([chainId, address]: [number, string]) => `${chainId}-${address.toLowerCase()}`,
 }
 export const mapToSet = {
-  network: <I = unknown>(list: I[], fn: (v: I) => number) =>
+  network: <I = unknown>(list: I[], fn: (v: I) => number | string) =>
     new Set<string>(_(list).map(fn).map(counterId.network).value()),
   token: <I = unknown>(list: I[], fn: (v: I) => [number, string]) =>
     new Set<string>(_(list).map<[number, string]>(fn).map(counterId.token).value()),

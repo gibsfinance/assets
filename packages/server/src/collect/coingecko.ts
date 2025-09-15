@@ -82,3 +82,5 @@ export const processAssetPlatforms = async () => {
     throw error
   }
 }
+
+// https://app.geckoterminal.com/api/p1/networks?fields%5Bnetwork%5D=name%2Cidentifier%2Cimage_url%2Cis_new&show_for_sidebar=1

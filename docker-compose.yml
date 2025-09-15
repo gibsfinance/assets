@@ -1,10 +1,11 @@
 services:
   gibassets-postgres:
     container_name: gibassets-postgres
-    # image: postgres:13
     build:
       context: .
       dockerfile: Dockerfile.postgres
+      tags:
+        - gibsfinance/postgres:latest
     shm_size: 16g
     command: ['postgres']
     ports:
@@ -45,6 +46,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      tags:
+        - gibsfinance/assets:latest
     command: ['yarn', 'run', 'collect']
     volumes:
       - ./missing:/usr/src/app/missing
@@ -67,6 +70,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      tags:
+        - gibsfinance/assets:latest
     command: ['yarn', 'run', 'server']
     volumes:
       - ./packages:/usr/src/app/packages
