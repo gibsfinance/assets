@@ -30,6 +30,7 @@ import * as pumptires from './pumptires'
 import * as dexscreener from './dexscreener'
 import * as etherscan from './etherscan'
 import _ from 'lodash'
+import * as gibs from './gibs'
 import type { Todo } from '../types'
 
 /**
@@ -51,6 +52,7 @@ export const collectables = _.memoize(() => {
     trustwallet: trustwallet.collect as Todo,
     'uniswap-tokenlists': uniswapTokenlists.collect as Todo,
     kleros: kleros.collect as Todo,
+    gibs: gibs.collect as Todo,
     piteas: remoteTokenList.collect({
       providerKey: 'piteas',
       listKey: 'exchange',

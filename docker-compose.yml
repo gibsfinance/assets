@@ -1,5 +1,5 @@
 services:
-  gibassets-postgres:
+  postgres:
     container_name: gibassets-postgres
     build:
       context: .
@@ -23,7 +23,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-  gibassets-postgres-migrate:
+  postgres-migrate:
     container_name: gibassets-postgres-migrate
     build:
       context: .
@@ -32,7 +32,7 @@ services:
     networks:
       - gibassets
     depends_on:
-      gibassets-postgres:
+      postgres:
         condition: service_healthy
     volumes:
       - ./packages:/usr/src/app/packages
@@ -40,8 +40,8 @@ services:
       - ./yarn.lock:/usr/src/app/yarn.lock
     environment:
       DEBUG: '${DEBUG:-📷*}'
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
-  gibassets-collect:
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
+  collect:
     container_name: gibassets-collect
     build:
       context: .
@@ -54,17 +54,17 @@ services:
       - ./packages:/usr/src/app/packages
       - ./submodules:/usr/src/app/submodules
     depends_on:
-      gibassets-postgres:
+      postgres:
         condition: service_healthy
     networks:
       - gibassets
     environment:
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       FAKE_SPINNER: 'true'
       RPC_56: $RPC_56
-  gibassets-server:
+  server:
     depends_on:
-      gibassets-postgres:
+      postgres:
         condition: service_healthy
     container_name: gibassets-server
     build:
@@ -79,7 +79,7 @@ services:
       - gibassets
     environment:
       ROOT_URI: 'http://localhost:3456'
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       RPC_56: $RPC_56
     ports:
       - 3456:3000
