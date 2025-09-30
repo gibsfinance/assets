@@ -1,10 +1,11 @@
 services:
-  gibassets-postgres:
+  postgres:
     container_name: gibassets-postgres
-    # image: postgres:13
     build:
       context: .
       dockerfile: Dockerfile.postgres
+      tags:
+        - gibsfinance/postgres:latest
     shm_size: 16g
     command: ['postgres']
     ports:
@@ -17,55 +18,83 @@ services:
       - POSTGRES_DB=gibassets
       - POSTGRES_USER=gibassets
       - POSTGRES_PASSWORD=password
-  gibassets-postgres-migrate:
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gibassets -d gibassets"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  postgres-migrate:
     container_name: gibassets-postgres-migrate
-    image: gibsfinance/assets:latest
-    command: sh -cx "npm run db:migrate-latest && npm run db:seed"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -cx "yarn run db:migrate-latest && yarn run db:seed"
     networks:
       - gibassets
     depends_on:
-      - gibassets-postgres
+      postgres:
+        condition: service_healthy
     volumes:
       - ./packages:/usr/src/app/packages
+      - ./package.json:/usr/src/app/package.json
+      - ./yarn.lock:/usr/src/app/yarn.lock
     environment:
       DEBUG: '${DEBUG:-📷*}'
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
-  gibassets-collect:
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
+  collect:
     container_name: gibassets-collect
     build:
       context: .
       dockerfile: Dockerfile.worker
-    command: ['npm', 'run', 'collect']
+      tags:
+        - gibsfinance/assets:latest
+    command: ['yarn', 'run', 'collect']
     volumes:
       - ./missing:/usr/src/app/missing
-      - ./src:/usr/src/app/src
+      - ./packages:/usr/src/app/packages
       - ./submodules:/usr/src/app/submodules
     depends_on:
-      - gibassets-postgres
+      postgres:
+        condition: service_healthy
     networks:
       - gibassets
     environment:
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       FAKE_SPINNER: 'true'
       RPC_56: $RPC_56
-  gibassets-server:
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q yarn"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  server:
     depends_on:
-      - gibassets-postgres
+      postgres:
+        condition: service_healthy
     container_name: gibassets-server
     build:
       context: .
       dockerfile: Dockerfile
-    command: ['npm', 'run', 'server']
+      tags:
+        - gibsfinance/assets:latest
+    command: ['yarn', 'run', 'server']
     volumes:
-      - ./src:/usr/src/app/src
+      - ./packages:/usr/src/app/packages
     networks:
       - gibassets
     environment:
       ROOT_URI: 'http://localhost:3456'
-      DATABASE_URL: 'postgres://gibassets:password@gibassets-postgres:5432/gibassets'
+      DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       RPC_56: $RPC_56
     ports:
       - 3456:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   gibassets:

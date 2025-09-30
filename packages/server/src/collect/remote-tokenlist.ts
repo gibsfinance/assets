@@ -52,6 +52,8 @@ export const collect =
         })
       const response = await fetch(tokenListUrl, { signal })
       if (!response.ok) {
+        row.remove(terminalLogTypes.EROR)
+        row.complete()
         throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
       }
 
@@ -60,6 +62,8 @@ export const collect =
         tokenList = await response.json()
       } catch (e) {
         failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
+        row.remove(terminalLogTypes.EROR)
+        row.complete()
         return
         // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
       }
@@ -171,5 +175,7 @@ export const collect =
         isDefault,
         signal,
       })
+      row.remove(terminalLogTypes.EROR)
+      row.complete()
       return result
     }

@@ -72,27 +72,27 @@ export const collect = async ({
     // Setup default network (chainId 0)
     await db.insertNetworkFromChainId(0, undefined, tx)
 
-    // Create provider entry
-    ;[provider] = await db.insertProvider(
-      {
-        key: providerKey,
-      },
-      tx,
-    )
+      // Create provider entry
+      ;[provider] = await db.insertProvider(
+        {
+          key: providerKey,
+        },
+        tx,
+      )
 
-    // Create list entry
-    ;[list] = await db.insertList(
-      {
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
-        name: tokenList.name,
-        key: listKey,
-        default: isDefault,
-        description: '',
-        ...(tokenList.version || {}),
-      },
-      tx,
-    )
+      // Create list entry
+      ;[list] = await db.insertList(
+        {
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
+          name: tokenList.name,
+          key: listKey,
+          default: isDefault,
+          description: '',
+          ...(tokenList.version || {}),
+        },
+        tx,
+      )
 
     // Store list logo if available
     if (tokenList.logoURI) {

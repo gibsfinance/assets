@@ -11,7 +11,6 @@ import {
 } from 'viem/chains'
 import { collect } from './args'
 import _ from 'lodash'
-// import { log } from './logger'
 
 /**
  * Creates chain configurations with custom RPC endpoints

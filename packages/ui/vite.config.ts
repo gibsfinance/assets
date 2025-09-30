@@ -15,7 +15,6 @@ if (!githash) {
 }
 export default defineConfig({
   plugins: [
-    tailwindcss(),
     replace({
       preventAssignment: true,
       values: {
@@ -24,6 +23,7 @@ export default defineConfig({
         'process.env.PUBLIC_VERSION': JSON.stringify([pkg.version, githash, new Date().toISOString()].join('_')),
       },
     }),
+    tailwindcss(),
     svelte(),
   ],
   base: './',

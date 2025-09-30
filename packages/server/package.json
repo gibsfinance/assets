@@ -1,24 +1,20 @@
 {
-  "name": "@gibs/assets",
+  "name": "server",
   "version": "1.0.0",
   "description": "a repo for gathering tokens, networks, and data providers",
   "main": "src/index.ts",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "packages/*"
-  ],
   "scripts": {
-    "setup": "docker compose build && npm install && npm run db:start && sleep 5 && npm run db:migrate-latest && sleep 3 && npm run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development npm run collect && sleep 10 && npm run create-orders",
+    "setup": "docker compose build && yarn install && yarn run db:start && sleep 5 && yarn run db:migrate-latest && sleep 3 && yarn run db:seed && sleep 3 && DEBUG=📷* NODE_ENV=development yarn run collect && sleep 10 && yarn run create-orders",
     "docker:build": "docker build -t gibsfinance/assets:latest .",
     "docker:push": "docker push gibsfinance/assets:latest",
-    "db:prepare": "npm run db:start && npm run db:migrate-up",
+    "db:prepare": "yarn run db:start && yarn run db:migrate-up",
     "db:start": "docker compose up -d gibassets-postgres",
     "db:stop": "docker compose down",
     "db:migrate-down-all": "tsx ./node_modules/.bin/knex migrate:rollback --all",
     "db:migrate-down": "tsx ./node_modules/.bin/knex migrate:down",
     "db:migrate-rollback": "tsx ./node_modules/.bin/knex migrate:rollback",
-    "db:migrate-reset": "npm run db:migrate-down-all && npm run db:migrate-latest",
+    "db:migrate-reset": "yarn run db:migrate-down-all && yarn run db:migrate-latest",
     "db:migrate-up": "tsx src/bin/migrate",
     "db:migrate-latest": "tsx src/bin/migrate",
     "db:migrate-make": "tsx ./node_modules/.bin/knex migrate:make --esm",
@@ -26,6 +22,7 @@
     "db:seed": "tsx src/bin/seed",
     "build": "tsc",
     "collect": "tsx src/bin/collect",
+    "collect:dev": "tsx --watch src/bin/collect",
     "harvest": "tsx src/bin/harvest",
     "server": "tsx ./src/bin/server.ts",
     "dev": "tsx watch ./src/bin/server.ts",
@@ -61,6 +58,7 @@
     "@types/eslint__js": "^8.42.3",
     "@types/lodash": "^4.17.4",
     "@types/pg": "^8.11.6",
+    "@types/puppeteer": "^5.4.7",
     "@types/response-time": "^2.3.8",
     "@types/supertest": "^6.0.2",
     "@types/yargs": "^17.0.32",
@@ -83,10 +81,10 @@
     "tsx": "^4.11.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^7.12.0",
-    "viem": "^2.26.2",
     "yargs": "^17.7.2"
   },
   "dependencies": {
+    "@coingecko/coingecko-typescript": "^1.13.0",
     "@gibs/dexscreener": "^1.0.0",
     "@gibs/utils": "^1.0.0",
     "@types/body-parser": "^1.19.5",
@@ -94,6 +92,7 @@
     "@types/http-errors": "^2.0.4",
     "@types/react": "^18.2.66",
     "cheerio": "^1.0.0",
+    "coingecko-api-v3": "^0.0.31",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dexscreener-sdk": "^1.0.3",
@@ -103,10 +102,13 @@
     "hardhat": "^2.23.0",
     "ink": "^4.4.1",
     "node-fetch": "^3.3.2",
+    "puppeteer": "^24.20.0",
+    "puppeteer-core": "^24.17.1",
     "react": "^18.2.0",
-    "response-time": "^2.3.2"
+    "response-time": "^2.3.2",
+    "viem": "^2.37.5"
   },
   "engines": {
-    "node": ">=23.6.1"
+    "node": ">=22"
   }
 }

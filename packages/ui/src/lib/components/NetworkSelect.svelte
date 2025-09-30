@@ -4,7 +4,6 @@
   import { showTestnets } from '../stores/settings.svelte'
   import type { NetworkInfo } from '../types'
   import { Modal } from '@skeletonlabs/skeleton-svelte'
-  import { onMount } from 'svelte'
 
   type Props = {
     isOpenToStart: boolean
@@ -104,9 +103,9 @@
             const target = e.target as HTMLInputElement
             showTestnets.value = target.checked
           }} />
-        <div class="h-6 w-11 rounded-full bg-surface-600 transition-colors peer-checked:bg-secondary-600/20"></div>
+        <div class="h-6 w-11 rounded-full bg-surface-300 dark:bg-surface-600 transition-colors peer-checked:bg-secondary-600/20"></div>
         <div
-          class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-secondary-600"
+          class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-100 transition-all peer-checked:translate-x-5 peer-checked:bg-secondary-600"
         ></div>
       </div>
       <span
@@ -117,7 +116,7 @@
   <Modal
     open={isOpen}
     onOpenChange={(e) => (isOpen = e.open)}
-    triggerBase="btn preset-tonal w-full justify-between px-3 py-2 text-left text-sm leading-6 border border-gray-500 hover:border-gray-300 items-center rounded-lg select-network"
+    triggerBase="btn preset-tonal w-full justify-between px-3 py-2 text-left text-sm leading-6 border border-gray-500 hover:border-gray-400 items-center rounded-lg select-network"
     contentBase="bg-surface-100-900 space-y-4 shadow-xl w-[480px] h-screen left-0 overflow-y-auto"
     positionerJustify="justify-start"
     positionerAlign=""

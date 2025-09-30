@@ -267,7 +267,7 @@ export const fetchImage = async (
   if (!url) {
     return null
   }
-  if (url.startsWith(paths.submodules)) {
+  if (url.startsWith('/')) {
     return fs.promises.readFile(url).catch(() => {
       failureLog('read file failed %o -> %o', providerKey, address, url, address)
       return null

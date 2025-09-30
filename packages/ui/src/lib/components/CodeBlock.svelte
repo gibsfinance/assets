@@ -6,6 +6,7 @@
   // Themes
   // https://shiki.style/themes
   import themeDarkPlus from 'shiki/themes/dark-plus.mjs'
+  import themeLightPlus from 'shiki/themes/light-plus.mjs'
   // Languages
   // https://shiki.style/languages
   import console from 'shiki/langs/console.mjs'
@@ -17,7 +18,7 @@
   const shiki = createHighlighterCoreSync({
     engine: createJavaScriptRegexEngine(),
     // Implement your import theme.
-    themes: [themeDarkPlus],
+    themes: [themeDarkPlus, themeLightPlus],
     // Implement your imported and supported languages.
     langs: [console, html, css, js],
   })
@@ -25,11 +26,12 @@
 
 <script lang="ts">
   import type { CodeBlockProps } from '../types'
+  import { isDark } from '../stores/theme'
 
   let {
     code = '',
     lang = 'console',
-    theme = 'dark-plus',
+    theme: themeInput,
     // Base Style Props
     base = 'overflow-x-auto',
     rounded = 'rounded-container',
@@ -41,8 +43,10 @@
     preClasses = '',
   }: CodeBlockProps = $props()
 
+  const theme = $derived(themeInput || $isDark ? 'dark-plus' : 'light-plus')
+
   // Shiki convert to HTML
-  const generatedHtml = shiki.codeToHtml(code, { lang, theme })
+  const generatedHtml = $derived(shiki.codeToHtml(code, { lang, theme }))
 </script>
 
 <div class="{base} {rounded} {shadow} {classes} {preBase} {prePadding} {preClasses}">

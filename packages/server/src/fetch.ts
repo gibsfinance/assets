@@ -6,7 +6,7 @@ const ipfsDomains = ipfs().ipfs
 
 /** add a user agent to bypass some server side blocking */
 const userAgent =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
 
 /** fetch ipfs content just like fetch */
 const iterativeIpfsCompatableFetch = async (url: string | URL, options?: Parameters<typeof fetch>[1]) => {

@@ -206,6 +206,7 @@
 </div>
 
 <style lang="postcss">
+  @reference 'tailwindcss';
   /* Checkerboard pattern for transparent image background */
   .checkerboard {
     background-color: #fff;

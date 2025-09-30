@@ -1,11 +1,26 @@
 import type { Knex } from 'knex'
+import { log } from '../../logger'
 
 import config from '../../../config'
 
 export async function up(knex: Knex): Promise<void> {
+  log('🔄 Starting migration...')
   await knex.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
   await knex.raw('CREATE EXTENSION IF NOT EXISTS citext')
+  // First, try to create the extension
   await knex.raw('CREATE EXTENSION IF NOT EXISTS plpython3u')
+  log('✅ plpython3u extension available')
+  await knex.raw(`CREATE OR REPLACE FUNCTION keccak256(input TEXT)
+RETURNS TEXT AS $$
+import sha3
+k = sha3.keccak_256()
+if input is None:
+    k.update(b'')
+else:
+    k.update(input.encode('utf-8'))
+return k.hexdigest()
+$$ LANGUAGE plpython3u`)
+  log('✅ Created keccak256 function with plpython3u')
   await knex.raw(`
 CREATE OR REPLACE FUNCTION autoupdate_timestamp()
 RETURNS TRIGGER AS $$
@@ -14,13 +29,6 @@ BEGIN
   RETURN NEW;
 END; $$
 LANGUAGE 'plpgsql'`)
-  await knex.raw(`CREATE OR REPLACE FUNCTION keccak256(input TEXT)
-RETURNS TEXT AS $$
-import sha3
-k = sha3.keccak_256()
-k.update(input.encode('utf-8'))
-return k.hexdigest()
-$$ LANGUAGE plpython3u`)
   await knex.raw(`create or replace function
 count_rows(schema text, tablename text) returns integer
 as

@@ -27,23 +27,23 @@ cd assets
 cp .env.example .env
 
 # Install dependencies
-pnpm install
+yarn
 ```
 
 ### 2. Development
 
 ```sh
-npm run setup
+yarn run setup
 ```
 
 ### 3. Production
 
 ```bash
 # Create production build
-pnpm run build
+yarn run build
 
 # Preview production build
-pnpm run preview
+yarn run preview
 ```
 
 > 📝 **Note:** You may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your deployment environment.
@@ -100,14 +100,6 @@ https://gib.show/list/merged/5ff74ffa222c6c435c9432ad937c5d95e3327ebbe3eb9ff9f62
 ---
 
 ## 📦 Project Structure
-
-### Core Modules
-
-- 📁 `/src/db` - Database operations
-- 📁 `/src/collect` - Token collection
-- 📁 `/src/utils` - Utility functions
-- 📁 `/src/components` - UI components
-- 📁 `/src/hooks` - Custom hooks
 
 ### Operation Indicators
 

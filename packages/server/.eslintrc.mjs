@@ -18,7 +18,7 @@ export default tseslint.config(
       'package',
       '.env*',
       '!.env.example',
-      'frontend/package-lock.json',
+      'frontend/yarn.lock',
       '.eslintrc.mjs',
     ],
     rules: {

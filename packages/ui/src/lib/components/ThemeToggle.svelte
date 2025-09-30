@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { isDark } from '../stores/theme'
-  import { onMount } from 'svelte'
+import { isDark } from '../stores/theme'
+import { onMount, onDestroy } from 'svelte'
 
   const darkModeMessages = [
     'Embrace the darkness...',
@@ -37,13 +37,24 @@
   }
 
   onMount(() => {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    isDark.set(prefersDark)
-  })
+    // Only set system preference if no stored preference exists
+    const storedTheme = localStorage.getItem('theme')
+    if (!storedTheme) {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      isDark.set(prefersDark)
+    }
 
-  $: if (typeof document !== 'undefined') {
-    document.documentElement.classList.toggle('dark', $isDark)
-  }
+    // Set up store subscription
+    const unsubscribe = isDark.subscribe((value) => {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.toggle('dark', value)
+      }
+    })
+
+    onDestroy(() => {
+      unsubscribe()
+    })
+  })
 </script>
 
 <button
