@@ -5,7 +5,7 @@
   "scripts": {
     "docker:build": "yarn run docker:build:postgres && yarn run docker:build:server",
     "docker:build:server": "docker build -t gibsfinance/assets:latest .",
-    "docker:build:postgres": "docker compose build --no-cache gibassets-postgres",
+    "docker:build:postgres": "docker compose build --no-cache postgres",
     "docker:push": "yarn run docker:push:server && yarn run docker:push:postgres",
     "docker:push:server": "docker push gibsfinance/assets:latest",
     "docker:push:postgres": "docker push gibsfinance/postgres:latest",
@@ -15,7 +15,7 @@
     "ui:dev": "yarn workspace ui run dev:static",
     "ui:preview": "yarn workspace ui run preview",
     "server:dev": "yarn workspace server run dev",
-    "db:up": "docker compose -f docker-compose.yml up -d gibassets-postgres",
+    "db:up": "docker compose -f docker-compose.yml up -d postgres",
     "test": "yarn workspace server run test",
     "db:migrate-latest": "yarn workspace server run db:migrate-latest",
     "db:seed": "yarn workspace server run db:seed",
