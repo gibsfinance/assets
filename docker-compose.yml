@@ -62,6 +62,12 @@ services:
       DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       FAKE_SPINNER: 'true'
       RPC_56: $RPC_56
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q yarn"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
   server:
     depends_on:
       postgres:
@@ -83,6 +89,12 @@ services:
       RPC_56: $RPC_56
     ports:
       - 3456:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   gibassets:

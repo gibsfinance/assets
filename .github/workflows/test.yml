@@ -15,5 +15,4 @@ jobs:
       - run: yarn run build
       - run: docker compose build
       - run: docker compose up -d postgres collect server
-      - run: sleep 30
       - run: yarn run test
