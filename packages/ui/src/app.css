@@ -5,29 +5,9 @@
 
 @source '../../../node_modules/@skeletonlabs/skeleton-svelte/dist';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 html,
 body {
   @apply h-full;
-}
-
-/* Dark mode support */
-@layer base {
-  :global(.dark) {
-    @apply bg-gray-950 text-white;
-  }
-
-  :global(.dark .card) {
-    @apply bg-gray-900 border;
-    border-color: rgba(55, 65, 81, 0.2);
-  }
-
-  :global(.dark .btn) {
-    @apply bg-gray-800 text-white border hover:bg-gray-700;
-    border-color: rgba(55, 65, 81, 0.2);
-  }
-
-  :global(.dark .input) {
-    @apply bg-gray-900 text-white border;
-    border-color: rgba(55, 65, 81, 0.2);
-  }
 }

@@ -47,9 +47,9 @@
     </span>
   {/snippet}
   {#snippet content()}
-    <div class="list-filter-dropdown card bg-surface-100-900 absolute right-0 z-50 mt-1 w-64 p-2">
-      <div class="space-y-3 p-2">
-        <div class="flex items-center justify-between">
+    <div class="list-filter-dropdown card bg-surface-100-900 absolute right-0 z-50 mt-1 w-64">
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center justify-between px-2 pt-2">
           <h3 class="h4">Token Lists</h3>
           <button class="variant-soft btn btn-sm" type="button" onclick={handleToggleAll}>
             <i class="fas fa-check-double mr-2"></i>
@@ -57,16 +57,16 @@
           </button>
         </div>
 
-        <div class="input-group input-group-divider grid-cols-[auto_1fr_auto] rounded-container-token">
-          <div class="input-group-shim">
+        <label class="input-group input-group-divider grid-cols-[auto_1fr_auto] rounded-container-token px-2">
+          <div class="ig-cell">
             <i class="fas fa-search"></i>
           </div>
           <input type="search" placeholder="Search lists..." class="input" bind:value={listSearchQuery} />
-        </div>
+        </label>
 
         <div class="overflow-y-auto" style="height: 297px">
           {#each filteredLists as [listKey, tokens]}
-            <label class="hover:bg-surface-hover flex cursor-pointer items-center gap-2 p-2">
+            <label class="hover:bg-surface-hover flex cursor-pointer items-center gap-2 px-2">
               <input
                 type="checkbox"
                 class="checkbox"

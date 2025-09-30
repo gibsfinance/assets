@@ -9,7 +9,8 @@
   import { onMount } from 'svelte'
   import { showTestnets } from '../stores/settings.svelte'
   import { goto } from '../stores/page.svelte'
-    import { root } from '../config'
+  import { root } from '../config'
+  import { isDark } from '../stores/theme'
 
   const shouldShowTestnet = $derived(showTestnets.value)
   let metricsData: PlatformMetrics | null = $derived(metrics.value)
@@ -88,21 +89,21 @@
       title: 'Token Images',
       description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
       code: getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-      displayUrl: `${root}/image/1/0x2260...`,
+      displayUrl: `/image/1/0x2260...`,
     },
     {
       icon: 'fa-network-wired',
       title: 'Network Logos',
       description: 'Get chain/network logos and metadata. Perfect for network selectors.',
       code: getApiUrl('/image/1'),
-      displayUrl: `${root}/image/1`,
+      displayUrl: `/image/1`,
     },
     {
       icon: 'fa-list',
       title: 'Token Lists',
       description: 'Get curated token lists with optional network filtering.',
       code: getApiUrl('/list/coingecko'),
-      displayUrl: `${root}/list/coingecko`,
+      displayUrl: `/list/coingecko`,
     },
   ]
 
@@ -311,13 +312,13 @@
               Welcome to
             </p>
             <h1
-              class="font-space-grotesk w-full bg-gradient-to-r text-white bg-clip-text text-center text-6xl font-bold tracking-tight">
+              class="font-space-grotesk w-full bg-gradient-to-r text-gray-900 dark:text-white bg-clip-text text-center text-6xl font-bold tracking-tight">
               Gib<span class="text-secondary-600">.Show</span>
             </h1>
           </div>
 
           <div
-            class="mx-auto max-w-3xl text-xl font-light text-gray-400 dark:text-gray-200 text-center flex flex-col gap-2">
+            class="mx-auto max-w-3xl text-xl font-light text-gray-500 dark:text-gray-400 text-center flex flex-col gap-2">
             <p>A decentralized solution for token metadata and assets across multiple blockchains.</p>
             <p>Stop struggling with missing logos, broken images, and inconsistent token data.</p>
             <p>One API to handle all your token asset needs that you can run yourself.</p>
@@ -329,10 +330,10 @@
           <!-- Features Grid -->
           <section class="space-y-8 py-8">
             <h2 class="h2 text-center text-3xl font-bold">Why Use Your Own Asset Server?</h2>
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
               {#each features as feature}
                 <div
-                  class="feature-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:scale-[1.02] hover:shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                  class="feature-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:scale-[1.02] hover:shadow-lg dark:border-gray-700 dark:bg-gray-900">
                   <div class="relative">
                     <div class="absolute inset-0 -z-10 rounded-lg transition-colors"></div>
                     <i
@@ -351,10 +352,10 @@
             <h2 class="h2 text-center text-3xl font-bold">Simple Integration</h2>
             <div class="grid gap-6">
               {#each examples as example}
-                <div class="card p-6 transition-all bg-surface-800 hover:shadow hover:shadow-secondary-600/5">
-                  <div class="grid gap-6 md:grid-cols-2">
+                <div class="card p-6 transition-all bg-white dark:bg-gray-900 hover:shadow hover:shadow-secondary-600/5 border border-gray-200 dark:border-gray-700">
+                  <div class="grid gap-6 lg:grid-cols-2">
                     <!-- Visual Preview -->
-                    <div class="flex items-center justify-center rounded-lg bg-surface-contrast-700/10 p-4">
+                    <div class="flex items-center justify-center rounded-lg bg-gray-50 p-4">
                       {#if example.title === 'Get Token Image'}
                         <div class="flex items-center gap-4">
                           <img
@@ -420,7 +421,7 @@
             <h2 class="h2 text-center text-3xl font-bold">Platform Metrics</h2>
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div
-                class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:border-surface-700 dark:bg-surface-800">
+                class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:border-gray-700 dark:bg-gray-900">
                 {#if metricsData}
                   {@const totalTokens = metricsData.tokenList.total}
                   <span
@@ -433,7 +434,7 @@
                 <p class="text-center text-lg text-gray-600 dark:text-gray-300">Total Tokens</p>
               </div>
               <div
-                class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:border-surface-700 dark:bg-surface-800">
+                class="metric-card group rounded-lg border border-gray-200 dark:border-gray-700 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:bg-gray-900">
                 {#if metricsData}
                   <span
                     class="mb-2 block bg-gradient-to-r from-secondary-600 to-[#00b368] bg-clip-text text-center text-5xl font-bold text-transparent">
@@ -466,14 +467,14 @@
                           showTestnets.value = target.checked
                         }} />
                       <div
-                        class="h-6 w-11 rounded-full bg-surface-700 transition-colors peer-checked:bg-secondary-600/20"
+                        class="h-6 w-11 rounded-full bg-gray-300 dark:bg-gray-700 transition-colors peer-checked:bg-secondary-600/20"
                       ></div>
                       <div
-                        class="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-200 transition-all peer-checked:translate-x-5 peer-checked:bg-secondary-600"
+                        class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white dark:bg-gray-200 transition-all peer-checked:translate-x-5 peer-checked:bg-secondary-600"
                       ></div>
                     </div>
                     <span
-                      class="text-sm font-medium text-surface-600 transition-colors group-hover:text-secondary-600 dark:text-surface-300"
+                      class="text-sm font-medium text-gray-600 transition-colors dark:text-gray-300"
                       >Show Testnets</span>
                   </label>
                 </div>
@@ -520,7 +521,7 @@
               </div>
             {:else}
               <div class="card p-4">
-                <div class="h-[400px] animate-pulse bg-surface-600/20"></div>
+                <div class="h-[400px] animate-pulse bg-gray-200 dark:bg-gray-600/20"></div>
               </div>
             {/if}
           </section>

@@ -12,8 +12,8 @@
   const isWizardPage = $derived(page.url.pathname === '/wizard' || page.url.hash === '#/wizard')
 </script>
 
-<div class="min-h-full overflow-x-hidden bg-gray-950">
-  <header class="top-0 z-50 border-b border-gray-200/50 bg-gray-900">
+<div class="min-h-full overflow-x-hidden bg-gray-50 dark:bg-gray-950">
+  <header class="top-0 z-50 border-b border-gray-200/50 bg-white dark:bg-gray-900">
     <nav class="mx-auto p-4">
       <div class="flex items-center justify-between">
         <a
