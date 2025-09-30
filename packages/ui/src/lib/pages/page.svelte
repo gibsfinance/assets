@@ -355,7 +355,7 @@
                 <div class="card p-6 transition-all bg-white dark:bg-gray-900 hover:shadow hover:shadow-secondary-600/5 border border-gray-200 dark:border-gray-700">
                   <div class="grid gap-6 lg:grid-cols-2">
                     <!-- Visual Preview -->
-                    <div class="flex items-center justify-center rounded-lg bg-gray-50 p-4">
+                    <div class="flex items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
                       {#if example.title === 'Get Token Image'}
                         <div class="flex items-center gap-4">
                           <img
