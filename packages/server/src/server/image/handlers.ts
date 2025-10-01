@@ -9,21 +9,37 @@ import config from '../../../config'
 import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
 import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
+import { ParsedQs } from 'qs'
+import { submodules } from '../../paths'
 
-export const getListTokens = async (
+export const getListTokens = async ({ chainId, address, listOrderId, exts, providerKey, listKey }: {
   chainId: ChainId,
   address: viem.Hex,
   listOrderId?: viem.Hex | null,
   exts?: string[],
-) => {
+  providerKey?: string[],
+  listKey?: string[],
+}) => {
   const filter = {
     [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
     [`${tableNames.token}.providedId`]: viem.getAddress(address),
   }
+  // if (providerKey) {
+  //   filter[`${tableNames.provider}.key`] = providerKey
+  // }
+  // if (listKey) {
+  //   filter[`${tableNames.list}.key`] = listKey
+  // }
   let q = db
     .getDB()
     .select('*')
     .from(tableNames.listToken)
+    .join(`${config.database.schema}.${tableNames.provider}`, {
+      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
+    })
+    .join(`${config.database.schema}.${tableNames.list}`, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
     .join(`${config.database.schema}.${tableNames.token}`, {
       [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
     })
@@ -33,6 +49,12 @@ export const getListTokens = async (
     .where(filter)
   if (exts?.length) {
     q = q.whereIn('ext', exts)
+  }
+  if (providerKey?.length) {
+    q = q.whereIn(`${tableNames.provider}.key`, providerKey)
+  }
+  if (listKey?.length) {
+    q = q.whereIn(`${tableNames.list}.key`, listKey)
   }
   if (listOrderId) {
     q = db.applyOrder(q, listOrderId) //
@@ -99,10 +121,14 @@ const getListImage =
       chainId,
       address: addressParam,
       order: orderParam,
+      providerKey,
+      listKey,
     }: {
       chainId: number
       address: string
       order?: string
+      providerKey?: string[],
+      listKey?: string[],
     }) => {
       if (!+chainId) {
         throw httpErrors.BadRequest('chainId')
@@ -112,12 +138,32 @@ const getListImage =
         throw httpErrors.BadRequest('address')
       }
       const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
-      const { img } = await getListTokens(+chainId, address, listOrderId, exts)
+      const { img } = await getListTokens({
+        chainId: +chainId,
+        address,
+        listOrderId,
+        exts,
+        providerKey,
+        listKey,
+      })
       if (!img) {
         throw httpErrors.NotFound('list image missing')
       }
       return img
     }
+
+const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined) => {
+  if (!query) {
+    return []
+  }
+  if (_.isString(query)) {
+    return [...query.split(',')].filter((v) => v.trim())
+  }
+  if (Array.isArray(query)) {
+    return _.map(query, (v) => v.toString())
+  }
+  return query.toString().split(',').filter((v) => v.trim())
+}
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
@@ -126,20 +172,28 @@ export const getImage =
         chainId: Number(req.params.chainId),
         address: req.params.address as viem.Hex,
         order: req.params.order,
+        providerKey: queryStringToList(req.query.providerKey),
+        listKey: queryStringToList(req.query.listKey),
       })
       sendImage(res, img)
     }
 
 export const getImageAndFallback: RequestHandler = async (req, res) => {
+  const providerKey = queryStringToList(req.query.providerKey)
+  const listKey = queryStringToList(req.query.listKey)
   let img = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
     order: req.params.order,
+    providerKey,
+    listKey,
   }).catch(ignoreNotFound)
   if (!img) {
     img = await getListImage(false)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
+      providerKey,
+      listKey,
     })
   }
   sendImage(res, img)
@@ -184,7 +238,12 @@ const ignoreNotFound = (err: HttpError) => {
   throw err
 }
 
-export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }> = async (req, res, next) => {
+export type KeyFilterQuery = {
+  providerKey: string | string[]
+  listKey: string | string[]
+}
+
+export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] } & KeyFilterQuery> = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
   if (Array.isArray(i)) images = i.map((i) => i.toString())
@@ -204,15 +263,21 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
     if (order && order.length !== 64 /* check if hex */) {
       return next(httpErrors.NotAcceptable('invalid order'))
     }
+    const providerKey = queryStringToList(req.query.providerKey)
+    const listKey = queryStringToList(req.query.listKey)
     let img = await getListImage(true)({
       chainId: Number(chainId),
       address,
       order,
+      providerKey,
+      listKey,
     }).catch(ignoreNotFound)
     if (!img) {
       img = await getListImage(false)({
         chainId: Number(chainId),
         address,
+        providerKey,
+        listKey,
       }).catch(ignoreNotFound)
     }
     if (img) {
@@ -223,5 +288,15 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
 }
 
 export const sendImage = (res: Response, img: Image) => {
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`).contentType(img.ext).send(img.content)
+  let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  if (img.uri) {
+    if (img.uri.startsWith('http') || img.uri.startsWith('ipfs')) {
+      r = r.set('x-uri', img.uri)
+    } else if (img.uri.startsWith('data:')) {
+      // encoded data - no uri available
+    } else {
+      r = r.set('x-uri', path.relative(submodules, img.uri))
+    }
+  }
+  r.contentType(img.ext).send(img.content)
 }
