@@ -34,11 +34,11 @@ export const getListTokens = async ({ chainId, address, listOrderId, exts, provi
     .getDB()
     .select('*')
     .from(tableNames.listToken)
-    .join(`${config.database.schema}.${tableNames.provider}`, {
-      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
-    })
     .join(`${config.database.schema}.${tableNames.list}`, {
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .join(`${config.database.schema}.${tableNames.provider}`, {
+      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
     })
     .join(`${config.database.schema}.${tableNames.token}`, {
       [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
