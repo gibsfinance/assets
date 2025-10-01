@@ -1,7 +1,7 @@
 FROM node:23.6.1 AS base
 
-RUN mkdir -p /app
-WORKDIR /app
+RUN mkdir -p /usr/src/app
+WORKDIR /usr/src/app
 
 # Yarn is already included in the node:23.6.1 image
 
