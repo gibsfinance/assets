@@ -19,7 +19,6 @@ COPY tsconfig.json tsconfig.json
 # Copy and build frontend first
 COPY packages packages
 RUN yarn --frozen-lockfile
-
 RUN yarn run build
 
 CMD ["yarn", "run", "server"]
