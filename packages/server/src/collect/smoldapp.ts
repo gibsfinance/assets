@@ -4,21 +4,16 @@ import * as db from '../db'
 import * as utils from '../utils'
 import type { List } from 'knex/types/tables'
 import * as paths from '../paths'
-import { zeroAddress, getAddress, type Hex } from 'viem'
+import { zeroAddress, getAddress, type Hex, stringToHex } from 'viem'
 import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
+import { TokenListVersion } from '../types'
 
 const oneListInsertAtATime = promiseLimit<List>(2)
 
-type Version = {
-  major: number
-  minor: number
-  patch: number
-}
-
 type Info = {
-  version: Version
+  version: TokenListVersion
   tokens: Record<string, string[]>
 }
 
@@ -68,9 +63,11 @@ export const collect = async (signal: AbortSignal) => {
   if (signal.aborted) {
     return
   }
+  const folderToNetworkChainId = new Map<string, number>()
   for (const cID of chains) {
+    if (cID === '_info.json') continue
     const chainIdIsNumber = !!(+cID)
-    const chainId = chainIdIsNumber ? cID : '0'
+    const chainId = chainIdIsNumber ? cID : cID
     if (signal.aborted) {
       return
     }
@@ -81,16 +78,21 @@ export const collect = async (signal: AbortSignal) => {
       continue // handles the _info.json file (not a chain)
     }
 
-    const network = await db.insertNetworkFromChainId(+chainId, type)
-    const chainFolder = path.join(chainsPath, chainId)
+    const networkChainId = chainIdIsNumber ? +chainId : Number(stringToHex(chainId))
+    folderToNetworkChainId.set(cID, networkChainId)
+    const network = await db.insertNetworkFromChainId(networkChainId, type)
+    const chainFolder = path.join(chainsPath, chainId || cID)
     const folders = await utils.folderContents(chainFolder)
 
     for (const file of folders) {
+      if (signal.aborted) {
+        return
+      }
       const listKey = filenameToListKey(file)
       const [networkList] = await db.insertList({
-        key: `tokens-${chainId}-${listKey}`,
+        key: `tokens-${networkChainId}-${listKey}`,
         providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(+chainId),
+        networkId: utils.chainIdToNetworkId(networkChainId, type),
       })
 
       const originalUri = path.join(chainFolder, file)
@@ -175,16 +177,15 @@ export const collect = async (signal: AbortSignal) => {
   }
   await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens, i]) => {
     if (signal.aborted) {
-      console.log('signal aborted', chainIdString)
       return
     }
 
     const chainIdIsNumber = !!(+chainIdString)
-    // const chainId = chainIdIsNumber ? chainIdString : '0'
-    // if (signal.aborted) {
-    //   return
-    // }
     const type = chainIdIsNumber ? 'evm' : 'btc'
+    const networkChainId = folderToNetworkChainId.get(chainIdString) ?? (+chainIdString || Number(stringToHex(chainIdString)))
+    // const networkId = utils.chainIdToNetworkId(networkChainId, type)
+    folderToNetworkChainId.set(chainIdString, networkChainId)
+    const network = await db.insertNetworkFromChainId(networkChainId, type)
     // Pre-compute all possible network lists for this chain to avoid per-token database calls
     const networkListCache = new Map<string, List>()
     const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
@@ -199,9 +200,13 @@ export const collect = async (signal: AbortSignal) => {
                 .insertList({
                   key: networkKey,
                   providerId: provider.providerId,
-                  networkId: utils.chainIdToNetworkId(+chainIdString, type),
+                  networkId: network.networkId,
                 })
-                .then((list) => list?.[0] as List),
+                .then((list) => list?.[0] as List)
+                .catch((err) => {
+                  console.log('error inserting list', networkKey, networkChainId, type)
+                  throw err
+                })
           )!
           chainIdToNetworkId.set(networkKey, networkList)
           networkListCache.set(listKey, networkList)
@@ -216,6 +221,10 @@ export const collect = async (signal: AbortSignal) => {
 
     const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
     await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
+      if (signal.aborted) {
+        return
+      }
+      const networkChainId = folderToNetworkChainId.get(chainIdString)!
       const task = section.task(`${chainIdString}-${token}`, {
         id: providerKey,
         type: terminalRowTypes.STORAGE,
@@ -240,14 +249,14 @@ export const collect = async (signal: AbortSignal) => {
         metadata = ['Bitcoin', 'BTC', 8]
       }
       if (!metadata) {
-        row.increment('missing', utils.counterId.token([+chainIdString, token]))
+        row.increment('missing', utils.counterId.token([networkChainId, token]))
         task.complete()
-        row.increment('skipped', `${providerKey}-${chainIdString}-${token}-read-error`)
+        row.increment('skipped', `${providerKey}-${networkChainId}-${token}-read-error`)
         return
       }
       const [name, symbol, decimals] = metadata
       const tokenImages = await utils.folderContents(tokenFolder).catch((err) => {
-        console.error(`Error getting folder contents for token ${token} on chain ${chainIdString}:`, err)
+        console.error(`Error getting folder contents for token ${token} on chain ${networkChainId}:`, err)
         return []
       }) as string[]
 

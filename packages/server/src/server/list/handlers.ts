@@ -87,12 +87,15 @@ const getLists = async (filter: object) => {
       `${tableNames.provider}.key as provider_key`,
       `${tableNames.network}.chain_id`,
       `${tableNames.network}.type as chain_type`,
+      `${tableNames.list}.major`,
+      `${tableNames.list}.minor`,
+      `${tableNames.list}.patch`,
     ])
     .from(tableNames.list)
-    .join(tableNames.provider, {
+    .leftJoin(tableNames.provider, {
       [`${tableNames.provider}.provider_id`]: `${tableNames.list}.provider_id`,
     })
-    .join(tableNames.network, {
+    .leftJoin(tableNames.network, {
       [`${tableNames.network}.network_id`]: `${tableNames.list}.network_id`,
     })
   for (const [k, v] of Object.entries(filter)) {

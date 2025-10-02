@@ -32,6 +32,12 @@ export const collect = async (signal: AbortSignal) => {
     id: 'coingecko',
   })
   const section = row.issue('coingecko')
+  if (!process.env.COINGECKO_API_KEY) {
+    console.log('COINGECKO_API_KEY is not set. skipping coingecko collection')
+    row.complete()
+    row.increment('skipped', 'coingecko')
+    return
+  }
 
   // const assetPlatforms = await processAssetPlatforms()
   const platforms = await db.cachedJSONRequest<AssetPlatform[]>(

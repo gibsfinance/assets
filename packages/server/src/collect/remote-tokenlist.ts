@@ -181,5 +181,6 @@ export const collect =
         signal,
       })
       row.complete()
+      row.hide()
       return result
     }
