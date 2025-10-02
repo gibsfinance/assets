@@ -950,7 +950,7 @@ export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx 
 
 export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
   return cachedJSON(key, signal, async (signal) => {
-    return fetch(args[0], { signal, ...args[1] }).then((res) => res.json() as Promise<T>)
+    return fetch(args[0], { signal, ...(args[1] ?? {}) }).then((res) => res.json() as Promise<T>)
   })
 }
 export const cachedJSON = async <T extends object>(key: string, signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>) => {

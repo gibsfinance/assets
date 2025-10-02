@@ -71,7 +71,7 @@ export const collect = async (signal: AbortSignal) => {
       try {
         await collect(signal)
       } catch (err) {
-        if ((err as Error).message.includes('429 Too Many Requests')) {
+        if ((err as Error).message.includes('429 Too Many Requests') || (err as Error).message.includes('Throttled')) {
           retries++
           await timeout(5000 * retries).promise
           if (retries > 5) {
