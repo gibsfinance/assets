@@ -1,5 +1,5 @@
 import * as remoteTokenList from './remote-tokenlist'
-import * as fs from 'fs/promises'
+import * as db from '../db'
 import _ from 'lodash'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
@@ -34,7 +34,11 @@ export const collect = async (signal: AbortSignal) => {
   const section = row.issue('coingecko')
 
   // const assetPlatforms = await processAssetPlatforms()
-  const platforms = await fetch('https://api.coingecko.com/api/v3/asset_platforms?' + qs).then(res => res.json() as Promise<AssetPlatform[]>)
+  const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
+    `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+    `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+    { signal },
+  )
   row.createCounter(terminalCounterTypes.NETWORK)
   const platformIds = new Set(_(platforms).map(platform => platform.id).compact().value())
   row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
@@ -49,10 +53,6 @@ export const collect = async (signal: AbortSignal) => {
       return
     }
     const listKey = platform.id
-    // const task = section.task(listKey, {
-    //   type: terminalRowTypes.STORAGE,
-    //   id: `coingecko/${listKey}`,
-    // })
     const collect = remoteTokenList.collect({
       providerKey: 'coingecko',
       listKey,

@@ -46,29 +46,29 @@ export const collect =
   }: Input) =>
     async (signal: AbortSignal) => {
       const id = `${providerKey}/${listKey}`
-      const row = (ro ?? utils.terminal).task(id, { id, type: terminalRowTypes.SETUP }) ??
-        utils.terminal.issue({
-          type: terminalRowTypes.SETUP,
-          id,
-        })
-      const response = await fetch(tokenListUrl, { signal })
-      if (!response.ok) {
-        row.increment(terminalLogTypes.EROR, new Set([id]))
-        row.complete()
-        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
+      const row = ro ? ro.task(id, { id, type: terminalRowTypes.SETUP }) :
+        (utils.terminal.get(id) ??
+          utils.terminal.issue({
+            type: terminalRowTypes.SETUP,
+            id,
+          }))
+      const tokenList = await db.cachedJSONRequest<types.TokenList>(
+        tokenListUrl,
+        tokenListUrl,
+        { signal },
+      )
+      if (signal.aborted) {
+        return
       }
 
-      let tokenList: types.TokenList
-      try {
-        tokenList = await response.json()
-      } catch (e) {
-        failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
+      if (!tokenList) {
         row.increment(terminalLogTypes.EROR, new Set([id]))
         row.complete()
-        return
-        // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
+        throw new Error(`Invalid JSON response from ${tokenListUrl}`)
       }
+
       if (signal.aborted) {
+        row.complete()
         return
       }
 
@@ -164,6 +164,7 @@ export const collect =
         }),
       )
       if (signal.aborted) {
+        row.complete()
         return
       }
 
@@ -179,5 +180,6 @@ export const collect =
         row,
         signal,
       })
+      row.complete()
       return result
     }

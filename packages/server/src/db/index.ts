@@ -31,6 +31,8 @@ import type {
   BridgeLink,
   InsertableHeaderLink,
   HeaderLink,
+  CacheRequest,
+  InsertableCacheRequest,
 } from 'knex/types/tables'
 import { fetch } from '../fetch'
 import _ from 'lodash'
@@ -934,3 +936,29 @@ export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
     .where('bridgeId', bridgeId)
     .orderBy('bridgeLinkId', 'desc')
     .first()
+
+export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
+  tx(tableNames.cacheRequest)
+    .select('*')
+    .where('key', key)
+    .where('expiresAt', '>=', new Date())
+    .first<CacheRequest>()
+)
+
+export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
+  tx(tableNames.cacheRequest).insert(cacheRequest).returning<CacheRequest[]>('*')
+
+export const cachedJSONRequest = async <T extends object>(key: string, ...args: Parameters<typeof fetch>) => {
+  const cached = await getCachedRequest(key)
+  if (cached) {
+    return JSON.parse(cached.value) as T
+  }
+  const result = await fetch(...args)
+  const value = await result.json() as T
+  await insertCacheRequest({
+    key,
+    value: JSON.stringify(value),
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+  })
+  return value
+}
