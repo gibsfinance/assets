@@ -3,7 +3,7 @@ import * as fs from 'fs/promises'
 import _ from 'lodash'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
-import { limitBy } from '@gibs/utils'
+import { limitBy, timeout } from '@gibs/utils'
 
 const limit = limitBy<AssetPlatform>(`coingecko-platforms`, 1)
 
@@ -59,15 +59,26 @@ export const collect = async (signal: AbortSignal) => {
       tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
       row: section,
     })
-    try {
-      await collect(signal)
-    } catch (err) {
-      if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
-        row.increment(terminalLogTypes.EROR, new Set([listKey]))
-        return
+    let retries = 0
+    while (true) {
+      try {
+        await collect(signal)
+      } catch (err) {
+        if ((err as Error).message.includes('429 Too Many Requests')) {
+          retries++
+          await timeout(5000 * retries).promise
+          if (retries > 5) {
+            throw err
+          }
+          continue
+        }
+        if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
+          row.increment(terminalLogTypes.EROR, new Set([listKey]))
+          return
+        }
+        console.log(err)
+        throw err
       }
-      console.log(err)
-      throw err
     }
   })
 
