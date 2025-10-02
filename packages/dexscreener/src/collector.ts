@@ -93,6 +93,9 @@ export class Collector {
       transport: http(chain.rpcUrls.default.http[0]),
     })
     const tokenList = [...tokens.values()]
+    if (this.signal.aborted) {
+      return
+    }
     const decimals = await client.multicall({
       contracts: tokenList.map((token) => ({
         abi: erc20Abi,
@@ -102,6 +105,9 @@ export class Collector {
       })),
       allowFailure: true,
     })
+    if (this.signal.aborted) {
+      return
+    }
     const missing = []
     for (let i = 0; i < tokenList.length; i++) {
       const { result, status } = decimals[i]
@@ -123,6 +129,9 @@ export class Collector {
       })),
       allowFailure: true,
     })
+    if (this.signal.aborted) {
+      return
+    }
     for (let i = 0; i < missing.length; i++) {
       const { result, status } = decimalsBytes32[i]
       if (status !== 'success') {
@@ -137,6 +146,9 @@ export class Collector {
     }
   }
   async tokenPairs(token: string, signal?: AbortSignal) {
+    if (this.signal.aborted) {
+      return
+    }
     const pairs = await retry(() =>
       dexscreenerApi.tokenPairs({
         chainId: this.chainKey,
@@ -144,12 +156,18 @@ export class Collector {
         signal,
       }),
     )
+    if (this.signal.aborted) {
+      return
+    }
     return pairs
   }
   async collect(tokens: Set<string>, signal?: AbortSignal) {
     const matchingTokensPairsDeep: TokenPairsResponse[] = []
     for (const token of tokens.values()) {
       const pairs = await this.tokenPairs(token, signal)
+      if (this.signal.aborted || !pairs) {
+        return
+      }
       matchingTokensPairsDeep.push(pairs)
     }
     const pairs = _.flatten(matchingTokensPairsDeep)
