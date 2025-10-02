@@ -948,17 +948,21 @@ export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
   tx(tableNames.cacheRequest).insert(cacheRequest).returning<CacheRequest[]>('*')
 
-export const cachedJSONRequest = async <T extends object>(key: string, ...args: Parameters<typeof fetch>) => {
+export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
+  return cachedJSON(key, signal, async (signal) => {
+    return fetch(args[0], { signal, ...args[1] }).then((res) => res.json() as Promise<T>)
+  })
+}
+export const cachedJSON = async <T extends object>(key: string, signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>) => {
   const cached = await getCachedRequest(key)
   if (cached) {
     return JSON.parse(cached.value) as T
   }
-  const result = await fetch(...args)
-  const value = await result.json() as T
+  const result = await fn(signal) as T
   await insertCacheRequest({
     key,
-    value: JSON.stringify(value),
+    value: JSON.stringify(result),
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
   })
-  return value
+  return result
 }

@@ -21,12 +21,13 @@ type ChainInfo = {
 class TerminalLinkedCollector extends Collector {
   protected infoCheck = new Set<string>()
   constructor(
-    protected chainKey: string,
-    protected chainType: ChainType,
-    protected chainId: number,
+    chainKey: string,
+    chainType: ChainType,
+    chainId: number,
+    signal: AbortSignal,
     protected row: TerminalRowProxy,
   ) {
-    super(chainKey, chainType, chainId)
+    super(chainKey, chainType, chainId, signal)
   }
   setInfo(address: string, info: IInfo) {
     super.setInfo(address, info)
@@ -56,7 +57,10 @@ class TerminalLinkedCollector extends Collector {
       },
     })
     // should always finish within 200ms (rate limit)
-    const pairs = await super.tokenPairs(token)
+    const key = `${providerKey}-${this.chainKey}-${token}-pairs`
+    const pairs = await db.cachedJSON(key, this.signal, async (signal) => {
+      return await super.tokenPairs(token, signal)
+    })
     this.row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     task.complete()
     return pairs
@@ -80,7 +84,7 @@ const parseSidebarChainInfo = () => {
   return chainInfo
 }
 
-export const collect = async (signal?: AbortSignal) => {
+export const collect = async (signal: AbortSignal) => {
   const row = utils.terminal.issue({
     type: terminalRowTypes.SETUP,
     id: providerKey,
@@ -141,7 +145,7 @@ export const collect = async (signal?: AbortSignal) => {
       return
     }
     const url = new URL(info.url)
-    const image = await fetch(url).then(responseToBuffer)
+    const image = await fetch(url, { signal }).then(responseToBuffer)
     await db.transaction(async (tx) => {
       const network = await db.insertNetworkFromChainId(chain.id, chain.type, tx)
       await db.fetchImageAndStoreForNetwork(
@@ -187,7 +191,7 @@ export const collect = async (signal?: AbortSignal) => {
         return
       }
       const startingTokens = (nativeTokens.get(`${chain.type}-${chain.id}`) ?? nativeTokens.get(chain.type))!
-      const collector = new TerminalLinkedCollector(key, chain.type, chain.id, row)
+      const collector = new TerminalLinkedCollector(key, chain.type, chain.id, signal, row)
 
       for (const token of startingTokens) {
         collector.markTokenAsPending(token)

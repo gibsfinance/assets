@@ -42,8 +42,8 @@ export const collect = async (signal: AbortSignal) => {
   // const assetPlatforms = await processAssetPlatforms()
   const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
     `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+    signal,
     `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
-    { signal },
   )
   row.createCounter(terminalCounterTypes.NETWORK)
   const platformIds = new Set(_(platforms).map(platform => platform.id).compact().value())

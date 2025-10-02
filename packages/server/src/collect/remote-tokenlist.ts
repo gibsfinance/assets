@@ -54,8 +54,8 @@ export const collect =
           }))
       const tokenList = await db.cachedJSONRequest<types.TokenList>(
         tokenListUrl,
+        signal,
         tokenListUrl,
-        { signal },
       )
       if (signal.aborted) {
         return
