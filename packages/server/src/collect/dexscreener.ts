@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as cheerio from 'cheerio'
 import { limitBy, responseToBuffer } from '@gibs/utils/fetch'
-import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey } from '@gibs/dexscreener'
+import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey, TokenPairsResponse } from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
 import { fetch } from '../fetch'
@@ -58,8 +58,8 @@ class TerminalLinkedCollector extends Collector {
     })
     // should always finish within 200ms (rate limit)
     const key = `${providerKey}-${this.chainKey}-${token}-pairs`
-    const pairs = await db.cachedJSON(key, this.signal, async (signal) => {
-      return await super.tokenPairs(token, signal)
+    const pairs = await db.cachedJSON<TokenPairsResponse>(key, this.signal, async (signal) => {
+      return (await super.tokenPairs(token, signal))!
     })
     this.row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     task.complete()
