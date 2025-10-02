@@ -111,6 +111,7 @@ const retrieveData = async ({
       await timeout(10_000).promise
       throw new Error(result.message)
     }
+    // if accessing fails, throw
     result.tokens[0]
     return result
   })
@@ -142,6 +143,9 @@ const collectTokens = async (
   const pageCount = first.totalPages
   const emptyArray = _.range(1, pageCount + 1)
   await limiter.map(emptyArray, async (index) => {
+    if (signal.aborted) {
+      return
+    }
     if (discontinue) {
       return
     }

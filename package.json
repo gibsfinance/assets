@@ -1,6 +1,6 @@
 {
   "name": "gibassets",
-  "version": "0.0.1",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "docker:build": "yarn run docker:build:postgres && yarn run docker:build:server",
@@ -19,6 +19,7 @@
     "test": "yarn workspace server run test",
     "db:migrate-latest": "yarn workspace server run db:migrate-latest",
     "db:seed": "yarn workspace server run db:seed",
+    "cronworker": "/usr/local/bin/update_submodules.sh && yarn workspace server run collect --logger=pretty",
     "db:migrate-make": "yarn workspace server run db:migrate-make"
   },
   "workspaces": [

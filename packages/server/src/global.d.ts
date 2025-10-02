@@ -152,6 +152,12 @@ declare module 'knex/types/tables.js' {
     imageHash: string
   }
   interface InsertableHeaderLink extends Omit<HeaderLink, TimestampKeys> { }
+  interface CacheRequest {
+    key: string
+    value: string
+    expiresAt: Date
+  }
+  interface InsertableCacheRequest extends Omit<CacheRequest, TimestampKeys> { }
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network
@@ -165,5 +171,6 @@ declare module 'knex/types/tables.js' {
     [tableNames.bridge]: Bridge
     [tableNames.bridgeLink]: BridgeLink
     [tableNames.headerLink]: HeaderLink
+    [tableNames.cacheRequest]: CacheRequest
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@gibs/utils",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Utility functions for your project",
   "main": "index.js",

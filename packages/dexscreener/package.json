@@ -1,6 +1,6 @@
 {
   "name": "@gibs/dexscreener",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Dexscreener api wrapper for efficient token list collection",
   "main": "index.js",
   "scripts": {

@@ -31,6 +31,8 @@ import type {
   BridgeLink,
   InsertableHeaderLink,
   HeaderLink,
+  CacheRequest,
+  InsertableCacheRequest,
 } from 'knex/types/tables'
 import { fetch } from '../fetch'
 import _ from 'lodash'
@@ -227,7 +229,7 @@ export const insertImage = async (
       .from(tableNames.image)
       .insert(insertable)
       .onConflict(['imageHash'])
-      .merge(['imageHash'])
+      .merge(['content', 'mode']) // Don't update uri, ext, or imageHash
       .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
   ])
   // this fails for some reason when the db creates the image hash
@@ -872,14 +874,14 @@ export const getListOrderId = async (orderParam: string) => {
 
 export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
   const qSub = q
-    .join(tableNames.list, {
+    .leftJoin(tableNames.list, {
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
     })
     .fullOuterJoin(tableNames.listOrderItem, {
       [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
       [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
     })
-    .join(tableNames.listOrder, {
+    .leftJoin(tableNames.listOrder, {
       [`${tableNames.listOrder}.listOrderId`]: `${tableNames.listOrderItem}.listOrderId`,
     })
     .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
@@ -934,3 +936,33 @@ export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
     .where('bridgeId', bridgeId)
     .orderBy('bridgeLinkId', 'desc')
     .first()
+
+export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
+  tx(tableNames.cacheRequest)
+    .select('*')
+    .where('key', key)
+    .where('expiresAt', '>=', new Date())
+    .first<CacheRequest>()
+)
+
+export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
+  tx(tableNames.cacheRequest).insert(cacheRequest).returning<CacheRequest[]>('*')
+
+export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
+  return cachedJSON(key, signal, async (signal) => {
+    return fetch(args[0], { signal, ...(args[1] ?? {}) }).then((res) => res.json() as Promise<T>)
+  })
+}
+export const cachedJSON = async <T extends object>(key: string, signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>) => {
+  const cached = await getCachedRequest(key)
+  if (cached) {
+    return JSON.parse(cached.value) as T
+  }
+  const result = await fn(signal) as T
+  await insertCacheRequest({
+    key,
+    value: JSON.stringify(result),
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+  })
+  return result
+}

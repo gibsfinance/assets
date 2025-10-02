@@ -134,7 +134,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           row[k] = v
         }
         doLog(() => {
-          log(`updating row id=%o, kv=%o`, row.fullId, row.kv)
+          log(`updating row id=%o, kv=%o`, row.fullId, row.kv ?? {})
         })
       })
     },
@@ -231,6 +231,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       rerenderAfter(() => {
         row.hide = true
         doLog(() => {
+          console.log('calling hide again')
           log(`hiding row key=%o`, row.id)
         })
       })
@@ -254,7 +255,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       rerenderAfter(() => {
         row.type = terminalRowTypes.COMPLETE
         doLog(() => {
-          log(`completing row key=%o kv=%o`, row.id, row.kv)
+          log(`completing row key=%o kv=%o`, row.id, row.kv ?? {})
         })
       })
     },

@@ -32,6 +32,7 @@ export const main = async (providers: Collectable[]) => {
         await collector(utils.controller.signal)
         utils.terminalRow.increment('success', provider)
       } catch (err) {
+        console.log('error', provider, err)
         utils.terminalRow.increment(terminalLogTypes.EROR, provider)
         failureLog('failed to collect', provider, (err as Error).message)
       }

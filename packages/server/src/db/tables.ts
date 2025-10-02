@@ -16,6 +16,7 @@ export const tableNames = {
   bridge: 'bridge',
   bridgeLink: 'bridge_link',
   headerLink: 'header_link',
+  cacheRequest: 'cache_request',
 } as const
 
 const tn = Object.values(tableNames)
