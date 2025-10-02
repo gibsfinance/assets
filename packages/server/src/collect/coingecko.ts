@@ -59,6 +59,7 @@ export const collect = async (signal: AbortSignal) => {
       return
     }
     const listKey = platform.id
+    await timeout(1_500).promise
     const collect = remoteTokenList.collect({
       providerKey: 'coingecko',
       listKey,
@@ -85,6 +86,7 @@ export const collect = async (signal: AbortSignal) => {
         console.log(err)
         throw err
       }
+      break
     }
   })
 

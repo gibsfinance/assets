@@ -130,9 +130,13 @@ export const collect = async ({
     if (signal.aborted) {
       return
     }
+    const network = networks.get(entry.chainId)!
+    if (!network) {
+      console.log('no network found for', tokenList, entry)
+      continue
+    }
     await retry(async () => {
       await db.transaction(async (tx) => {
-        const network = networks.get(entry.chainId)!
         const token = {
           name: entry.name,
           symbol: entry.symbol,
@@ -167,10 +171,4 @@ export const collect = async ({
     })
   }
   row.complete()
-
-  // updateStatus({
-  //   provider: providerKey,
-  //   message: `Completed processing ${totalTokens} tokens!`,
-  //   phase: 'complete',
-  // } satisfies StatusProps)
 }

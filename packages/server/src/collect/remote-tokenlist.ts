@@ -73,6 +73,11 @@ export const collect =
       }
 
       const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
+      if (!tokenList.tokens) {
+        console.log(tokenListUrl, tokenList)
+        row.complete()
+        return
+      }
       tokenList.tokens.forEach((token) => {
         if (blacked.has(token.address.toLowerCase())) {
           token.logoURI = ''
@@ -181,6 +186,5 @@ export const collect =
         signal,
       })
       row.complete()
-      row.hide()
       return result
     }
