@@ -11,7 +11,7 @@ console.log('serving static files from', staticPath)
 app.use(express.static(staticPath))
 
 export const main = async () => {
-  return listen().then(async () => {
+  return listen(process.env.PORT ? parseInt(process.env.PORT) : 3000).then(async () => {
     return new Promise((resolve, reject) => {
       app.once('close', resolve).once('error', reject)
     }).then(() => {

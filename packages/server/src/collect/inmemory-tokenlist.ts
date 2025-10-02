@@ -89,7 +89,11 @@ export const collect = async ({
           key: listKey,
           default: isDefault,
           description: '',
-          ...(tokenList.version || {}),
+          ...(tokenList.version && {
+            major: typeof tokenList.version.major === 'number' ? tokenList.version.major : 1,
+            minor: typeof tokenList.version.minor === 'number' ? tokenList.version.minor : 0,
+            patch: typeof tokenList.version.patch === 'number' ? tokenList.version.patch : 0,
+          }),
         },
         tx,
       )

@@ -6,7 +6,7 @@ import * as utils from '../utils'
 import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
+import { KV, terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes, TerminalSectionProxy } from '../log/types'
 
 type Extension = {
   address: viem.Hex
@@ -21,6 +21,7 @@ type Extension = {
 }
 
 type Input = {
+  row?: TerminalSectionProxy
   extension?: Extension[]
   providerKey: string
   tokenList: string
@@ -41,18 +42,18 @@ export const collect =
     extension,
     isDefault = true,
     blacklist = new Set<string>(),
+    row: ro,
   }: Input) =>
     async (signal: AbortSignal) => {
       const id = `${providerKey}/${listKey}`
-      const row =
-        utils.terminal.get(id) ??
+      const row = (ro ?? utils.terminal).task(id, { id, type: terminalRowTypes.SETUP }) ??
         utils.terminal.issue({
           type: terminalRowTypes.SETUP,
           id,
         })
       const response = await fetch(tokenListUrl, { signal })
       if (!response.ok) {
-        row.remove(terminalLogTypes.EROR)
+        row.increment(terminalLogTypes.EROR, new Set([id]))
         row.complete()
         throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`)
       }
@@ -62,7 +63,7 @@ export const collect =
         tokenList = await response.json()
       } catch (e) {
         failureLog('provider=%o list=%o error=%o', providerKey, listKey, (e as Error).message)
-        row.remove(terminalLogTypes.EROR)
+        row.increment(terminalLogTypes.EROR, new Set([id]))
         row.complete()
         return
         // throw new Error(`Invalid JSON response from ${tokenListUrl}: ${e}`)
@@ -155,10 +156,10 @@ export const collect =
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)
             failureLog('provider=%o list=%o item=%o error=%o', providerKey, listKey, item, errorMessage)
-            row.increment(terminalLogTypes.EROR, utils.counterId.token([item.network.id, item.address]))
+            row.increment(terminalLogTypes.EROR, new Set([utils.counterId.token([item.network.id, item.address])]))
             return undefined
           } finally {
-            row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([item.network.id, item.address]))
+            row.increment(terminalCounterTypes.TOKEN, new Set([utils.counterId.token([item.network.id, item.address])]))
           }
         }),
       )
@@ -168,14 +169,15 @@ export const collect =
 
       const validExtras = _.compact(extras)
       tokenList.tokens = _.uniqBy([...validExtras, ...tokenList.tokens], 'address')
+      row.createCounter(terminalCounterTypes.TOKEN)
+      row.incrementTotal(terminalCounterTypes.TOKEN, new Set(tokenList.tokens.map(token => utils.counterId.token([token.chainId, token.address]))))
       const result = await inmemoryTokenlist.collect({
         providerKey,
         listKey,
         tokenList,
         isDefault,
+        row,
         signal,
       })
-      row.remove(terminalLogTypes.EROR)
-      row.complete()
       return result
     }

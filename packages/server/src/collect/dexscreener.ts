@@ -200,6 +200,10 @@ export const collect = async (signal?: AbortSignal) => {
         ])
       }
       const [all, header] = collector.toTokenLists()
+      const folder = path.join(process.cwd(), 'dexscreener', chain.id.toString())
+      fs.mkdirSync(folder, { recursive: true })
+      fs.writeFileSync(path.join(folder, 'all.json'), JSON.stringify(all, null, 2))
+      fs.writeFileSync(path.join(folder, 'header.json'), JSON.stringify(header, null, 2))
       const addressToHeaderUri = new Map<string, string>(header)
       for (const [i, token] of all.entries()) {
         const chainTokenId = utils.counterId.token([chain.id, token.address])

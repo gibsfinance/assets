@@ -1,7 +1,8 @@
 import * as viem from 'viem'
+import * as fs from 'fs'
 import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
-import { tableNames } from '../../db/tables'
+import { imageMode, tableNames } from '../../db/tables'
 import type { ChainId } from '@gibs/utils'
 import * as utils from '../../utils'
 import * as db from '../../db'
@@ -11,6 +12,7 @@ import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
 import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
+import { ImageModeParam } from '../../types'
 
 export const getListTokens = async ({ chainId, address, listOrderId, exts, providerKey, listKey }: {
   chainId: ChainId,
@@ -22,28 +24,26 @@ export const getListTokens = async ({ chainId, address, listOrderId, exts, provi
 }) => {
   const filter = {
     [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
-    [`${tableNames.token}.providedId`]: viem.getAddress(address),
+    [`${tableNames.token}.providedId`]: address,
   }
-  // if (providerKey) {
-  //   filter[`${tableNames.provider}.key`] = providerKey
-  // }
-  // if (listKey) {
-  //   filter[`${tableNames.list}.key`] = listKey
-  // }
   let q = db
     .getDB()
-    .select('*')
-    .from(tableNames.listToken)
-    .join(`${config.database.schema}.${tableNames.list}`, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .join(`${config.database.schema}.${tableNames.provider}`, {
+    .select([
+      '*',
+      db.getDB().raw(`${tableNames.provider}.key as provider_key`),
+      db.getDB().raw(`${tableNames.list}.key as list_key`),
+    ])
+    .from(tableNames.provider)
+    .rightJoin(`${config.database.schema}.${tableNames.list}`, {
       [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
     })
-    .join(`${config.database.schema}.${tableNames.token}`, {
+    .rightJoin(`${config.database.schema}.${tableNames.listToken}`, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .rightJoin(`${config.database.schema}.${tableNames.token}`, {
       [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
     })
-    .join(`${config.database.schema}.${tableNames.image}`, {
+    .rightJoin(`${config.database.schema}.${tableNames.image}`, {
       [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
     })
     .where(filter)
@@ -56,12 +56,9 @@ export const getListTokens = async ({ chainId, address, listOrderId, exts, provi
   if (listKey?.length) {
     q = q.whereIn(`${tableNames.list}.key`, listKey)
   }
-  if (listOrderId) {
-    q = db.applyOrder(q, listOrderId) //
-    // .join(tableNames.list, {
-    //   [`${tableNames.listToken}.listId`]: `${tableNames.list}.listId`,
-    // })
-  }
+  // if (listOrderId) {
+  //   q = db.applyOrder(q, listOrderId)
+  // }
   return {
     filter,
     img: await q.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
@@ -76,7 +73,7 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
     .getDB()
     .select<Image>('*')
     .from(tableNames.image)
-    .join(`${config.database.schema}.${tableNames.network}`, {
+    .leftJoin(`${config.database.schema}.${tableNames.network}`, {
       [`${tableNames.network}.imageHash`]: `${tableNames.image}.imageHash`,
     })
     .where(filter)
@@ -175,7 +172,7 @@ export const getImage =
         providerKey: queryStringToList(req.query.providerKey),
         listKey: queryStringToList(req.query.listKey),
       })
-      sendImage(res, img)
+      sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
     }
 
 export const getImageAndFallback: RequestHandler = async (req, res) => {
@@ -196,7 +193,7 @@ export const getImageAndFallback: RequestHandler = async (req, res) => {
       listKey,
     })
   }
-  sendImage(res, img)
+  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
@@ -211,7 +208,7 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
   if (!img) {
     return next(httpErrors.NotFound('image not found'))
   }
-  sendImage(res, img)
+  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {
@@ -228,7 +225,7 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
 
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res) => {
   const img = await bestGuessNeworkImage(req.params.chainId)
-  sendImage(res, img)
+  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 const ignoreNotFound = (err: HttpError) => {
@@ -243,7 +240,7 @@ export type KeyFilterQuery = {
   listKey: string | string[]
 }
 
-export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] } & KeyFilterQuery> = async (req, res, next) => {
+export const tryMultiple: RequestHandler<any, any, any, { i: string | string[]; mode: ImageModeParam } & KeyFilterQuery> = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
   if (Array.isArray(i)) images = i.map((i) => i.toString())
@@ -258,7 +255,7 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
     if (!address) {
       const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
       if (!img) continue
-      return sendImage(res, img)
+      return sendImage(res, img, resolveImageMode(req.query.mode))
     }
     if (order && order.length !== 64 /* check if hex */) {
       return next(httpErrors.NotAcceptable('invalid order'))
@@ -281,13 +278,28 @@ export const tryMultiple: RequestHandler<any, any, any, { i: string | string[] }
       }).catch(ignoreNotFound)
     }
     if (img) {
-      return sendImage(res, img)
+      return sendImage(res, img, resolveImageMode(req.query.mode))
     }
   }
   return next(httpErrors.NotFound('image not found from list'))
 }
 
-export const sendImage = (res: Response, img: Image) => {
+export const resolveImageMode = (mode: ImageModeParam | null | undefined): ImageModeParam => {
+  if (!mode) {
+    return imageMode.SAVE
+  }
+  if (mode === imageMode.LINK) {
+    return imageMode.LINK
+  }
+  return imageMode.SAVE
+}
+
+export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+  if (mode === imageMode.LINK) {
+    if (img.uri && img.uri.startsWith('https')) {
+      return res.redirect(img.uri)
+    }
+  }
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   if (img.uri) {
     if (img.uri.startsWith('http') || img.uri.startsWith('ipfs')) {

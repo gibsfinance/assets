@@ -227,7 +227,7 @@ export const insertImage = async (
       .from(tableNames.image)
       .insert(insertable)
       .onConflict(['imageHash'])
-      .merge(['imageHash'])
+      .merge(['content', 'mode']) // Don't update uri, ext, or imageHash
       .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
   ])
   // this fails for some reason when the db creates the image hash
@@ -872,14 +872,14 @@ export const getListOrderId = async (orderParam: string) => {
 
 export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
   const qSub = q
-    .join(tableNames.list, {
+    .leftJoin(tableNames.list, {
       [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
     })
     .fullOuterJoin(tableNames.listOrderItem, {
       [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
       [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
     })
-    .join(tableNames.listOrder, {
+    .leftJoin(tableNames.listOrder, {
       [`${tableNames.listOrder}.listOrderId`]: `${tableNames.listOrderItem}.listOrderId`,
     })
     .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)

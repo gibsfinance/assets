@@ -169,7 +169,7 @@ export class Collector {
     this.markTokenAsFetched(tokens)
   }
   toTokenLists() {
-    return [...this.token.values()].reduce(
+    const list = [...this.token.values()].reduce(
       (acc, token) => {
         const info = this.info.get(this.toKey(token.address))
         const decimal = this.decimals.get(this.toKey(token.address)) ?? 0
@@ -185,5 +185,6 @@ export class Collector {
       },
       [[], []] as [MinimalTokenInfoWithLogo[], [string, string][]],
     )
+    return list
   }
 }
