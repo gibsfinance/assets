@@ -333,7 +333,6 @@ async function fetchTopTokensViaPuppeteer({
     })
 
     const url = `${explorerBaseUrl}/tokens?sort=24h_volume_usd&order=desc&ps=100&apikey=${process.env.ETHERSCAN_API_KEY}`
-    console.log('navigating to', url)
 
     // Navigate to the page with timeout
     await page.goto(url, {
@@ -355,7 +354,6 @@ async function fetchTopTokensViaPuppeteer({
     })
 
     if (isCloudflareChallenge) {
-      console.log('Cloudflare challenge detected', url)
       // Wait for potential Cloudflare challenge to complete
       await delay(3000)
 
@@ -367,9 +365,7 @@ async function fetchTopTokensViaPuppeteer({
             document.body.innerHTML.includes('DDoS protection') ||
             document.title.includes('Just a moment')
         })
-
         if (isCloudflareChallenge) {
-          console.log('Cloudflare challenge detected 2', url)
           // Wait longer for Cloudflare challenge to complete
           await delay(10000)
           count--
@@ -382,6 +378,7 @@ async function fetchTopTokensViaPuppeteer({
     // Get the page content
     const html = await page.content().catch(() => '')
     if (!html) {
+      row.increment(terminalLogTypes.EROR, new Set([`${chainId}-puppeteer-error`]))
       return []
     }
 
@@ -436,7 +433,7 @@ async function fetchTopTokensViaPuppeteer({
     return []
   } finally {
     if (page) {
-      console.log('closing page', chainId)
+      // console.log('closing page', chainId)
       await page.close()
       page = null
     }
