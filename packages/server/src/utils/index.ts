@@ -91,7 +91,7 @@ const defaultBatchSettings = {
 export const chainToPublicClient = _.memoize((chain: viem.Chain): viem.PublicClient => {
   let transport = viem.http()
   if (chain.id === 250) {
-    transport = viem.http('https://fantom-rpc.publicnode.com')
+    transport = viem.http('https://1rpc.io/ftm')
   }
   return viem.createPublicClient({
     chain,
