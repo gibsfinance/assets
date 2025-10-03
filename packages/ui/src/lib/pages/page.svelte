@@ -9,8 +9,7 @@
   import { onMount } from 'svelte'
   import { showTestnets } from '../stores/settings.svelte'
   import { goto } from '../stores/page.svelte'
-  import { root } from '../config'
-  import { isDark } from '../stores/theme'
+  import Attribution from '../components/Attribution.svelte'
 
   const shouldShowTestnet = $derived(showTestnets.value)
   let metricsData: PlatformMetrics | null = $derived(metrics.value)
@@ -326,20 +325,24 @@
           </div>
         </section>
 
-        <div class="container mx-auto px-4">
+        <Attribution />
+
+        <div class="container mx-auto md:px-4">
           <!-- Features Grid -->
           <section class="space-y-8 py-8">
             <h2 class="h2 text-center text-3xl font-bold">Why Use Your Own Asset Server?</h2>
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
               {#each features as feature}
                 <div
-                  class="feature-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:scale-[1.02] hover:shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                  class="feature-card group md:rounded-lg border border-gray-200 bg-white p-6 transition-all hover:scale-[1.02] hover:shadow-lg dark:border-gray-700 dark:bg-gray-900">
                   <div class="relative">
-                    <div class="absolute inset-0 -z-10 rounded-lg transition-colors"></div>
+                    <!-- <div class="absolute inset-0 -z-10 rounded-lg transition-colors"></div> -->
+                    <div class="flex items-center gap-4">
                     <i
                       class="fas {feature.icon} mb-4 text-4xl text-secondary-600 transition-transform group-hover:scale-110"
                     ></i>
                     <h3 class="h3 mb-2 font-bold">{feature.title}</h3>
+                    </div>
                     <p class="text-gray-600 dark:text-gray-300">{feature.description}</p>
                   </div>
                 </div>
@@ -352,27 +355,32 @@
             <h2 class="h2 text-center text-3xl font-bold">Simple Integration</h2>
             <div class="grid gap-6">
               {#each examples as example}
-                <div class="card p-6 transition-all bg-white dark:bg-gray-900 hover:shadow hover:shadow-secondary-600/5 border border-gray-200 dark:border-gray-700">
+                <div class="card p-6 rounded-none md:rounded-lg transition-all bg-white dark:bg-gray-900 hover:shadow hover:shadow-secondary-600/5 border border-gray-200 dark:border-gray-700">
                   <div class="grid gap-6 lg:grid-cols-2">
                     <!-- Visual Preview -->
                     <div class="flex items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
                       {#if example.title === 'Get Token Image'}
-                        <div class="flex items-center gap-4">
+                        <div class="flex flex-col md:flex-row items-center gap-4">
+                          <div class="flex flex-row items-center gap-3">
                           <img
                             src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
                             alt="WBTC Token"
                             class="h-12 w-12 rounded-full" />
-                          <i class="fas fa-arrow-right text-secondary-600"></i>
+                          <i class="fas fa-arrow-right hidden md:visible text-secondary-600"></i>
+                          </div>
                           <CodeBlock code={example.displayUrl} />
                         </div>
                       {:else if example.title === 'Get Network Logo'}
-                        <div class="flex items-center gap-4">
+                        <div class="flex flex-col md:flex-row items-center gap-4">
+                          <div class="flex flex-row items-center gap-3">
                           <img src={getApiUrl('/image/1')} alt="Ethereum" class="h-12 w-12 rounded-full" />
-                          <i class="fas fa-arrow-right text-secondary-600"></i>
+                          <i class="fas fa-arrow-right hidden md:visible text-secondary-600"></i>
+                          </div>
                           <CodeBlock code={example.displayUrl} />
                         </div>
                       {:else}
-                        <div class="flex items-center gap-4">
+                        <div class="flex flex-col md:flex-row items-center gap-4">
+                          <div class="flex flex-row items-center gap-3">
                           <div class="flex -space-x-4">
                             <img
                               src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
@@ -387,7 +395,8 @@
                               alt="Token 3"
                               class="h-12 w-12 rounded-full border-2 border-surface-700" />
                           </div>
-                          <i class="fas fa-arrow-right text-secondary-600"></i>
+                          <i class="fas fa-arrow-right hidden md:visible text-secondary-600"></i>
+                          </div>
                           <CodeBlock code={example.displayUrl} />
                         </div>
                       {/if}
@@ -421,7 +430,7 @@
             <h2 class="h2 text-center text-3xl font-bold">Platform Metrics</h2>
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div
-                class="metric-card group rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:border-gray-700 dark:bg-gray-900">
+                class="metric-card group md:rounded-lg border border-gray-200 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:border-gray-700 dark:bg-gray-900">
                 {#if metricsData}
                   {@const totalTokens = metricsData.tokenList.total}
                   <span
@@ -434,7 +443,7 @@
                 <p class="text-center text-lg text-gray-600 dark:text-gray-300">Total Tokens</p>
               </div>
               <div
-                class="metric-card group rounded-lg border border-gray-200 dark:border-gray-700 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:bg-gray-900">
+                class="metric-card group md:rounded-lg border border-gray-200 dark:border-gray-700 bg-white p-6 transition-all hover:shadow-lg hover:shadow-secondary-600/5 dark:bg-gray-900">
                 {#if metricsData}
                   <span
                     class="mb-2 block bg-gradient-to-r from-secondary-600 to-[#00b368] bg-clip-text text-center text-5xl font-bold text-transparent">

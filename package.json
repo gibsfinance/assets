@@ -12,7 +12,7 @@
     "build": "yarn workspace @gibs/utils run build && yarn workspace @gibs/dexscreener run build && yarn workspace ui run build && yarn workspace server run build",
     "collect": "yarn workspace server run collect",
     "server": "yarn workspace server run server",
-    "ui:dev": "yarn workspace ui run dev:static",
+    "ui:dev": "yarn workspace ui run dev",
     "ui:preview": "yarn workspace ui run preview",
     "server:dev": "yarn workspace server run dev",
     "db:up": "docker compose -f docker-compose.yml up -d postgres",
