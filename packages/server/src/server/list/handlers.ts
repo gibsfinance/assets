@@ -5,6 +5,7 @@ import * as utils from './utils'
 import { tableNames } from '../../db/tables'
 import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
+import config from '../../../config'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -38,6 +39,7 @@ export const merged: RequestHandler = async (req, res, next) => {
   const tokens = await db.applyOrder(listTokens, orderId).where(`chain_id`, '!=', 0)
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens, filters, extensions)
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json(utils.minimalList(entries))
 }
 
@@ -109,5 +111,6 @@ const getLists = async (filter: object) => {
 }
 
 export const all: RequestHandler = async (req, res) => {
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json(await getLists(req.query))
 }

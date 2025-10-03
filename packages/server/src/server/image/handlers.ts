@@ -1,5 +1,4 @@
 import * as viem from 'viem'
-import * as fs from 'fs'
 import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
 import { imageMode, tableNames } from '../../db/tables'

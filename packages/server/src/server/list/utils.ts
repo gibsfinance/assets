@@ -7,6 +7,7 @@ import { Knex } from 'knex'
 import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
 import { tableNames } from '../../db/tables'
 import _ from 'lodash'
+import config from '../../../config'
 
 export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
   const [major, minor, patch] = version.split('.')
@@ -29,6 +30,7 @@ export const respondWithList = async (
   const tokens = await q.orderBy('listTokenOrderId', 'asc')
   // could possibly be turned into a query
   const tkns = normalizeTokens(tokens, filters, extensions)
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json({
     name: list.name || '',
     logoURI: utils.directUri(list),
