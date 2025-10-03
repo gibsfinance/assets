@@ -18,7 +18,10 @@ const assetsFolder = 'assets'
  * Main collection function that processes all blockchain folders
  */
 export const collect = async (signal: AbortSignal) => {
-  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
+  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot)).filter((f) => {
+    return f === 'ethereum'
+  })
+  console.log(blockchainFolders)
   const row = utils.terminal.issue({
     type: terminalRowTypes.SETUP,
     id: providerKey,
@@ -255,12 +258,21 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     key,
   })
 
-  if (await fs.promises.stat(networkLogoPath).catch(() => false)) {
+  const stat = await fs.promises.stat(networkLogoPath).catch(() => false)
+  if (stat) {
+    await db.fetchImageAndStoreForNetwork({
+      network,
+      uri: networkLogoPath,
+      originalUri: networkLogoPath,
+      providerKey,
+      signal,
+    })
     await db.fetchImageAndStoreForList({
       listId: networkList.listId,
       uri: networkLogoPath,
       originalUri: networkLogoPath,
       providerKey,
+      signal,
     })
   }
 
