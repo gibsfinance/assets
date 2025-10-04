@@ -36,24 +36,22 @@ import { onMount, onDestroy } from 'svelte'
     isDark.toggle()
   }
 
-  onMount(() => {
-    // Only set system preference if no stored preference exists
-    const storedTheme = localStorage.getItem('theme')
-    if (!storedTheme) {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      isDark.set(prefersDark)
+  // Only set system preference if no stored preference exists
+  const storedTheme = localStorage.getItem('theme')
+  if (!storedTheme) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    isDark.set(prefersDark)
+  }
+
+  // Set up store subscription
+  const unsubscribe = isDark.subscribe((value) => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', value)
     }
+  })
 
-    // Set up store subscription
-    const unsubscribe = isDark.subscribe((value) => {
-      if (typeof document !== 'undefined') {
-        document.documentElement.classList.toggle('dark', value)
-      }
-    })
-
-    onDestroy(() => {
-      unsubscribe()
-    })
+  onDestroy(() => {
+    unsubscribe()
   })
 </script>
 
