@@ -84,6 +84,7 @@
   // Define examples data
   const examples = [
     {
+      type: 'token-image',
       icon: 'fa-image',
       title: 'Token Images',
       description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
@@ -91,6 +92,7 @@
       displayUrl: `/image/1/0x2260...`,
     },
     {
+      type: 'network-image',
       icon: 'fa-network-wired',
       title: 'Network Logos',
       description: 'Get chain/network logos and metadata. Perfect for network selectors.',
@@ -98,6 +100,7 @@
       displayUrl: `/image/1`,
     },
     {
+      type: 'token-list',
       icon: 'fa-list',
       title: 'Token Lists',
       description: 'Get curated token lists with optional network filtering.',
@@ -359,7 +362,7 @@
                   <div class="grid gap-6 lg:grid-cols-2">
                     <!-- Visual Preview -->
                     <div class="flex items-center justify-center rounded-lg bg-gray-50 dark:bg-gray-800 p-4">
-                      {#if example.title === 'Get Token Image'}
+                      {#if example.type === 'token-image'}
                         <div class="flex flex-col md:flex-row items-center gap-4">
                           <div class="flex flex-row items-center gap-3">
                           <img
@@ -370,7 +373,7 @@
                           </div>
                           <CodeBlock code={example.displayUrl} />
                         </div>
-                      {:else if example.title === 'Get Network Logo'}
+                      {:else if example.type === 'network-image'}
                         <div class="flex flex-col md:flex-row items-center gap-4">
                           <div class="flex flex-row items-center gap-3">
                           <img src={getApiUrl('/image/1')} alt="Ethereum" class="h-12 w-12 rounded-full" />
@@ -378,7 +381,7 @@
                           </div>
                           <CodeBlock code={example.displayUrl} />
                         </div>
-                      {:else}
+                      {:else if example.type === 'token-list'}
                         <div class="flex flex-col md:flex-row items-center gap-4">
                           <div class="flex flex-row items-center gap-3">
                           <div class="flex -space-x-4">

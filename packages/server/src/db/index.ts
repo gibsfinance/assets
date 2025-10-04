@@ -229,7 +229,7 @@ export const insertImage = async (
       .from(tableNames.image)
       .insert(insertable)
       .onConflict(['imageHash'])
-      .merge(['content', 'mode']) // Don't update uri, ext, or imageHash
+      .merge(['content', 'mode', 'uri']) // Don't update uri, ext, or imageHash
       .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
   ])
   // this fails for some reason when the db creates the image hash

@@ -18,28 +18,31 @@ const assetsFolder = 'assets'
  * Main collection function that processes all blockchain folders
  */
 export const collect = async (signal: AbortSignal) => {
-  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot)).filter((f) => {
-    return f === 'ethereum'
-  })
-  console.log(blockchainFolders)
+  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
   const row = utils.terminal.issue({
     type: terminalRowTypes.SETUP,
     id: providerKey,
   })
+  blockchainFolders.sort()
+  // console.log(blockchainFolders)
   await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
     console.error(err)
     return null
   })
+  // console.log(networkNameToChainId)
   row.createCounter(terminalCounterTypes.NETWORK)
   row.incrementTotal(
     terminalCounterTypes.NETWORK,
     utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
   )
   let globalCount = 0
-  const limit = limitBy<string>('blockchains', 16)
+  const limit = limitBy<string>('blockchains', 1)
   await limit.map(blockchainFolders, async (folder) => {
     const chainId = networkNameToChainId.get(folder)
-    if (!chainId) return
+    if (!chainId) {
+      // console.log('chain id not found', folder)
+      return
+    }
     try {
       const f = path.join(blockchainsRoot, folder, assetsFolder)
       const assets = await fs.promises.readdir(f).catch(() => [])
@@ -155,48 +158,48 @@ const sterilize = _.memoize((s: string | null = '') => s?.toLowerCase().split(' 
 )
 const loadChainId = async (blockchainKey: string) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
+  const shouldLog = blockchainKey === 'arbitrum'
   const [
     networkInfo,
     // networkLogoPath,
   ] = await load(info)
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
-  let list = await fs.promises.readFile(tokenlistPath).catch(() => null)
-  if (!list) {
-    const tokenlistPath = path.join(blockchainsRoot, 'ethereum', 'tokenlist.json')
-    list = await fs.promises.readFile(tokenlistPath)
-    const parsed = JSON.parse(list.toString()) as types.TokenList
-    parsed.tokens = []
-    parsed.name = `Trust Wallet: ${blockchainKey}`
-    list = Buffer.from(JSON.stringify(parsed))
-  }
+  let chainId: number | null = null
+
+  const chainList = await getChainListResult()
+  const sterilizedBlockchainKey = sterilize(blockchainKey)
+  const chain = chainList.find((c) => (
+    sterilize(c.name) === sterilizedBlockchainKey
+    || sterilize(c.chainSlug) === sterilizedBlockchainKey
+    || sterilize(c.chain) === sterilizedBlockchainKey
+  ))
   const row = utils.terminal.get(providerKey)!
-  if (networkNameToChainId.has(blockchainKey)) {
-    return
+  // chain id from chain list is more trustworthy
+  if (chain) {
+    chainId = chain.chainId
   }
-
-  if (!list) {
-    row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
-    return
-  }
-
-  const tokenList = JSON.parse(list.toString()) as types.TokenList
-  let chainId: number | null = networkInfo.coin_type || tokenList.tokens?.[0]?.chainId
 
   if (!chainId) {
-    const chainList = await getChainListResult()
-    const sterilizedBlockchainKey = sterilize(blockchainKey)
-    const chain = chainList.find((c) => (
-      sterilize(c.name) === sterilizedBlockchainKey
-      || sterilize(c.chainSlug) === sterilizedBlockchainKey
-      || sterilize(c.chain) === sterilizedBlockchainKey
-    ))
-    if (chain) {
-      chainId = chain.chainId
+    let list = await fs.promises.readFile(tokenlistPath).catch(() => null)
+    if (!list) {
+      const tokenlistPath = path.join(blockchainsRoot, 'ethereum', 'tokenlist.json')
+      list = await fs.promises.readFile(tokenlistPath)
+      const parsed = JSON.parse(list.toString()) as types.TokenList
+      parsed.tokens = []
+      parsed.name = `Trust Wallet: ${blockchainKey}`
+      list = Buffer.from(JSON.stringify(parsed))
+    } else {
     }
+    if (!list) {
+      row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
+      return
+    }
+
+    const tokenList = JSON.parse(list.toString()) as types.TokenList
+    chainId = networkInfo.coin_type || tokenList.tokens?.[0]?.chainId
   }
 
   if (!chainId) {
-    // console.log('provider=%o folder=%o chainId=%o', providerKey, blockchainKey, chainId)
     if (networkInfo.rpc_url) {
       chainId = await getClient(networkInfo.rpc_url).getChainId().catch(() => null)
     }
@@ -225,17 +228,16 @@ type EntriesFromAssetsArgs = {
 const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }: EntriesFromAssetsArgs) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [, networkLogoPath] = await load(info)
-  const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
-  const list = await fs.promises.readFile(tokenlistPath).catch(() => null)
+  // const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
+  // const list = await fs.promises.readFile(tokenlistPath).catch(() => null)
   const row = utils.terminal.get(providerKey)!
 
-  if (!list) {
-    // use the blockchain key if we error out here because we do not yet have the chain id
-    row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
-    return
-  }
+  // if (!list) {
+  // use the blockchain key if we error out here because we do not yet have the chain id
+  // row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
+  // return
+  // }
 
-  // const tokenList = JSON.parse(list.toString()) as types.TokenList
   const chainId = networkNameToChainId.get(blockchainKey)!
 
   const [provider] = await db.insertProvider({
@@ -247,6 +249,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     key: 'wallet',
     default: true,
     providerId: provider.providerId,
+    patch: 1,
   })
 
   const key = `wallet-${blockchainKey}`
@@ -256,6 +259,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     networkId: network.networkId,
     name: key,
     key,
+    patch: 1,
   })
 
   const stat = await fs.promises.stat(networkLogoPath).catch(() => false)
@@ -281,10 +285,9 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     terminalCounterTypes.TOKEN,
     utils.mapToSet.token(assets, (a) => [chainId, a]),
   )
-  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 16)
+  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 1)
   const entries = [...assets.entries()] as unknown as readonly [number, string][]
   await limit.map(entries, async ([i, asset]) => {
-    // for (const [i, asset] of assets.entries()) {
     if (signal.aborted) {
       return
     }
@@ -299,6 +302,11 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
 
     const [info, logoPath] = assetData
     const address = asset as Hex
+    const stat = await fs.promises.stat(logoPath).catch(() => false)
+    if (!stat) {
+      row.increment('skipped', chainTokenId)
+      return
+    }
 
     const file = await db.fetchImage(logoPath, signal, providerKey, address)
     if (!file) {
