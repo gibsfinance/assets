@@ -229,7 +229,7 @@ export const insertImage = async (
       .from(tableNames.image)
       .insert(insertable)
       .onConflict(['imageHash'])
-      .merge(['content', 'mode']) // Don't update uri, ext, or imageHash
+      .merge(['content', 'mode', 'uri']) // Don't update uri, ext, or imageHash
       .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
   ])
   // this fails for some reason when the db creates the image hash
@@ -946,7 +946,11 @@ export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
 )
 
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
-  tx(tableNames.cacheRequest).insert(cacheRequest).returning<CacheRequest[]>('*')
+  tx(tableNames.cacheRequest)
+    .insert(cacheRequest)
+    .onConflict(['key'])
+    .merge(['value', 'expiresAt'])
+    .returning<CacheRequest[]>('*')
 
 export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
   return cachedJSON(key, signal, async (signal) => {

@@ -14,14 +14,14 @@
         href={provider.link}
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center justify-center p-2 hover:opacity-75 transition-opacity"
+        class="flex items-center justify-center p-0 hover:opacity-75 transition-opacity"
         title={provider.name}
       >
         <img
           src={provider.imageUrl.startsWith('http') ? provider.imageUrl : `/logos/${$isDark ? 'dark' : 'light'}/${provider.imageUrl}`}
           alt={provider.name}
-          width={32}
-          class="max-h-8 max-w-24 object-contain"
+          width={48}
+          class="max-h-12 max-w-24 object-contain"
         />
       </a>
     {/each}

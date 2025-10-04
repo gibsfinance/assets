@@ -22,7 +22,7 @@ interface TokenChunk {
   tokens: TokenInfo[]
 }
 
-const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+const CACHE_DURATION = 3 * 60 * 60 * 1000 // 3 hours in milliseconds
 // const MAX_CACHE_SIZE = 4.5 * 1024 * 1024 // 4.5MB
 const MAX_ENTRY_SIZE = 500 * 1024 // 500KB for a single entry
 // const MAX_TOKENS_PER_LIST = 100000 // Increased to handle large token lists

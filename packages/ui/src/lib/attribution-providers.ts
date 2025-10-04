@@ -43,7 +43,7 @@ export const attributionProviders: AttributionProvider[] = [
   {
     name: 'PumpTires',
     link: 'https://pump.tires',
-    imageUrl: 'https://pump.tires/images/pumptires-symbol.png',
+    imageUrl: 'pumptires.svg',
   },
   {
     name: 'Trust Wallet',
