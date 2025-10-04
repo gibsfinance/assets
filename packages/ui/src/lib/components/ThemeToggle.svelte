@@ -1,6 +1,6 @@
 <script lang="ts">
-import { isDark } from '../stores/theme'
-import { onMount, onDestroy } from 'svelte'
+  import { isDark } from '../stores/theme'
+  import { onDestroy } from 'svelte'
 
   const darkModeMessages = [
     'Embrace the darkness...',
@@ -65,9 +65,3 @@ import { onMount, onDestroy } from 'svelte'
     <i class="fas fa-moon text-xl"></i>
   {/if}
 </button>
-<!--
-<style>
-  .btn-icon {
-    @apply h-10 w-10 rounded-full;
-  }
-</style> -->

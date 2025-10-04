@@ -946,7 +946,11 @@ export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
 )
 
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
-  tx(tableNames.cacheRequest).insert(cacheRequest).returning<CacheRequest[]>('*')
+  tx(tableNames.cacheRequest)
+    .insert(cacheRequest)
+    .onConflict(['key'])
+    .merge(['value', 'expiresAt'])
+    .returning<CacheRequest[]>('*')
 
 export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
   return cachedJSON(key, signal, async (signal) => {
