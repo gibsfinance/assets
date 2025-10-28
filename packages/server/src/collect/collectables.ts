@@ -29,6 +29,7 @@ import * as optimism from './optimism'
 import * as pumptires from './pumptires'
 import * as dexscreener from './dexscreener'
 import * as etherscan from './etherscan'
+import * as routescan from './routescan'
 import _ from 'lodash'
 import * as gibs from './gibs'
 import type { Todo } from '../types'
@@ -48,6 +49,7 @@ export const collectables = _.memoize(() => {
   return {
     dexscreener: dexscreener.collect as Todo,
     countries: countries.collect as Todo,
+    routescan: routescan.collect as Todo,
     pulsechain: pulsechainCollector.collect as Todo,
     trustwallet: trustwallet.collect as Todo,
     'uniswap-tokenlists': uniswapTokenlists.collect as Todo,
@@ -64,6 +66,11 @@ export const collectables = _.memoize(() => {
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
       blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
+    }) as Todo,
+    midgard: remoteTokenList.collect({
+      providerKey: 'midgard',
+      listKey: 'all',
+      tokenList: 'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
     }) as Todo,
     internetmoney: internetmoney.collect as Todo,
     phux: phux.collect as Todo,
