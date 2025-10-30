@@ -42,7 +42,7 @@ export async function seedOrders(): Promise<void> {
       .whereIn('providerId', providerIds)
       .returning('*')
     if (providers.length !== providerIds.length) {
-      console.log(providers)
+      // console.log(providers)
       return
       // throw new Error('Failed to insert providers')
     }
