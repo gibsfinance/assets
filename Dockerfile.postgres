@@ -2,11 +2,15 @@
 FROM postgres:16
 
 # Install Python and the necessary PostgreSQL packages for PL/Python
-RUN apt-get update --fix-missing
-RUN apt-get install -y --fix-missing postgresql-plpython3-16 postgresql-contrib python3-pip
-
-# Install the pysha3 library
-RUN pip3 install safe-pysha3 --break-system-packages
+# Clean up apt cache in the same RUN command to reduce image size
+RUN apt-get update --fix-missing && \
+    apt-get install -y --fix-missing \
+        postgresql-plpython3-16 \
+        postgresql-contrib \
+        python3-pip && \
+    pip3 install safe-pysha3 --break-system-packages && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV PGDATA="/var/lib/postgresql/data/pgdata16"
 
