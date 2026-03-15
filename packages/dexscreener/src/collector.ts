@@ -162,30 +162,33 @@ export class Collector {
     return pairs
   }
   async collect(tokens: Set<string>, signal?: AbortSignal) {
-    const matchingTokensPairsDeep: TokenPairsResponse[] = []
-    for (const token of tokens.values()) {
-      const pairs = await this.tokenPairs(token, signal)
-      if (this.signal.aborted || !pairs) {
+    try {
+      const matchingTokensPairsDeep: TokenPairsResponse[] = []
+      for (const token of tokens.values()) {
+        const pairs = await this.tokenPairs(token, signal)
+        if (this.signal.aborted || !pairs) {
+          return
+        }
+        matchingTokensPairsDeep.push(pairs)
+      }
+      const pairs = _.flatten(matchingTokensPairsDeep)
+      if (!pairs.length) {
         return
       }
-      matchingTokensPairsDeep.push(pairs)
+      pairs.forEach((pair) => {
+        if (pair.info?.imageUrl) {
+          this.setInfo(pair.baseToken.address, pair.info as unknown as IInfo)
+        } else {
+          this.markTokenInfoAsMissing(pair.quoteToken.address)
+        }
+        this.setToken(pair.quoteToken)
+        this.setToken(pair.baseToken)
+        this.markTokenAsPending(pair.quoteToken.address)
+        this.markTokenAsPending(pair.baseToken.address)
+      })
+    } finally {
+      this.markTokenAsFetched(tokens)
     }
-    const pairs = _.flatten(matchingTokensPairsDeep)
-    if (!pairs.length) {
-      return
-    }
-    pairs.forEach((pair) => {
-      if (pair.info?.imageUrl) {
-        this.setInfo(pair.baseToken.address, pair.info as unknown as IInfo)
-      } else {
-        this.markTokenInfoAsMissing(pair.quoteToken.address)
-      }
-      this.setToken(pair.quoteToken)
-      this.setToken(pair.baseToken)
-      this.markTokenAsPending(pair.quoteToken.address)
-      this.markTokenAsPending(pair.baseToken.address)
-    })
-    this.markTokenAsFetched(tokens)
   }
   toTokenLists() {
     const list = [...this.token.values()].reduce(
