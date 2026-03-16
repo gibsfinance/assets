@@ -9,6 +9,7 @@ const emoji = {
     setup: '🔧',
     storage: '💾',
     complete: '🎉',
+    '-': '⏹',
   } as Record<types.TerminalRowType, string>,
   log: {
     prog: '⚡',
@@ -27,7 +28,7 @@ const emoji = {
 
 type Padding = {
   id: number
-  progress: number[]
+  progress: Map<string, number>
 }
 
 /**
@@ -37,19 +38,25 @@ type Padding = {
  */
 export const Section: React.FC<types.Section & { padding: Padding }> = (props) => {
   if (props.hide) return <></>
-  const toRender = [...props.rows.values()]
-    .sort((a, b) => {
+  const entries = [...props.rows.entries()]
+  const sorted = entries
+    .sort(([, a], [, b]) => {
       const aIsComplete = a.type === types.terminalRowTypes.COMPLETE
       const bIsComplete = b.type === types.terminalRowTypes.COMPLETE
       if (aIsComplete && !bIsComplete) return -1
       if (!aIsComplete && bIsComplete) return 1
       return 0
     })
-    .slice(-props.limit)
+  const active = sorted.filter(([, r]) => r.type !== types.terminalRowTypes.COMPLETE)
+  const completed = sorted.filter(([, r]) => r.type === types.terminalRowTypes.COMPLETE)
+  const toRender = [
+    ...completed.slice(-Math.max(1, props.limit - active.length)),
+    ...active.slice(-props.limit),
+  ].slice(-props.limit)
   return (
     <Box display="flex" flexDirection="column">
-      {toRender.map((row, index) => (
-        <RowWithSections {...row} key={`${props.id}-${index}`} padding={props.padding} />
+      {toRender.map(([mapKey, row]) => (
+        <RowWithSections {...row} key={mapKey} padding={props.padding} />
       ))}
     </Box>
   )
@@ -100,7 +107,6 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
   if (props.hide) return <></>
   const kvEntries = Object.entries(props.kv ?? {})
   const counters = [...props.counters.entries()]
-  const widths = new Map(counters.map(([_k, counter], i) => [counter, props.padding.progress[i]] as const))
   const [logEntries, otherEntries] = _.partition(
     counters,
     ([key]) => !!types.terminalLogTypes[key.toUpperCase() as unknown as types.TerminalLogTypeKeys],
@@ -113,7 +119,7 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
     <Box display="flex" flexDirection="row" gap={1}>
       <Box width={3} display="flex" justifyContent="flex-end">
         {props.isTask && props.type === types.terminalRowTypes.COMPLETE ? null : (
-          <Text dimColor={props.isTask}>{emoji.row[props.type]}</Text>
+          <Text dimColor={props.isTask}>{emoji.row[props.type] ?? '?'}</Text>
         )}
       </Box>
       <Box minWidth={props.padding.id || undefined} display="flex" justifyContent="flex-end">
@@ -129,7 +135,7 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
                   id={key}
                   key={key}
                   isTask={props.isTask}
-                  minWidth={widths.get(counter)}
+                  minWidth={props.padding.progress.get(key)}
                 />
               ),
           )}
@@ -138,7 +144,7 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
       {counterEntries.length ? (
         <Box display="flex" flexDirection="row" justifyContent="flex-start" gap={2}>
           {counterEntries.map(([key, counter]) => (
-            <Counter {...counter} id={key} key={key} isTask={props.isTask} minWidth={widths.get(counter)} />
+            <Counter {...counter} id={key} key={key} isTask={props.isTask} minWidth={props.padding.progress.get(key)} />
           ))}
         </Box>
       ) : null}
@@ -149,7 +155,7 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
       ) : null}
       {logEntries.length
         ? logEntries.map(([k, counter]) => (
-            <Counter {...counter} id={k} key={k} isTask={props.isTask} minWidth={widths.get(counter)} />
+            <Counter {...counter} id={k} key={k} isTask={props.isTask} minWidth={props.padding.progress.get(k)} />
           ))
         : null}
       {kvEntries.length ? (
@@ -162,23 +168,23 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
 }
 
 export const RowWithSections: React.FC<types.TerminalRow & { padding: Padding }> = (props) => {
-  const sections = [...props.sections.values()]
-  const rows = sections.flatMap((section) => Array.from(section.rows.values()))
+  const sections = [...props.sections.entries()]
+  const rows = sections.flatMap(([, section]) => Array.from(section.rows.values()))
   const childPadding = {
-    id: rows.reduce((len, rows) => Math.max(rows.id === null ? 0 : rows.id.length, len), props.padding.id),
+    id: rows.reduce((len, row) => Math.max(row.id === null ? 0 : row.id.length, len), props.padding.id),
     progress: rows.reduce((accum, row) => {
-      return [...row.counters.values()].reduce((accum, counter, index) => {
-        const len = Math.max(accum[index] ?? 0, `${counter.total?.size ?? counter.current.size}`.length)
-        accum[index] = len
-        return accum
-      }, accum)
-    }, [] as number[]),
+      for (const [key, counter] of row.counters.entries()) {
+        const len = `${counter.total?.size ?? counter.current.size}`.length
+        accum.set(key, Math.max(accum.get(key) ?? 0, len))
+      }
+      return accum
+    }, new Map<string, number>()),
   } as Padding
   return (
     <Box flexDirection="column">
       {props.id !== null ? <Row {...props} padding={props.padding} /> : []}
-      {sections.map((section, index) => (
-        <Section {...section} key={`${section.id}-${index}`} padding={childPadding} />
+      {sections.map(([sectionKey, section]) => (
+        <Section {...section} key={sectionKey} padding={childPadding} />
       ))}
     </Box>
   )
@@ -186,5 +192,5 @@ export const RowWithSections: React.FC<types.TerminalRow & { padding: Padding }>
 
 export const Terminal: React.FC<types.RenderState> = (props) => {
   if (!props.row) return <></>
-  return <RowWithSections {...props.row} padding={{ id: 0, progress: [] }} />
+  return <RowWithSections {...props.row} padding={{ id: 0, progress: new Map() }} />
 }

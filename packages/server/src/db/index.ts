@@ -276,7 +276,7 @@ export const fetchImage = async (
     })
   }
   let innerTimeout!: Timeout
-  const outerTimeout = timeout(10_000)
+  const outerTimeout = timeout(3_000)
   const result = await Promise.race([
     outerTimeout.promise.then(() => null),
     fetch(url, { signal })
