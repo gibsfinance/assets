@@ -119,6 +119,8 @@ type RouteScanResponse = {
 /**
  * Fetches tokens from RouteScan API for a specific chain
  */
+const oneHour = 1000 * 60 * 60
+
 async function fetchRouteScanTokens({
   chainId,
   signal,
@@ -132,30 +134,35 @@ async function fetchRouteScanTokens({
 }): Promise<RouteScanResponse> {
   const qs = new URLSearchParams({
     limit: limit.toString(),
-    apiKey: process.env.ROUTESCAN_API_KEY || '',
-    ecosystem: 'ethereum',
-    sort: 'marketCap,desc',
     includedChainIds: chainId.toString(),
   })
+
+  if (process.env.ROUTESCAN_API_KEY) {
+    qs.set('apiKey', process.env.ROUTESCAN_API_KEY)
+  }
 
   if (nextToken) {
     qs.set('nextToken', nextToken)
   }
 
-  const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
-  const response = await fetch(url, { signal })
+  const cacheKey = `${providerKey}-tokens-${chainId}-${limit}-${nextToken ?? 'first'}`
 
-  if (!response.ok) {
-    throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
-  }
+  return db.cachedJSON<RouteScanResponse>(cacheKey, signal!, async () => {
+    const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
+    const response = await fetch(url, { signal })
 
-  const data = await response.json()
+    if (!response.ok) {
+      throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
+    }
 
-  if (!data.items || !Array.isArray(data.items)) {
-    throw new Error('Invalid response format from RouteScan API')
-  }
+    const data = await response.json()
 
-  return data
+    if (!data.items || !Array.isArray(data.items)) {
+      throw new Error('Invalid response format from RouteScan API')
+    }
+
+    return data
+  }, { ttl: oneHour })
 }
 
 
@@ -253,27 +260,18 @@ async function processToken({
       providedId: address,
     }
 
-    // Store in global list
-    await db.fetchImageAndStoreForToken({
-      listId: globalListId,
-      providerKey: providerId,
-      uri: null,
-      originalUri: null,
-      signal,
-      listTokenOrderId: totalProcessed,
-      token: tokenData,
-    })
-
-    // Store in chain-specific list
-    await db.fetchImageAndStoreForToken({
-      listId: chainListId,
-      providerKey: providerId,
-      uri: null,
-      originalUri: null,
-      signal,
-      listTokenOrderId: totalProcessed,
-      token: tokenData,
-    })
+    await Promise.all([
+      db.storeToken({
+        token: tokenData,
+        listId: globalListId,
+        listTokenOrderId: totalProcessed,
+      }),
+      db.storeToken({
+        token: tokenData,
+        listId: chainListId,
+        listTokenOrderId: totalProcessed,
+      }),
+    ])
 
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     return true
@@ -453,19 +451,21 @@ type RouteScanBlockchainsResponse = {
  * Fetch supported blockchains from RouteScan API
  */
 async function fetchRouteScanBlockchains(signal?: AbortSignal): Promise<RouteScanBlockchain[]> {
-  const response = await fetch(`https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`, { signal })
+  return db.cachedJSON<RouteScanBlockchain[]>(`${providerKey}-blockchains`, signal!, async () => {
+    const response = await fetch(`https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`, { signal })
 
-  if (!response.ok) {
-    throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
-  }
+    if (!response.ok) {
+      throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
+    }
 
-  const data: RouteScanBlockchainsResponse = await response.json()
+    const data: RouteScanBlockchainsResponse = await response.json()
 
-  if (!data.items || !Array.isArray(data.items)) {
-    throw new Error('Invalid response format from RouteScan blockchains API')
-  }
+    if (!data.items || !Array.isArray(data.items)) {
+      throw new Error('Invalid response format from RouteScan blockchains API')
+    }
 
-  return data.items
+    return data.items
+  }, { ttl: oneHour })
 }
 
 /**

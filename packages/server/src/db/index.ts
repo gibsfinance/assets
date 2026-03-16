@@ -378,6 +378,99 @@ export const getImageFromLink = async (uri: string, t: Tx = db) => {
   }
 }
 
+/**
+ * Check whether a cached image link is still fresh based on link.updated_at.
+ * Returns the existing {link, image} if fresh, null if stale or missing.
+ */
+export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, t: Tx = db) => {
+  const cutoff = new Date(Date.now() - maxAgeMs)
+  const link = await t.from(tableNames.link)
+    .select('*')
+    .where('uri', uri)
+    .where('updated_at', '>=', cutoff)
+    .first<Link>()
+  if (!link) return null
+  const image = await t.from(tableNames.image)
+    .select('*')
+    .where('imageHash', link.imageHash)
+    .first<Image>()
+  if (!image) return null
+  return { link, image }
+}
+
+/**
+ * Fetch an image from a URL and detect its file extension.
+ * Pure fetch — no database writes. Returns null on failure.
+ */
+export const resolveImage = async (
+  uri: string | Buffer,
+  signal: AbortSignal | null | undefined,
+  providerKey: string,
+  address?: string,
+): Promise<{ buffer: Buffer; ext: string; originalUri: string } | null> => {
+  const image = await fetchImage(uri, signal, providerKey, address)
+  if (!image) return null
+  const originalUri = Buffer.isBuffer(uri) ? `buffer:${providerKey}:${address}` : uri
+  const ext = await getExt(image, path.extname(originalUri))
+  if (!ext) return null
+  return { buffer: image, ext, originalUri }
+}
+
+/**
+ * Batch insert tokens. Returns all upserted token records.
+ */
+export const insertTokenBatch = async (tokens: InsertableToken[], t: Tx = db) => {
+  if (!tokens.length) return []
+  const cleaned = tokens.map((token) => {
+    let providedId = token.providedId
+    if (viem.isAddress(providedId)) {
+      providedId = viem.getAddress(providedId)
+    }
+    return {
+      type: 'erc20' as const,
+      ...token,
+      providedId,
+      name: token.name.split('\x00').join(''),
+      symbol: token.symbol.split('\x00').join(''),
+    }
+  })
+  return await t
+    .from(tableNames.token)
+    .insert(cleaned)
+    .onConflict(['tokenId'])
+    .merge(['tokenId'])
+    .returning<Token[]>('*')
+}
+
+/**
+ * Insert a token and its list association without any image logic.
+ * Use when images are handled separately or not needed (e.g. routescan).
+ */
+export const storeToken = async (
+  { token, listId, imageHash, listTokenOrderId }: {
+    token: InsertableToken
+    listId: string
+    imageHash?: string
+    listTokenOrderId: number
+  },
+  t: Tx = db,
+) => {
+  const insertedToken = await insertToken(
+    { type: 'erc20', ...token },
+    t,
+  )
+  const [listToken] = await insertListToken(
+    {
+      tokenId: insertedToken.tokenId,
+      listId,
+      imageHash,
+      listTokenOrderId,
+    },
+    t,
+  )
+  return { token: insertedToken, listToken }
+}
+
 export const getImageByAddress = async (
   { chainId, address, providerId }: { chainId: number; address: string; providerId?: string },
   t: Tx = db,
@@ -408,12 +501,14 @@ export const fetchImageAndStoreForList = async (
     originalUri,
     providerKey,
     signal,
+    maxImageAge = sixHours,
   }: {
     listId: string
     uri: string | Buffer | null
     originalUri: string | null
     providerKey: string
     signal?: AbortSignal
+    maxImageAge?: number
   },
   t: Tx = db,
 ) => {
@@ -421,7 +516,7 @@ export const fetchImageAndStoreForList = async (
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getImageFromLink(uri, t)
+    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
     if (existing) {
       const list = await getListFromId(listId, t)
       if (list && list.imageHash && list.imageHash === existing.image.imageHash) {
@@ -481,17 +576,23 @@ export const fetchImageAndStoreForNetwork = async (
     originalUri,
     providerKey,
     signal,
+    maxImageAge = sixHours,
   }: {
     network: Network
     uri: string | Buffer
     originalUri: string
     providerKey: string
     signal?: AbortSignal
+    maxImageAge?: number
   },
   t: Tx = db,
 ) => {
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
+  }
+  if (_.isString(uri)) {
+    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
+    if (existing) return { network, ...existing }
   }
   const image = await fetchImage(uri, signal, providerKey, `chain-id:${network.chainId}`)
   if (!image) {
@@ -535,9 +636,15 @@ export const fetchAndInsertHeader = async (
     uri: string | Buffer
     originalUri: string
     signal?: AbortSignal
+    maxImageAge?: number
   },
   t: Tx = db,
 ) => {
+  const maxImageAge = header.maxImageAge ?? sixHours
+  if (_.isString(header.uri)) {
+    const existing = await getFreshImageFromLink(header.uri, maxImageAge, t)
+    if (existing) return
+  }
   const image = await fetchImage(header.uri, header.signal, header.providerKey, header.listTokenId)
   if (!image) {
     return
@@ -576,6 +683,8 @@ export const insertHeaderLink = async (header: InsertableHeaderLink, t: Tx = db)
     .returning<HeaderLink[]>('*')
 }
 
+const sixHours = 1000 * 60 * 60 * 6
+
 export const fetchImageAndStoreForToken = async (
   inputs: {
     listId: string
@@ -585,6 +694,7 @@ export const fetchImageAndStoreForToken = async (
     token: InsertableToken
     providerKey: string
     signal?: AbortSignal
+    maxImageAge?: number
   },
   t: Tx = db,
 ): Promise<{
@@ -593,7 +703,7 @@ export const fetchImageAndStoreForToken = async (
   link?: Link
   image?: Image
 }> => {
-  const { listId, uri, token, providerKey, signal, listTokenOrderId } = inputs
+  const { listId, uri, token, providerKey, signal, listTokenOrderId, maxImageAge = sixHours } = inputs
   if (!listId) {
     throw new Error('listId is required')
   }
@@ -622,7 +732,7 @@ export const fetchImageAndStoreForToken = async (
       })
       .first<ListToken>()
   if (_.isString(uri)) {
-    const existing = await getImageFromLink(uri, t)
+    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
     if (existing) {
       const insertedToken = (await insertToken(
         {
@@ -952,12 +1062,19 @@ export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx 
     .merge(['value', 'expiresAt'])
     .returning<CacheRequest[]>('*')
 
+const defaultTTL = 1000 * 60 * 60
+
 export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
   return cachedJSON(key, signal, async (signal) => {
     return fetch(args[0], { signal, ...(args[1] ?? {}) }).then((res) => res.json() as Promise<T>)
   })
 }
-export const cachedJSON = async <T extends object>(key: string, signal: AbortSignal, fn: (signal: AbortSignal) => Promise<T>) => {
+export const cachedJSON = async <T extends object>(
+  key: string,
+  signal: AbortSignal,
+  fn: (signal: AbortSignal) => Promise<T>,
+  { ttl = defaultTTL }: { ttl?: number } = {},
+) => {
   const cached = await getCachedRequest(key)
   if (cached) {
     return JSON.parse(cached.value) as T
@@ -966,7 +1083,7 @@ export const cachedJSON = async <T extends object>(key: string, signal: AbortSig
   await insertCacheRequest({
     key,
     value: JSON.stringify(result),
-    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+    expiresAt: new Date(Date.now() + ttl),
   })
   return result
 }
