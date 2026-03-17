@@ -65,19 +65,17 @@ let sharedBrowser: Browser | null = null
 async function getSharedBrowser(): Promise<Browser> {
   if (!sharedBrowser || !sharedBrowser.isConnected()) {
     const browserWSEndpoint = process.env.BROWSER_WS_ENDPOINT
+    const launchTimeout = 15_000
 
     if (browserWSEndpoint) {
-      // Connect to external browserless service
       failureLog('Connecting to external browser service: %o', browserWSEndpoint)
       sharedBrowser = await puppeteerCore.connect({
         browserWSEndpoint,
       })
     } else {
-      // Launch local browser with container-friendly settings
       failureLog('Launching local browser instance')
-      sharedBrowser = await puppeteer.launch({
+      const launchPromise = puppeteer.launch({
         headless: true,
-        // executablePath: '/usr/bin/google-chrome',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -93,6 +91,13 @@ async function getSharedBrowser(): Promise<Browser> {
           '--disable-ipc-flooding-protection',
         ],
       })
+      let timer: ReturnType<typeof setTimeout>
+      sharedBrowser = await Promise.race([
+        launchPromise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Browser launch timed out — is Chrome/Chromium installed?')), launchTimeout)
+        }),
+      ]).finally(() => clearTimeout(timer!))
     }
   }
   return sharedBrowser

@@ -427,12 +427,20 @@ export const insertTokenBatch = async (tokens: InsertableToken[], t: Tx = db) =>
       symbol: token.symbol.split('\x00').join(''),
     }
   })
-  return await t
-    .from(tableNames.token)
-    .insert(cleaned)
-    .onConflict(['tokenId'])
-    .merge(['tokenId'])
-    .returning<Token[]>('*')
+  // PG has a ~65535 parameter limit; 7 columns per row → max ~500 rows per batch
+  const chunkSize = 500
+  const results: Token[] = []
+  for (let i = 0; i < cleaned.length; i += chunkSize) {
+    const chunk = cleaned.slice(i, i + chunkSize)
+    const rows = await t
+      .from(tableNames.token)
+      .insert(chunk)
+      .onConflict(['tokenId'])
+      .merge(['tokenId'])
+      .returning<Token[]>('*')
+    results.push(...rows)
+  }
+  return results
 }
 
 /**
