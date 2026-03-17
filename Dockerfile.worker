@@ -1,8 +1,8 @@
 # Build stage
-FROM node:23.6.1-alpine AS builder
+FROM node:24-alpine AS builder
 
-# Install git for submodules
-RUN apk add --no-cache git && \
+RUN corepack enable && \
+    apk add --no-cache git && \
     git config --global user.email "you@example.com" && \
     git config --global user.name "Your Name"
 
@@ -10,7 +10,7 @@ WORKDIR /usr/src/app
 
 # Copy dependency files and submodule setup
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
-COPY package.json yarn.lock tsconfig.json .gitmodules ./
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
 RUN chmod +x /usr/local/bin/update_submodules.sh
 
 # Update submodules
@@ -20,16 +20,16 @@ RUN /usr/local/bin/update_submodules.sh
 COPY packages packages
 
 # Install dependencies and build
-RUN yarn --frozen-lockfile --production=false && \
+RUN yarn install --immutable && \
     yarn run build && \
-    yarn --frozen-lockfile --production=true && \
-    yarn cache clean
+    yarn workspaces focus --all --production && \
+    yarn cache clean --all
 
 # Production stage
-FROM node:23.6.1-alpine AS production
+FROM node:24-alpine AS production
 
-# Install git for runtime (if needed for submodules)
-RUN apk add --no-cache git
+RUN corepack enable && \
+    apk add --no-cache git
 
 WORKDIR /usr/src/app
 
@@ -44,7 +44,7 @@ ENV PREVENT_WRITE_MISSING=$PREVENT_WRITE_MISSING
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/packages ./packages
 COPY --from=builder /usr/src/app/submodules ./submodules
-COPY package.json yarn.lock tsconfig.json .gitmodules ./
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
 
 CMD ["yarn", "run", "collect"]

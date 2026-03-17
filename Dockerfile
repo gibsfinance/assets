@@ -1,22 +1,26 @@
 # Build stage
-FROM node:23.6.1-alpine AS builder
+FROM node:24-alpine AS builder
+
+RUN corepack enable
 
 WORKDIR /usr/src/app
 
 # Copy dependency files
-COPY yarn.lock package.json tsconfig.json ./
+COPY yarn.lock package.json .yarnrc.yml tsconfig.json ./
 
 # Copy package files for workspaces
 COPY packages packages
 
 # Install dependencies and build
-RUN yarn --frozen-lockfile --production=false && \
+RUN yarn install --immutable && \
     yarn run build && \
-    yarn --frozen-lockfile --production=true && \
-    yarn cache clean
+    yarn workspaces focus --all --production && \
+    yarn cache clean --all
 
 # Production stage
-FROM node:23.6.1-alpine AS production
+FROM node:24-alpine AS production
+
+RUN corepack enable
 
 WORKDIR /usr/src/app
 
@@ -30,6 +34,6 @@ ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 # Copy only production dependencies and built files
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/packages ./packages
-COPY package.json yarn.lock tsconfig.json ./
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json ./
 
 CMD ["yarn", "run", "server"]
