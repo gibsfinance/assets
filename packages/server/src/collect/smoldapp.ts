@@ -158,7 +158,7 @@ export const collect = async (signal: AbortSignal) => {
     utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => chainIdString),
   )
   const networkLimiter = promiseLimit<[string, string[], number]>(1)
-  const tokenLimit = promiseLimit<[Hex, number]>(4)
+  const tokenLimit = promiseLimit<[Hex, number]>(16)
   const section = row.issue(providerKey)
   let globalOrderId = 0
   for (const [chainIdString, tokens, i] of reverseOrderTokens) {
@@ -242,10 +242,21 @@ export const collect = async (signal: AbortSignal) => {
         if (!chain) {
           return
         }
-        metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
-          failureLog('%o', error)
-          return null
-        })
+        const networkId = utils.chainIdToNetworkId(chain.id)
+        const existingToken = await db.getDB()
+          .from('token')
+          .where({ providedId: address, networkId })
+          .whereNot('name', '')
+          .whereNot('symbol', '')
+          .first<{ name: string; symbol: string; decimals: number }>()
+        if (existingToken) {
+          metadata = [existingToken.name, existingToken.symbol, existingToken.decimals]
+        } else {
+          metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
+            failureLog('%o', error)
+            return null
+          })
+        }
       } else if (type === 'btc') {
         metadata = ['Bitcoin', 'BTC', 8]
       }

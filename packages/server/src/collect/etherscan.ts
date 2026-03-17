@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio'
 import * as fs from 'fs'
-import { createPublicClient, http, type Chain, type Address } from 'viem'
-import { erc20Read } from '@gibs/utils/viem'
+import { type Chain, type Address } from 'viem'
+import { erc20Read, createChainClient } from '@gibs/utils/viem'
 import { failureLog, limitBy } from '@gibs/utils'
 import puppeteer, { type Browser } from 'puppeteer'
 import puppeteerCore from 'puppeteer-core'
@@ -135,10 +135,7 @@ class SequentialRpcProcessor {
     const rpcWork = currentChainProcessor.then(async () => {
       if (signal?.aborted) throw new Error('Aborted')
 
-      const client = createPublicClient({
-        chain,
-        transport: http(),
-      })
+      const client = createChainClient(chain)
 
       // Use multicall to batch name, symbol, decimals in one call
       const [name, symbol, decimals] = await erc20Read(chain, client, address)

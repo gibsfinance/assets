@@ -97,23 +97,26 @@ const retrieveData = async ({
       page,
     },
   })
-  return await retry(async () => {
-    const res = await fetch(url, { signal }).catch((err: Error) => {
-      failureLog('fetch error %o', err.message)
-      throw err
-    })
-    const result = (await res.json().catch((err: Error) => {
-      failureLog('json error %o', err.message)
-      throw err
-    })) as Response
-    // check that the list is not empty
-    if (result.message === 'Too many read requests, please try again later.') {
-      await timeout(10_000).promise
-      throw new Error(result.message)
-    }
-    // if accessing fails, throw
-    result.tokens[0]
-    return result
+  const cacheKey = `${providerKey}-${filter}-${page}`
+  return await db.cachedJSON<Response>(cacheKey, signal, async () => {
+    return await retry(async () => {
+      const res = await fetch(url, { signal }).catch((err: Error) => {
+        failureLog('fetch error %o', err.message)
+        throw err
+      })
+      const result = (await res.json().catch((err: Error) => {
+        failureLog('json error %o', err.message)
+        throw err
+      })) as Response
+      // check that the list is not empty
+      if (result.message === 'Too many read requests, please try again later.') {
+        await timeout(10_000).promise
+        throw new Error(result.message)
+      }
+      // if accessing fails, throw
+      result.tokens[0]
+      return result
+    }, { signal })
   })
     .catch((err) => {
       failureLog('%o', err)
@@ -171,7 +174,7 @@ const collectTokens = async (
 }
 
 export const collect = async (signal: AbortSignal) => {
-  await retry(() => collectAttempt(signal), 3)
+  await retry(() => collectAttempt(signal), { attempts: 3, signal })
 }
 
 export const collectAttempt = async (signal: AbortSignal) => {

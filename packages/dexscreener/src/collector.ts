@@ -1,8 +1,9 @@
 import _ from 'lodash'
 import { ChainType, IInfo, Website, Social, chainIdToChain, TokenPairsResponse, dexscreenerApi, IToken } from '.'
 import type * as dexscreenerSDK from 'dexscreener-sdk'
-import { createPublicClient, http, erc20Abi, erc20Abi_bytes32, type Hex } from 'viem'
+import { erc20Abi, erc20Abi_bytes32, type Hex } from 'viem'
 import { MinimalTokenInfoWithLogo, retry } from '@gibs/utils'
+import { createChainClient } from '@gibs/utils/viem'
 export type UpdateKey = 'token' | 'pair'
 
 export type TokenKey = `${ChainType}-${number}-${string}`
@@ -88,10 +89,7 @@ export class Collector {
     if (!chain) {
       return
     }
-    const client = createPublicClient({
-      chain,
-      transport: http(chain.rpcUrls.default.http[0]),
-    })
+    const client = createChainClient(chain)
     const tokenList = [...tokens.values()]
     if (this.signal.aborted) {
       return

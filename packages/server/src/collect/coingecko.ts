@@ -4,8 +4,10 @@ import _ from 'lodash'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy, timeout } from '@gibs/utils'
+import { limitByTime } from '@gibs/utils/fetch'
 
 const limit = limitBy<AssetPlatform>(`coingecko-platforms`, 1)
+const rateLimiter = limitByTime(1_500)
 
 type AssetPlatform = {
   id: string
@@ -59,7 +61,11 @@ export const collect = async (signal: AbortSignal) => {
       return
     }
     const listKey = platform.id
-    await timeout(1_500).promise
+    const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
+    const isCached = await db.getCachedRequest(cacheKey)
+    if (!isCached) {
+      await rateLimiter()
+    }
     const collect = remoteTokenList.collect({
       providerKey: 'coingecko',
       listKey,

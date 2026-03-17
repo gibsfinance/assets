@@ -12,7 +12,7 @@ import _ from 'lodash'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
-const CONCURRENT_TOKENS = 4 // Limit concurrent token processing
+const CONCURRENT_TOKENS = 16
 
 interface TokenInfo {
   address: string
@@ -177,8 +177,31 @@ export const collect = async (signal: AbortSignal) => {
     })
     const address = viem.getAddress(token.address)
     const chain = networkToChain(network)
-    const client = utils.chainToPublicClient(chain)
-    const [name, symbol, decimals] = await erc20Read(chain, client, address)
+    const networkId = utils.chainIdToNetworkId(chain.id)
+
+    // Check if token already has metadata in DB — skip RPC if so
+    const existingToken = await db.getDB()
+      .from('token')
+      .where({ providedId: address, networkId })
+      .whereNot('name', '')
+      .whereNot('symbol', '')
+      .first<{ name: string; symbol: string; decimals: number }>()
+
+    let name: string, symbol: string, decimals: number
+    if (existingToken) {
+      ({ name, symbol, decimals } = existingToken)
+    } else {
+      try {
+        const client = utils.chainToPublicClient(chain)
+        const result = await erc20Read(chain, client, address)
+        ;[name, symbol, decimals] = result
+      } catch (err) {
+        failureLog(`${providerKey} rpc failed %o %o: %o`, chain.id, address, (err as Error).message)
+        row.increment('skipped', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+        row.unmount()
+        return
+      }
+    }
 
     const networkList = networkListByNetwork.get(network)!
     await db
@@ -191,7 +214,7 @@ export const collect = async (signal: AbortSignal) => {
             symbol,
             name,
             decimals,
-            networkId: utils.chainIdToNetworkId(chain.id),
+            networkId,
             providedId: address,
           },
         }

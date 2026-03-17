@@ -30,13 +30,14 @@ const defaultRetryOpts = {
   attempts: 5,
 }
 
-export const retry = async <T>(fn: () => Promise<T>, options = {}) => {
+export const retry = async <T>(fn: () => Promise<T>, options: Partial<typeof defaultRetryOpts> & { signal?: AbortSignal } = {}) => {
   const opts = {
     ...defaultRetryOpts,
     ...options,
   }
   let lastErr: Error | null = null
   do {
+    if (opts.signal?.aborted) throw new Error('aborted')
     try {
       return await fn()
     } catch (err) {
@@ -45,7 +46,14 @@ export const retry = async <T>(fn: () => Promise<T>, options = {}) => {
     }
     opts.attempts -= 1
     if (opts.attempts) {
-      await timeout(opts.delay).promise
+      if (opts.signal?.aborted) throw new Error('aborted')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, opts.delay)
+        opts.signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          resolve()
+        }, { once: true })
+      })
     }
   } while (opts.attempts)
   throw lastErr

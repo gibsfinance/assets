@@ -10,6 +10,7 @@ setDoesRender(logger === 'terminal')
 
 db.getDB()
   .migrate.latest()
+  .then(() => db.purgeExpiredCache().catch(() => {}))
   .then(() => collect.main(providers()))
   .then(() => seedOrders())
   .catch((err) => console.log(err))

@@ -1,5 +1,5 @@
-import { createPublicClient, http, type Chain, type Address } from 'viem'
-import { erc20Read } from '@gibs/utils/viem'
+import { type Chain, type Address } from 'viem'
+import { erc20Read, createChainClient } from '@gibs/utils/viem'
 import _ from 'lodash'
 import { failureLog, limitBy } from '@gibs/utils'
 import {
@@ -179,12 +179,15 @@ async function backfillTokenMetadata({
   signal?: AbortSignal
 }): Promise<{ name: string; symbol: string; decimals: number } | null> {
   try {
-    const client = createPublicClient({
-      chain,
-      transport: http(),
-    })
+    const client = createChainClient(chain)
 
-    const [name, symbol, decimals] = await erc20Read(chain, client, address)
+    const result = await Promise.race([
+      erc20Read(chain, client, address),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+    ])
+
+    if (!result) return null
+    const [name, symbol, decimals] = result
 
     return { name, symbol, decimals }
   } catch (error) {

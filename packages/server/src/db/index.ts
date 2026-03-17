@@ -275,30 +275,23 @@ export const fetchImage = async (
       return null
     })
   }
-  let innerTimeout!: Timeout
-  const outerTimeout = timeout(3_000)
-  const result = await Promise.race([
-    outerTimeout.promise.then(() => null),
-    fetch(url, { signal })
-      .then(responseToBuffer)
-      .catch((err: Error) => {
-        failureLog('fetch failure %o -> %o', providerKey, address, url)
-        const errStr = err.toString()
-        if (errStr.includes('This operation was abort')) {
-          return null
-        }
-        if (errStr.includes('Invalid URL')) {
-          return null
-        }
-        failureLog(err)
+  const timeoutSignal = AbortSignal.timeout(3_000)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal
+  return await fetch(url, { signal: combinedSignal })
+    .then(responseToBuffer)
+    .catch((err: Error) => {
+      const errStr = err.toString()
+      if (errStr.includes('abort') || errStr.includes('TimeoutError')) {
         return null
-      }),
-  ])
-  clearTimeout(outerTimeout.timeoutId())
-  if (innerTimeout) {
-    clearTimeout(innerTimeout.timeoutId())
-  }
-  return result
+      }
+      if (errStr.includes('Invalid URL')) {
+        return null
+      }
+      failureLog('fetch failure %o -> %o', providerKey, address, url)
+      return null
+    })
 }
 
 /**
@@ -1054,6 +1047,11 @@ export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
     .where('expiresAt', '>=', new Date())
     .first<CacheRequest>()
 )
+
+export const purgeExpiredCache = (tx: Tx = getDB()) =>
+  tx(tableNames.cacheRequest)
+    .where('expiresAt', '<', new Date())
+    .delete()
 
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
   tx(tableNames.cacheRequest)
