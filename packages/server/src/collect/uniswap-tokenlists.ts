@@ -83,7 +83,7 @@ export const collect = async (signal: AbortSignal) => {
       return
     }
     if (listKey === 'hosted' && providerKey === 'uniswap-agora-datafi-tokens') {
-      console.log(result.tokens)
+      failureLog('%o', result.tokens)
     }
     const list = await inmemoryTokenlist
       .collect({

@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio'
 import * as fs from 'fs'
 import { createPublicClient, http, type Chain, type Address } from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
-import { limitBy } from '@gibs/utils'
+import { failureLog, limitBy } from '@gibs/utils'
 import puppeteer, { type Browser } from 'puppeteer'
 import puppeteerCore from 'puppeteer-core'
 import {
@@ -68,13 +68,13 @@ async function getSharedBrowser(): Promise<Browser> {
 
     if (browserWSEndpoint) {
       // Connect to external browserless service
-      console.log('Connecting to external browser service:', browserWSEndpoint)
+      failureLog('Connecting to external browser service: %o', browserWSEndpoint)
       sharedBrowser = await puppeteerCore.connect({
         browserWSEndpoint,
       })
     } else {
       // Launch local browser with container-friendly settings
-      console.log('Launching local browser instance')
+      failureLog('Launching local browser instance')
       sharedBrowser = await puppeteer.launch({
         headless: true,
         // executablePath: '/usr/bin/google-chrome',
@@ -165,7 +165,7 @@ class SequentialRpcProcessor {
 
     // Return the RPC result immediately (without waiting for the delay)
     return rpcWork.catch((error) => {
-      console.error(`Failed to fetch metadata for token ${address} on chain ${chainId}:`, error.message)
+      failureLog('Failed to fetch metadata for token %o on chain %o: %o', address, chainId, error.message)
       return null
     })
   }
@@ -429,7 +429,7 @@ async function fetchTopTokensViaPuppeteer({
 
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chainId}-puppeteer-error`]))
-    console.error(`Puppeteer failed for chain ${chainId}:`, error)
+    failureLog('Puppeteer failed for chain %o: %o', chainId, error)
     return []
   } finally {
     if (page) {
@@ -513,7 +513,7 @@ async function processChainTokens({
     })
 
     if (tokenData.length === 0) {
-      console.log(`No tokens found for chain ${chain.id} ${explorerBaseUrl}`)
+      failureLog('No tokens found for chain %o %o', chain.id, explorerBaseUrl)
       row.increment(terminalLogTypes.WARN, new Set([`${chain.id}-no-tokens`]))
       return
     }
@@ -570,7 +570,7 @@ async function processChainTokens({
 
       } catch (error) {
         row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-        console.error(`Failed to process token ${address} on ${chainKey}:`, error)
+        failureLog('Failed to process token %o on %o: %o', address, chainKey, error)
       } finally {
         task.complete()
       }
@@ -645,7 +645,7 @@ export const collect = async (signal?: AbortSignal) => {
     })
 
   } catch (error) {
-    console.error('Etherscan collector failed:', error)
+    failureLog('Etherscan collector failed: %o', error)
     throw error
   } finally {
     // Close shared browser instance

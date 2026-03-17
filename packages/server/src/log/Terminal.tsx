@@ -32,30 +32,123 @@ type Padding = {
 }
 
 /**
- * Section component can render a list of rows
- * @param props Section props
- * @returns Section component
+ * Aggregate counters from multiple completed rows into totals
+ */
+const aggregateCounters = (rows: types.TerminalRow[]) => {
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    for (const [key, counter] of row.counters.entries()) {
+      totals.set(key, (totals.get(key) ?? 0) + counter.current.size)
+    }
+  }
+  return totals
+}
+
+/**
+ * Collapsed summary of completed providers — single row with aggregate stats
+ */
+export const CompletedSummary: React.FC<{
+  rows: types.TerminalRow[]
+  padding: Padding
+}> = (props) => {
+  if (!props.rows.length) return <></>
+  const totals = aggregateCounters(props.rows)
+  const names = props.rows.map((r) => r.id).filter(Boolean)
+  const counterKeys = Object.values(types.terminalCounterTypes) as string[]
+  const logKeys = Object.values(types.terminalLogTypes) as string[]
+  const progressTotals = [...totals.entries()].filter(([k]) => counterKeys.includes(k))
+  const counterTotals = [...totals.entries()].filter(([k]) => !counterKeys.includes(k) && !logKeys.includes(k))
+  const logTotals = [...totals.entries()].filter(([k]) => logKeys.includes(k) && totals.get(k)! > 0)
+  return (
+    <>
+      <Box flexDirection="row" gap={1}>
+        <Box width={3} justifyContent="flex-end"><Text dimColor>🎉</Text></Box>
+        <Box minWidth={props.padding.id || undefined} justifyContent="flex-end">
+          <Text dimColor>{props.rows.length} done</Text>
+        </Box>
+        {progressTotals.map(([key, count]) => (
+          <Text key={key} dimColor>{emoji.counter[key as types.TerminalCounterType] ?? key}={count}</Text>
+        ))}
+        {counterTotals.map(([key, count]) => (
+          <Text key={key} dimColor>{key}={count}</Text>
+        ))}
+        {logTotals.map(([key, count]) => (
+          <Text key={key} dimColor>{emoji.log[key as types.TerminalLogType] ?? key}={count}</Text>
+        ))}
+      </Box>
+      <Box paddingLeft={4}><Text dimColor wrap="truncate">{names.join(', ')}</Text></Box>
+    </>
+  )
+}
+
+/**
+ * Collapsed summary of failed providers — shows names and error counts
+ */
+export const FailedSummary: React.FC<{
+  rows: types.TerminalRow[]
+  padding: Padding
+}> = (props) => {
+  if (!props.rows.length) return <></>
+  const totals = aggregateCounters(props.rows)
+  const names = props.rows.map((r) => {
+    const errors = r.counters.get(types.terminalLogTypes.EROR)
+    const warns = r.counters.get(types.terminalLogTypes.WARN)
+    const parts = [r.id]
+    if (errors && errors.current.size > 0) parts.push(`💥${errors.current.size}`)
+    if (warns && warns.current.size > 0) parts.push(`⚠️${warns.current.size}`)
+    return parts.join(' ')
+  })
+  const counterKeys = Object.values(types.terminalCounterTypes) as string[]
+  const progressTotals = [...totals.entries()].filter(([k]) => counterKeys.includes(k))
+  return (
+    <>
+      <Box flexDirection="row" gap={1}>
+        <Box width={3} justifyContent="flex-end"><Text color="red">💥</Text></Box>
+        <Box minWidth={props.padding.id || undefined} justifyContent="flex-end">
+          <Text color="red">{props.rows.length} failed</Text>
+        </Box>
+        {progressTotals.map(([key, count]) => (
+          <Text key={key} color="red">{emoji.counter[key as types.TerminalCounterType] ?? key}={count}</Text>
+        ))}
+      </Box>
+      <Box paddingLeft={4}><Text color="red" wrap="truncate">{names.join(', ')}</Text></Box>
+    </>
+  )
+}
+
+const hasErrors = (row: types.TerminalRow) => {
+  const errorCounter = row.counters.get(types.terminalLogTypes.EROR)
+  return errorCounter && errorCounter.current.size > 0
+}
+
+/**
+ * Section component renders active rows individually and collapses
+ * completed/failed rows into aggregate summary lines.
+ * Task-level completed rows are hidden entirely (they're internal detail).
  */
 export const Section: React.FC<types.Section & { padding: Padding }> = (props) => {
   if (props.hide) return <></>
   const entries = [...props.rows.entries()]
-  const sorted = entries
-    .sort(([, a], [, b]) => {
-      const aIsComplete = a.type === types.terminalRowTypes.COMPLETE
-      const bIsComplete = b.type === types.terminalRowTypes.COMPLETE
-      if (aIsComplete && !bIsComplete) return -1
-      if (!aIsComplete && bIsComplete) return 1
-      return 0
-    })
-  const active = sorted.filter(([, r]) => r.type !== types.terminalRowTypes.COMPLETE)
-  const completed = sorted.filter(([, r]) => r.type === types.terminalRowTypes.COMPLETE)
-  const toRender = [
-    ...completed.slice(-Math.max(1, props.limit - active.length)),
-    ...active.slice(-props.limit),
-  ].slice(-props.limit)
+  const active = entries.filter(([, r]) => r.type !== types.terminalRowTypes.COMPLETE)
+  const completedNonTasks = entries.filter(([, r]) => r.type === types.terminalRowTypes.COMPLETE && !r.isTask)
+  const succeeded = completedNonTasks.filter(([, r]) => !hasErrors(r))
+  const failed = completedNonTasks.filter(([, r]) => hasErrors(r))
+  const activeToRender = active.slice(-props.limit)
   return (
-    <Box display="flex" flexDirection="column">
-      {toRender.map(([mapKey, row]) => (
+    <Box flexDirection="column">
+      {failed.length > 0 && (
+        <FailedSummary
+          rows={failed.map(([, r]) => r)}
+          padding={props.padding}
+        />
+      )}
+      {succeeded.length > 0 && (
+        <CompletedSummary
+          rows={succeeded.map(([, r]) => r)}
+          padding={props.padding}
+        />
+      )}
+      {activeToRender.map(([mapKey, row]) => (
         <RowWithSections {...row} key={mapKey} padding={props.padding} />
       ))}
     </Box>

@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
-import { limitBy, retry, timeout } from '@gibs/utils'
+import { failureLog, limitBy, retry, timeout } from '@gibs/utils'
 import * as db from '../db'
 import * as utils from '../utils'
 import { pulsechain } from 'viem/chains'
@@ -99,11 +99,11 @@ const retrieveData = async ({
   })
   return await retry(async () => {
     const res = await fetch(url, { signal }).catch((err: Error) => {
-      console.log('fetch error', err)
+      failureLog('fetch error %o', err.message)
       throw err
     })
     const result = (await res.json().catch((err: Error) => {
-      console.log('json error', err)
+      failureLog('json error %o', err.message)
       throw err
     })) as Response
     // check that the list is not empty
@@ -116,7 +116,7 @@ const retrieveData = async ({
     return result
   })
     .catch((err) => {
-      console.log(err)
+      failureLog('%o', err)
       throw err
     })
     .finally(() => {

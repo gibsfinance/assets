@@ -23,6 +23,13 @@ export const doLog = (fn: () => void) => {
   fn()
 }
 
+export const destroyTerminal = () => {
+  if (!terminal) return
+  terminal.unmount()
+  terminal.cleanup()
+  terminal = null
+}
+
 // Handle Ctrl+C gracefully
 process.on('SIGINT', () => {
   stop('Stopped by user')

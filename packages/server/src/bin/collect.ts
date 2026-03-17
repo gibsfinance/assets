@@ -14,7 +14,3 @@ db.getDB()
   .then(() => seedOrders())
   .catch((err) => console.log(err))
   .then(cleanup)
-// .then(() => {
-//   // console.log('finished')
-//   process.exit(0)
-// })

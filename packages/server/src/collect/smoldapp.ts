@@ -8,6 +8,7 @@ import { zeroAddress, getAddress, type Hex, stringToHex } from 'viem'
 import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
+import { failureLog } from '@gibs/utils'
 import { TokenListVersion } from '../types'
 
 const oneListInsertAtATime = promiseLimit<List>(2)
@@ -204,7 +205,7 @@ export const collect = async (signal: AbortSignal) => {
                 })
                 .then((list) => list?.[0] as List)
                 .catch((err) => {
-                  console.log('error inserting list', networkKey, networkChainId, type)
+                  failureLog('error inserting list %o %o %o', networkKey, networkChainId, type)
                   throw err
                 })
           )!
@@ -215,7 +216,7 @@ export const collect = async (signal: AbortSignal) => {
         }
       }
     } catch (err) {
-      console.error(`Error building network list cache for chain ${chainIdString}:`, err)
+      failureLog('Error building network list cache for chain %o: %o', chainIdString, err)
       return
     }
 
@@ -242,7 +243,7 @@ export const collect = async (signal: AbortSignal) => {
           return
         }
         metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
-          console.log(error)
+          failureLog('%o', error)
           return null
         })
       } else if (type === 'btc') {
@@ -256,7 +257,7 @@ export const collect = async (signal: AbortSignal) => {
       }
       const [name, symbol, decimals] = metadata
       const tokenImages = await utils.folderContents(tokenFolder).catch((err) => {
-        console.error(`Error getting folder contents for token ${token} on chain ${networkChainId}:`, err)
+        failureLog('Error getting folder contents for token %o on chain %o: %o', token, networkChainId, err)
         return []
       }) as string[]
 
@@ -264,7 +265,7 @@ export const collect = async (signal: AbortSignal) => {
       const listKey = filenameToListKey(firstImageName)
       const networkList = networkListCache.get(listKey)
       if (!networkList) {
-        console.error(`Network list not found for listKey: ${listKey} on chain ${chainIdString}`)
+        failureLog('Network list not found for listKey: %o on chain %o', listKey, chainIdString)
         task.complete()
         row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-network-list`)
         return
@@ -294,11 +295,11 @@ export const collect = async (signal: AbortSignal) => {
             key: `tokens-${listKey}`,
             default: listKey === 'svg',
           }).catch((err) => {
-            console.error(`Error inserting list for token ${token} on chain ${chainIdString}:`, err)
+            failureLog('Error inserting list for token %o on chain %o: %o', token, chainIdString, err)
             return [null]
           })
           if (!list) {
-            console.error(`List not found for token ${token} on chain ${chainIdString}`)
+            failureLog('List not found for token %o on chain %o', token, chainIdString)
             task.complete()
             row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-list`)
             return
@@ -324,7 +325,7 @@ export const collect = async (signal: AbortSignal) => {
             )
           })
         } catch (dbError) {
-          console.error(`Database error for token ${token} on chain ${chainIdString}:`, dbError)
+          failureLog('Database error for token %o on chain %o: %o', token, chainIdString, dbError)
           task.complete()
           row.increment('skipped', `${providerKey}-${chainIdString}-${token}-db-error`)
           return

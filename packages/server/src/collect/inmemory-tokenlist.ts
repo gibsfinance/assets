@@ -3,7 +3,7 @@ import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '../log
 import * as types from '../types'
 import * as utils from '../utils'
 import type { List, Network, Provider } from 'knex/types/tables'
-import { retry } from '@gibs/utils'
+import { failureLog, retry } from '@gibs/utils'
 /**
  * Main collection function for processing token lists
  */
@@ -132,7 +132,7 @@ export const collect = async ({
     }
     const network = networks.get(entry.chainId)!
     if (!network) {
-      console.log('no network found for', tokenList, entry)
+      failureLog('no network found for %o %o', tokenList, entry)
       continue
     }
     await retry(async () => {

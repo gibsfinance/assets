@@ -3,7 +3,7 @@ import * as db from '../db'
 import _ from 'lodash'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
-import { limitBy, timeout } from '@gibs/utils'
+import { failureLog, limitBy, timeout } from '@gibs/utils'
 
 const limit = limitBy<AssetPlatform>(`coingecko-platforms`, 1)
 
@@ -33,7 +33,7 @@ export const collect = async (signal: AbortSignal) => {
   })
   const section = row.issue('coingecko')
   if (!process.env.COINGECKO_API_KEY) {
-    console.log('COINGECKO_API_KEY is not set. skipping coingecko collection')
+    failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
     row.complete()
     row.increment('skipped', 'coingecko')
     return
@@ -83,7 +83,7 @@ export const collect = async (signal: AbortSignal) => {
           row.increment(terminalLogTypes.EROR, new Set([listKey]))
           return
         }
-        console.log(err)
+        failureLog('%o', err)
         throw err
       }
       break

@@ -73,7 +73,7 @@ export const collect =
 
       const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
       if (!tokenList.tokens) {
-        console.log(tokenListUrl, tokenList)
+        failureLog('%o %o', tokenListUrl, tokenList)
         row.complete()
         return
       }
@@ -119,7 +119,7 @@ export const collect =
               decimals = item.decimals!
             }
             if (!name || !symbol || !decimals) {
-              console.log(item, { name, symbol, decimals })
+              failureLog('%o %o', item, { name, symbol, decimals })
               row.increment('missing', utils.counterId.token([item.network.id, item.address]))
               return
             }

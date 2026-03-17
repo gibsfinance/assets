@@ -26,7 +26,7 @@ export const collect = async (signal: AbortSignal) => {
   blockchainFolders.sort()
   // console.log(blockchainFolders)
   await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
-    console.error(err)
+    failureLog('%o', (err as Error).message)
     return null
   })
   // console.log(networkNameToChainId)
@@ -285,7 +285,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     terminalCounterTypes.TOKEN,
     utils.mapToSet.token(assets, (a) => [chainId, a]),
   )
-  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 1)
+  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 8)
   const entries = [...assets.entries()] as unknown as readonly [number, string][]
   await limit.map(entries, async ([i, asset]) => {
     if (signal.aborted) {
@@ -313,23 +313,33 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       row.increment('skipped', chainTokenId)
       return
     }
-    for (const [list, index] of [[networkList, i], [trustwalletList, globalCount + i]] as const) {
-      await db.fetchImageAndStoreForToken({
-        listId: list.listId,
+    const tokenData = {
+      providedId: address,
+      networkId: network.networkId,
+      name: info.name,
+      symbol: info.symbol,
+      decimals: info.decimals,
+    }
+    await Promise.all([
+      db.fetchImageAndStoreForToken({
+        listId: networkList.listId,
         uri: file,
         originalUri: logoPath,
         providerKey,
         signal,
-        listTokenOrderId: index,
-        token: {
-          providedId: address,
-          networkId: network.networkId,
-          name: info.name,
-          symbol: info.symbol,
-          decimals: info.decimals,
-        },
-      })
-    }
+        listTokenOrderId: i,
+        token: tokenData,
+      }),
+      db.fetchImageAndStoreForToken({
+        listId: trustwalletList.listId,
+        uri: file,
+        originalUri: logoPath,
+        providerKey,
+        signal,
+        listTokenOrderId: globalCount + i,
+        token: tokenData,
+      }),
+    ])
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
   })
 }

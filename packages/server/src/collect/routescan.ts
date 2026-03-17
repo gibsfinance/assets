@@ -1,7 +1,7 @@
 import { createPublicClient, http, type Chain, type Address } from 'viem'
 import { erc20Read } from '@gibs/utils/viem'
 import _ from 'lodash'
-import { limitBy } from '@gibs/utils'
+import { failureLog, limitBy } from '@gibs/utils'
 import {
   mainnet,
   polygon,
@@ -188,7 +188,7 @@ async function backfillTokenMetadata({
 
     return { name, symbol, decimals }
   } catch (error) {
-    console.error(`Failed to fetch metadata for token ${address} on chain ${chain.id}:`, error)
+    failureLog('metadata fetch failed %o on chain %o: %o', address, chain.id, (error as Error).message)
     return null
   }
 }
@@ -245,7 +245,7 @@ async function processToken({
 
     // Skip tokens that still don't have required metadata
     if (!tokenName || !tokenSymbol || tokenDecimals === undefined) {
-      console.log(`Skipping token ${address} - missing required metadata: name=${tokenName}, symbol=${tokenSymbol}, decimals=${tokenDecimals}`)
+      failureLog(`skipping token %o on %o - missing metadata: name=%o symbol=%o decimals=%o`, address, chainKey, tokenName, tokenSymbol, tokenDecimals)
       row.increment(terminalLogTypes.WARN, new Set([chainTokenId]))
       return false
     }
@@ -278,7 +278,7 @@ async function processToken({
 
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-    console.error(`Failed to process token ${address} on ${chainKey}:`, error)
+    failureLog('token processing failed %o on %o: %o', address, chainKey, (error as Error).message)
     return false
   }
 }
@@ -391,7 +391,7 @@ async function processChainTokens({
 
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
-    console.error(`Failed to process chain ${chainKey}:`, error)
+    failureLog('chain processing failed %o: %o', chainKey, (error as Error).message)
   }
 }
 
@@ -496,7 +496,7 @@ function mapRouteScanBlockchainToConfig(blockchain: RouteScanBlockchain): Chain 
 
   const viemChain = chainMappings[chainId]
   if (!viemChain) {
-    console.error(`RouteScan supports chain ${chainId} (${blockchain.name}) but we don't have viem support for it`)
+    failureLog('unsupported chain %o (%o) from RouteScan', chainId, blockchain.name)
     return null // Skip chains we don't have viem support for
   }
 
@@ -578,7 +578,7 @@ export const collect = async (signal?: AbortSignal) => {
     })
 
   } catch (error) {
-    console.error('RouteScan collector failed:', error)
+    failureLog('RouteScan collector failed: %o', (error as Error).message)
     throw error
   } finally {
     row.remove(providerKey)
