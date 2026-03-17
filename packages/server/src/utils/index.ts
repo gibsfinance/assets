@@ -21,7 +21,7 @@ import * as paths from '../paths'
 
 export const printFailures = () => {
   const failuresPath = path.join(paths.root, 'failures.json')
-  fs.writeFileSync(failuresPath, JSON.stringify(failures, null, 2))
+  fs.writeFileSync(failuresPath, JSON.stringify(failures, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
 }
 
 export const getFullChainId = (chainId: ChainId) => viem.toHex(chainId, { size: 32 })

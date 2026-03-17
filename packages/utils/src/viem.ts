@@ -41,7 +41,7 @@ export const buildTransport = (chain: Chain) => {
 
   return fallback(
     urls.map((url) => http(url, { timeout: rpcTimeout })),
-    { rank: true },
+    { rank: false },
   )
 }
 
