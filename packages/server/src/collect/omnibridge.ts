@@ -234,16 +234,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                 if (!metadata) {
                   return
                 }
-                // this should not err because we are not storing any image data
-                const { token } = await db.fetchImageAndStoreForToken(
+                // Use storeToken for efficient token insertion without image processing
+                const { token } = await db.storeToken(
                   {
-                    // no images to associate
-                    uri: null,
-                    originalUri: null,
-                    listId: toList.listId,
-                    providerKey: provider.key,
-                    listTokenOrderId: count++,
-                    signal,
                     token: {
                       networkId,
                       providedId,
@@ -251,6 +244,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                       symbol: metadata.symbol,
                       decimals: metadata.decimals,
                     },
+                    listId: toList.listId,
+                    listTokenOrderId: count++,
                   },
                   tx,
                 )

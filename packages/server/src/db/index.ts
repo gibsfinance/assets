@@ -464,6 +464,73 @@ export const storeToken = async (
   return { token: insertedToken, listToken }
 }
 
+/**
+ * Batch fetch and store images for multiple list tokens.
+ * Used to separate image fetching from token insertion for better performance.
+ */
+export const batchFetchImagesForTokens = async (
+  tokenImages: Array<{
+    listTokenId: string
+    uri: string | null
+    originalUri: string | null
+    providerKey: string
+    signal?: AbortSignal
+  }>,
+  t: Tx = db,
+) => {
+  if (!tokenImages.length) return []
+
+  // Use promiseLimit to control concurrency
+  const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
+
+  const results = await Promise.allSettled(
+    tokenImages.map((item) =>
+      limit(async () => {
+        if (!item.uri) return null
+
+        try {
+          const resolved = await resolveImage(item.uri, item.signal, item.providerKey)
+          if (!resolved) return null
+
+          const imageHash = ids.imageHash(resolved.buffer, resolved.originalUri, resolved.ext)
+
+          // Store the image
+          const imageResult = await insertImage(
+            {
+              providerKey: item.providerKey,
+              originalUri: resolved.originalUri,
+              image: resolved.buffer,
+              listId: null, // We'll update the listToken separately
+            },
+            t,
+          )
+
+          if (!imageResult) {
+            return { listTokenId: item.listTokenId, success: false, error: 'Failed to insert image' }
+          }
+
+          const { image } = imageResult
+
+          // Update the list token with the image hash
+          await t(tableNames.listToken)
+            .where('listTokenId', item.listTokenId)
+            .update({ imageHash })
+
+          return { listTokenId: item.listTokenId, success: true, image }
+        } catch (error) {
+          failureLog('Failed to fetch image for listToken %o: %o', item.listTokenId, error)
+          return { listTokenId: item.listTokenId, success: false, error }
+        }
+      })
+    )
+  )
+
+  return results.map((result, index) => ({
+    ...tokenImages[index],
+    result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
+  }))
+}
+
 export const getImageByAddress = async (
   { chainId, address, providerId }: { chainId: number; address: string; providerId?: string },
   t: Tx = db,

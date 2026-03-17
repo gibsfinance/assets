@@ -515,61 +515,122 @@ async function processChainTokens({
       return
     }
 
-    // Process each token
+    // Process tokens in batches for efficiency, separating token insertion from image fetching
     const section = row.get(providerKey)!
     let successCount = 0
 
+    // Collect all valid tokens with their metadata and URIs
+    const validTokens: Array<{
+      address: `0x${string}`
+      metadata: { symbol: string; name: string; decimals: number }
+      logoURI: string | null
+      index: number
+    }> = []
+
     for (const [index, { address, logoURI }] of tokenData.entries()) {
+      const normalizedLogoURI = logoURI || null
       if (signal?.aborted) break
 
       const chainTokenId = utils.counterId.token([chain.id, address])
-      const task = section.task(`token-${chainKey}-${address.toLowerCase()}`, {
-        type: terminalRowTypes.STORAGE,
-        id: providerKey,
-        kv: {
-          address,
-          type: 'evm',
-          chainId: chain.id,
-          chainKey,
-        },
-      })
 
-      task.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
       try {
         // Fetch token metadata from RPC
         const metadata = await fetchTokenMetadata({ chain, address, signal })
 
         if (!metadata) {
           row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-          task.complete()
           continue
         }
 
-        await db.fetchImageAndStoreForToken({
-          listId,
-          providerKey: providerId,
-          uri: logoURI || null,
-          originalUri: logoURI || null,
-          signal,
-          listTokenOrderId: index,
-          token: {
-            type: 'erc20',
-            symbol: metadata.symbol,
-            name: metadata.name,
-            decimals: metadata.decimals,
-            networkId: network.networkId,
-            providedId: address,
-          },
-        })
-
-        row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-        successCount++
+        validTokens.push({ address, metadata, logoURI: normalizedLogoURI, index })
 
       } catch (error) {
         row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-        failureLog('Failed to process token %o on %o: %o', address, chainKey, error)
-      } finally {
-        task.complete()
+        failureLog('Failed to fetch metadata for token %o on %o: %o', address, chainKey, error)
+      }
+    }
+
+    if (validTokens.length === 0) {
+      failureLog('No valid tokens found for chain %o', chainKey)
+      return
+    }
+
+    // Batch insert tokens first (without images)
+    const tokenInserts: Array<Parameters<typeof db.insertToken>[0]> = validTokens.map(({ address, metadata }) => ({
+      type: 'erc20',
+      symbol: metadata.symbol,
+      name: metadata.name,
+      decimals: metadata.decimals,
+      networkId: network.networkId,
+      providedId: address,
+    }))
+
+    const tokensWithImages: Array<{ listTokenId: string; uri: string | null; originalUri: string | null; providerKey: string }> = []
+
+    try {
+      const insertedTokens = await db.insertTokenBatch(tokenInserts)
+
+      // Create list associations for all inserted tokens
+      for (const [batchIndex, token] of validTokens.entries()) {
+        const chainTokenId = utils.counterId.token([chain.id, token.address])
+        const task = section.task(`token-${chainKey}-${token.address.toLowerCase()}`, {
+          type: terminalRowTypes.STORAGE,
+          id: providerKey,
+          kv: {
+            address: token.address,
+            type: 'evm',
+            chainId: chain.id,
+            chainKey,
+          },
+        })
+
+        task.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
+
+        try {
+          // Use storeToken for list association (no image processing)
+          const { listToken } = await db.storeToken({
+            token: tokenInserts[batchIndex],
+            listId,
+            listTokenOrderId: token.index,
+          })
+
+          // Collect tokens that need image fetching
+          if (token.logoURI) {
+            tokensWithImages.push({
+              listTokenId: listToken.listTokenId,
+              uri: token.logoURI,
+              originalUri: token.logoURI,
+              providerKey,
+            })
+          }
+
+          row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+          successCount++
+
+        } catch (error) {
+          row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
+          failureLog('Failed to store token %o on %o: %o', token.address, chainKey, error)
+        } finally {
+          task.complete()
+        }
+      }
+    } catch (error) {
+      failureLog('Failed to batch insert tokens for chain %o: %o', chainKey, error)
+      row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-batch-insert-error`]))
+      return
+    }
+
+    // Batch fetch images for tokens that have URIs
+    if (tokensWithImages.length > 0) {
+      try {
+        await db.batchFetchImagesForTokens(tokensWithImages.map(item => ({
+          ...item,
+          signal,
+        })))
+        failureLog('Batch fetched images for %o tokens on chain %o', tokensWithImages.length, chainKey)
+      } catch (error) {
+        failureLog('Failed to batch fetch images for chain %o: %o', chainKey, error)
+        // Don't fail the entire operation if image fetching fails
       }
     }
 

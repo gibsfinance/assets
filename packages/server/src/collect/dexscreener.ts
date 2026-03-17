@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as cheerio from 'cheerio'
-import { limitBy, responseToBuffer } from '@gibs/utils/fetch'
+import { failureLog, limitBy, responseToBuffer } from '@gibs/utils'
 import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey, TokenPairsResponse } from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
@@ -209,7 +209,23 @@ export const collect = async (signal: AbortSignal) => {
       // fs.writeFileSync(path.join(folder, 'all.json'), JSON.stringify(all, null, 2))
       // fs.writeFileSync(path.join(folder, 'header.json'), JSON.stringify(header, null, 2))
       const addressToHeaderUri = new Map<string, string>(header)
-      for (const [i, token] of all.entries()) {
+
+      // Prepare tokens for batch insertion
+      const tokenInserts = all.map((token, i) => ({
+        type: 'erc20' as const,
+        symbol: token.symbol,
+        name: token.name,
+        decimals: token.decimals,
+        networkId: network.networkId,
+        providedId: token.address,
+        index: i, // Keep track of original index for listTokenOrderId
+      }))
+
+      // Batch insert all tokens
+      const insertedTokens = await db.insertTokenBatch(tokenInserts)
+
+      // Create list associations and handle headers
+      for (const [batchIndex, token] of all.entries()) {
         const chainTokenId = utils.counterId.token([chain.id, token.address])
         const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
@@ -221,51 +237,52 @@ export const collect = async (signal: AbortSignal) => {
             address: token.address,
           },
         })
-        const { listToken } = await db.fetchImageAndStoreForToken({
-          listId: listOfAllTokens.listId,
-          providerKey: provider.providerId,
-          uri: token.logoURI ?? null,
-          originalUri: token.logoURI ?? null,
-          signal,
-          listTokenOrderId: i,
-          token: {
-            type: 'erc20',
-            symbol: token.symbol,
-            name: token.name,
-            decimals: token.decimals,
-            networkId: network.networkId,
-            providedId: token.address,
-          },
-        })
-        task.complete()
-        const headerUri = addressToHeaderUri.get(token.address.toLowerCase())
-        if (!headerUri) continue
 
-        const headTask = section.task(`head-${key}-${token.address.toLowerCase()}`, {
-          type: terminalRowTypes.STORAGE,
-          id: providerKey,
-          message: 'head',
-          kv: {
-            key,
-            chainId: chain.id,
-            type: chain.type,
-            address: token.address,
-          },
-        })
-        await db
-          .fetchAndInsertHeader({
-            uri: headerUri,
-            originalUri: headerUri,
-            listTokenId: listToken.listTokenId,
-            providerKey: provider.providerId,
+        try {
+          // Use storeToken for list association (no image processing for now)
+          const { listToken } = await db.storeToken({
+            token: tokenInserts[batchIndex],
+            listId: listOfAllTokens.listId,
+            listTokenOrderId: batchIndex,
           })
-          .catch((e) => {
-            row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-            throw e
+
+          const headerUri = addressToHeaderUri.get(token.address.toLowerCase())
+          if (!headerUri) {
+            task.complete()
+            continue
+          }
+
+          const headTask = section.task(`head-${key}-${token.address.toLowerCase()}`, {
+            type: terminalRowTypes.STORAGE,
+            id: providerKey,
+            message: 'head',
+            kv: {
+              key,
+              chainId: chain.id,
+              type: chain.type,
+              address: token.address,
+            },
           })
-          .finally(() => {
-            headTask.complete()
-          })
+          await db
+            .fetchAndInsertHeader({
+              uri: headerUri,
+              originalUri: headerUri,
+              listTokenId: listToken.listTokenId,
+              providerKey: provider.providerId,
+            })
+            .catch((e) => {
+              row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
+              throw e
+            })
+            .finally(() => {
+              headTask.complete()
+            })
+        } catch (error) {
+          row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
+          failureLog('Failed to process token %o: %o', token.address, error)
+        } finally {
+          task.complete()
+        }
       }
       row.increment(terminalCounterTypes.NETWORK, new Set([k]))
     }),
