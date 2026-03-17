@@ -12,7 +12,7 @@ let isRunning = true
 let isMunging = 0
 const globalDefaultLimit = 4
 
-let doesRender = true
+let doesRender = process.env.DISABLE_TERMINAL !== '1'
 
 export const setDoesRender = (doesRenderArg: boolean) => {
   doesRender = doesRenderArg
