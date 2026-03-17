@@ -13,3 +13,9 @@ pumptires.json
 failures.json
 .turbo
 packages/server/src/harvested/etherscan/
+
+# Yarn Berry
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases

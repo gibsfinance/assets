@@ -40,6 +40,7 @@ services:
       - ./packages:/usr/src/app/packages
       - ./package.json:/usr/src/app/package.json
       - ./yarn.lock:/usr/src/app/yarn.lock
+      - ./.yarnrc.yml:/usr/src/app/.yarnrc.yml
     environment:
       DEBUG: '${DEBUG:-📷*}'
       DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
