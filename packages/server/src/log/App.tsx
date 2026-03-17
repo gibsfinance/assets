@@ -16,7 +16,18 @@ let doesRender = true
 
 export const setDoesRender = (doesRenderArg: boolean) => {
   doesRender = doesRenderArg
+  // When disabling rendering, also disable the global terminal
+  if (!doesRenderArg && terminal) {
+    try {
+      terminal.unmount()
+      terminal = null
+    } catch (err) {
+      // Ignore errors when cleaning up terminal
+    }
+  }
 }
+
+export const getDoesRender = () => doesRender
 
 export const doLog = (fn: () => void) => {
   if (doesRender) return

@@ -8,10 +8,18 @@ const { providers, logger } = args.collect()
 
 setDoesRender(logger === 'terminal')
 
-db.getDB()
-  .migrate.latest()
-  .then(() => db.purgeExpiredCache().catch(() => {}))
-  .then(() => collect.main(providers()))
-  .then(() => seedOrders())
-  .catch((err) => console.log(err))
-  .then(cleanup)
+async function runCollect() {
+  try {
+    const dbInstance = db.getDB()
+    await dbInstance.migrate.latest()
+    await db.purgeExpiredCache().catch(() => {})
+    await collect.main(providers(), logger)
+    // await seedOrders() // TODO: Investigate seedOrders hanging
+  } catch (err) {
+    console.error('Collection failed:', err)
+  } finally {
+    await cleanup()
+  }
+}
+
+runCollect()

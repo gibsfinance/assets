@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import * as viem from 'viem'
-import { erc20Read } from '@gibs/utils/viem'
+import { erc20Read, failureLog } from '@gibs/utils'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -143,6 +143,10 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     if (currentToBlockNumber && currentToBlockNumber > fromBlock) {
       fromBlock = currentToBlockNumber
     }
+
+    // Log the current block range being processed for this bridge pairing
+    console.log(`omnibridge: processing ${fromConfig.chain.id} -> ${toConfig.chain.id} (blocks ${fromBlock} to ${finalizedBlock.number})`)
+    failureLog('omnibridge: processing %s -> %s (blocks %s to %s)', fromConfig.chain.id, toConfig.chain.id, fromBlock, finalizedBlock.number)
 
     const blocksSection = configRow.issue(providerKey, 1)
     configRow.createCounter(terminalCounterTypes.TOKEN)

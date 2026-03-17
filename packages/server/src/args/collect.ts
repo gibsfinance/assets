@@ -44,7 +44,7 @@ export const collect = _.memoize(() => {
       describe: 'the logger to use',
       required: false,
       default: 'terminal',
-      choices: ['terminal', 'pretty'],
+      choices: ['terminal', 'pretty', 'raw'],
     },
     rpc1: rpc('ethereum', 'https://rpc-ethereum.g4mm4.io'),
     rpc369: rpc('pulsechain', 'https://rpc-pulsechain.g4mm4.io'),
