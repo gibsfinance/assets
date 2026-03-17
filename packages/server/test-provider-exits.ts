@@ -3,14 +3,16 @@
 /**
  * Provider exit isolation test
  *
- * Runs each provider in a child process, one at a time, to find
- * which providers fail to exit on their own. Each provider gets
- * a timeout — if the process doesn't exit before then, it's
- * flagged as a hanger.
+ * Forks src/bin/collect.ts for each provider one at a time with
+ * --logger=raw to find which providers fail to exit on their own.
  */
 
 import { fork, type ChildProcess } from 'node:child_process'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const COLLECT_SCRIPT = resolve(__dirname, 'src/bin/collect.ts')
 
 const TIMEOUT_MS = parseInt(process.env.TIMEOUT ?? '120000', 10)
 const ONLY = process.env.ONLY?.split(',').map((s) => s.trim())
@@ -28,11 +30,10 @@ function runProvider(provider: string): Promise<ProviderResult> {
   return new Promise((resolve) => {
     const start = Date.now()
     let timedOut = false
-    let child: ChildProcess | null = null
 
-    child = fork(
-      new URL('./test-provider-worker.ts', import.meta.url).pathname,
-      [provider],
+    const child = fork(
+      COLLECT_SCRIPT,
+      ['--providers', provider, '--logger', 'raw'],
       {
         execArgv: ['--import', 'tsx'],
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -44,13 +45,10 @@ function runProvider(provider: string): Promise<ProviderResult> {
       },
     )
 
-    let stdout = ''
     let stderr = ''
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString()
-      stdout += text
-      process.stdout.write(`  [${provider}] ${text}`)
+      process.stdout.write(`  [${provider}] ${chunk}`)
     })
 
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -62,11 +60,9 @@ function runProvider(provider: string): Promise<ProviderResult> {
     const timer = setTimeout(() => {
       timedOut = true
       console.log(`\n  ⏰ ${provider} timed out after ${TIMEOUT_MS / 1000}s — killing`)
-      child?.kill('SIGTERM')
+      child.kill('SIGTERM')
       setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGKILL')
-        }
+        if (!child.killed) child.kill('SIGKILL')
       }, 5000)
     }, TIMEOUT_MS)
 
@@ -75,7 +71,7 @@ function runProvider(provider: string): Promise<ProviderResult> {
       resolve({
         provider,
         exitCode: code,
-        signal: signal,
+        signal,
         durationMs: Date.now() - start,
         timedOut,
         error: stderr.trim() || undefined,
