@@ -5,11 +5,11 @@ import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log
 import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
 
-const PROVIDER_CONCURRENCY = 4
+const DEFAULT_PROVIDER_CONCURRENCY = 4
 /**
  * Main collection function that orchestrates data collection from multiple providers
  */
-export const main = async (providers: Collectable[], logger: string = 'terminal') => {
+export const main = async (providers: Collectable[], logger = 'terminal', concurrency = DEFAULT_PROVIDER_CONCURRENCY) => {
   const c = collectables()
 
   if (logger === 'raw') {
@@ -43,7 +43,7 @@ export const main = async (providers: Collectable[], logger: string = 'terminal'
     console.log('\n🎉 All providers completed!')
   } else {
     // Normal terminal/pretty logging
-    const limit = promiseLimit<Collectable>(PROVIDER_CONCURRENCY)
+    const limit = promiseLimit<Collectable>(concurrency)
     utils.terminalRow.update({
       id: 'collect',
       type: terminalRowTypes.SUMMARY,
