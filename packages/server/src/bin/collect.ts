@@ -25,6 +25,7 @@ async function runCollect() {
     console.error('Collection failed:', err)
   } finally {
     await cleanup()
+    process.exit(0)
   }
 }
 
