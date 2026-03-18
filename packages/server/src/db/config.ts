@@ -11,7 +11,8 @@ export const makeConfig = (overrides: Partial<Knex.Config>): Knex.Config => ({
   // debug: true,
   pool: {
     min: 1,
-    max: 20,
+    max: 80,
+    acquireTimeoutMillis: 30_000,
   },
   seeds: {
     extension: 'ts',
