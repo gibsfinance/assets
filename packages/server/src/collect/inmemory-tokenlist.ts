@@ -3,7 +3,7 @@ import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '../log
 import * as types from '../types'
 import * as utils from '../utils'
 import type { List, Network, Provider } from 'knex/types/tables'
-import { failureLog, retry } from '@gibs/utils'
+import { failureLog } from '@gibs/utils'
 /**
  * Main collection function for processing token lists
  */
@@ -72,31 +72,31 @@ export const collect = async ({
     // Setup default network (chainId 0)
     await db.insertNetworkFromChainId(0, undefined, tx)
 
-      // Create provider entry
-      ;[provider] = await db.insertProvider(
-        {
-          key: providerKey,
-        },
-        tx,
-      )
+    // Create provider entry
+    ;[provider] = await db.insertProvider(
+      {
+        key: providerKey,
+      },
+      tx,
+    )
 
-      // Create list entry
-      ;[list] = await db.insertList(
-        {
-          providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
-          name: tokenList.name,
-          key: listKey,
-          default: isDefault,
-          description: '',
-          ...(tokenList.version && {
-            major: typeof tokenList.version.major === 'number' ? tokenList.version.major : 1,
-            minor: typeof tokenList.version.minor === 'number' ? tokenList.version.minor : 0,
-            patch: typeof tokenList.version.patch === 'number' ? tokenList.version.patch : 0,
-          }),
-        },
-        tx,
-      )
+    // Create list entry
+    ;[list] = await db.insertList(
+      {
+        providerId: provider.providerId,
+        networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
+        name: tokenList.name,
+        key: listKey,
+        default: isDefault,
+        description: '',
+        ...(tokenList.version && {
+          major: typeof tokenList.version.major === 'number' ? tokenList.version.major : 1,
+          minor: typeof tokenList.version.minor === 'number' ? tokenList.version.minor : 0,
+          patch: typeof tokenList.version.patch === 'number' ? tokenList.version.patch : 0,
+        }),
+      },
+      tx,
+    )
 
     // Store list logo if available
     if (tokenList.logoURI) {
@@ -122,7 +122,7 @@ export const collect = async ({
   /**
    * Token processing:
    * 1. Process tokens in batches to manage memory and database load
-   * 2. Each token is processed in its own transaction with retry logic
+   * 2. Each token is processed in its own transaction
    * 3. Stores token information and associated images
    */
   for (const [i, entry] of tokenList.tokens.entries()) {
@@ -135,7 +135,7 @@ export const collect = async ({
       failureLog('no network found for %o %o', tokenList, entry)
       continue
     }
-    await retry(async () => {
+    try {
       await db.transaction(async (tx) => {
         const token = {
           name: entry.name,
@@ -165,10 +165,10 @@ export const collect = async ({
         )
       })
       row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-    }).catch((err) => {
+    } catch (err) {
       row.increment('erred', chainTokenId)
-      throw err
-    })
+      failureLog('token %o/%o failed: %o', providerKey, chainTokenId, (err as Error).message)
+    }
   }
   row.complete()
 }

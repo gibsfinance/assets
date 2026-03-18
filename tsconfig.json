@@ -99,9 +99,7 @@
     /* Completeness */
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
     "skipLibCheck": true /* Skip type checking all .d.ts files. */
-  }
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
 }
-
-//
-  //"include": ["packages/server/knexfile.ts", "packages/server/src/**/*.ts", "packages/server/src/**/*.tsx", "packages/server/src/global.d.ts"],
-  //"exclude": ["node_modules", "frontend"]
