@@ -1,26 +1,39 @@
-FROM node:23.6.1 AS base
+# Build stage
+FROM node:24-alpine AS builder
 
-RUN mkdir -p /usr/src/app
+RUN corepack enable
+
 WORKDIR /usr/src/app
 
-ARG NODE_ENV
+# Copy dependency files
+COPY yarn.lock package.json .yarnrc.yml tsconfig.json ./
+
+# Copy package files for workspaces
+COPY packages packages
+
+# Install dependencies and build
+RUN yarn install --immutable && \
+    yarn run build && \
+    yarn workspaces focus --all --production && \
+    yarn cache clean --all
+
+# Production stage
+FROM node:24-alpine AS production
+
+RUN corepack enable
+
+WORKDIR /usr/src/app
+
+ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV
 ARG ROOT_URI
 ENV ROOT_URI=$ROOT_URI
+ARG PUBLIC_BASE_URL
+ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 
-FROM base AS build
-COPY pnpm-lock.yaml /usr/src/app/pnpm-lock.yaml
-COPY package.json /usr/src/app/package.json
-RUN npm i -g pnpm
-RUN pnpm i
+# Copy only production dependencies and built files
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/packages ./packages
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json ./
 
-COPY src /usr/src/app/src
-COPY config.ts /usr/src/app/config.ts
-COPY knexfile.ts /usr/src/app/knexfile.ts
-COPY tsconfig.json /usr/src/app/tsconfig.json
-COPY .eslintrc.mjs /usr/src/app/.eslintrc.mjs
-COPY .prettierrc /usr/src/app/.prettierrc
-
-COPY ./config.ts /usr/src/app/config.ts
-
-CMD ["pnpm", "run", "serve"]
+CMD ["yarn", "run", "server"]

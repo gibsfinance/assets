@@ -9,3 +9,13 @@ frontend/package/
 frontend/.env.*
 dist
 pumptires.json
+.DS_Store
+failures.json
+.turbo
+packages/server/src/harvested/etherscan/
+
+# Yarn Berry
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases

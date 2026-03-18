@@ -1,0 +1,6 @@
+failures.json
+node_modules
+.git
+postgres-data*
+.DS_Store
+.yarn/cache

@@ -5,15 +5,28 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v5
         with:
-          node-version: 20
-      - run: npm install -g pnpm
-      - run: pnpm install
-      # start the docker database
-      # start node server
+          submodules: recursive
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn run build
       - run: docker compose build
-      - run: docker compose up -d gibassets-postgres gibassets-collect gibassets-server
-      - run: sleep 30
-      - run: pnpm test
+      - name: Start services and wait for health
+        run: |
+          docker compose up -d postgres
+          docker compose up postgres-migrate
+          docker compose up -d server
+          for i in $(seq 1 30); do
+            if [ "$(docker inspect --format='{{.State.Health.Status}}' gibassets-server 2>/dev/null)" = "healthy" ]; then
+              echo "Server is healthy"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+      - run: yarn run test
