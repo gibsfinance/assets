@@ -16,26 +16,17 @@ jobs:
       - run: yarn install --immutable
       - run: yarn run build
       - run: docker compose build
-      - run: docker compose up -d postgres
-      - name: Wait for postgres
+      - name: Start services and wait for health
         run: |
+          docker compose up -d postgres
+          docker compose up postgres-migrate
+          docker compose up -d server
           for i in $(seq 1 30); do
-            if docker compose exec postgres pg_isready -U gibassets -d gibassets >/dev/null 2>&1; then
-              echo "Postgres is ready"
+            if [ "$(docker inspect --format='{{.State.Health.Status}}' gibassets-server 2>/dev/null)" = "healthy" ]; then
+              echo "Server is healthy"
               break
             fi
-            echo "Waiting for postgres... ($i/30)"
-            sleep 1
-          done
-      - run: docker compose up -d collect server
-      - name: Wait for server
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:3456/health >/dev/null 2>&1; then
-              echo "Server is ready"
-              break
-            fi
-            echo "Waiting for server... ($i/60)"
+            echo "Waiting for server... ($i/30)"
             sleep 2
           done
       - run: yarn run test
