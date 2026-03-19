@@ -7,16 +7,23 @@ ENV COREPACK_ENABLE_AUTO_PIN=0
 COPY package.json ./
 RUN corepack enable && corepack install
 
-# Copy dependency files
-COPY yarn.lock .yarnrc.yml tsconfig.json ./
+# Copy only dependency manifests first (maximizes layer cache for install)
+COPY yarn.lock .yarnrc.yml ./
+COPY packages/utils/package.json packages/utils/package.json
+COPY packages/dexscreener/package.json packages/dexscreener/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/server/package.json packages/server/package.json
 
-# Copy package files for workspaces
+# Install dependencies (cached unless package.json or lockfile changes)
+RUN yarn install --immutable
+
+# Now copy source and build
+COPY tsconfig.json ./
 COPY packages packages
+RUN yarn run build
 
-# Install dependencies and build
-RUN yarn install --immutable && \
-    yarn run build && \
-    yarn workspaces focus --all --production && \
+# Prune dev dependencies
+RUN yarn workspaces focus --all --production && \
     yarn cache clean --all
 
 # Production stage
