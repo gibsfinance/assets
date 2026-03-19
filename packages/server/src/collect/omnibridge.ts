@@ -5,6 +5,7 @@ import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import type { MinimalTokenInfo } from '@gibs/utils'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 /**
  * Configuration types for bridge endpoints
@@ -35,20 +36,83 @@ const term = _.memoize(() => {
 })
 
 /**
- * Main collection function that processes bridge configurations
+ * Two-phase collector for Omnibridge token bridges.
+ * Phase 1 (discover): creates all bridge providers + home/foreign lists based on config.
+ * Phase 2 (collect): scans blockchain events for bridge tokens.
  */
-export const collect = (config: BridgeConfig[]) => async (signal: AbortSignal) => {
-  const { row } = term()
-  try {
-    await Promise.all(
-      config.map((c) => {
-        return collectByBridgeConfig(c, signal)
-      }),
-    )
-  } finally {
-    row.complete()
+class OmnibridgeCollector extends BaseCollector {
+  readonly key = 'omnibridge'
+
+  private config: BridgeConfig[]
+
+  constructor(config: BridgeConfig[]) {
+    super()
+    this.config = config
+  }
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const manifest: DiscoveryManifest = []
+
+    for (const c of this.config) {
+      let key = `${c.providerPrefix}-bridge`
+      if (c.testnetPrefix) {
+        key = `testnet-${c.testnetPrefix}-${key}`
+      }
+
+      const [provider] = await db.insertProvider({ key })
+      await db.insertNetworkFromChainId(c.home.chain.id)
+      await db.insertNetworkFromChainId(c.foreign.chain.id)
+
+      const [homeList] = await db.insertList({
+        providerId: provider.providerId,
+        key: 'home',
+        default: true,
+        networkId: chainIdToNetworkId(c.home.chain.id),
+      })
+      const [foreignList] = await db.insertList({
+        providerId: provider.providerId,
+        key: 'foreign',
+        default: false,
+        networkId: chainIdToNetworkId(c.foreign.chain.id),
+      })
+
+      // Also create bridge record during discover
+      await db.insertBridge({
+        type: c.type ?? 'omnibridge',
+        providerId: provider.providerId,
+        homeNetworkId: chainIdToNetworkId(c.home.chain.id),
+        homeAddress: viem.getAddress(c.home.address),
+        foreignNetworkId: chainIdToNetworkId(c.foreign.chain.id),
+        foreignAddress: viem.getAddress(c.foreign.address),
+      })
+
+      manifest.push({
+        providerKey: key,
+        lists: [
+          { listKey: 'home', listId: homeList.listId },
+          { listKey: 'foreign', listId: foreignList.listId },
+        ],
+      })
+    }
+
+    return manifest
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const { row } = term()
+    try {
+      await Promise.all(
+        this.config.map((c) => {
+          return collectByBridgeConfig(c, signal)
+        }),
+      )
+    } finally {
+      row.complete()
+    }
   }
 }
+
+export default OmnibridgeCollector
 
 const abi = viem.parseAbi(['event NewTokenRegistered(address indexed native, address indexed bridged)'])
 
@@ -361,4 +425,13 @@ const iterateOverRange = async (
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
   } while (fromBlock <= end)
+}
+
+/**
+ * Main collection function that processes bridge configurations
+ */
+export const collect = (config: BridgeConfig[]) => async (signal: AbortSignal) => {
+  const collector = new OmnibridgeCollector(config)
+  await collector.discover(signal)
+  await collector.collect(signal)
 }

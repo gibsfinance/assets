@@ -1,6 +1,6 @@
-import * as remoteTokenList from './remote-tokenlist'
+import { RemoteTokenListCollector } from './remote-tokenlist'
 
-export const collect = remoteTokenList.collect({
+export default new RemoteTokenListCollector('compound', {
   providerKey: 'compound',
   listKey: 'exchange',
   tokenList: 'https://raw.githubusercontent.com/compound-finance/token-list/master/compound.tokenlist.json',

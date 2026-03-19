@@ -92,7 +92,7 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "express-urlrewrite": "^2.0.2",
-    "file-type": "^19.0.0",
+    "file-type": "^21.3.1",
     "hardhat": "^2.23.0",
     "http-errors": "^2.0.0",
     "ink": "^4.4.1",

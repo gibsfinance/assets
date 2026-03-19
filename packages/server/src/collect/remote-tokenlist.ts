@@ -6,6 +6,7 @@ import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes, TerminalSectionProxy } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 type Extension = {
   address: viem.Hex
@@ -31,7 +32,54 @@ type Input = {
 }
 
 /**
- * Main collection function that processes remote token lists and extensions
+ * Two-phase collector for remote token lists.
+ * Phase 1 (discover): fetches JSON, creates provider + list rows.
+ * Phase 2 (collect): processes tokens + images.
+ */
+export class RemoteTokenListCollector extends BaseCollector {
+  readonly key: string
+  private config: Input
+
+  constructor(key: string, config: Input) {
+    super()
+    this.key = key
+    this.config = config
+  }
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const { providerKey, listKey, tokenList: tokenListUrl } = this.config
+
+    // Fetch the remote JSON (cached by cachedJSONRequest)
+    const tokenList = await db.cachedJSONRequest<types.TokenList>(tokenListUrl, signal, tokenListUrl)
+    if (signal.aborted || !tokenList?.tokens) return []
+
+    // Run inmemory discover to create provider + list rows
+    await inmemoryTokenlist.discover({
+      providerKey,
+      listKey,
+      tokenList,
+      isDefault: this.config.isDefault,
+      signal,
+    })
+
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }],
+      },
+    ]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    // Delegate to the existing factory collect — upserts are idempotent
+    const fn = collect(this.config)
+    await fn(signal)
+  }
+}
+
+/**
+ * Main collection function that processes remote token lists and extensions.
+ * Kept for backward compatibility with unconverted collectors.
  */
 export const collect =
   ({
@@ -100,6 +148,7 @@ export const collect =
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.chainToPublicClient(chain)
 
+            // eslint-disable-next-line prefer-const
             let [image, [name = item.name, symbol = item.symbol, decimals = item.decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, signal, providerKey, item.address),
               erc20Read(chain, client, item.address),

@@ -5,6 +5,7 @@ import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy, timeout } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const limit = limitBy<AssetPlatform>(`coingecko-platforms`, 1)
 const rateLimiter = limitByTime(1_500)
@@ -27,131 +28,129 @@ type AssetPlatform = {
 }
 
 const qs = 'x_cg_demo_api_key=' + process.env.COINGECKO_API_KEY
+const providerKey = 'coingecko'
 
-export const collect = async (signal: AbortSignal) => {
-  const row = utils.terminal.issue({
-    type: terminalRowTypes.SETUP,
-    id: 'coingecko',
-  })
-  try {
-    const section = row.issue('coingecko')
+/**
+ * Two-phase collector for CoinGecko asset platforms.
+ * Phase 1 (discover): gets platform list, creates provider + per-platform lists.
+ * Phase 2 (collect): processes tokens for each platform.
+ */
+class CoinGeckoCollector extends BaseCollector {
+  readonly key = 'coingecko'
+
+  private platforms: AssetPlatform[] = []
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     if (!process.env.COINGECKO_API_KEY) {
       failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
-      row.increment('skipped', 'coingecko')
-      return
+      return []
     }
 
-    // const assetPlatforms = await processAssetPlatforms()
     const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
       `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
       signal,
       `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
     )
-    row.createCounter(terminalCounterTypes.NETWORK)
-    const platformIds = new Set(
-      _(platforms)
-        .map((platform) => platform.id)
-        .compact()
-        .value(),
-    )
-    row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
-    await limit.map(platforms, async (platform) => {
-      if (signal.aborted) {
-        return
-      }
-      if (!platform.chain_identifier) {
-        return
-      }
-      if (typeof platform.chain_identifier !== 'number') {
-        return
-      }
-      const listKey = platform.id
-      const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
-      const isCached = await db.getCachedRequest(cacheKey)
-      if (!isCached) {
-        await rateLimiter()
-      }
-      const collect = remoteTokenList.collect({
-        providerKey: 'coingecko',
-        listKey,
-        tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
-        row: section,
-      })
-      let retries = 0
-      while (true) {
-        try {
-          await collect(signal)
-        } catch (err) {
-          if (
-            (err as Error).message.includes('429 Too Many Requests') ||
-            (err as Error).message.includes('Throttled')
-          ) {
-            retries++
-            await timeout(5000 * retries).promise
-            if (retries > 5) {
-              throw err
-            }
-            continue
-          }
-          if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
-            row.increment(terminalLogTypes.EROR, new Set([listKey]))
-            return
-          }
-          failureLog('%o', err)
-          throw err
-        }
-        break
-      }
+
+    // Filter to platforms with valid chain identifiers
+    const validPlatforms = platforms.filter((p) => p.chain_identifier && typeof p.chain_identifier === 'number')
+
+    // Create provider
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'CoinGecko',
     })
-  } finally {
-    row.complete()
+
+    // Create per-platform lists via remote-tokenlist pattern (each platform is a list)
+    const lists: { listKey: string }[] = []
+    for (const platform of validPlatforms) {
+      const listKey = platform.id
+      await db.insertList({
+        providerId: provider.providerId,
+        key: listKey,
+      })
+      lists.push({ listKey })
+    }
+
+    this.platforms = platforms
+
+    return [{ providerKey, lists }]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
+    })
+    try {
+      const section = row.issue(providerKey)
+      if (!process.env.COINGECKO_API_KEY) {
+        failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
+        row.increment('skipped', providerKey)
+        return
+      }
+
+      row.createCounter(terminalCounterTypes.NETWORK)
+      const platformIds = new Set(
+        _(this.platforms)
+          .map((platform) => platform.id)
+          .compact()
+          .value(),
+      )
+      row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
+      await limit.map(this.platforms, async (platform) => {
+        if (signal.aborted) return
+        if (!platform.chain_identifier) return
+        if (typeof platform.chain_identifier !== 'number') return
+
+        const listKey = platform.id
+        const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
+        const isCached = await db.getCachedRequest(cacheKey)
+        if (!isCached) {
+          await rateLimiter()
+        }
+        const collect = remoteTokenList.collect({
+          providerKey,
+          listKey,
+          tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
+          row: section,
+        })
+        let retries = 0
+        for (;;) {
+          try {
+            await collect(signal)
+          } catch (err) {
+            if (
+              (err as Error).message.includes('429 Too Many Requests') ||
+              (err as Error).message.includes('Throttled')
+            ) {
+              retries++
+              await timeout(5000 * retries).promise
+              if (retries > 5) {
+                throw err
+              }
+              continue
+            }
+            if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
+              row.increment(terminalLogTypes.EROR, new Set([listKey]))
+              return
+            }
+            failureLog('%o', err)
+            throw err
+          }
+          break
+        }
+      })
+    } finally {
+      row.complete()
+    }
   }
 }
 
-/**
- * Process asset platforms and validate chain identifiers
- * Logs platforms with invalid chain_identifiers and returns only valid ones
- */
-// export const processAssetPlatforms = async () => {
-//   try {
-//     // Read the asset platforms file
-//     const assetPlatformsPath = path.join(root, 'src', 'harvested', 'coingecko', 'asset_platforms.json')
-//     const fileData = await fs.readFile(assetPlatformsPath, 'utf-8')
-//     const platforms: AssetPlatform[] = JSON.parse(fileData)
+export default CoinGeckoCollector
 
-//     console.log(`📊 Processing ${platforms.length} asset platforms...`)
-
-//     const validPlatforms: AssetPlatform[] = []
-//     const invalidPlatforms: AssetPlatform[] = []
-
-//     // Loop through each platform
-//     for (const platform of platforms) {
-//       // Check if chain_identifier is not a number
-//       if (platform.chain_identifier === null) continue
-//       if (typeof platform.chain_identifier !== 'number') {
-//         console.log(`⚠️  Invalid chain_identifier for platform: ${platform.id} (${platform.name}) - chain_identifier: ${platform.chain_identifier}`)
-//         invalidPlatforms.push(platform)
-//         continue
-//       }
-
-//       validPlatforms.push(platform)
-//     }
-
-//     // Summary
-//     // console.log(`\n📈 Summary:`)
-//     // console.log(`  ✅ Valid platforms: ${validPlatforms.length}`)
-//     // console.log(`  ⚠️  Invalid platforms: ${invalidPlatforms.length}`)
-
-//     // Show platforms with images
-//     // const platformsWithImages = validPlatforms.filter(p => p.image.large || p.image.small || p.image.thumb)
-//     // console.log(`  🖼️  Platforms with images: ${platformsWithImages.length}`)
-
-//     return { validPlatforms, invalidPlatforms }
-
-//   } catch (error) {
-//     console.error(`❌ Error processing asset platforms: ${error}`)
-//     throw error
-//   }
-// }
-
-// // https://app.geckoterminal.com/api/p1/networks?fields%5Bnetwork%5D=name%2Cidentifier%2Cimage_url%2Cis_new&show_for_sidebar=1
+export const collect = async (signal: AbortSignal) => {
+  const collector = new CoinGeckoCollector()
+  await collector.discover(signal)
+  await collector.collect(signal)
+}

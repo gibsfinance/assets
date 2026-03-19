@@ -10,6 +10,7 @@ import { tableNames } from '../db/tables'
 import { Token } from 'knex/types/tables.js'
 import type * as types from '../types'
 import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy, terminalCounterTypes } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'pumptires'
 const listKey = 'tokens'
@@ -189,8 +190,48 @@ const collectTokens = async (
   return _.uniqBy(relevantData, (t) => getAddress(t.address))
 }
 
-export const collect = async (signal: AbortSignal) => {
-  await retry(() => collectAttempt(signal), { attempts: 3, signal })
+class PumptiresCollector extends BaseCollector {
+  readonly key = 'pumptires'
+
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'tokens',
+    })
+    const network = await db.insertNetworkFromChainId(pulsechain.id)
+    await db.insertList({
+      key: listKey,
+      name: listKey,
+      providerId: provider.providerId,
+      networkId: network.networkId,
+      default: true,
+    })
+    await db.insertList({
+      key: 'launched',
+      name: 'Launched',
+      providerId: provider.providerId,
+      networkId: network.networkId,
+      default: false,
+    })
+    await db.insertList({
+      key: 'highcap',
+      name: 'High Market Cap',
+      providerId: provider.providerId,
+      networkId: network.networkId,
+      default: false,
+    })
+
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }, { listKey: 'launched' }, { listKey: 'highcap' }],
+      },
+    ]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    await retry(() => collectAttempt(signal), { attempts: 3, signal })
+  }
 }
 
 export const collectAttempt = async (signal: AbortSignal) => {
@@ -456,3 +497,7 @@ const tokenToPair = _.memoize(
     return `${token0}-${token1}-${factory}-${initCodeHash}`
   },
 )
+
+const instance = new PumptiresCollector()
+export default instance
+export const collect = (signal: AbortSignal) => instance.collect(signal)
