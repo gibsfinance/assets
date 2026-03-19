@@ -32,6 +32,7 @@ import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
+import type { BaseCollector } from './base-collector'
 
 /**
  * Helper function to get all available collector keys
@@ -41,10 +42,21 @@ export const allCollectables = () => {
 }
 
 /**
- * Main registry of token collectors with their configurations.
- * Each value is a BaseCollector instance with discover() and collect() methods.
+ * All known collectable provider keys.
+ * The order here defines the default image priority ranking.
  */
-export const collectables = _.memoize(() => {
+type CollectableKey =
+  | 'dexscreener' | 'countries' | 'routescan' | 'pulsechain'
+  | 'trustwallet' | 'uniswap-tokenlists' | 'kleros' | 'gibs'
+  | 'piteas' | 'pulsex' | 'balancer' | 'midgard'
+  | 'internetmoney' | 'phux' | 'pls369' | 'smoldapp'
+  | 'levinswap' | 'honeyswap' | 'pancake' | 'quickswap'
+  | 'roll' | 'scroll' | 'set' | 'omnibridge'
+  | 'dfyn' | 'coingecko' | '9mm' | 'uma'
+  | 'baofinance' | 'compound' | 'optimism' | 'pumptires'
+  | 'etherscan'
+
+const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
     dexscreener: dexscreenerCollector,
@@ -118,10 +130,12 @@ export const collectables = _.memoize(() => {
     optimism: optimismCollector,
     pumptires: pumpiresCollector,
     etherscan: etherscanCollector,
-  } as const
-})
+  }
+}
+
+export const collectables = _.memoize(buildCollectables)
 
 /**
  * Type definition for collectors to adhere to
  */
-export type Collectable = keyof ReturnType<typeof collectables>
+export type Collectable = CollectableKey
