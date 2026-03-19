@@ -1,11 +1,15 @@
-// import { migrate } from '../bin/migrate'
 import { getDB } from '../db'
-import { seedOrders } from '../db/create-orders'
+import { syncDefaultOrder, buildManifestsFromDB } from '../db/sync-order'
+import { allCollectables } from '../collect/collectables'
 import { cleanup } from '../cleanup'
 
 getDB()
   .migrate.latest()
-  .then(() => seedOrders())
+  .then(async () => {
+    const keys = allCollectables()
+    const manifests = await buildManifestsFromDB(keys)
+    await syncDefaultOrder(keys, manifests)
+  })
   .catch((err: unknown) => {
     console.error(err)
   })
