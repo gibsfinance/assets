@@ -11,6 +11,7 @@ import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
 import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
+import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 
 export const getListTokens = async ({
@@ -62,9 +63,14 @@ export const getListTokens = async ({
   if (listKey?.length) {
     q = q.whereIn(`${tableNames.list}.key`, listKey)
   }
-  // if (listOrderId) {
-  //   q = db.applyOrder(q, listOrderId)
-  // }
+  const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
+  if (effectiveOrderId) {
+    const orderedQuery = db.applyOrder(q, effectiveOrderId)
+    return {
+      filter,
+      img: await orderedQuery.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
+    }
+  }
   return {
     filter,
     img: await q.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
