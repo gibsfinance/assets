@@ -3,11 +3,7 @@ import { ThemeProvider } from './lib/contexts/ThemeContext'
 import { SettingsProvider } from './lib/contexts/SettingsContext'
 import { MetricsProvider } from './lib/contexts/MetricsContext'
 import { Layout } from './Layout'
-
-/** Placeholder pages — real implementations come in Tasks 7-9 */
-function Home() {
-  return <div>Home page placeholder</div>
-}
+import Home from './lib/pages/Home'
 
 function Wizard() {
   return <div>Wizard page placeholder</div>
