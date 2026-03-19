@@ -9,62 +9,11 @@ import * as paths from '../paths'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy } from '@gibs/utils'
 import _ from 'lodash'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'trustwallet'
 const blockchainsRoot = path.join(paths.submodules, providerKey, 'blockchains')
 const assetsFolder = 'assets'
-
-/**
- * Main collection function that processes all blockchain folders
- */
-export const collect = async (signal: AbortSignal) => {
-  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
-  const row = utils.terminal.issue({
-    type: terminalRowTypes.SETUP,
-    id: providerKey,
-  })
-  try {
-    blockchainFolders.sort()
-    // console.log(blockchainFolders)
-    await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
-      failureLog('%o', (err as Error).message)
-      return null
-    })
-    // console.log(networkNameToChainId)
-    row.createCounter(terminalCounterTypes.NETWORK)
-    row.incrementTotal(
-      terminalCounterTypes.NETWORK,
-      utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
-    )
-    let globalCount = 0
-    const limit = limitBy<string>('blockchains', 1)
-    await limit.map(blockchainFolders, async (folder) => {
-      const chainId = networkNameToChainId.get(folder)
-      if (!chainId) {
-        // console.log('chain id not found', folder)
-        return
-      }
-      try {
-        const f = path.join(blockchainsRoot, folder, assetsFolder)
-        const assets = await fs.promises.readdir(f).catch(() => [])
-        await entriesFromAssets({
-          blockchainKey: folder,
-          assets: utils.removedUndesirable(assets),
-          signal,
-          globalCount,
-        })
-        globalCount += assets.length
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err)
-        failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
-        row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
-      }
-      row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
-    })
-  } finally {
-    row.complete()
-  }
-}
 
 /**
  * Loads and parses token info and logo path from a directory
@@ -178,7 +127,6 @@ const sterilize = _.memoize((s: string | null = '') =>
 )
 const loadChainId = async (blockchainKey: string) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
-  const shouldLog = blockchainKey === 'arbitrum'
   const [
     networkInfo,
     // networkLogoPath,
@@ -251,15 +199,7 @@ type EntriesFromAssetsArgs = {
 const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }: EntriesFromAssetsArgs) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [, networkLogoPath] = await load(info)
-  // const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
-  // const list = await fs.promises.readFile(tokenlistPath).catch(() => null)
   const row = utils.terminal.get(providerKey)!
-
-  // if (!list) {
-  // use the blockchain key if we error out here because we do not yet have the chain id
-  // row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
-  // return
-  // }
 
   const chainId = networkNameToChainId.get(blockchainKey)!
 
@@ -365,4 +305,119 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     ])
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
   })
+}
+
+/**
+ * Two-phase collector for Trust Wallet token assets.
+ * Phase 1 (discover): scans filesystem submodule to enumerate blockchains, creates provider + lists.
+ * Phase 2 (collect): processes token images from filesystem.
+ */
+class TrustWalletCollector extends BaseCollector {
+  readonly key = 'trustwallet'
+
+  private blockchainFolders: string[] = []
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
+    })
+
+    blockchainFolders.sort()
+    await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
+      failureLog('%o', (err as Error).message)
+      return null
+    })
+
+    // Create provider
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'Trust Wallet',
+    })
+
+    // Create the default wallet list
+    await db.insertList({
+      key: 'wallet',
+      default: true,
+      providerId: provider.providerId,
+      patch: 1,
+    })
+
+    // Create per-blockchain lists and build manifest
+    const lists: Array<{ listKey: string; listId?: string }> = [{ listKey: 'wallet' }]
+    for (const folder of blockchainFolders) {
+      const chainId = networkNameToChainId.get(folder)
+      if (!chainId) {
+        continue
+      }
+      const network = await db.insertNetworkFromChainId(chainId)
+      const key = `wallet-${folder}`
+      const [networkList] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: network.networkId,
+        name: key,
+        key,
+        patch: 1,
+      })
+      lists.push({ listKey: key, listId: networkList.listId })
+    }
+
+    this.blockchainFolders = blockchainFolders
+    // Row stays open for collect phase
+    row.complete()
+
+    return [{ providerKey, lists }]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
+    })
+    try {
+      row.createCounter(terminalCounterTypes.NETWORK)
+      row.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
+      )
+      let globalCount = 0
+      const limit = limitBy<string>('blockchains', 1)
+      await limit.map(this.blockchainFolders, async (folder) => {
+        const chainId = networkNameToChainId.get(folder)
+        if (!chainId) {
+          return
+        }
+        try {
+          const f = path.join(blockchainsRoot, folder, assetsFolder)
+          const assets = await fs.promises.readdir(f).catch(() => [])
+          await entriesFromAssets({
+            blockchainKey: folder,
+            assets: utils.removedUndesirable(assets),
+            signal,
+            globalCount,
+          })
+          globalCount += assets.length
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
+          row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
+        }
+        row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
+      })
+    } finally {
+      row.complete()
+    }
+  }
+}
+
+export default TrustWalletCollector
+
+/**
+ * Main collection function that processes all blockchain folders
+ */
+export const collect = async (signal: AbortSignal) => {
+  const collector = new TrustWalletCollector()
+  await collector.discover(signal)
+  await collector.collect(signal)
 }
