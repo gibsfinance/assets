@@ -1,38 +1,37 @@
 import chains from '../chains'
 import '../utils'
-import * as countries from './countries'
-import * as trustwallet from './trustwallet'
-import * as pulsex from './pulsex'
-import * as phux from './phux'
-import * as pls369 from './pls369'
-import * as internetmoney from './internetmoney'
-import * as uniswapTokenlists from './uniswap-tokenlists'
-import * as remoteTokenList from './remote-tokenlist'
-import * as smoldapp from './smoldapp'
-import * as omnibridge from './omnibridge'
-import * as pulsechainCollector from './pulsechain'
-import * as nineMM from './9mm'
-import * as levinswap from './levinswap'
-import * as honeyswap from './honeyswap'
-import * as pancake from './pancake'
-import * as quickswap from './quickswap'
-import * as roll from './roll'
-import * as scroll from './scroll'
-import * as set from './set'
-import * as kleros from './kleros'
-import * as dfyn from './dfyn'
-import * as coingecko from './coingecko'
-import * as uma from './uma'
-import * as baofinance from './baofinance'
-import * as compound from './compound'
-import * as optimism from './optimism'
-import * as pumptires from './pumptires'
-import * as dexscreener from './dexscreener'
-import * as etherscan from './etherscan'
-import * as routescan from './routescan'
+import countriesCollector from './countries'
+import TrustWalletCollector from './trustwallet'
+import pulsexCollector from './pulsex'
+import phuxCollector from './phux'
+import pls369Collector from './pls369'
+import InternetMoneyCollector from './internetmoney'
+import UniswapTokenListsCollector from './uniswap-tokenlists'
+import { RemoteTokenListCollector } from './remote-tokenlist'
+import SmoldappCollector from './smoldapp'
+import OmnibridgeCollector from './omnibridge'
+import pulsechainCollector from './pulsechain'
+import nineMM from './9mm'
+import levinswapCollector from './levinswap'
+import honeyswapCollector from './honeyswap'
+import pancakeCollector from './pancake'
+import quickswapCollector from './quickswap'
+import rollCollector from './roll'
+import scrollCollector from './scroll'
+import setCollector from './set'
+import klerosCollector from './kleros'
+import dfynCollector from './dfyn'
+import CoinGeckoCollector from './coingecko'
+import umaCollector from './uma'
+import baofinanceCollector from './baofinance'
+import compoundCollector from './compound'
+import optimismCollector from './optimism'
+import pumpiresCollector from './pumptires'
+import dexscreenerCollector from './dexscreener'
+import etherscanCollector from './etherscan'
+import routescanCollector from './routescan'
 import _ from 'lodash'
-import * as gibs from './gibs'
-import type { Todo } from '../types'
+import gibsCollector from './gibs'
 
 /**
  * Helper function to get all available collector keys
@@ -42,49 +41,50 @@ export const allCollectables = () => {
 }
 
 /**
- * Main registry of token collectors with their configurations
+ * Main registry of token collectors with their configurations.
+ * Each value is a BaseCollector instance with discover() and collect() methods.
  */
 export const collectables = _.memoize(() => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
-    dexscreener: dexscreener.collect as Todo,
-    countries: countries.collect as Todo,
-    routescan: routescan.collect as Todo,
-    pulsechain: pulsechainCollector.collect as Todo,
-    trustwallet: trustwallet.collect as Todo,
-    'uniswap-tokenlists': uniswapTokenlists.collect as Todo,
-    kleros: kleros.collect as Todo,
-    gibs: gibs.collect as Todo,
-    piteas: remoteTokenList.collect({
+    dexscreener: dexscreenerCollector,
+    countries: countriesCollector,
+    routescan: routescanCollector,
+    pulsechain: pulsechainCollector,
+    trustwallet: new TrustWalletCollector(),
+    'uniswap-tokenlists': new UniswapTokenListsCollector(),
+    kleros: klerosCollector,
+    gibs: gibsCollector,
+    piteas: new RemoteTokenListCollector('piteas', {
       providerKey: 'piteas',
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
-    }) as Todo,
-    pulsex: pulsex.collect as Todo,
-    balancer: remoteTokenList.collect({
+    }),
+    pulsex: pulsexCollector,
+    balancer: new RemoteTokenListCollector('balancer', {
       providerKey: 'balancer',
       listKey: 'exchange',
       tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
       blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
-    }) as Todo,
-    midgard: remoteTokenList.collect({
+    }),
+    midgard: new RemoteTokenListCollector('midgard', {
       providerKey: 'midgard',
       listKey: 'all',
       tokenList:
         'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
-    }) as Todo,
-    internetmoney: internetmoney.collect as Todo,
-    phux: phux.collect as Todo,
-    pls369: pls369.collect as Todo,
-    smoldapp: smoldapp.collect as Todo,
-    levinswap: levinswap.collect as Todo,
-    honeyswap: honeyswap.collect as Todo,
-    pancake: pancake.collect as Todo,
-    quickswap: quickswap.collect as Todo,
-    roll: roll.collect as Todo,
-    scroll: scroll.collect as Todo,
-    set: set.collect as Todo,
-    omnibridge: omnibridge.collect([
+    }),
+    internetmoney: new InternetMoneyCollector(),
+    phux: phuxCollector,
+    pls369: pls369Collector,
+    smoldapp: new SmoldappCollector(),
+    levinswap: levinswapCollector,
+    honeyswap: honeyswapCollector,
+    pancake: pancakeCollector,
+    quickswap: quickswapCollector,
+    roll: rollCollector,
+    scroll: scrollCollector,
+    set: setCollector,
+    omnibridge: new OmnibridgeCollector([
       {
         providerPrefix: 'pulsechain',
         foreign: { chain: mainnet, address: '0x1715a3E4A142d8b698131108995174F37aEBA10D', startBlock: 17_264_119 },
@@ -108,16 +108,16 @@ export const collectables = _.memoize(() => {
         foreign: { chain: sepolia, address: '0x546e37DAA15cdb82fd1a717E5dEEa4AF08D4349A', startBlock: 3_332_081 },
         home: { chain: pulsechainV4, address: '0x6B08a50865aDeCe6e3869D9AfbB316d0a0436B6c', startBlock: 16_564_312 },
       },
-    ]) as Todo,
-    dfyn: dfyn.collect as Todo,
-    coingecko: coingecko.collect as Todo,
-    '9mm': nineMM.collect as Todo,
-    uma: uma.collect as Todo,
-    baofinance: baofinance.collect as Todo,
-    compound: compound.collect as Todo,
-    optimism: optimism.collect as Todo,
-    pumptires: pumptires.collect as Todo,
-    etherscan: etherscan.collect as Todo,
+    ]),
+    dfyn: dfynCollector,
+    coingecko: new CoinGeckoCollector(),
+    '9mm': nineMM,
+    uma: umaCollector,
+    baofinance: baofinanceCollector,
+    compound: compoundCollector,
+    optimism: optimismCollector,
+    pumptires: pumpiresCollector,
+    etherscan: etherscanCollector,
   } as const
 })
 
