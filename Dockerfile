@@ -20,6 +20,9 @@ RUN yarn install --immutable
 # Now copy source and build
 COPY tsconfig.json ./
 COPY packages packages
+
+ARG PUBLIC_BASE_URL
+ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 RUN yarn run build
 
 # Prune dev dependencies
