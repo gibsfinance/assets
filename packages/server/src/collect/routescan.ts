@@ -31,6 +31,7 @@ import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'routescan'
 
@@ -349,7 +350,6 @@ async function processChainTokens({
 
       if (routeScanResponse.items.length === 0) {
         if (totalProcessed === 0) {
-          // console.log(`No tokens found for chain ${chain.id}`)
           row.increment(terminalLogTypes.WARN, new Set([`${chain.id}-no-tokens`]))
         }
         break
@@ -406,7 +406,6 @@ async function processChainTokens({
     }
 
     row.increment(terminalCounterTypes.NETWORK, new Set([chain.id.toString()]))
-    // console.log(`Processed ${successCount}/${totalProcessed} tokens for ${chainKey}`)
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
     failureLog('chain processing failed %o: %o', chainKey, (error as Error).message)
@@ -538,25 +537,16 @@ async function getRouteScanChainConfigs(signal?: AbortSignal): Promise<Chain[]> 
   return _(blockchains).map(mapRouteScanBlockchainToConfig).compact().value()
 }
 
-/**
- * Main collector function
- */
-export const collect = async (signal?: AbortSignal) => {
-  const row = utils.terminal.issue({
-    type: terminalRowTypes.SETUP,
-    id: providerKey,
-  })
+class RoutescanCollector extends BaseCollector {
+  readonly key = 'routescan'
 
-  try {
-    // Insert provider
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
       name: 'RouteScan',
     })
-
-    // Create global list for all tokens across all chains
     const allNetworks = await db.insertNetworkFromChainId(0, 'evm')
-    const [globalList] = await db.insertList({
+    await db.insertList({
       providerId: provider.providerId,
       networkId: allNetworks.networkId,
       key: 'top-tokens',
@@ -564,46 +554,80 @@ export const collect = async (signal?: AbortSignal) => {
       default: true,
     })
 
-    // Get supported chain configurations from RouteScan API
-    const enabledChains = await getRouteScanChainConfigs(signal)
+    return [{
+      providerKey,
+      lists: [{ listKey: 'top-tokens' }],
+    }]
+  }
 
-    if (enabledChains.length === 0) {
-      throw new Error(
-        'Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.',
-      )
-    }
-    // Setup counters
-    const section = row.issue(providerKey)
-    row.createCounter(terminalCounterTypes.NETWORK)
-    row.createCounter(terminalCounterTypes.TOKEN)
-    row.createCounter(terminalLogTypes.EROR, true)
-    row.createCounter(terminalLogTypes.WARN, true)
-
-    row.incrementTotal(terminalCounterTypes.NETWORK, new Set(enabledChains.map((config) => config.id.toString())))
-
-    // Process chains with rate-limited concurrency
-    await chainLimiter.map(enabledChains, async (chainConfig) => {
-      if (signal?.aborted) return
-
-      return chainProcessor.processChain(
-        chainConfig,
-        async (chain) => {
-          return processChainTokens({
-            chain,
-            row,
-            globalListId: globalList.listId,
-            providerId: provider.providerId,
-            signal,
-          })
-        },
-        signal,
-      )
+  async collect(signal?: AbortSignal): Promise<void> {
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
     })
-  } catch (error) {
-    failureLog('RouteScan collector failed: %o', (error as Error).message)
-    throw error
-  } finally {
-    row.remove(providerKey)
-    row.complete()
+
+    try {
+      // Insert provider
+      const [provider] = await db.insertProvider({
+        key: providerKey,
+        name: 'RouteScan',
+      })
+
+      // Create global list for all tokens across all chains
+      const allNetworks = await db.insertNetworkFromChainId(0, 'evm')
+      const [globalList] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: allNetworks.networkId,
+        key: 'top-tokens',
+        name: 'Top Tokens by RouteScan',
+        default: true,
+      })
+
+      // Get supported chain configurations from RouteScan API
+      const enabledChains = await getRouteScanChainConfigs(signal)
+
+      if (enabledChains.length === 0) {
+        throw new Error(
+          'Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.',
+        )
+      }
+      // Setup counters
+      const section = row.issue(providerKey)
+      row.createCounter(terminalCounterTypes.NETWORK)
+      row.createCounter(terminalCounterTypes.TOKEN)
+      row.createCounter(terminalLogTypes.EROR, true)
+      row.createCounter(terminalLogTypes.WARN, true)
+
+      row.incrementTotal(terminalCounterTypes.NETWORK, new Set(enabledChains.map((config) => config.id.toString())))
+
+      // Process chains with rate-limited concurrency
+      await chainLimiter.map(enabledChains, async (chainConfig) => {
+        if (signal?.aborted) return
+
+        return chainProcessor.processChain(
+          chainConfig,
+          async (chain) => {
+            return processChainTokens({
+              chain,
+              row,
+              globalListId: globalList.listId,
+              providerId: provider.providerId,
+              signal,
+            })
+          },
+          signal,
+        )
+      })
+    } catch (error) {
+      failureLog('RouteScan collector failed: %o', (error as Error).message)
+      throw error
+    } finally {
+      row.remove(providerKey)
+      row.complete()
+    }
   }
 }
+
+const instance = new RoutescanCollector()
+export default instance
+export const collect = (signal?: AbortSignal) => instance.collect(signal)

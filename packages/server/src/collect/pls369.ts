@@ -10,6 +10,7 @@ import * as db from '../db'
 import promiseLimit from 'promise-limit'
 import { chainToPublicClient, counterId, mapToSet, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'pls369'
 type Piece = {
@@ -76,140 +77,169 @@ export const walkFor = async (start: string, fn: Walker): Promise<string[]> => {
   return _.flattenDeep(filtered)
 }
 
-/**
- * Main collection function that processes PulseChain assets
- */
-export const collect = async (signal: AbortSignal) => {
-  const summaryRow = terminal.issue({
-    id: providerKey,
-    type: terminalRowTypes.SETUP,
-  })
-  try {
-    const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
-    const infoFiles = await walkFor(walkPath, async (file, walker) => {
-      const stat = await fs.promises.stat(file)
-      if (stat.isDirectory()) {
-        return walker()
-      }
-      if (file.includes('.DS_Store')) return []
+class Pls369Collector extends BaseCollector {
+  readonly key = 'pls369'
 
-      if (path.extname(file) !== '.json') {
-        return [file]
-      }
-      return []
-    })
-
-    const infoPaths = infoFiles.map((file) => file.split(`${walkPath}`).join(''))
-    const pieces = _(infoPaths)
-      .map((p, index) => {
-        const addr = p.slice(1, 43)
-        if (!isAddress(addr)) {
-          summaryRow.createCounter('skipped', true)
-          summaryRow.increment('skipped', `${providerKey}-${addr.toLowerCase()}`)
-          return null
-        }
-        return [
-          {
-            address: getAddress(addr),
-            path: p,
-            fullPath: path.join(walkPath, p),
-          },
-          index,
-        ] as [Piece, number]
-      })
-      .compact()
-      .value()
-
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
-      key: 'pls369',
+      key: providerKey,
       name: 'PLS369',
       description: 'a grass roots list curated by pulsechain users',
     })
 
-    summaryRow.createCounter(terminalCounterTypes.NETWORK)
-    summaryRow.incrementTotal(
-      terminalCounterTypes.NETWORK,
-      mapToSet.network(configs, (c) => c.chain.id),
-    )
-    const section = summaryRow.issue(providerKey)
-    await networkLimiter.map(configs, async ({ list, chain, fetchConfig }) => {
-      if (signal.aborted) {
-        return
-      }
-      const row = section.task(`${providerKey}-${chain.id}`, {
-        id: `chainId=${chain.id}`,
-        type: terminalRowTypes.SETUP,
-      })
-      const client = chainToPublicClient(chain)
+    const lists: Array<{ listKey: string }> = []
+    for (const { list, chain } of configs) {
       const network = await db.insertNetworkFromChainId(chain.id)
-      const [dbList] = await db.insertList({
+      await db.insertList({
         providerId: provider.providerId,
         networkId: network.networkId,
         ...list,
       })
+      lists.push({ listKey: list.key })
+    }
 
-      row.createCounter(terminalCounterTypes.TOKEN)
-      row.incrementTotal(
-        terminalCounterTypes.TOKEN,
-        mapToSet.token(pieces, ([v]) => [chain.id, v.address]),
-      )
-      const networkSection = row.issue(`${providerKey}-${chain.id}`)
-      await tokenAccessLimit
-        .map(pieces, async ([piece, i]) => {
-          if (signal.aborted) {
-            return
+    return [{
+      providerKey,
+      lists,
+    }]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const summaryRow = terminal.issue({
+      id: providerKey,
+      type: terminalRowTypes.SETUP,
+    })
+    try {
+      const walkPath = path.join(paths.submodules, 'pulsechain-assets', 'blockchain', 'pulsechain', 'assets')
+      const infoFiles = await walkFor(walkPath, async (file, walker) => {
+        const stat = await fs.promises.stat(file)
+        if (stat.isDirectory()) {
+          return walker()
+        }
+        if (file.includes('.DS_Store')) return []
+
+        if (path.extname(file) !== '.json') {
+          return [file]
+        }
+        return []
+      })
+
+      const infoPaths = infoFiles.map((file) => file.split(`${walkPath}`).join(''))
+      const pieces = _(infoPaths)
+        .map((p, index) => {
+          const addr = p.slice(1, 43)
+          if (!isAddress(addr)) {
+            summaryRow.createCounter('skipped', true)
+            summaryRow.increment('skipped', `${providerKey}-${addr.toLowerCase()}`)
+            return null
           }
-          const chainTokenId = counterId.token([chain.id, piece.address])
-          row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-          const task = networkSection.task(chainTokenId, {
-            id: '',
-            type: terminalRowTypes.STORAGE,
-            kv: {
-              address: piece.address,
+          return [
+            {
+              address: getAddress(addr),
+              path: p,
+              fullPath: path.join(walkPath, p),
             },
-          })
-          const response = await erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
+            index,
+          ] as [Piece, number]
+        })
+        .compact()
+        .value()
 
-          if (!response) {
-            row.increment('skipped', chainTokenId)
-            task.unmount()
-            return
-          }
+      const [provider] = await db.insertProvider({
+        key: 'pls369',
+        name: 'PLS369',
+        description: 'a grass roots list curated by pulsechain users',
+      })
 
-          const [name, symbol, decimals] = response
-          const path = piece.fullPath.replace('hhttps://', 'https://')
+      summaryRow.createCounter(terminalCounterTypes.NETWORK)
+      summaryRow.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        mapToSet.network(configs, (c) => c.chain.id),
+      )
+      const section = summaryRow.issue(providerKey)
+      await networkLimiter.map(configs, async ({ list, chain, fetchConfig }) => {
+        if (signal.aborted) {
+          return
+        }
+        const row = section.task(`${providerKey}-${chain.id}`, {
+          id: `chainId=${chain.id}`,
+          type: terminalRowTypes.SETUP,
+        })
+        const client = chainToPublicClient(chain)
+        const network = await db.insertNetworkFromChainId(chain.id)
+        const [dbList] = await db.insertList({
+          providerId: provider.providerId,
+          networkId: network.networkId,
+          ...list,
+        })
 
-          await db
-            .fetchImageAndStoreForToken({
-              listId: dbList.listId,
-              uri: path,
-              originalUri: path,
-              providerKey: provider.key,
-              listTokenOrderId: i,
-              signal,
-              token: {
-                name,
-                symbol,
-                decimals,
-                networkId: network.networkId,
-                providedId: piece.address,
+        row.createCounter(terminalCounterTypes.TOKEN)
+        row.incrementTotal(
+          terminalCounterTypes.TOKEN,
+          mapToSet.token(pieces, ([v]) => [chain.id, v.address]),
+        )
+        const networkSection = row.issue(`${providerKey}-${chain.id}`)
+        await tokenAccessLimit
+          .map(pieces, async ([piece, i]) => {
+            if (signal.aborted) {
+              return
+            }
+            const chainTokenId = counterId.token([chain.id, piece.address])
+            row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+            const task = networkSection.task(chainTokenId, {
+              id: '',
+              type: terminalRowTypes.STORAGE,
+              kv: {
+                address: piece.address,
               },
             })
-            .finally(() => {
-              task.complete()
-            })
-        })
-        .catch((e) => {
-          row.increment('erred', `${chain.id}`)
-          summaryRow.increment('erred', `${chain.id}`)
-          throw e
-        })
-      row.hideSection(`${providerKey}-${chain.id}`)
-      row.hide()
-      row.complete()
-      summaryRow.increment(terminalCounterTypes.NETWORK, `${chain.id}`)
-    })
-  } finally {
-    summaryRow.complete()
+            const response = await erc20Read(chain, client, piece.address, fetchConfig).catch(() => null)
+
+            if (!response) {
+              row.increment('skipped', chainTokenId)
+              task.unmount()
+              return
+            }
+
+            const [name, symbol, decimals] = response
+            const path = piece.fullPath.replace('hhttps://', 'https://')
+
+            await db
+              .fetchImageAndStoreForToken({
+                listId: dbList.listId,
+                uri: path,
+                originalUri: path,
+                providerKey: provider.key,
+                listTokenOrderId: i,
+                signal,
+                token: {
+                  name,
+                  symbol,
+                  decimals,
+                  networkId: network.networkId,
+                  providedId: piece.address,
+                },
+              })
+              .finally(() => {
+                task.complete()
+              })
+          })
+          .catch((e) => {
+            row.increment('erred', `${chain.id}`)
+            summaryRow.increment('erred', `${chain.id}`)
+            throw e
+          })
+        row.hideSection(`${providerKey}-${chain.id}`)
+        row.hide()
+        row.complete()
+        summaryRow.increment(terminalCounterTypes.NETWORK, `${chain.id}`)
+      })
+    } finally {
+      summaryRow.complete()
+    }
   }
 }
+
+const instance = new Pls369Collector()
+export default instance
+export const collect = (signal: AbortSignal) => instance.collect(signal)
