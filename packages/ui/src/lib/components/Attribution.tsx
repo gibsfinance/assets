@@ -28,6 +28,7 @@ export default function Attribution() {
               }
               alt={provider.name}
               width={48}
+              height={24}
               className="max-h-12 max-w-24 object-contain"
             />
           </a>
