@@ -5,8 +5,6 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import type { ListDescription, SearchUpdate, Token } from '../types'
 import TokenListFilter from './TokenListFilter'
 
-type SearchUpdateExtension = Partial<SearchUpdate>
-
 interface TokenSearchProps {
   onSearchUpdate: (state: SearchUpdate) => void
   count: number
@@ -51,24 +49,12 @@ export default function TokenSearch({
   onToggleAll,
 }: TokenSearchProps) {
   const [query, setQuery] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
+  const [_isSearching, setIsSearching] = useState(false)
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const searchAbortControllerRef = useRef<AbortController | null>(null)
   const { metrics } = useMetricsContext()
 
-  const updateOutside = useCallback(
-    (update?: SearchUpdateExtension) => {
-      onSearchUpdate({
-        query,
-        isSearching,
-        isGlobalSearching,
-        tokens: [],
-        isError: false,
-        ...update,
-      })
-    },
-    [onSearchUpdate, query, isSearching, isGlobalSearching],
-  )
+
 
   const performGlobalSearch = useCallback(async () => {
     // Cancel any previous ongoing search

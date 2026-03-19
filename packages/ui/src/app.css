@@ -1,8 +1,95 @@
 @import 'tailwindcss';
-
 @custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Fonts */
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Primary accent (lower = lighter, higher = darker) */
+  --color-accent-400: #33e69b;
+  --color-accent-500: #00DC82;
+  --color-accent-600: #00b368;
+
+  /* Cyan secondary */
+  --color-cyan-500: #0ea5e9;
+
+  /* Dark surfaces */
+  --color-surface-base: #09090b;
+  --color-surface-1: #111113;
+  --color-surface-2: #1a1a1e;
+  --color-surface-3: #27272a;
+
+  /* Light surfaces */
+  --color-surface-light-base: #ffffff;
+  --color-surface-light-1: #fafafa;
+  --color-surface-light-2: #f4f4f5;
+  --color-surface-light-3: #e4e4e7;
+
+  /* Border */
+  --color-border-dark: rgba(255, 255, 255, 0.08);
+  --color-border-light: #e4e4e7;
+
+  /* Glow */
+  --shadow-glow-green: 0 0 20px rgba(0, 220, 130, 0.3);
+  --shadow-glow-cyan: 0 0 20px rgba(14, 165, 233, 0.3);
+  --shadow-glow-green-subtle: 0 0 24px rgba(0, 220, 130, 0.08);
+  --shadow-elevated: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
 
 html,
 body {
   @apply h-full;
+}
+
+body {
+  @apply font-body;
+}
+
+/* Gradient text utility */
+.text-gradient-brand {
+  @apply bg-gradient-to-r from-accent-500 to-cyan-500 bg-clip-text text-transparent;
+}
+
+.text-gradient-green {
+  @apply bg-gradient-to-r from-accent-500 to-accent-600 bg-clip-text text-transparent;
+}
+
+/* Glass card */
+.glass-card {
+  @apply bg-white/[0.03] backdrop-blur-xl border border-border-dark rounded-2xl;
+}
+.glass-card:where(.dark *) {
+  @apply bg-white/[0.03] border-border-dark;
+}
+.glass-card:where(:not(.dark) *) {
+  @apply bg-white border-border-light;
+}
+
+/* Elevated card */
+.elevated-card {
+  @apply bg-surface-1 border border-border-dark rounded-2xl shadow-elevated;
+}
+
+/* Glow card */
+.glow-card {
+  @apply bg-surface-1 border border-accent-500/20 rounded-2xl shadow-glow-green-subtle;
+}
+
+/* Buttons */
+.btn-primary {
+  @apply bg-gradient-to-r from-accent-500 to-accent-600 text-black font-semibold
+         px-5 py-2.5 rounded-xl shadow-glow-green transition-all duration-150
+         hover:scale-[1.02] hover:shadow-glow-green;
+}
+
+.btn-secondary {
+  @apply bg-white/5 text-white font-medium px-5 py-2.5 rounded-xl
+         border border-white/10 transition-all duration-150 hover:bg-white/10;
+}
+
+.btn-ghost {
+  @apply bg-transparent text-accent-500 font-medium px-5 py-2.5 rounded-xl
+         border border-accent-500/30 transition-all duration-150 hover:bg-accent-500/5;
 }

@@ -31,8 +31,8 @@ const TokenPreview = forwardRef<TokenPreviewHandle, TokenPreviewProps>(
   function TokenPreview(
     {
       url,
-      previewError,
-      iconExists,
+      previewError: _previewError,
+      iconExists: _iconExists,
       isCircularCrop,
       backgroundColor,
       showColorPicker,

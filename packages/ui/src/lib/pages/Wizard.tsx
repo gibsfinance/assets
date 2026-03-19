@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { ApiType, NetworkInfo, Token, SearchUpdate } from '../types'
 import { getApiUrl, initializeApiBase } from '../utils'
-import { getNetworkName } from '../utils/network-name'
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
@@ -26,7 +25,7 @@ interface AvailableList {
 }
 
 export default function Wizard() {
-  const { showTestnets } = useSettings()
+  const { showTestnets: _showTestnets } = useSettings()
   const { fetchMetrics } = useMetricsContext()
 
   const { enabledLists, tokensByList, toggleList, toggleAll, setListTokens, clearTokens } =
@@ -50,11 +49,11 @@ export default function Wizard() {
   const [showColorPicker, setShowColorPicker] = useState(false)
 
   // Token browser state
-  const [allTokens, setAllTokens] = useState<Token[]>([])
+  const [_allTokens, setAllTokens] = useState<Token[]>([])
   const [filteredTokens, setFilteredTokens] = useState<Token[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [tokensPerPage, setTokensPerPage] = useState(25)
-  const [currentSearchState, setCurrentSearchState] = useState<SearchUpdate | null>(null)
+  const [_currentSearchState, setCurrentSearchState] = useState<SearchUpdate | null>(null)
 
   // Lists state
   const [availableLists, setAvailableLists] = useState<AvailableList[]>([])
@@ -286,7 +285,6 @@ export default function Wizard() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ---------------------------------------------------------------------------
@@ -297,8 +295,6 @@ export default function Wizard() {
     if (selectedNetwork && urlType === 'token') {
       tryFetchTokenLists(selectedNetwork.chainId)
     }
-    // We intentionally only want to fire when selectedNetwork or urlType changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNetwork, urlType])
 
   // ---------------------------------------------------------------------------
