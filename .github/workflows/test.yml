@@ -14,6 +14,18 @@ jobs:
       - run: yarn install --immutable
       - run: cd packages/server && yarn lint
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: npx tsc --noEmit -p packages/server/tsconfig.json
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +38,19 @@ jobs:
       - run: yarn install --immutable
       - run: yarn run build
 
-  test:
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: node --import tsx --test packages/server/test/sync-order.test.ts packages/server/test/db-batch.test.ts
+
+  integration-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
