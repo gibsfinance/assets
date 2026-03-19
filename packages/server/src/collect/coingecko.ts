@@ -33,70 +33,79 @@ export const collect = async (signal: AbortSignal) => {
     type: terminalRowTypes.SETUP,
     id: 'coingecko',
   })
-  const section = row.issue('coingecko')
-  if (!process.env.COINGECKO_API_KEY) {
-    failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
-    row.complete()
-    row.increment('skipped', 'coingecko')
-    return
-  }
+  try {
+    const section = row.issue('coingecko')
+    if (!process.env.COINGECKO_API_KEY) {
+      failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
+      row.increment('skipped', 'coingecko')
+      return
+    }
 
-  // const assetPlatforms = await processAssetPlatforms()
-  const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
-    `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
-    signal,
-    `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
-  )
-  row.createCounter(terminalCounterTypes.NETWORK)
-  const platformIds = new Set(_(platforms).map(platform => platform.id).compact().value())
-  row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
-  await limit.map(platforms, async (platform) => {
-    if (signal.aborted) {
-      return
-    }
-    if (!platform.chain_identifier) {
-      return
-    }
-    if (typeof platform.chain_identifier !== 'number') {
-      return
-    }
-    const listKey = platform.id
-    const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
-    const isCached = await db.getCachedRequest(cacheKey)
-    if (!isCached) {
-      await rateLimiter()
-    }
-    const collect = remoteTokenList.collect({
-      providerKey: 'coingecko',
-      listKey,
-      tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
-      row: section,
-    })
-    let retries = 0
-    while (true) {
-      try {
-        await collect(signal)
-      } catch (err) {
-        if ((err as Error).message.includes('429 Too Many Requests') || (err as Error).message.includes('Throttled')) {
-          retries++
-          await timeout(5000 * retries).promise
-          if (retries > 5) {
-            throw err
-          }
-          continue
-        }
-        if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
-          row.increment(terminalLogTypes.EROR, new Set([listKey]))
-          return
-        }
-        failureLog('%o', err)
-        throw err
+    // const assetPlatforms = await processAssetPlatforms()
+    const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
+      `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+      signal,
+      `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+    )
+    row.createCounter(terminalCounterTypes.NETWORK)
+    const platformIds = new Set(
+      _(platforms)
+        .map((platform) => platform.id)
+        .compact()
+        .value(),
+    )
+    row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
+    await limit.map(platforms, async (platform) => {
+      if (signal.aborted) {
+        return
       }
-      break
-    }
-  })
-
-  row.complete()
+      if (!platform.chain_identifier) {
+        return
+      }
+      if (typeof platform.chain_identifier !== 'number') {
+        return
+      }
+      const listKey = platform.id
+      const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
+      const isCached = await db.getCachedRequest(cacheKey)
+      if (!isCached) {
+        await rateLimiter()
+      }
+      const collect = remoteTokenList.collect({
+        providerKey: 'coingecko',
+        listKey,
+        tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
+        row: section,
+      })
+      let retries = 0
+      while (true) {
+        try {
+          await collect(signal)
+        } catch (err) {
+          if (
+            (err as Error).message.includes('429 Too Many Requests') ||
+            (err as Error).message.includes('Throttled')
+          ) {
+            retries++
+            await timeout(5000 * retries).promise
+            if (retries > 5) {
+              throw err
+            }
+            continue
+          }
+          if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
+            row.increment(terminalLogTypes.EROR, new Set([listKey]))
+            return
+          }
+          failureLog('%o', err)
+          throw err
+        }
+        break
+      }
+    })
+  } finally {
+    row.complete()
+  }
 }
 
 /**

@@ -40,239 +40,240 @@ export const collect = async (signal: AbortSignal) => {
     id: providerKey,
     type: terminalRowTypes.SETUP,
   })
-
-  const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json')).catch(() => null)
-  if (!infoBuff) {
-    row.complete()
-    return
-  }
-  if (signal.aborted) {
-    return
-  }
-  const info = JSON.parse(infoBuff.toString()) as Info
-  const { tokens } = info
-
-  const [provider] = await db.insertProvider({
-    key: providerKey,
-    name: 'Smol Dapp',
-    description: 'a communitly led initiative to collect all the evm assets',
-  })
-  const chainIdToNetworkId = new Map<string, List>()
-
-  // Process chains
-  const chains = await utils.folderContents(chainsPath)
-  if (signal.aborted) {
-    return
-  }
-  const folderToNetworkChainId = new Map<string, number>()
-  for (const cID of chains) {
-    if (cID === '_info.json') continue
-    const chainIdIsNumber = !!+cID
-    const chainId = chainIdIsNumber ? cID : cID
+  try {
+    const infoBuff = await fs.promises.readFile(path.join(tokensPath, 'list.json')).catch(() => null)
+    if (!infoBuff) {
+      return
+    }
     if (signal.aborted) {
       return
     }
-    const type = chainIdIsNumber ? 'evm' : 'btc'
-    if (path.extname(chainId) === '.json') {
-      row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
-      row.increment('skipped', `${providerKey}-${chainId}`)
-      continue // handles the _info.json file (not a chain)
+    const info = JSON.parse(infoBuff.toString()) as Info
+    const { tokens } = info
+
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'Smol Dapp',
+      description: 'a communitly led initiative to collect all the evm assets',
+    })
+    const chainIdToNetworkId = new Map<string, List>()
+
+    // Process chains
+    const chains = await utils.folderContents(chainsPath)
+    if (signal.aborted) {
+      return
     }
-
-    const networkChainId = chainIdIsNumber ? +chainId : Number(stringToHex(chainId))
-    folderToNetworkChainId.set(cID, networkChainId)
-    const network = await db.insertNetworkFromChainId(networkChainId, type)
-    const chainFolder = path.join(chainsPath, chainId || cID)
-    const folders = await utils.folderContents(chainFolder)
-
-    for (const file of folders) {
+    const folderToNetworkChainId = new Map<string, number>()
+    for (const cID of chains) {
+      if (cID === '_info.json') continue
+      const chainIdIsNumber = !!+cID
+      const chainId = chainIdIsNumber ? cID : cID
       if (signal.aborted) {
         return
       }
-      const listKey = filenameToListKey(file)
-      const [networkList] = await db.insertList({
-        key: `tokens-${networkChainId}-${listKey}`,
-        providerId: provider.providerId,
-        networkId: utils.chainIdToNetworkId(networkChainId, type),
-      })
-
-      const originalUri = path.join(chainFolder, file)
-      chainIdToNetworkId.set(networkList.key, networkList)
-
-      if (listKey === 'svg') {
-        await db.transaction(async (tx) => {
-          await db.fetchImageAndStoreForNetwork(
-            {
-              network,
-              uri: originalUri,
-              originalUri,
-              providerKey,
-            },
-            tx,
-          )
-          await db.fetchImageAndStoreForList(
-            {
-              listId: networkList.listId,
-              providerKey,
-              uri: originalUri,
-              originalUri,
-            },
-            tx,
-          )
-        })
-      } else {
-        const img = await db.fetchImage(originalUri, signal, providerKey, chainId)
-        await db.transaction(async (tx) => {
-          await db.fetchImageAndStoreForList(
-            {
-              listId: networkList.listId,
-              providerKey,
-              uri: img,
-              originalUri,
-            },
-            tx,
-          )
-          if (!img) return
-          await db.insertImage(
-            {
-              providerKey,
-              image: img,
-              originalUri,
-              listId: networkList.listId,
-            },
-            tx,
-          )
-        })
+      const type = chainIdIsNumber ? 'evm' : 'btc'
+      if (path.extname(chainId) === '.json') {
+        row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
+        row.increment('skipped', `${providerKey}-${chainId}`)
+        continue // handles the _info.json file (not a chain)
       }
-    }
-  }
-  if (signal.aborted) {
-    return
-  }
-  // Process tokens
-  const reverseOrderTokens = Object.entries(tokens).map(
-    ([chainIdString, tokens], i) => [chainIdString, tokens, i] as [string, string[], number],
-  )
-  row.createCounter(terminalCounterTypes.TOKEN)
-  row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => chainIdString),
-  )
-  const networkLimiter = promiseLimit<[string, string[], number]>(1)
-  const tokenLimit = promiseLimit<[Hex, number]>(16)
-  const section = row.issue(providerKey)
-  let globalOrderId = 0
-  for (const [chainIdString, tokens] of reverseOrderTokens) {
-    if (signal.aborted) {
-      return
-    }
-    const chain = utils.findChain(+chainIdString)
-    if (!chain) {
-      row.increment('skipped', `${providerKey}-${chainIdString}`)
-      continue
-    }
 
-    row.incrementTotal(
-      terminalCounterTypes.TOKEN,
-      utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
-    )
-  }
-  await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens]) => {
-    if (signal.aborted) {
-      return
-    }
+      const networkChainId = chainIdIsNumber ? +chainId : Number(stringToHex(chainId))
+      folderToNetworkChainId.set(cID, networkChainId)
+      const network = await db.insertNetworkFromChainId(networkChainId, type)
+      const chainFolder = path.join(chainsPath, chainId || cID)
+      const folders = await utils.folderContents(chainFolder)
 
-    const chainIdIsNumber = !!+chainIdString
-    const type = chainIdIsNumber ? 'evm' : 'btc'
-    const networkChainId =
-      folderToNetworkChainId.get(chainIdString) ?? (+chainIdString || Number(stringToHex(chainIdString)))
-    // const networkId = utils.chainIdToNetworkId(networkChainId, type)
-    folderToNetworkChainId.set(chainIdString, networkChainId)
-    const network = await db.insertNetworkFromChainId(networkChainId, type)
-    // Pre-compute all possible network lists for this chain to avoid per-token database calls
-    const networkListCache = new Map<string, List>()
-    const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
+      for (const file of folders) {
+        if (signal.aborted) {
+          return
+        }
+        const listKey = filenameToListKey(file)
+        const [networkList] = await db.insertList({
+          key: `tokens-${networkChainId}-${listKey}`,
+          providerId: provider.providerId,
+          networkId: utils.chainIdToNetworkId(networkChainId, type),
+        })
 
-    try {
-      for (const listKey of possibleListKeys) {
-        const networkKey = `tokens-${chainIdString}-${listKey}`
-        if (!chainIdToNetworkId.has(networkKey)) {
-          const networkList = await oneListInsertAtATime(
-            async () =>
-              await db
-                .insertList({
-                  key: networkKey,
-                  providerId: provider.providerId,
-                  networkId: network.networkId,
-                })
-                .then((list) => list?.[0] as List)
-                .catch((err) => {
-                  failureLog('error inserting list %o %o %o', networkKey, networkChainId, type)
-                  throw err
-                }),
-          )!
-          chainIdToNetworkId.set(networkKey, networkList)
-          networkListCache.set(listKey, networkList)
+        const originalUri = path.join(chainFolder, file)
+        chainIdToNetworkId.set(networkList.key, networkList)
+
+        if (listKey === 'svg') {
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForNetwork(
+              {
+                network,
+                uri: originalUri,
+                originalUri,
+                providerKey,
+              },
+              tx,
+            )
+            await db.fetchImageAndStoreForList(
+              {
+                listId: networkList.listId,
+                providerKey,
+                uri: originalUri,
+                originalUri,
+              },
+              tx,
+            )
+          })
         } else {
-          networkListCache.set(listKey, chainIdToNetworkId.get(networkKey)!)
+          const img = await db.fetchImage(originalUri, signal, providerKey, chainId)
+          await db.transaction(async (tx) => {
+            await db.fetchImageAndStoreForList(
+              {
+                listId: networkList.listId,
+                providerKey,
+                uri: img,
+                originalUri,
+              },
+              tx,
+            )
+            if (!img) return
+            await db.insertImage(
+              {
+                providerKey,
+                image: img,
+                originalUri,
+                listId: networkList.listId,
+              },
+              tx,
+            )
+          })
         }
       }
-    } catch (err) {
-      failureLog('Error building network list cache for chain %o: %o', chainIdString, err)
+    }
+    if (signal.aborted) {
       return
     }
-
-    const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
-    await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
+    // Process tokens
+    const reverseOrderTokens = Object.entries(tokens).map(
+      ([chainIdString, tokens], i) => [chainIdString, tokens, i] as [string, string[], number],
+    )
+    row.createCounter(terminalCounterTypes.TOKEN)
+    row.createCounter(terminalCounterTypes.NETWORK)
+    row.incrementTotal(
+      terminalCounterTypes.NETWORK,
+      utils.mapToSet.network(reverseOrderTokens, ([chainIdString]) => chainIdString),
+    )
+    const networkLimiter = promiseLimit<[string, string[], number]>(1)
+    const tokenLimit = promiseLimit<[Hex, number]>(16)
+    const section = row.issue(providerKey)
+    let globalOrderId = 0
+    for (const [chainIdString, tokens] of reverseOrderTokens) {
       if (signal.aborted) {
         return
       }
-      const networkChainId = folderToNetworkChainId.get(chainIdString)!
-      const task = section.task(`${chainIdString}-${token}`, {
-        id: providerKey,
-        type: terminalRowTypes.STORAGE,
-        kv: {
-          chainId: chainIdString,
-          token,
-        },
-      })
-      const tokenSignal = AbortSignal.timeout(3_000)
-      const combinedSignal = AbortSignal.any([signal, tokenSignal])
-      try {
-        await processSmoldappToken({
-          token,
-          i,
-          chainIdString,
-          chainIdIsNumber,
-          type,
-          networkChainId,
-          tokensPath,
-          networkListCache,
-          provider,
-          row,
-          signal: combinedSignal,
-          globalOrderId: globalOrderId++,
-        })
-        task.complete()
-        row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([+chainIdString, token]))
-      } catch (err) {
-        const isTimeout = tokenSignal.aborted
-        failureLog(
-          '%s token %o on chain %o: %o',
-          isTimeout ? 'timeout' : 'error',
-          token,
-          chainIdString,
-          (err as Error).message,
-        )
-        task.complete()
-        row.increment('skipped', `${providerKey}-${chainIdString}-${token}-${isTimeout ? 'timeout' : 'error'}`)
+      const chain = utils.findChain(+chainIdString)
+      if (!chain) {
+        row.increment('skipped', `${providerKey}-${chainIdString}`)
+        continue
       }
+
+      row.incrementTotal(
+        terminalCounterTypes.TOKEN,
+        utils.mapToSet.token(tokens, (t) => [chain!.id, t]),
+      )
+    }
+    await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens]) => {
+      if (signal.aborted) {
+        return
+      }
+
+      const chainIdIsNumber = !!+chainIdString
+      const type = chainIdIsNumber ? 'evm' : 'btc'
+      const networkChainId =
+        folderToNetworkChainId.get(chainIdString) ?? (+chainIdString || Number(stringToHex(chainIdString)))
+      // const networkId = utils.chainIdToNetworkId(networkChainId, type)
+      folderToNetworkChainId.set(chainIdString, networkChainId)
+      const network = await db.insertNetworkFromChainId(networkChainId, type)
+      // Pre-compute all possible network lists for this chain to avoid per-token database calls
+      const networkListCache = new Map<string, List>()
+      const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
+
+      try {
+        for (const listKey of possibleListKeys) {
+          const networkKey = `tokens-${chainIdString}-${listKey}`
+          if (!chainIdToNetworkId.has(networkKey)) {
+            const networkList = await oneListInsertAtATime(
+              async () =>
+                await db
+                  .insertList({
+                    key: networkKey,
+                    providerId: provider.providerId,
+                    networkId: network.networkId,
+                  })
+                  .then((list) => list?.[0] as List)
+                  .catch((err) => {
+                    failureLog('error inserting list %o %o %o', networkKey, networkChainId, type)
+                    throw err
+                  }),
+            )!
+            chainIdToNetworkId.set(networkKey, networkList)
+            networkListCache.set(listKey, networkList)
+          } else {
+            networkListCache.set(listKey, chainIdToNetworkId.get(networkKey)!)
+          }
+        }
+      } catch (err) {
+        failureLog('Error building network list cache for chain %o: %o', chainIdString, err)
+        return
+      }
+
+      const tokensAndIndices = tokens.map((t, i) => [t, i] as [Hex, number])
+      await tokenLimit.map(tokensAndIndices, async ([token, i]) => {
+        if (signal.aborted) {
+          return
+        }
+        const networkChainId = folderToNetworkChainId.get(chainIdString)!
+        const task = section.task(`${chainIdString}-${token}`, {
+          id: providerKey,
+          type: terminalRowTypes.STORAGE,
+          kv: {
+            chainId: chainIdString,
+            token,
+          },
+        })
+        const tokenSignal = AbortSignal.timeout(3_000)
+        const combinedSignal = AbortSignal.any([signal, tokenSignal])
+        try {
+          await processSmoldappToken({
+            token,
+            i,
+            chainIdString,
+            chainIdIsNumber,
+            type,
+            networkChainId,
+            tokensPath,
+            networkListCache,
+            provider,
+            row,
+            signal: combinedSignal,
+            globalOrderId: globalOrderId++,
+          })
+          task.complete()
+          row.increment(terminalCounterTypes.TOKEN, utils.counterId.token([+chainIdString, token]))
+        } catch (err) {
+          const isTimeout = tokenSignal.aborted
+          failureLog(
+            '%s token %o on chain %o: %o',
+            isTimeout ? 'timeout' : 'error',
+            token,
+            chainIdString,
+            (err as Error).message,
+          )
+          task.complete()
+          row.increment('skipped', `${providerKey}-${chainIdString}-${token}-${isTimeout ? 'timeout' : 'error'}`)
+        }
+      })
+      row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
     })
-    row.increment(terminalCounterTypes.NETWORK, `${chainIdString}`)
-  })
-  row.hideSection(providerKey)
-  row.complete()
+    row.hideSection(providerKey)
+  } finally {
+    row.complete()
+  }
 }
 
 type ProcessTokenParams = {

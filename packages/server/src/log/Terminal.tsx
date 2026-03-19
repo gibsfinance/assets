@@ -62,21 +62,33 @@ export const CompletedSummary: React.FC<{
   return (
     <>
       <Box flexDirection="row" gap={1}>
-        <Box width={3} justifyContent="flex-end"><Text dimColor>🎉</Text></Box>
+        <Box width={3} justifyContent="flex-end">
+          <Text dimColor>🎉</Text>
+        </Box>
         <Box minWidth={props.padding.id || undefined} justifyContent="flex-end">
           <Text dimColor>{props.rows.length} done</Text>
         </Box>
         {progressTotals.map(([key, count]) => (
-          <Text key={key} dimColor>{emoji.counter[key as types.TerminalCounterType] ?? key}={count}</Text>
+          <Text key={key} dimColor>
+            {emoji.counter[key as types.TerminalCounterType] ?? key}={count}
+          </Text>
         ))}
         {counterTotals.map(([key, count]) => (
-          <Text key={key} dimColor>{key}={count}</Text>
+          <Text key={key} dimColor>
+            {key}={count}
+          </Text>
         ))}
         {logTotals.map(([key, count]) => (
-          <Text key={key} dimColor>{emoji.log[key as types.TerminalLogType] ?? key}={count}</Text>
+          <Text key={key} dimColor>
+            {emoji.log[key as types.TerminalLogType] ?? key}={count}
+          </Text>
         ))}
       </Box>
-      <Box paddingLeft={4}><Text dimColor wrap="truncate">{names.join(', ')}</Text></Box>
+      <Box paddingLeft={4}>
+        <Text dimColor wrap="truncate">
+          {names.join(', ')}
+        </Text>
+      </Box>
     </>
   )
 }
@@ -103,15 +115,23 @@ export const FailedSummary: React.FC<{
   return (
     <>
       <Box flexDirection="row" gap={1}>
-        <Box width={3} justifyContent="flex-end"><Text color="red">💥</Text></Box>
+        <Box width={3} justifyContent="flex-end">
+          <Text color="red">💥</Text>
+        </Box>
         <Box minWidth={props.padding.id || undefined} justifyContent="flex-end">
           <Text color="red">{props.rows.length} failed</Text>
         </Box>
         {progressTotals.map(([key, count]) => (
-          <Text key={key} color="red">{emoji.counter[key as types.TerminalCounterType] ?? key}={count}</Text>
+          <Text key={key} color="red">
+            {emoji.counter[key as types.TerminalCounterType] ?? key}={count}
+          </Text>
         ))}
       </Box>
-      <Box paddingLeft={4}><Text color="red" wrap="truncate">{names.join(', ')}</Text></Box>
+      <Box paddingLeft={4}>
+        <Text color="red" wrap="truncate">
+          {names.join(', ')}
+        </Text>
+      </Box>
     </>
   )
 }
@@ -136,18 +156,8 @@ export const Section: React.FC<types.Section & { padding: Padding }> = (props) =
   const activeToRender = active.slice(-props.limit)
   return (
     <Box flexDirection="column">
-      {failed.length > 0 && (
-        <FailedSummary
-          rows={failed.map(([, r]) => r)}
-          padding={props.padding}
-        />
-      )}
-      {succeeded.length > 0 && (
-        <CompletedSummary
-          rows={succeeded.map(([, r]) => r)}
-          padding={props.padding}
-        />
-      )}
+      {failed.length > 0 && <FailedSummary rows={failed.map(([, r]) => r)} padding={props.padding} />}
+      {succeeded.length > 0 && <CompletedSummary rows={succeeded.map(([, r]) => r)} padding={props.padding} />}
       {activeToRender.map(([mapKey, row]) => (
         <RowWithSections {...row} key={mapKey} padding={props.padding} />
       ))}

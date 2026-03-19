@@ -2,7 +2,15 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as cheerio from 'cheerio'
 import { failureLog, limitBy, responseToBuffer } from '@gibs/utils'
-import { chainIdToChain, type ChainType, dexscreenerApi, type IInfo, type IToken, nameToKey, TokenPairsResponse } from '@gibs/dexscreener'
+import {
+  chainIdToChain,
+  type ChainType,
+  dexscreenerApi,
+  type IInfo,
+  type IToken,
+  nameToKey,
+  TokenPairsResponse,
+} from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
 import { fetch } from '../fetch'
@@ -89,173 +97,145 @@ export const collect = async (signal: AbortSignal) => {
     type: terminalRowTypes.SETUP,
     id: providerKey,
   })
-  const [provider] = await db.insertProvider({
-    key: providerKey,
-    name: 'DexScreener',
-  })
-  const allNetworksId = utils.chainIdToNetworkId(0)
-  const [listOfAllTokens] = await db.insertList({
-    providerId: provider.providerId,
-    networkId: allNetworksId,
-    key: 'api',
-    name: 'DexScreener',
-  })
-  const [latestProfiles, latestBoosted, topBoosted] = await Promise.all([
-    dexscreenerApi.getLatestTokenProfiles({ signal }),
-    dexscreenerApi.getLatestTokenBoosts({ signal }),
-    dexscreenerApi.getTopTokenBoosts({ signal }),
-  ])
-  const allChainIds = new Set<string>()
-  latestProfiles.forEach((profile) => {
-    allChainIds.add(profile.chainId)
-  })
-  latestBoosted.forEach((boost) => {
-    allChainIds.add(boost.chainId)
-  })
-  topBoosted.forEach((boost) => {
-    allChainIds.add(boost.chainId)
-  })
-  const parsedChainInfo = parseSidebarChainInfo()
+  try {
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'DexScreener',
+    })
+    const allNetworksId = utils.chainIdToNetworkId(0)
+    const [listOfAllTokens] = await db.insertList({
+      providerId: provider.providerId,
+      networkId: allNetworksId,
+      key: 'api',
+      name: 'DexScreener',
+    })
+    const [latestProfiles, latestBoosted, topBoosted] = await Promise.all([
+      dexscreenerApi.getLatestTokenProfiles({ signal }),
+      dexscreenerApi.getLatestTokenBoosts({ signal }),
+      dexscreenerApi.getTopTokenBoosts({ signal }),
+    ])
+    const allChainIds = new Set<string>()
+    latestProfiles.forEach((profile) => {
+      allChainIds.add(profile.chainId)
+    })
+    latestBoosted.forEach((boost) => {
+      allChainIds.add(boost.chainId)
+    })
+    topBoosted.forEach((boost) => {
+      allChainIds.add(boost.chainId)
+    })
+    const parsedChainInfo = parseSidebarChainInfo()
     ;[...parsedChainInfo.keys()].forEach((key) => {
       allChainIds.add(key)
     })
-  // updateStatus({
-  //   provider: 'dexscreener',
-  //   message: `dexscreener found ${allChainIds.size} chains`,
-  //   phase: 'setup',
-  // })
-  const chainBlacklist = new Set<string>()
-  for (const chainId of allChainIds.values()) {
-    const chain = chainIdToChain.get(chainId)
-    if (!chain) {
-      chainBlacklist.add(chainId)
-      continue
-    }
-  }
-  // updateStatus({
-  //   provider: 'dexscreener',
-  //   message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
-  //   phase: 'setup',
-  // })
-  row.createCounter('blacklisted', true)
-  row.increment('blacklisted', chainBlacklist)
-  await limitBy<[string, ChainInfo]>('dexscreener', 32).map([...parsedChainInfo.entries()], async ([key, info]) => {
-    const chain = chainIdToChain.get(key)
-    if (!chain) {
-      return
-    }
-    const url = new URL(info.url)
-    const image = await fetch(url, { signal }).then(responseToBuffer)
-    await db.transaction(async (tx) => {
-      const network = await db.insertNetworkFromChainId(chain.id, chain.type, tx)
-      await db.fetchImageAndStoreForNetwork(
-        {
-          network,
-          uri: image ?? url.href,
-          originalUri: url.href,
-          providerKey: provider.providerId,
-        },
-        tx,
-      )
-    })
-  })
-
-  const nativeTokens = new Map<ChainType | `${ChainType}-${number}`, string[]>([
-    ['evm-369', ['0xA1077a294dDE1B09bB078844df40758a5D0f9a27']],
-    ['evm-1', ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2']],
-    ['solana', ['So11111111111111111111111111111111111111112']],
-  ])
-  const relevantChains = [...chainIdToChain.entries()].filter(([key]) => {
-    return key === 'pulsechain' || key === 'ethereum'
-  })
-  const section = row.issue(providerKey)
-  row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network(relevantChains, ([, c]) => c.id),
-  )
-  row.createCounter(terminalCounterTypes.TOKEN)
-  row.incrementTotal(terminalCounterTypes.TOKEN, new Set())
-  row.createCounter('image', true)
-  await Promise.all(
-    relevantChains.map(async ([key, chain]) => {
-      const filter = {
-        type: chain.type,
-        chainId: chain.id.toString(),
+    // updateStatus({
+    //   provider: 'dexscreener',
+    //   message: `dexscreener found ${allChainIds.size} chains`,
+    //   phase: 'setup',
+    // })
+    const chainBlacklist = new Set<string>()
+    for (const chainId of allChainIds.values()) {
+      const chain = chainIdToChain.get(chainId)
+      if (!chain) {
+        chainBlacklist.add(chainId)
+        continue
       }
-      const network = await db.getNetworks().where(filter).first<Network>()
-      const k = chain.id.toString()
-      if (!network) {
-        row.increment(terminalLogTypes.EROR, new Set([k]))
-        row.increment(terminalCounterTypes.NETWORK, new Set([k]))
+    }
+    // updateStatus({
+    //   provider: 'dexscreener',
+    //   message: `dexscreener blacklisted ${chainBlacklist.size} chains`,
+    //   phase: 'setup',
+    // })
+    row.createCounter('blacklisted', true)
+    row.increment('blacklisted', chainBlacklist)
+    await limitBy<[string, ChainInfo]>('dexscreener', 32).map([...parsedChainInfo.entries()], async ([key, info]) => {
+      const chain = chainIdToChain.get(key)
+      if (!chain) {
         return
       }
-      const startingTokens = (nativeTokens.get(`${chain.type}-${chain.id}`) ?? nativeTokens.get(chain.type))!
-      const collector = new TerminalLinkedCollector(key, chain.type, chain.id, signal, row)
-
-      for (const token of startingTokens) {
-        collector.markTokenAsPending(token)
-      }
-      let nextKeys = new Set<string>()
-      while ((nextKeys = collector.getPendingTokens(16)).size) {
-        await Promise.all([
-          collector.collect(nextKeys, signal),
-          collector.collectDecimals(nextKeys),
-        ])
-      }
-      const [all, header] = collector.toTokenLists()
-      // const folder = path.join(process.cwd(), 'dexscreener', chain.id.toString())
-      // fs.mkdirSync(folder, { recursive: true })
-      // fs.writeFileSync(path.join(folder, 'all.json'), JSON.stringify(all, null, 2))
-      // fs.writeFileSync(path.join(folder, 'header.json'), JSON.stringify(header, null, 2))
-      const addressToHeaderUri = new Map<string, string>(header)
-
-      // Prepare tokens for batch insertion
-      const tokenInserts = all.map((token, i) => ({
-        type: 'erc20' as const,
-        symbol: token.symbol,
-        name: token.name,
-        decimals: token.decimals,
-        networkId: network.networkId,
-        providedId: token.address,
-        index: i, // Keep track of original index for listTokenOrderId
-      }))
-
-      // Batch insert all tokens
-      const insertedTokens = await db.insertTokenBatch(tokenInserts)
-
-      // Create list associations and handle headers
-      for (const [batchIndex, token] of all.entries()) {
-        const chainTokenId = utils.counterId.token([chain.id, token.address])
-        const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
-          type: terminalRowTypes.STORAGE,
-          id: providerKey,
-          kv: {
-            key,
-            chainId: chain.id,
-            type: chain.type,
-            address: token.address,
+      const url = new URL(info.url)
+      const image = await fetch(url, { signal }).then(responseToBuffer)
+      await db.transaction(async (tx) => {
+        const network = await db.insertNetworkFromChainId(chain.id, chain.type, tx)
+        await db.fetchImageAndStoreForNetwork(
+          {
+            network,
+            uri: image ?? url.href,
+            originalUri: url.href,
+            providerKey: provider.providerId,
           },
-        })
+          tx,
+        )
+      })
+    })
 
-        try {
-          // Use storeToken for list association (no image processing for now)
-          const { listToken } = await db.storeToken({
-            token: tokenInserts[batchIndex],
-            listId: listOfAllTokens.listId,
-            listTokenOrderId: batchIndex,
-          })
+    const nativeTokens = new Map<ChainType | `${ChainType}-${number}`, string[]>([
+      ['evm-369', ['0xA1077a294dDE1B09bB078844df40758a5D0f9a27']],
+      ['evm-1', ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2']],
+      ['solana', ['So11111111111111111111111111111111111111112']],
+    ])
+    const relevantChains = [...chainIdToChain.entries()].filter(([key]) => {
+      return key === 'pulsechain' || key === 'ethereum'
+    })
+    const section = row.issue(providerKey)
+    row.createCounter(terminalCounterTypes.NETWORK)
+    row.incrementTotal(
+      terminalCounterTypes.NETWORK,
+      utils.mapToSet.network(relevantChains, ([, c]) => c.id),
+    )
+    row.createCounter(terminalCounterTypes.TOKEN)
+    row.incrementTotal(terminalCounterTypes.TOKEN, new Set())
+    row.createCounter('image', true)
+    await Promise.all(
+      relevantChains.map(async ([key, chain]) => {
+        const filter = {
+          type: chain.type,
+          chainId: chain.id.toString(),
+        }
+        const network = await db.getNetworks().where(filter).first<Network>()
+        const k = chain.id.toString()
+        if (!network) {
+          row.increment(terminalLogTypes.EROR, new Set([k]))
+          row.increment(terminalCounterTypes.NETWORK, new Set([k]))
+          return
+        }
+        const startingTokens = (nativeTokens.get(`${chain.type}-${chain.id}`) ?? nativeTokens.get(chain.type))!
+        const collector = new TerminalLinkedCollector(key, chain.type, chain.id, signal, row)
 
-          const headerUri = addressToHeaderUri.get(token.address.toLowerCase())
-          if (!headerUri) {
-            task.complete()
-            continue
-          }
+        for (const token of startingTokens) {
+          collector.markTokenAsPending(token)
+        }
+        let nextKeys = new Set<string>()
+        while ((nextKeys = collector.getPendingTokens(16)).size) {
+          await Promise.all([collector.collect(nextKeys, signal), collector.collectDecimals(nextKeys)])
+        }
+        const [all, header] = collector.toTokenLists()
+        // const folder = path.join(process.cwd(), 'dexscreener', chain.id.toString())
+        // fs.mkdirSync(folder, { recursive: true })
+        // fs.writeFileSync(path.join(folder, 'all.json'), JSON.stringify(all, null, 2))
+        // fs.writeFileSync(path.join(folder, 'header.json'), JSON.stringify(header, null, 2))
+        const addressToHeaderUri = new Map<string, string>(header)
 
-          const headTask = section.task(`head-${key}-${token.address.toLowerCase()}`, {
+        // Prepare tokens for batch insertion
+        const tokenInserts = all.map((token, i) => ({
+          type: 'erc20' as const,
+          symbol: token.symbol,
+          name: token.name,
+          decimals: token.decimals,
+          networkId: network.networkId,
+          providedId: token.address,
+          index: i, // Keep track of original index for listTokenOrderId
+        }))
+
+        // Batch insert all tokens
+        const insertedTokens = await db.insertTokenBatch(tokenInserts)
+
+        // Create list associations and handle headers
+        for (const [batchIndex, token] of all.entries()) {
+          const chainTokenId = utils.counterId.token([chain.id, token.address])
+          const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
             type: terminalRowTypes.STORAGE,
             id: providerKey,
-            message: 'head',
             kv: {
               key,
               chainId: chain.id,
@@ -263,30 +243,58 @@ export const collect = async (signal: AbortSignal) => {
               address: token.address,
             },
           })
-          await db
-            .fetchAndInsertHeader({
-              uri: headerUri,
-              originalUri: headerUri,
-              listTokenId: listToken.listTokenId,
-              providerKey: provider.providerId,
+
+          try {
+            // Use storeToken for list association (no image processing for now)
+            const { listToken } = await db.storeToken({
+              token: tokenInserts[batchIndex],
+              listId: listOfAllTokens.listId,
+              listTokenOrderId: batchIndex,
             })
-            .catch((e) => {
-              row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-              throw e
+
+            const headerUri = addressToHeaderUri.get(token.address.toLowerCase())
+            if (!headerUri) {
+              task.complete()
+              continue
+            }
+
+            const headTask = section.task(`head-${key}-${token.address.toLowerCase()}`, {
+              type: terminalRowTypes.STORAGE,
+              id: providerKey,
+              message: 'head',
+              kv: {
+                key,
+                chainId: chain.id,
+                type: chain.type,
+                address: token.address,
+              },
             })
-            .finally(() => {
-              headTask.complete()
-            })
-        } catch (error) {
-          row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-          failureLog('Failed to process token %o: %o', token.address, error)
-        } finally {
-          task.complete()
+            await db
+              .fetchAndInsertHeader({
+                uri: headerUri,
+                originalUri: headerUri,
+                listTokenId: listToken.listTokenId,
+                providerKey: provider.providerId,
+              })
+              .catch((e) => {
+                row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
+                throw e
+              })
+              .finally(() => {
+                headTask.complete()
+              })
+          } catch (error) {
+            row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
+            failureLog('Failed to process token %o: %o', token.address, error)
+          } finally {
+            task.complete()
+          }
         }
-      }
-      row.increment(terminalCounterTypes.NETWORK, new Set([k]))
-    }),
-  )
-  row.remove(providerKey)
-  row.complete()
+        row.increment(terminalCounterTypes.NETWORK, new Set([k]))
+      }),
+    )
+    row.remove(providerKey)
+  } finally {
+    row.complete()
+  }
 }

@@ -30,77 +30,80 @@ export const collect = async (signal: AbortSignal) => {
     id: providerKey,
     type: terminalRowTypes.SETUP,
   })
-  const section = summaryRow.issue('uniswap-tokenlists', 16)
-  summaryRow.createCounter('blacklisted', true)
-  summaryRow.createCounter('complete', true)
-  await promiseLimit<(typeof usable)[number]>(4).map(usable, async (info) => {
-    const providerKey = `uniswap-${info.machineName}`
-    const listKey = 'hosted'
-    const id = `${providerKey}/${listKey}`
-    if (listBlacklist.has(info.machineName)) {
-      summaryRow.increment('blacklisted', info.machineName)
-      return false
-    }
-    const task = section.task(id, {
-      type: terminalRowTypes.STORAGE,
-      id,
-    })
-    const result = await fetch(info.uri, { signal })
-      .then(async (res) => (await res.json()) as types.TokenList)
-      .catch(() => null)
-    if (!result) {
-      task.unmount()
-      return false
-    }
-    // custom domain replacement logic
-    if (
-      result.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN') ||
-      result.logoURI?.includes('QmVcci4ztPzCPb896uP7wY6szWDAm1cRYbGTUVLbGVhby9')
-    ) {
-      result.logoURI = ''
-    }
-    result.tokens.forEach((token) => {
-      const replacing = 'ethereum-optimism.github.io'
-      if (token.logoURI?.includes(replacing)) {
-        token.logoURI = token.logoURI.replace(replacing, 'static.optimism.io')
+  try {
+    const section = summaryRow.issue('uniswap-tokenlists', 16)
+    summaryRow.createCounter('blacklisted', true)
+    summaryRow.createCounter('complete', true)
+    await promiseLimit<(typeof usable)[number]>(4).map(usable, async (info) => {
+      const providerKey = `uniswap-${info.machineName}`
+      const listKey = 'hosted'
+      const id = `${providerKey}/${listKey}`
+      if (listBlacklist.has(info.machineName)) {
+        summaryRow.increment('blacklisted', info.machineName)
+        return false
       }
-      const replacingCloudflare = 'cloudflare-ipfs.com'
-      if (token.logoURI?.includes(replacingCloudflare)) {
-        token.logoURI = token.logoURI.replace(replacingCloudflare, 'ipfs.io')
+      const task = section.task(id, {
+        type: terminalRowTypes.STORAGE,
+        id,
+      })
+      const result = await fetch(info.uri, { signal })
+        .then(async (res) => (await res.json()) as types.TokenList)
+        .catch(() => null)
+      if (!result) {
+        task.unmount()
+        return false
       }
-      if (token.logoURI) {
-        token.logoURI = token.logoURI.split('?')[0]
-        token.logoURI = token.logoURI.replace('hhttps://', 'https://')
-      }
+      // custom domain replacement logic
       if (
-        token.logoURI === 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH' ||
-        token.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN')
+        result.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN') ||
+        result.logoURI?.includes('QmVcci4ztPzCPb896uP7wY6szWDAm1cRYbGTUVLbGVhby9')
       ) {
-        token.logoURI = ''
+        result.logoURI = ''
       }
+      result.tokens.forEach((token) => {
+        const replacing = 'ethereum-optimism.github.io'
+        if (token.logoURI?.includes(replacing)) {
+          token.logoURI = token.logoURI.replace(replacing, 'static.optimism.io')
+        }
+        const replacingCloudflare = 'cloudflare-ipfs.com'
+        if (token.logoURI?.includes(replacingCloudflare)) {
+          token.logoURI = token.logoURI.replace(replacingCloudflare, 'ipfs.io')
+        }
+        if (token.logoURI) {
+          token.logoURI = token.logoURI.split('?')[0]
+          token.logoURI = token.logoURI.replace('hhttps://', 'https://')
+        }
+        if (
+          token.logoURI === 'https://ipfs.io/ipfs/QmVDL8ji6HKEmt5gFo6Gi1roXk6SNifL3omG5RjRCGRMDH' ||
+          token.logoURI?.includes('QmUJQF5rDNQn37ToqCynz6iecGqAmeKHDQCigJWpUwuVLN')
+        ) {
+          token.logoURI = ''
+        }
+      })
+      if (signal.aborted) {
+        return
+      }
+      if (listKey === 'hosted' && providerKey === 'uniswap-agora-datafi-tokens') {
+        failureLog('%o', result.tokens)
+      }
+      const list = await inmemoryTokenlist
+        .collect({
+          providerKey,
+          listKey,
+          tokenList: result,
+          row: task,
+          signal,
+        })
+        .catch(() => {
+          // just log the error - don't throw
+          task.increment('erred', info.machineName)
+          failureLog(`${info.machineName} failed to collect`)
+        })
+      summaryRow.increment('complete', info.machineName)
+      task.unmount()
+      return list
     })
-    if (signal.aborted) {
-      return
-    }
-    if (listKey === 'hosted' && providerKey === 'uniswap-agora-datafi-tokens') {
-      failureLog('%o', result.tokens)
-    }
-    const list = await inmemoryTokenlist
-      .collect({
-        providerKey,
-        listKey,
-        tokenList: result,
-        row: task,
-        signal,
-      })
-      .catch(() => {
-        // just log the error - don't throw
-        task.increment('erred', info.machineName)
-        failureLog(`${info.machineName} failed to collect`)
-      })
-    summaryRow.increment('complete', info.machineName)
-    task.unmount()
-    return list
-  })
-  summaryRow.complete()
+  } finally {
+    summaryRow.complete()
+  }
 }

@@ -13,13 +13,20 @@ import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
 import { ImageModeParam } from '../../types'
 
-export const getListTokens = async ({ chainId, address, listOrderId, exts, providerKey, listKey }: {
-  chainId: ChainId,
-  address: viem.Hex,
-  listOrderId?: viem.Hex | null,
-  exts?: string[],
-  providerKey?: string[],
-  listKey?: string[],
+export const getListTokens = async ({
+  chainId,
+  address,
+  listOrderId,
+  exts,
+  providerKey,
+  listKey,
+}: {
+  chainId: ChainId
+  address: viem.Hex
+  listOrderId?: viem.Hex | null
+  exts?: string[]
+  providerKey?: string[]
+  listKey?: string[]
 }) => {
   const filter = {
     [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
@@ -113,40 +120,40 @@ export const splitExt = (filename: string): FilenameParts => {
 
 const getListImage =
   (parseOrder: boolean) =>
-    async ({
-      chainId,
-      address: addressParam,
-      order: orderParam,
+  async ({
+    chainId,
+    address: addressParam,
+    order: orderParam,
+    providerKey,
+    listKey,
+  }: {
+    chainId: number
+    address: string
+    order?: string
+    providerKey?: string[]
+    listKey?: string[]
+  }) => {
+    if (!+chainId) {
+      throw httpErrors.BadRequest('chainId')
+    }
+    const { filename: address, exts } = splitExt(addressParam)
+    if (!viem.isAddress(address)) {
+      throw httpErrors.BadRequest('address')
+    }
+    const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
+    const { img } = await getListTokens({
+      chainId: +chainId,
+      address,
+      listOrderId,
+      exts,
       providerKey,
       listKey,
-    }: {
-      chainId: number
-      address: string
-      order?: string
-      providerKey?: string[],
-      listKey?: string[],
-    }) => {
-      if (!+chainId) {
-        throw httpErrors.BadRequest('chainId')
-      }
-      const { filename: address, exts } = splitExt(addressParam)
-      if (!viem.isAddress(address)) {
-        throw httpErrors.BadRequest('address')
-      }
-      const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
-      const { img } = await getListTokens({
-        chainId: +chainId,
-        address,
-        listOrderId,
-        exts,
-        providerKey,
-        listKey,
-      })
-      if (!img) {
-        throw httpErrors.NotFound('list image missing')
-      }
-      return img
+    })
+    if (!img) {
+      throw httpErrors.NotFound('list image missing')
     }
+    return img
+  }
 
 const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined) => {
   if (!query) {
@@ -158,21 +165,24 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
   if (Array.isArray(query)) {
     return _.map(query, (v) => v.toString())
   }
-  return query.toString().split(',').filter((v) => v.trim())
+  return query
+    .toString()
+    .split(',')
+    .filter((v) => v.trim())
 }
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-    async (req, res) => {
-      const img = await getListImage(parseOrder)({
-        chainId: Number(req.params.chainId),
-        address: req.params.address as viem.Hex,
-        order: req.params.order,
-        providerKey: queryStringToList(req.query.providerKey),
-        listKey: queryStringToList(req.query.listKey),
-      })
-      sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
-    }
+  async (req, res) => {
+    const img = await getListImage(parseOrder)({
+      chainId: Number(req.params.chainId),
+      address: req.params.address as viem.Hex,
+      order: req.params.order,
+      providerKey: queryStringToList(req.query.providerKey),
+      listKey: queryStringToList(req.query.listKey),
+    })
+    sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  }
 
 export const getImageAndFallback: RequestHandler = async (req, res) => {
   const providerKey = queryStringToList(req.query.providerKey)
@@ -239,7 +249,12 @@ export type KeyFilterQuery = {
   listKey: string | string[]
 }
 
-export const tryMultiple: RequestHandler<any, any, any, { i: string | string[]; mode: ImageModeParam } & KeyFilterQuery> = async (req, res, next) => {
+export const tryMultiple: RequestHandler<
+  any,
+  any,
+  any,
+  { i: string | string[]; mode: ImageModeParam } & KeyFilterQuery
+> = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
   if (Array.isArray(i)) images = i.map((i) => i.toString())

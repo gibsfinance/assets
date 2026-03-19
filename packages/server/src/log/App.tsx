@@ -127,11 +127,17 @@ export const createTerminal = () => {
 
 export const logCounter = (key: types.TerminalCounterType | string, action: string, counter?: types.Counter) => {
   doLog(() => {
-    log(`${action} counter %o`, _.omitBy({
-      key,
-      current: counter?.current?.size,
-      total: counter?.total?.size,
-    }, _.isNil))
+    log(
+      `${action} counter %o`,
+      _.omitBy(
+        {
+          key,
+          current: counter?.current?.size,
+          total: counter?.total?.size,
+        },
+        _.isNil,
+      ),
+    )
   })
 }
 

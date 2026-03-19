@@ -276,9 +276,7 @@ export const fetchImage = async (
     })
   }
   const timeoutSignal = AbortSignal.timeout(3_000)
-  const combinedSignal = signal
-    ? AbortSignal.any([signal, timeoutSignal])
-    : timeoutSignal
+  const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
   return await fetch(url, { signal: combinedSignal })
     .then(responseToBuffer)
     .catch((err: Error) => {
@@ -377,16 +375,14 @@ export const getImageFromLink = async (uri: string, t: Tx = db) => {
  */
 export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, t: Tx = db) => {
   const cutoff = new Date(Date.now() - maxAgeMs)
-  const link = await t.from(tableNames.link)
+  const link = await t
+    .from(tableNames.link)
     .select('*')
     .where('uri', uri)
     .where('updated_at', '>=', cutoff)
     .first<Link>()
   if (!link) return null
-  const image = await t.from(tableNames.image)
-    .select('*')
-    .where('imageHash', link.imageHash)
-    .first<Image>()
+  const image = await t.from(tableNames.image).select('*').where('imageHash', link.imageHash).first<Image>()
   if (!image) return null
   return { link, image }
 }
@@ -448,7 +444,12 @@ export const insertTokenBatch = async (tokens: InsertableToken[], t: Tx = db) =>
  * Use when images are handled separately or not needed (e.g. routescan).
  */
 export const storeToken = async (
-  { token, listId, imageHash, listTokenOrderId }: {
+  {
+    token,
+    listId,
+    imageHash,
+    listTokenOrderId,
+  }: {
     token: InsertableToken
     listId: string
     imageHash?: string
@@ -456,10 +457,7 @@ export const storeToken = async (
   },
   t: Tx = db,
 ) => {
-  const insertedToken = await insertToken(
-    { type: 'erc20', ...token },
-    t,
-  )
+  const insertedToken = await insertToken({ type: 'erc20', ...token }, t)
   const [listToken] = await insertListToken(
     {
       tokenId: insertedToken.tokenId,
@@ -520,22 +518,20 @@ export const batchFetchImagesForTokens = async (
           const { image } = imageResult
 
           // Update the list token with the image hash
-          await t(tableNames.listToken)
-            .where('listTokenId', item.listTokenId)
-            .update({ imageHash })
+          await t(tableNames.listToken).where('listTokenId', item.listTokenId).update({ imageHash })
 
           return { listTokenId: item.listTokenId, success: true, image }
         } catch (error) {
           failureLog('Failed to fetch image for listToken %o: %o', item.listTokenId, error)
           return { listTokenId: item.listTokenId, success: false, error }
         }
-      })
-    )
+      }),
+    ),
   )
 
   return results.map((result, index) => ({
     ...tokenImages[index],
-    result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
+    result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason },
   }))
 }
 
@@ -811,7 +807,11 @@ export const fetchImageAndStoreForToken = async (
         t,
       )) as Token
       if (listId) {
-        if (insertedToken.name === token.name && insertedToken.symbol === token.symbol && insertedToken.decimals === token.decimals) {
+        if (
+          insertedToken.name === token.name &&
+          insertedToken.symbol === token.symbol &&
+          insertedToken.decimals === token.decimals
+        ) {
           const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
           if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
             return {
@@ -973,13 +973,13 @@ export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
       .where(
         listKey
           ? {
-            [`${tableNames.provider}.key`]: providerKey,
-            [`${tableNames.list}.key`]: listKey,
-          }
+              [`${tableNames.provider}.key`]: providerKey,
+              [`${tableNames.list}.key`]: listKey,
+            }
           : {
-            [`${tableNames.provider}.key`]: providerKey,
-            [`${tableNames.list}.default`]: true,
-          },
+              [`${tableNames.provider}.key`]: providerKey,
+              [`${tableNames.list}.default`]: true,
+            },
       )
       .orderBy('major', 'desc')
       .orderBy('minor', 'desc')
@@ -1115,18 +1115,11 @@ export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
     .orderBy('bridgeLinkId', 'desc')
     .first()
 
-export const getCachedRequest = (key: string, tx: Tx = getDB()) => (
-  tx(tableNames.cacheRequest)
-    .select('*')
-    .where('key', key)
-    .where('expiresAt', '>=', new Date())
-    .first<CacheRequest>()
-)
+export const getCachedRequest = (key: string, tx: Tx = getDB()) =>
+  tx(tableNames.cacheRequest).select('*').where('key', key).where('expiresAt', '>=', new Date()).first<CacheRequest>()
 
 export const purgeExpiredCache = (tx: Tx = getDB()) =>
-  tx(tableNames.cacheRequest)
-    .where('expiresAt', '<', new Date())
-    .delete()
+  tx(tableNames.cacheRequest).where('expiresAt', '<', new Date()).delete()
 
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx = getDB()) =>
   tx(tableNames.cacheRequest)
@@ -1137,7 +1130,11 @@ export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx: Tx 
 
 const defaultTTL = 1000 * 60 * 60
 
-export const cachedJSONRequest = async <T extends object>(key: string, signal: AbortSignal, ...args: Parameters<typeof fetch>) => {
+export const cachedJSONRequest = async <T extends object>(
+  key: string,
+  signal: AbortSignal,
+  ...args: Parameters<typeof fetch>
+) => {
   return cachedJSON(key, signal, async (signal) => {
     return fetch(args[0], { signal, ...(args[1] ?? {}) }).then((res) => res.json() as Promise<T>)
   })
@@ -1152,7 +1149,7 @@ export const cachedJSON = async <T extends object>(
   if (cached) {
     return JSON.parse(cached.value) as T
   }
-  const result = await fn(signal) as T
+  const result = (await fn(signal)) as T
   await insertCacheRequest({
     key,
     value: JSON.stringify(result),

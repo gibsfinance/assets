@@ -39,12 +39,15 @@ const term = _.memoize(() => {
  */
 export const collect = (config: BridgeConfig[]) => async (signal: AbortSignal) => {
   const { row } = term()
-  await Promise.all(
-    config.map((c) => {
-      return collectByBridgeConfig(c, signal)
-    }),
-  )
-  row.complete()
+  try {
+    await Promise.all(
+      config.map((c) => {
+        return collectByBridgeConfig(c, signal)
+      }),
+    )
+  } finally {
+    row.complete()
+  }
 }
 
 const abi = viem.parseAbi(['event NewTokenRegistered(address indexed native, address indexed bridged)'])

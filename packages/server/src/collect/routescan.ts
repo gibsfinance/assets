@@ -37,7 +37,7 @@ const providerKey = 'routescan'
 /**
  * Delay utility to add pauses between requests
  */
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Rate-limited chain processor for RouteScan
@@ -47,7 +47,11 @@ class RateLimitedChainProcessor {
   private lastRequestTime = 0
   private readonly minDelayMs = 500 // 2 RPS = 500ms between requests
 
-  async processChain<T>(chain: Chain, processorFn: (chain: Chain) => Promise<T>, signal?: AbortSignal): Promise<T | null> {
+  async processChain<T>(
+    chain: Chain,
+    processorFn: (chain: Chain) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T | null> {
     if (signal?.aborted) {
       return null
     }
@@ -125,7 +129,7 @@ async function fetchRouteScanTokens({
   chainId,
   signal,
   limit = 100,
-  nextToken
+  nextToken,
 }: {
   chainId: number
   signal?: AbortSignal
@@ -147,24 +151,28 @@ async function fetchRouteScanTokens({
 
   const cacheKey = `${providerKey}-tokens-${chainId}-${limit}-${nextToken ?? 'first'}`
 
-  return db.cachedJSON<RouteScanResponse>(cacheKey, signal!, async () => {
-    const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
-    const response = await fetch(url, { signal })
+  return db.cachedJSON<RouteScanResponse>(
+    cacheKey,
+    signal!,
+    async () => {
+      const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
+      const response = await fetch(url, { signal })
 
-    if (!response.ok) {
-      throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
-    }
+      if (!response.ok) {
+        throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
+      }
 
-    const data = await response.json()
+      const data = await response.json()
 
-    if (!data.items || !Array.isArray(data.items)) {
-      throw new Error('Invalid response format from RouteScan API')
-    }
+      if (!data.items || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from RouteScan API')
+      }
 
-    return data
-  }, { ttl: oneHour })
+      return data
+    },
+    { ttl: oneHour },
+  )
 }
-
 
 /**
  * Backfill missing token metadata using RPC calls
@@ -248,7 +256,14 @@ async function processToken({
 
     // Skip tokens that still don't have required metadata
     if (!tokenName || !tokenSymbol || tokenDecimals === undefined) {
-      failureLog(`skipping token %o on %o - missing metadata: name=%o symbol=%o decimals=%o`, address, chainKey, tokenName, tokenSymbol, tokenDecimals)
+      failureLog(
+        `skipping token %o on %o - missing metadata: name=%o symbol=%o decimals=%o`,
+        address,
+        chainKey,
+        tokenName,
+        tokenSymbol,
+        tokenDecimals,
+      )
       row.increment(terminalLogTypes.WARN, new Set([chainTokenId]))
       return false
     }
@@ -278,7 +293,6 @@ async function processToken({
 
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     return true
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
     failureLog('token processing failed %o on %o: %o', address, chainKey, (error as Error).message)
@@ -330,7 +344,7 @@ async function processChainTokens({
         chainId: chain.id,
         signal,
         limit: 100,
-        nextToken
+        nextToken,
       })
 
       if (routeScanResponse.items.length === 0) {
@@ -361,19 +375,21 @@ async function processChainTokens({
 
         task.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
 
-        return tokenLimiter(() => processToken({
-          chain,
-          tokenItem,
-          address,
-          network,
-          globalListId,
-          chainListId: chainList.listId,
-          providerId,
-          signal,
-          totalProcessed: totalProcessed + index,
-          row,
-          chainKey,
-        }))
+        return tokenLimiter(() =>
+          processToken({
+            chain,
+            tokenItem,
+            address,
+            network,
+            globalListId,
+            chainListId: chainList.listId,
+            providerId,
+            signal,
+            totalProcessed: totalProcessed + index,
+            row,
+            chainKey,
+          }),
+        )
       })
 
       const results = await Promise.all(tokenPromises)
@@ -391,7 +407,6 @@ async function processChainTokens({
 
     row.increment(terminalCounterTypes.NETWORK, new Set([chain.id.toString()]))
     // console.log(`Processed ${successCount}/${totalProcessed} tokens for ${chainKey}`)
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
     failureLog('chain processing failed %o: %o', chainKey, (error as Error).message)
@@ -408,17 +423,17 @@ type RouteScanBlockchain = {
   avalancheBlockchainId: string
   logo: string
   logoUrls: {
-    "32": string
-    "64": string
-    "256": string
-    "1024": string
+    '32': string
+    '64': string
+    '256': string
+    '1024': string
   }
   icon: string
   iconUrls: {
-    "32": string
-    "64": string
-    "256": string
-    "1024": string
+    '32': string
+    '64': string
+    '256': string
+    '1024': string
   }
   symbol: string
   rpcs: string[]
@@ -454,21 +469,29 @@ type RouteScanBlockchainsResponse = {
  * Fetch supported blockchains from RouteScan API
  */
 async function fetchRouteScanBlockchains(signal?: AbortSignal): Promise<RouteScanBlockchain[]> {
-  return db.cachedJSON<RouteScanBlockchain[]>(`${providerKey}-blockchains`, signal!, async () => {
-    const response = await fetch(`https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`, { signal })
+  return db.cachedJSON<RouteScanBlockchain[]>(
+    `${providerKey}-blockchains`,
+    signal!,
+    async () => {
+      const response = await fetch(
+        `https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`,
+        { signal },
+      )
 
-    if (!response.ok) {
-      throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
-    }
+      if (!response.ok) {
+        throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
+      }
 
-    const data: RouteScanBlockchainsResponse = await response.json()
+      const data: RouteScanBlockchainsResponse = await response.json()
 
-    if (!data.items || !Array.isArray(data.items)) {
-      throw new Error('Invalid response format from RouteScan blockchains API')
-    }
+      if (!data.items || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from RouteScan blockchains API')
+      }
 
-    return data.items
-  }, { ttl: oneHour })
+      return data.items
+    },
+    { ttl: oneHour },
+  )
 }
 
 /**
@@ -512,9 +535,7 @@ function mapRouteScanBlockchainToConfig(blockchain: RouteScanBlockchain): Chain 
 async function getRouteScanChainConfigs(signal?: AbortSignal): Promise<Chain[]> {
   const blockchains = await fetchRouteScanBlockchains(signal)
 
-  return _(blockchains)
-    .map(mapRouteScanBlockchainToConfig)
-    .compact().value()
+  return _(blockchains).map(mapRouteScanBlockchainToConfig).compact().value()
 }
 
 /**
@@ -547,7 +568,9 @@ export const collect = async (signal?: AbortSignal) => {
     const enabledChains = await getRouteScanChainConfigs(signal)
 
     if (enabledChains.length === 0) {
-      throw new Error('Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.')
+      throw new Error(
+        'Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.',
+      )
     }
     // Setup counters
     const section = row.issue(providerKey)
@@ -556,10 +579,7 @@ export const collect = async (signal?: AbortSignal) => {
     row.createCounter(terminalLogTypes.EROR, true)
     row.createCounter(terminalLogTypes.WARN, true)
 
-    row.incrementTotal(
-      terminalCounterTypes.NETWORK,
-      new Set(enabledChains.map(config => config.id.toString()))
-    )
+    row.incrementTotal(terminalCounterTypes.NETWORK, new Set(enabledChains.map((config) => config.id.toString())))
 
     // Process chains with rate-limited concurrency
     await chainLimiter.map(enabledChains, async (chainConfig) => {
@@ -576,10 +596,9 @@ export const collect = async (signal?: AbortSignal) => {
             signal,
           })
         },
-        signal
+        signal,
       )
     })
-
   } catch (error) {
     failureLog('RouteScan collector failed: %o', (error as Error).message)
     throw error

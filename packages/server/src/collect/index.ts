@@ -25,7 +25,11 @@ const checkOutstandingConnections = async (provider: string) => {
   if (used > 0 || pending > 0 || activeRows.length > 0) {
     failureLog(
       'outstanding after %s: pool(used=%d free=%d pending=%d) pg_active=%d',
-      provider, used, free, pending, activeRows.length,
+      provider,
+      used,
+      free,
+      pending,
+      activeRows.length,
     )
     for (const row of activeRows) {
       failureLog('  pid=%d state=%s duration=%s query=%s', row.pid, row.state, row.xact_duration, row.query)
@@ -35,7 +39,11 @@ const checkOutstandingConnections = async (provider: string) => {
 /**
  * Main collection function that orchestrates data collection from multiple providers
  */
-export const main = async (providers: Collectable[], logger = 'terminal', concurrency = DEFAULT_PROVIDER_CONCURRENCY) => {
+export const main = async (
+  providers: Collectable[],
+  logger = 'terminal',
+  concurrency = DEFAULT_PROVIDER_CONCURRENCY,
+) => {
   const c = collectables()
 
   if (logger === 'raw') {

@@ -70,7 +70,8 @@ export const collectables = _.memoize(() => {
     midgard: remoteTokenList.collect({
       providerKey: 'midgard',
       listKey: 'all',
-      tokenList: 'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
+      tokenList:
+        'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
     }) as Todo,
     internetmoney: internetmoney.collect as Todo,
     phux: phux.collect as Todo,
@@ -86,15 +87,15 @@ export const collectables = _.memoize(() => {
     omnibridge: omnibridge.collect([
       {
         providerPrefix: 'pulsechain',
-        foreign: { chain: mainnet, address: '0x1715a3E4A142d8b698131108995174F37aEBA10D', startBlock: 17_264_119, },
-        home: { chain: pulsechain, address: '0x4fD0aaa7506f3d9cB8274bdB946Ec42A1b8751Ef', startBlock: 17_268_302, },
+        foreign: { chain: mainnet, address: '0x1715a3E4A142d8b698131108995174F37aEBA10D', startBlock: 17_264_119 },
+        home: { chain: pulsechain, address: '0x4fD0aaa7506f3d9cB8274bdB946Ec42A1b8751Ef', startBlock: 17_268_302 },
       },
       {
         // for wpls
         providerPrefix: 'pulsechain',
         type: 'omnibridge-wpls',
-        foreign: { chain: mainnet, address: '0xe20E337DB2a00b1C37139c873B92a0AAd3F468bF', startBlock: 17_264_119, },
-        home: { chain: pulsechain, address: '0x0e18d0d556b652794EF12Bf68B2dC857EF5f3996', startBlock: 17_268_302, },
+        foreign: { chain: mainnet, address: '0xe20E337DB2a00b1C37139c873B92a0AAd3F468bF', startBlock: 17_264_119 },
+        home: { chain: pulsechain, address: '0x0e18d0d556b652794EF12Bf68B2dC857EF5f3996', startBlock: 17_268_302 },
       },
       {
         providerPrefix: 'tokensex',
