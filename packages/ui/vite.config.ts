@@ -1,4 +1,4 @@
-import { svelte } from '@sveltejs/vite-plugin-svelte'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import replace from '@rollup/plugin-replace'
 import pkg from './package.json' with { type: 'json' }
@@ -24,7 +24,7 @@ export default defineConfig({
       },
     }),
     tailwindcss(),
-    svelte(),
+    react(),
   ],
   base: './',
   preview: {
