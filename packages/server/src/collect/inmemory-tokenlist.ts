@@ -122,18 +122,8 @@ export const discover = async ({
  * Accepts optional pre-created state from discover() to skip re-creating provider/list.
  * If no state is provided, creates provider/list inline (backward compatible).
  */
-export const collect = async (
-  input: CollectInput & { discovered?: DiscoveredState },
-) => {
-  const {
-    isDefault = false,
-    providerKey,
-    listKey,
-    tokenList,
-    row: ro,
-    signal,
-    discovered,
-  } = input
+export const collect = async (input: CollectInput & { discovered?: DiscoveredState }) => {
+  const { isDefault = false, providerKey, listKey, tokenList, row: ro, signal, discovered } = input
 
   const id = `${providerKey}/${listKey}`
   const row =
@@ -145,14 +135,16 @@ export const collect = async (
     })
   try {
     // Use pre-discovered state or run discovery inline (backward compatible)
-    const state = discovered ?? await discover({
-      isDefault,
-      providerKey,
-      listKey,
-      tokenList,
-      row,
-      signal,
-    })
+    const state =
+      discovered ??
+      (await discover({
+        isDefault,
+        providerKey,
+        listKey,
+        tokenList,
+        row,
+        signal,
+      }))
     if (!state) return
     const { list, networks } = state
 

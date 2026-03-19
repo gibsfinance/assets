@@ -29,7 +29,7 @@ export const computeRankings = (
     const base = BigInt(position) * RANKING_SPACING
 
     // Flatten all provider+list pairs, sort alphabetically for determinism
-    const pairs: Array<{ providerKey: string; listKey: string }> = []
+    const pairs: { providerKey: string; listKey: string }[] = []
     for (const entry of manifest) {
       for (const list of entry.lists) {
         pairs.push({ providerKey: entry.providerKey, listKey: list.listKey })
@@ -93,9 +93,7 @@ export const syncDefaultOrder = async (
         .select('listOrderId')
 
       if (existingOrder) {
-        await tx(tableNames.listOrderItem)
-          .where('listOrderId', existingOrder.listOrderId)
-          .delete()
+        await tx(tableNames.listOrderItem).where('listOrderId', existingOrder.listOrderId).delete()
       }
 
       // Upsert the order + insert all items
@@ -120,17 +118,12 @@ export const syncDefaultOrder = async (
  * Build manifests from existing DB state (no discover phase needed).
  * Used by server startup and standalone create-orders script.
  */
-export const buildManifestsFromDB = async (
-  collectableKeys: string[],
-): Promise<Map<string, DiscoveryManifest>> => {
+export const buildManifestsFromDB = async (collectableKeys: string[]): Promise<Map<string, DiscoveryManifest>> => {
   const manifests = new Map<string, DiscoveryManifest>()
   const t = db.getDB()
 
   const rows = await t
-    .select([
-      t.raw(`${tableNames.provider}.key as provider_key`),
-      t.raw(`${tableNames.list}.key as list_key`),
-    ])
+    .select([t.raw(`${tableNames.provider}.key as provider_key`), t.raw(`${tableNames.list}.key as list_key`)])
     .from(tableNames.provider)
     .leftJoin(tableNames.list, {
       [`${tableNames.list}.providerId`]: `${tableNames.provider}.providerId`,
@@ -138,8 +131,8 @@ export const buildManifestsFromDB = async (
     .whereNotNull(`${tableNames.list}.key`)
 
   // Group by provider key
-  const byProvider = new Map<string, Array<{ listKey: string }>>()
-  for (const row of rows as Array<{ provider_key: string; list_key: string }>) {
+  const byProvider = new Map<string, { listKey: string }[]>()
+  for (const row of rows as { provider_key: string; list_key: string }[]) {
     const existing = byProvider.get(row.provider_key) ?? []
     existing.push({ listKey: row.list_key })
     byProvider.set(row.provider_key, existing)

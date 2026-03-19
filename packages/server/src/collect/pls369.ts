@@ -87,7 +87,7 @@ class Pls369Collector extends BaseCollector {
       description: 'a grass roots list curated by pulsechain users',
     })
 
-    const lists: Array<{ listKey: string }> = []
+    const lists: { listKey: string }[] = []
     for (const { list, chain } of configs) {
       const network = await db.insertNetworkFromChainId(chain.id)
       await db.insertList({
@@ -98,10 +98,12 @@ class Pls369Collector extends BaseCollector {
       lists.push({ listKey: list.key })
     }
 
-    return [{
-      providerKey,
-      lists,
-    }]
+    return [
+      {
+        providerKey,
+        lists,
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

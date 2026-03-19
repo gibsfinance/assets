@@ -475,13 +475,13 @@ export const storeToken = async (
  * Used to separate image fetching from token insertion for better performance.
  */
 export const batchFetchImagesForTokens = async (
-  tokenImages: Array<{
+  tokenImages: {
     listTokenId: string
     uri: string | null
     originalUri: string | null
     providerKey: string
     signal?: AbortSignal
-  }>,
+  }[],
   t: Tx = db,
 ) => {
   if (!tokenImages.length) return []
@@ -1059,16 +1059,14 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
     })
     .denseRank('rank', function denseRankByConfiged() {
       return this.orderBy(
-          t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string, 'asc',
-        )
+        t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string,
+        'asc',
+      )
         .orderBy(`${tableNames.list}.major`, 'desc')
         .orderBy(`${tableNames.list}.minor`, 'desc')
         .orderBy(`${tableNames.list}.patch`, 'desc')
         .orderBy(`${tableNames.listToken}.listTokenOrderId`, 'asc')
-        .partitionBy([
-          `${tableNames.token}.token_id`,
-          `${tableNames.token}.network_id`,
-        ])
+        .partitionBy([`${tableNames.token}.token_id`, `${tableNames.token}.network_id`])
     })
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
 }

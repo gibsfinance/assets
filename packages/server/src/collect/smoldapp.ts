@@ -58,7 +58,7 @@ class SmoldappCollector extends BaseCollector {
       description: 'a communitly led initiative to collect all the evm assets',
     })
 
-    const lists: Array<{ listKey: string; listId?: string }> = []
+    const lists: { listKey: string; listId?: string }[] = []
 
     // Process chains to discover lists
     const chains = await utils.folderContents(this.chainsPath)
@@ -98,11 +98,13 @@ class SmoldappCollector extends BaseCollector {
     // Also pre-create the global format lists (tokens-svg, tokens-pngXX, etc.)
     const possibleGlobalListKeys = ['svg', 'png', 'png128', 'png32']
     for (const listKey of possibleGlobalListKeys) {
-      const [list] = await db.insertList({
-        providerId: provider.providerId,
-        key: `tokens-${listKey}`,
-        default: listKey === 'svg',
-      }).catch(() => [null])
+      const [list] = await db
+        .insertList({
+          providerId: provider.providerId,
+          key: `tokens-${listKey}`,
+          default: listKey === 'svg',
+        })
+        .catch(() => [null])
       if (list) {
         lists.push({ listKey: `tokens-${listKey}`, listId: list.listId })
       }
@@ -141,7 +143,8 @@ class SmoldappCollector extends BaseCollector {
           continue
         }
 
-        const networkChainId = this.folderToNetworkChainId.get(cID) ?? (chainIdIsNumber ? +chainId : Number(stringToHex(chainId)))
+        const networkChainId =
+          this.folderToNetworkChainId.get(cID) ?? (chainIdIsNumber ? +chainId : Number(stringToHex(chainId)))
         const type = chainIdIsNumber ? 'evm' : 'btc'
         const network = await db.insertNetworkFromChainId(networkChainId, type)
         const chainFolder = path.join(this.chainsPath, chainId || cID)

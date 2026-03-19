@@ -4,7 +4,7 @@
  */
 export type DiscoveryManifest = {
   providerKey: string
-  lists: Array<{ listKey: string; listId?: string }>
+  lists: { listKey: string; listId?: string }[]
 }[]
 
 /**

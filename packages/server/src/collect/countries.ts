@@ -27,10 +27,12 @@ class CountriesCollector extends BaseCollector {
       default: true,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey: providerKey }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey: providerKey }],
+      },
+    ]
   }
 
   async collect(signal?: AbortSignal): Promise<void> {

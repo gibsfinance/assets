@@ -109,10 +109,12 @@ class DexscreenerCollector extends BaseCollector {
       name: 'DexScreener',
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey: 'api' }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey: 'api' }],
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

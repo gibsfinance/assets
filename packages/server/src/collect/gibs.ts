@@ -30,10 +30,12 @@ class GibsCollector extends BaseCollector {
       imageHash: null,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }],
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

@@ -53,7 +53,7 @@ const chainLimiter = limitBy<ChainConfig>(`${providerKey}-chains`, 1)
 /**
  * Concurrency limiter for puppeteer operations (more conservative)
  */
-const puppeteerLimiter = limitBy<Array<{ address: Address; logoURI?: string }>>(`${providerKey}-puppeteer`, 1)
+const puppeteerLimiter = limitBy<{ address: Address; logoURI?: string }[]>(`${providerKey}-puppeteer`, 1)
 
 /**
  * Shared browser instance for puppeteer operations
@@ -173,7 +173,7 @@ class SequentialRpcProcessor {
     // Update the processor chain
     this.chainProcessors.set(
       chainId,
-      nextProcessor.catch(() => {}),
+      nextProcessor.catch(() => undefined),
     )
 
     // Return the RPC result immediately (without waiting for the delay)
@@ -238,9 +238,6 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
     return null
   }
 
-  // Find matching viem chain
-  let viemChain: Chain | undefined
-
   // Common chain mappings
   const chainMappings: Record<number, Chain> = {
     1: mainnet,
@@ -265,7 +262,7 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
     81457: blast,
   }
 
-  viemChain = chainMappings[chainId]
+  const viemChain = chainMappings[chainId]
 
   if (!viemChain) {
     return null // Skip chains we don't have viem support for
@@ -324,7 +321,7 @@ async function fetchTopTokensViaPuppeteer({
   chainId: number
   signal?: AbortSignal
   row: TerminalRowProxy
-}): Promise<Array<{ address: Address; logoURI?: string }>> {
+}): Promise<{ address: Address; logoURI?: string }[]> {
   let page = null
 
   try {
@@ -405,7 +402,7 @@ async function fetchTopTokensViaPuppeteer({
 
     // Parse with cheerio
     const $ = cheerio.load(html)
-    const tokenData: Array<{ address: Address; logoURI?: string }> = []
+    const tokenData: { address: Address; logoURI?: string }[] = []
 
     // Parse token addresses and logos from the table
     const rows = $('tbody tr')
@@ -468,7 +465,7 @@ async function fetchTopTokens({
   signal?: AbortSignal
   row: TerminalRowProxy
   chainId: number
-}): Promise<Array<{ address: Address; logoURI?: string }>> {
+}): Promise<{ address: Address; logoURI?: string }[]> {
   // Use puppeteer with concurrency limiting to avoid overwhelming the system
   return puppeteerLimiter(async () => {
     return fetchTopTokensViaPuppeteer({
@@ -537,12 +534,12 @@ async function processChainTokens({
     let successCount = 0
 
     // Collect all valid tokens with their metadata and URIs
-    const validTokens: Array<{
+    const validTokens: {
       address: `0x${string}`
       metadata: { symbol: string; name: string; decimals: number }
       logoURI: string | null
       index: number
-    }> = []
+    }[] = []
 
     for (const [index, { address, logoURI }] of tokenData.entries()) {
       const normalizedLogoURI = logoURI || null
@@ -572,7 +569,7 @@ async function processChainTokens({
     }
 
     // Batch insert tokens first (without images)
-    const tokenInserts: Array<Parameters<typeof db.insertToken>[0]> = validTokens.map(({ address, metadata }) => ({
+    const tokenInserts: Parameters<typeof db.insertToken>[0][] = validTokens.map(({ address, metadata }) => ({
       type: 'erc20',
       symbol: metadata.symbol,
       name: metadata.name,
@@ -581,12 +578,12 @@ async function processChainTokens({
       providedId: address,
     }))
 
-    const tokensWithImages: Array<{
+    const tokensWithImages: {
       listTokenId: string
       uri: string | null
       originalUri: string | null
       providerKey: string
-    }> = []
+    }[] = []
 
     try {
       const insertedTokens = await db.insertTokenBatch(tokenInserts)
@@ -679,10 +676,12 @@ class EtherscanCollector extends BaseCollector {
       default: true,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey: 'top-tokens' }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey: 'top-tokens' }],
+      },
+    ]
   }
 
   async collect(signal?: AbortSignal): Promise<void> {
@@ -723,7 +722,10 @@ class EtherscanCollector extends BaseCollector {
       row.createCounter(terminalLogTypes.EROR, true)
       row.createCounter(terminalLogTypes.WARN, true)
 
-      row.incrementTotal(terminalCounterTypes.NETWORK, new Set(enabledChains.map((config) => config.chain.id.toString())))
+      row.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        new Set(enabledChains.map((config) => config.chain.id.toString())),
+      )
 
       // Process chains with limited concurrency (max 8 at a time)
       // Each chain handles its own rate limiting via SequentialRpcProcessor (500ms delays per chain)

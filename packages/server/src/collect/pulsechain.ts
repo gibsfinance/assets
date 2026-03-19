@@ -13,10 +13,12 @@ class PulsechainCollector extends BaseCollector {
       description: 'a grass roots list curated by pulsechain devs',
     })
 
-    return [{
-      providerKey,
-      lists: [],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [],
+      },
+    ]
   }
 
   async collect(_signal: AbortSignal): Promise<void> {

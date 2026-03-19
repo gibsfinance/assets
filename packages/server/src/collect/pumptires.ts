@@ -221,14 +221,12 @@ class PumptiresCollector extends BaseCollector {
       default: false,
     })
 
-    return [{
-      providerKey,
-      lists: [
-        { listKey },
-        { listKey: 'launched' },
-        { listKey: 'highcap' },
-      ],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }, { listKey: 'launched' }, { listKey: 'highcap' }],
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

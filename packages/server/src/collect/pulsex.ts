@@ -80,10 +80,12 @@ class PulsexCollector extends BaseCollector {
       description: 'the pulsex token list hosted in their code',
     })
 
-    return [{
-      providerKey,
-      lists: listKeys.map((listKey) => ({ listKey })),
-    }]
+    return [
+      {
+        providerKey,
+        lists: listKeys.map((listKey) => ({ listKey })),
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

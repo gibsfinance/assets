@@ -440,11 +440,11 @@ type RouteScanBlockchain = {
   avascanId: string
   ecosystems: string[]
   socialProfile: {
-    items: Array<{
+    items: {
       type: string
       value: string
       title: string
-    }>
+    }[]
   }
   description: string
   tags: string[]
@@ -554,10 +554,12 @@ class RoutescanCollector extends BaseCollector {
       default: true,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey: 'top-tokens' }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey: 'top-tokens' }],
+      },
+    ]
   }
 
   async collect(signal?: AbortSignal): Promise<void> {

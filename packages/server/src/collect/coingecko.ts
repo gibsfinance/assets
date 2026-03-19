@@ -53,9 +53,7 @@ class CoinGeckoCollector extends BaseCollector {
     )
 
     // Filter to platforms with valid chain identifiers
-    const validPlatforms = platforms.filter(
-      (p) => p.chain_identifier && typeof p.chain_identifier === 'number',
-    )
+    const validPlatforms = platforms.filter((p) => p.chain_identifier && typeof p.chain_identifier === 'number')
 
     // Create provider
     const [provider] = await db.insertProvider({
@@ -64,7 +62,7 @@ class CoinGeckoCollector extends BaseCollector {
     })
 
     // Create per-platform lists via remote-tokenlist pattern (each platform is a list)
-    const lists: Array<{ listKey: string }> = []
+    const lists: { listKey: string }[] = []
     for (const platform of validPlatforms) {
       const listKey = platform.id
       await db.insertList({
@@ -118,7 +116,7 @@ class CoinGeckoCollector extends BaseCollector {
           row: section,
         })
         let retries = 0
-        while (true) {
+        for (;;) {
           try {
             await collect(signal)
           } catch (err) {

@@ -88,9 +88,7 @@ class InternetMoneyCollector extends BaseCollector {
     })
 
     // Create per-network lists
-    const lists: Array<{ listKey: string; listId?: string }> = [
-      { listKey: 'wallet', listId: this.insertedList.listId },
-    ]
+    const lists: { listKey: string; listId?: string }[] = [{ listKey: 'wallet', listId: this.insertedList.listId }]
 
     const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
     const networkToNetworkList = await networkLimiter.map(json, async (network) => {

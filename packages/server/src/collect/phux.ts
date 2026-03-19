@@ -33,10 +33,12 @@ class PhuxCollector extends BaseCollector {
       signal,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }],
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {

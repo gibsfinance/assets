@@ -157,7 +157,6 @@ const loadChainId = async (blockchainKey: string) => {
       parsed.tokens = []
       parsed.name = `Trust Wallet: ${blockchainKey}`
       list = Buffer.from(JSON.stringify(parsed))
-    } else {
     }
     if (!list) {
       row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
@@ -345,7 +344,7 @@ class TrustWalletCollector extends BaseCollector {
     })
 
     // Create per-blockchain lists and build manifest
-    const lists: Array<{ listKey: string; listId?: string }> = [{ listKey: 'wallet' }]
+    const lists: { listKey: string; listId?: string }[] = [{ listKey: 'wallet' }]
     for (const folder of blockchainFolders) {
       const chainId = networkNameToChainId.get(folder)
       if (!chainId) {

@@ -62,10 +62,12 @@ export class RemoteTokenListCollector extends BaseCollector {
       signal,
     })
 
-    return [{
-      providerKey,
-      lists: [{ listKey }],
-    }]
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }],
+      },
+    ]
   }
 
   async collect(signal: AbortSignal): Promise<void> {
@@ -146,6 +148,7 @@ export const collect =
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.chainToPublicClient(chain)
 
+            // eslint-disable-next-line prefer-const
             let [image, [name = item.name, symbol = item.symbol, decimals = item.decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, signal, providerKey, item.address),
               erc20Read(chain, client, item.address),

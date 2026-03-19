@@ -24,14 +24,15 @@ test('computeRankings', async (t) => {
   await t.test('sub-lists sort alphabetically within tier', () => {
     const collectableKeys = ['trustwallet']
     const manifests = new Map<string, DiscoveryManifest>([
-      ['trustwallet', [{
-        providerKey: 'trustwallet',
-        lists: [
-          { listKey: 'wallet-pulsechain' },
-          { listKey: 'wallet-ethereum' },
-          { listKey: 'wallet' },
+      [
+        'trustwallet',
+        [
+          {
+            providerKey: 'trustwallet',
+            lists: [{ listKey: 'wallet-pulsechain' }, { listKey: 'wallet-ethereum' }, { listKey: 'wallet' }],
+          },
         ],
-      }]],
+      ],
     ])
 
     const rankings = computeRankings(collectableKeys, manifests)
@@ -48,10 +49,13 @@ test('computeRankings', async (t) => {
   await t.test('dynamic providers get sub-rankings within parent tier', () => {
     const collectableKeys = ['uniswap-tokenlists']
     const manifests = new Map<string, DiscoveryManifest>([
-      ['uniswap-tokenlists', [
-        { providerKey: 'uniswap-compound', lists: [{ listKey: 'hosted' }] },
-        { providerKey: 'uniswap-aave', lists: [{ listKey: 'hosted' }] },
-      ]],
+      [
+        'uniswap-tokenlists',
+        [
+          { providerKey: 'uniswap-compound', lists: [{ listKey: 'hosted' }] },
+          { providerKey: 'uniswap-aave', lists: [{ listKey: 'hosted' }] },
+        ],
+      ],
     ])
 
     const rankings = computeRankings(collectableKeys, manifests)
