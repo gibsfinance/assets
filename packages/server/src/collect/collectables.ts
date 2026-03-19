@@ -46,49 +46,51 @@ export const allCollectables = () => {
  * The order here defines the default image priority ranking.
  */
 type CollectableKey =
-  | 'dexscreener' | 'countries' | 'routescan' | 'pulsechain'
-  | 'trustwallet' | 'uniswap-tokenlists' | 'kleros' | 'gibs'
-  | 'piteas' | 'pulsex' | 'balancer' | 'midgard'
-  | 'internetmoney' | 'phux' | 'pls369' | 'smoldapp'
-  | 'levinswap' | 'honeyswap' | 'pancake' | 'quickswap'
-  | 'roll' | 'scroll' | 'set' | 'omnibridge'
-  | 'dfyn' | 'coingecko' | '9mm' | 'uma'
-  | 'baofinance' | 'compound' | 'optimism' | 'pumptires'
-  | 'etherscan'
+  | 'gibs' | 'pulsex' | 'dexscreener' | 'countries'
+  | 'pulsechain' | 'internetmoney' | 'midgard' | 'pumptires'
+  | 'etherscan' | 'routescan' | 'trustwallet' | 'piteas'
+  | 'pls369' | 'smoldapp' | 'balancer' | 'phux'
+  | 'uniswap-tokenlists' | 'kleros' | 'levinswap' | 'honeyswap'
+  | 'pancake' | 'quickswap' | 'roll' | 'scroll'
+  | 'set' | 'omnibridge' | 'dfyn' | 'coingecko'
+  | '9mm' | 'uma' | 'baofinance' | 'compound'
+  | 'optimism'
 
 const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
   return {
+    gibs: gibsCollector,
+    pulsex: pulsexCollector,
     dexscreener: dexscreenerCollector,
     countries: countriesCollector,
-    routescan: routescanCollector,
     pulsechain: pulsechainCollector,
-    trustwallet: new TrustWalletCollector(),
-    'uniswap-tokenlists': new UniswapTokenListsCollector(),
-    kleros: klerosCollector,
-    gibs: gibsCollector,
-    piteas: new RemoteTokenListCollector('piteas', {
-      providerKey: 'piteas',
-      listKey: 'exchange',
-      tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
-    }),
-    pulsex: pulsexCollector,
-    balancer: new RemoteTokenListCollector('balancer', {
-      providerKey: 'balancer',
-      listKey: 'exchange',
-      tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
-      blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
-    }),
+    internetmoney: new InternetMoneyCollector(),
     midgard: new RemoteTokenListCollector('midgard', {
       providerKey: 'midgard',
       listKey: 'all',
       tokenList:
         'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
     }),
-    internetmoney: new InternetMoneyCollector(),
-    phux: phuxCollector,
+    pumptires: pumpiresCollector,
+    etherscan: etherscanCollector,
+    routescan: routescanCollector,
+    trustwallet: new TrustWalletCollector(),
+    piteas: new RemoteTokenListCollector('piteas', {
+      providerKey: 'piteas',
+      listKey: 'exchange',
+      tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
+    }),
     pls369: pls369Collector,
     smoldapp: new SmoldappCollector(),
+    balancer: new RemoteTokenListCollector('balancer', {
+      providerKey: 'balancer',
+      listKey: 'exchange',
+      tokenList: 'https://raw.githubusercontent.com/balancer/tokenlists/main/generated/balancer.tokenlist.json',
+      blacklist: new Set(['0xEdF8b632b537d5993Adb5e2E15882CD791c284cB', '0xbf4906762C38F50bC7Be0A11BB452C944f6C72E1']),
+    }),
+    phux: phuxCollector,
+    'uniswap-tokenlists': new UniswapTokenListsCollector(),
+    kleros: klerosCollector,
     levinswap: levinswapCollector,
     honeyswap: honeyswapCollector,
     pancake: pancakeCollector,
@@ -128,8 +130,6 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     baofinance: baofinanceCollector,
     compound: compoundCollector,
     optimism: optimismCollector,
-    pumptires: pumpiresCollector,
-    etherscan: etherscanCollector,
   }
 }
 
