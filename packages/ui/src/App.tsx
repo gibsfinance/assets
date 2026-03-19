@@ -4,14 +4,8 @@ import { SettingsProvider } from './lib/contexts/SettingsContext'
 import { MetricsProvider } from './lib/contexts/MetricsContext'
 import { Layout } from './Layout'
 import Home from './lib/pages/Home'
-
-function Wizard() {
-  return <div>Wizard page placeholder</div>
-}
-
-function Docs() {
-  return <div>Docs page placeholder</div>
-}
+import Wizard from './lib/pages/Wizard'
+import Docs from './lib/pages/Docs'
 
 export function App() {
   return (
