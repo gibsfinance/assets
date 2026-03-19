@@ -43,38 +43,29 @@ export const collect =
     blacklist = new Set<string>(),
     row: ro,
   }: Input) =>
-    async (signal: AbortSignal) => {
-      const id = `${providerKey}/${listKey}`
-      const row = ro ? ro.task(id, { id, type: terminalRowTypes.SETUP }) :
-        (utils.terminal.get(id) ??
-          utils.terminal.issue({
-            type: terminalRowTypes.SETUP,
-            id,
-          }))
-      const tokenList = await db.cachedJSONRequest<types.TokenList>(
-        tokenListUrl,
-        signal,
-        tokenListUrl,
-      )
-      if (signal.aborted) {
-        return
-      }
+  async (signal: AbortSignal) => {
+    const id = `${providerKey}/${listKey}`
+    const row = ro
+      ? ro.task(id, { id, type: terminalRowTypes.SETUP })
+      : (utils.terminal.get(id) ??
+        utils.terminal.issue({
+          type: terminalRowTypes.SETUP,
+          id,
+        }))
+    try {
+      const tokenList = await db.cachedJSONRequest<types.TokenList>(tokenListUrl, signal, tokenListUrl)
+      if (signal.aborted) return
 
       if (!tokenList) {
         row.increment(terminalLogTypes.EROR, new Set([id]))
-        row.complete()
         throw new Error(`Invalid JSON response from ${tokenListUrl}`)
       }
 
-      if (signal.aborted) {
-        row.complete()
-        return
-      }
+      if (signal.aborted) return
 
       const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
       if (!tokenList.tokens) {
-        console.log(tokenListUrl, tokenList)
-        row.complete()
+        failureLog('%o %o', tokenListUrl, tokenList)
         return
       }
       tokenList.tokens.forEach((token) => {
@@ -119,24 +110,18 @@ export const collect =
               decimals = item.decimals!
             }
             if (!name || !symbol || !decimals) {
-              console.log(item, { name, symbol, decimals })
+              failureLog('%o %o', item, { name, symbol, decimals })
               row.increment('missing', utils.counterId.token([item.network.id, item.address]))
               return
             }
 
             if (!image) {
               row.increment('missing', utils.counterId.token([item.network.id, item.address]))
-              // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
               return
             }
             await db.transaction(async (tx) => {
               const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
               if (item.network.isNetworkImage) {
-                // updateStatus({
-                //   provider: providerKey,
-                //   message: `Storing network image for ${chain.name}...`,
-                //   phase: 'storing',
-                // } satisfies StatusProps)
                 await db.fetchImageAndStoreForNetwork(
                   {
                     network,
@@ -167,15 +152,15 @@ export const collect =
           }
         }),
       )
-      if (signal.aborted) {
-        row.complete()
-        return
-      }
+      if (signal.aborted) return
 
       const validExtras = _.compact(extras)
       tokenList.tokens = _.uniqBy([...validExtras, ...tokenList.tokens], 'address')
       row.createCounter(terminalCounterTypes.TOKEN)
-      row.incrementTotal(terminalCounterTypes.TOKEN, new Set(tokenList.tokens.map(token => utils.counterId.token([token.chainId, token.address]))))
+      row.incrementTotal(
+        terminalCounterTypes.TOKEN,
+        new Set(tokenList.tokens.map((token) => utils.counterId.token([token.chainId, token.address]))),
+      )
       const result = await inmemoryTokenlist.collect({
         providerKey,
         listKey,
@@ -184,6 +169,8 @@ export const collect =
         row,
         signal,
       })
-      row.complete()
       return result
+    } finally {
+      row.complete()
     }
+  }

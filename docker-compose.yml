@@ -1,3 +1,5 @@
+name: gibassets
+
 services:
   postgres:
     container_name: gibassets-postgres
@@ -38,6 +40,7 @@ services:
       - ./packages:/usr/src/app/packages
       - ./package.json:/usr/src/app/package.json
       - ./yarn.lock:/usr/src/app/yarn.lock
+      - ./.yarnrc.yml:/usr/src/app/.yarnrc.yml
     environment:
       DEBUG: '${DEBUG:-📷*}'
       DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
@@ -56,6 +59,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
     networks:
       - gibassets
     environment:
@@ -69,9 +74,6 @@ services:
       retries: 3
       start_period: 40s
   server:
-    depends_on:
-      postgres:
-        condition: service_healthy
     container_name: gibassets-server
     build:
       context: .
@@ -81,6 +83,11 @@ services:
     command: ['yarn', 'run', 'server']
     volumes:
       - ./packages:/usr/src/app/packages
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
     networks:
       - gibassets
     environment:
@@ -90,11 +97,11 @@ services:
     ports:
       - 3456:3000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health", "||", "exit", "1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   gibassets:

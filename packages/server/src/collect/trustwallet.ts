@@ -23,44 +23,47 @@ export const collect = async (signal: AbortSignal) => {
     type: terminalRowTypes.SETUP,
     id: providerKey,
   })
-  blockchainFolders.sort()
-  // console.log(blockchainFolders)
-  await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
-    console.error(err)
-    return null
-  })
-  // console.log(networkNameToChainId)
-  row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
-  )
-  let globalCount = 0
-  const limit = limitBy<string>('blockchains', 1)
-  await limit.map(blockchainFolders, async (folder) => {
-    const chainId = networkNameToChainId.get(folder)
-    if (!chainId) {
-      // console.log('chain id not found', folder)
-      return
-    }
-    try {
-      const f = path.join(blockchainsRoot, folder, assetsFolder)
-      const assets = await fs.promises.readdir(f).catch(() => [])
-      await entriesFromAssets({
-        blockchainKey: folder,
-        assets: utils.removedUndesirable(assets),
-        signal,
-        globalCount,
-      })
-      globalCount += assets.length
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
-      row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
-    }
-    row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
-  })
-  row.complete()
+  try {
+    blockchainFolders.sort()
+    // console.log(blockchainFolders)
+    await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
+      failureLog('%o', (err as Error).message)
+      return null
+    })
+    // console.log(networkNameToChainId)
+    row.createCounter(terminalCounterTypes.NETWORK)
+    row.incrementTotal(
+      terminalCounterTypes.NETWORK,
+      utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
+    )
+    let globalCount = 0
+    const limit = limitBy<string>('blockchains', 1)
+    await limit.map(blockchainFolders, async (folder) => {
+      const chainId = networkNameToChainId.get(folder)
+      if (!chainId) {
+        // console.log('chain id not found', folder)
+        return
+      }
+      try {
+        const f = path.join(blockchainsRoot, folder, assetsFolder)
+        const assets = await fs.promises.readdir(f).catch(() => [])
+        await entriesFromAssets({
+          blockchainKey: folder,
+          assets: utils.removedUndesirable(assets),
+          signal,
+          globalCount,
+        })
+        globalCount += assets.length
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
+        row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
+      }
+      row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
+    })
+  } finally {
+    row.complete()
+  }
 }
 
 /**
@@ -101,12 +104,9 @@ const networkNameToChainId = new Map<string, number>([
 
 const getClient = _.memoize((url: string): PublicClient => {
   return createPublicClient({
-    transport: http(
-      url === 'https://rpc.ftm.tools' ? 'https://1rpc.io/ftm' : url,
-      {
-        timeout: 5_000,
-      },
-    ),
+    transport: http(url === 'https://rpc.ftm.tools' ? 'https://1rpc.io/ftm' : url, {
+      timeout: 5_000,
+    }),
     batch: { multicall: { batchSize: 32, wait: 0 } },
   })
 })
@@ -119,7 +119,7 @@ type ChainList = {
     url: string
     tracking: string
     isOpenSource?: boolean
-  }[],
+  }[]
   nativeCurrency: {
     name: string
     symbol: string
@@ -135,26 +135,46 @@ const getChainListResult = _.memoize(async (): Promise<ChainList[]> => {
   if (!response.ok) {
     throw new Error(`Failed to fetch chain list: ${response.status} ${response.statusText}`)
   }
-  const data = await response.json() as ChainList[]
+  const data = (await response.json()) as ChainList[]
   return data
 })
-const sterilize = _.memoize((s: string | null = '') => s?.toLowerCase().split(' ').join('')
-  .split('-').join('')
-  .split('_').join('')
-  .split('.').join('')
-  .split('/').join('')
-  .split(':').join('')
-  .split('?').join('')
-  .split('&').join('')
-  .split('=').join('')
-  .split('evm').join('')
-  .split('chain').join('')
-  .split('network').join('')
-  .split('mainnet').join('')
-  .split('testnet').join('')
-  .split('devnet').join('')
-  .split('testnet').join('')
-  .split('net').join('')
+const sterilize = _.memoize((s: string | null = '') =>
+  s
+    ?.toLowerCase()
+    .split(' ')
+    .join('')
+    .split('-')
+    .join('')
+    .split('_')
+    .join('')
+    .split('.')
+    .join('')
+    .split('/')
+    .join('')
+    .split(':')
+    .join('')
+    .split('?')
+    .join('')
+    .split('&')
+    .join('')
+    .split('=')
+    .join('')
+    .split('evm')
+    .join('')
+    .split('chain')
+    .join('')
+    .split('network')
+    .join('')
+    .split('mainnet')
+    .join('')
+    .split('testnet')
+    .join('')
+    .split('devnet')
+    .join('')
+    .split('testnet')
+    .join('')
+    .split('net')
+    .join(''),
 )
 const loadChainId = async (blockchainKey: string) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
@@ -168,11 +188,12 @@ const loadChainId = async (blockchainKey: string) => {
 
   const chainList = await getChainListResult()
   const sterilizedBlockchainKey = sterilize(blockchainKey)
-  const chain = chainList.find((c) => (
-    sterilize(c.name) === sterilizedBlockchainKey
-    || sterilize(c.chainSlug) === sterilizedBlockchainKey
-    || sterilize(c.chain) === sterilizedBlockchainKey
-  ))
+  const chain = chainList.find(
+    (c) =>
+      sterilize(c.name) === sterilizedBlockchainKey ||
+      sterilize(c.chainSlug) === sterilizedBlockchainKey ||
+      sterilize(c.chain) === sterilizedBlockchainKey,
+  )
   const row = utils.terminal.get(providerKey)!
   // chain id from chain list is more trustworthy
   if (chain) {
@@ -201,7 +222,9 @@ const loadChainId = async (blockchainKey: string) => {
 
   if (!chainId) {
     if (networkInfo.rpc_url) {
-      chainId = await getClient(networkInfo.rpc_url).getChainId().catch(() => null)
+      chainId = await getClient(networkInfo.rpc_url)
+        .getChainId()
+        .catch(() => null)
     }
   }
 
@@ -285,7 +308,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     terminalCounterTypes.TOKEN,
     utils.mapToSet.token(assets, (a) => [chainId, a]),
   )
-  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 1)
+  const limit = limitBy<[number, string]>(`${providerKey}-${blockchainKey}-tokens`, 8)
   const entries = [...assets.entries()] as unknown as readonly [number, string][]
   await limit.map(entries, async ([i, asset]) => {
     if (signal.aborted) {
@@ -313,23 +336,33 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       row.increment('skipped', chainTokenId)
       return
     }
-    for (const [list, index] of [[networkList, i], [trustwalletList, globalCount + i]] as const) {
-      await db.fetchImageAndStoreForToken({
-        listId: list.listId,
+    const tokenData = {
+      providedId: address,
+      networkId: network.networkId,
+      name: info.name,
+      symbol: info.symbol,
+      decimals: info.decimals,
+    }
+    await Promise.all([
+      db.fetchImageAndStoreForToken({
+        listId: networkList.listId,
         uri: file,
         originalUri: logoPath,
         providerKey,
         signal,
-        listTokenOrderId: index,
-        token: {
-          providedId: address,
-          networkId: network.networkId,
-          name: info.name,
-          symbol: info.symbol,
-          decimals: info.decimals,
-        },
-      })
-    }
+        listTokenOrderId: i,
+        token: tokenData,
+      }),
+      db.fetchImageAndStoreForToken({
+        listId: trustwalletList.listId,
+        uri: file,
+        originalUri: logoPath,
+        providerKey,
+        signal,
+        listTokenOrderId: globalCount + i,
+        token: tokenData,
+      }),
+    ])
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
   })
 }

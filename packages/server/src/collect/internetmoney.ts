@@ -12,7 +12,7 @@ import _ from 'lodash'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
-const CONCURRENT_TOKENS = 4 // Limit concurrent token processing
+const CONCURRENT_TOKENS = 16
 
 interface TokenInfo {
   address: string
@@ -51,26 +51,27 @@ export const collect = async (signal: AbortSignal) => {
     type: terminalRowTypes.SUMMARY,
     id: providerKey,
   })
-  const tasksSection = summaryRow.issue('tasks')
+  try {
+    const tasksSection = summaryRow.issue('tasks')
 
-  const json = await fetch(baseUrl, { signal })
-    .then((res): Promise<NetworkInfo[]> => res.json())
-    .then((res) => (Array.isArray(res) ? res : []))
-  const encounteredChainIds = new Set<bigint>()
-  let provider!: Provider
-  let insertedList!: List
-  if (signal.aborted) {
-    return
-  }
-  await db.transaction(async (tx) => {
-    ;[provider] = await db.insertProvider(
-      {
-        name: 'Internet Money',
-        key: providerKey,
-      },
-      tx,
-    )
-    await db.insertNetworkFromChainId(0, undefined, tx)
+    const json = await fetch(baseUrl, { signal })
+      .then((res): Promise<NetworkInfo[]> => res.json())
+      .then((res) => (Array.isArray(res) ? res : []))
+    const encounteredChainIds = new Set<bigint>()
+    let provider!: Provider
+    let insertedList!: List
+    if (signal.aborted) {
+      return
+    }
+    await db.transaction(async (tx) => {
+      ;[provider] = await db.insertProvider(
+        {
+          name: 'Internet Money',
+          key: providerKey,
+        },
+        tx,
+      )
+      await db.insertNetworkFromChainId(0, undefined, tx)
       ;[insertedList] = await db.insertList(
         {
           providerId: provider.providerId,
@@ -82,149 +83,175 @@ export const collect = async (signal: AbortSignal) => {
         },
         tx,
       )
-  })
-
-  summaryRow.createCounter(terminalCounterTypes.NETWORK)
-  summaryRow.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network(json, (n) => n.chainId),
-  )
-
-  summaryRow.incrementTotal(
-    terminalCounterTypes.TOKEN,
-    utils.mapToSet.token(
-      json.flatMap((n) => n.tokens.map((t) => [n.chainId, t.address] as [number, string])),
-      (t) => t,
-    ),
-  )
-  // Process tokens in parallel with controlled concurrency
-  type NetworkAndToken = {
-    network: NetworkInfo
-    token: TokenInfo
-    globalOrderId: number
-    scopedOrderId: number
-  }
-  const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
-  const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
-  const networkToNetworkList = await networkLimiter.map(json, async (network) => {
-    summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
-    const row = tasksSection.task(network.chainId.toString(), {
-      type: terminalRowTypes.STORAGE,
-      id: providerKey,
-      kv: {
-        chainId: network.chainId,
-      },
     })
-    const chain = networkToChain(network)
-    await db.insertNetworkFromChainId(chain.id)
 
-    encounteredChainIds.add(BigInt(chain.id))
+    summaryRow.createCounter(terminalCounterTypes.NETWORK)
+    summaryRow.incrementTotal(
+      terminalCounterTypes.NETWORK,
+      utils.mapToSet.network(json, (n) => n.chainId),
+    )
 
-    const insertAndGetNetworkList = (t: Tx) => {
-      return db.insertList(
-        {
-          providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(chain.id),
-          key: `wallet-${chain.id}`,
-          name: `default wallet list for chain ${chain.id}`,
-          description: `the list that loads by default in the wallet for ${chain.id}`,
-        },
-        t,
-      )
+    summaryRow.incrementTotal(
+      terminalCounterTypes.TOKEN,
+      utils.mapToSet.token(
+        json.flatMap((n) => n.tokens.map((t) => [n.chainId, t.address] as [number, string])),
+        (t) => t,
+      ),
+    )
+    // Process tokens in parallel with controlled concurrency
+    type NetworkAndToken = {
+      network: NetworkInfo
+      token: TokenInfo
+      globalOrderId: number
+      scopedOrderId: number
     }
-
-    // Store network icon
-    const networkListItem = await db.transaction(async (tx) => {
-      const [networkList] = await insertAndGetNetworkList(tx)
-      await db.fetchImageAndStoreForList(
-        {
-          listId: networkList.listId,
-          uri: network.icon,
-          originalUri: network.icon,
-          providerKey: provider.key,
-          signal,
+    const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
+    const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
+    const networkToNetworkList = await networkLimiter.map(json, async (network) => {
+      summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
+      const row = tasksSection.task(network.chainId.toString(), {
+        type: terminalRowTypes.STORAGE,
+        id: providerKey,
+        kv: {
+          chainId: network.chainId,
         },
-        tx,
-      )
-      return [network, networkList] as const
-    })
-    row.unmount()
-    return networkListItem
-  })
+      })
+      const chain = networkToChain(network)
+      await db.insertNetworkFromChainId(chain.id)
 
-  const networkListByNetwork = new Map(networkToNetworkList)
-  let globalOrderId = 0
-  const allTokens = _.flatMap(json, (network) => {
-    return network.tokens.map((tkn, i) => {
-      return {
-        network,
-        token: tkn,
-        globalOrderId: globalOrderId++,
-        scopedOrderId: i,
-      }
-    })
-  })
+      encounteredChainIds.add(BigInt(chain.id))
 
-  await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
-    summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
-    const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
-      type: terminalRowTypes.STORAGE,
-      id: providerKey,
-      kv: {
-        chainId: network.chainId,
-        address: token.address,
-      },
-    })
-    const address = viem.getAddress(token.address)
-    const chain = networkToChain(network)
-    const client = utils.chainToPublicClient(chain)
-    const [name, symbol, decimals] = await erc20Read(chain, client, address)
-
-    const networkList = networkListByNetwork.get(network)!
-    await db
-      .transaction(async (tx) => {
-        const insertion = {
-          uri: token.icon,
-          originalUri: token.icon,
-          providerKey: provider.key,
-          token: {
-            symbol,
-            name,
-            decimals,
+      const insertAndGetNetworkList = (t: Tx) => {
+        return db.insertList(
+          {
+            providerId: provider.providerId,
             networkId: utils.chainIdToNetworkId(chain.id),
-            providedId: address,
+            key: `wallet-${chain.id}`,
+            name: `default wallet list for chain ${chain.id}`,
+            description: `the list that loads by default in the wallet for ${chain.id}`,
           },
-        }
-        await db.fetchImageAndStoreForToken(
+          t,
+        )
+      }
+
+      // Store network icon
+      const networkListItem = await db.transaction(async (tx) => {
+        const [networkList] = await insertAndGetNetworkList(tx)
+        await db.fetchImageAndStoreForList(
           {
-            ...insertion,
             listId: networkList.listId,
-            listTokenOrderId: scopedOrderId,
+            uri: network.icon,
+            originalUri: network.icon,
+            providerKey: provider.key,
             signal,
           },
           tx,
         )
-        await db.fetchImageAndStoreForToken(
-          {
-            ...insertion,
-            listId: insertedList.listId,
-            listTokenOrderId: globalOrderId,
-            signal,
-          },
-          tx,
-        )
+        return [network, networkList] as const
       })
-      .catch((err) => {
-        if (err.message?.toLowerCase()?.includes('timeout')) {
-          row.increment('timeout', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
-        } else {
-          row.increment('error', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+      row.unmount()
+      return networkListItem
+    })
+
+    const networkListByNetwork = new Map(networkToNetworkList)
+    let globalOrderId = 0
+    const allTokens = _.flatMap(json, (network) => {
+      return network.tokens.map((tkn, i) => {
+        return {
+          network,
+          token: tkn,
+          globalOrderId: globalOrderId++,
+          scopedOrderId: i,
         }
-        failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
       })
-      .finally(() => {
-        row.unmount()
+    })
+
+    await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
+      summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
+      const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
+        type: terminalRowTypes.STORAGE,
+        id: providerKey,
+        kv: {
+          chainId: network.chainId,
+          address: token.address,
+        },
       })
-  })
-  summaryRow.complete()
+      const address = viem.getAddress(token.address)
+      const chain = networkToChain(network)
+      const networkId = utils.chainIdToNetworkId(chain.id)
+
+      // Check if token already has metadata in DB — skip RPC if so
+      const existingToken = await db
+        .getDB()
+        .from('token')
+        .where({ providedId: address, networkId })
+        .whereNot('name', '')
+        .whereNot('symbol', '')
+        .first<{ name: string; symbol: string; decimals: number }>()
+
+      let name: string, symbol: string, decimals: number
+      if (existingToken) {
+        ;({ name, symbol, decimals } = existingToken)
+      } else {
+        try {
+          const client = utils.chainToPublicClient(chain)
+          const result = await erc20Read(chain, client, address)
+          ;[name, symbol, decimals] = result
+        } catch (err) {
+          failureLog(`${providerKey} rpc failed %o %o: %o`, chain.id, address, (err as Error).message)
+          row.increment('skipped', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+          row.unmount()
+          return
+        }
+      }
+
+      const networkList = networkListByNetwork.get(network)!
+      await db
+        .transaction(async (tx) => {
+          const insertion = {
+            uri: token.icon,
+            originalUri: token.icon,
+            providerKey: provider.key,
+            token: {
+              symbol,
+              name,
+              decimals,
+              networkId,
+              providedId: address,
+            },
+          }
+          await db.fetchImageAndStoreForToken(
+            {
+              ...insertion,
+              listId: networkList.listId,
+              listTokenOrderId: scopedOrderId,
+              signal,
+            },
+            tx,
+          )
+          await db.fetchImageAndStoreForToken(
+            {
+              ...insertion,
+              listId: insertedList.listId,
+              listTokenOrderId: globalOrderId,
+              signal,
+            },
+            tx,
+          )
+        })
+        .catch((err) => {
+          if (err.message?.toLowerCase()?.includes('timeout')) {
+            row.increment('timeout', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+          } else {
+            row.increment('error', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+          }
+          failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
+        })
+        .finally(() => {
+          row.unmount()
+        })
+    })
+  } finally {
+    summaryRow.complete()
+  }
 }

@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import * as viem from 'viem'
-import { erc20Read } from '@gibs/utils/viem'
+import { erc20Read } from '@gibs/utils'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -39,12 +39,15 @@ const term = _.memoize(() => {
  */
 export const collect = (config: BridgeConfig[]) => async (signal: AbortSignal) => {
   const { row } = term()
-  await Promise.all(
-    config.map((c) => {
-      return collectByBridgeConfig(c, signal)
-    }),
-  )
-  row.complete()
+  try {
+    await Promise.all(
+      config.map((c) => {
+        return collectByBridgeConfig(c, signal)
+      }),
+    )
+  } finally {
+    row.complete()
+  }
 }
 
 const abi = viem.parseAbi(['event NewTokenRegistered(address indexed native, address indexed bridged)'])
@@ -91,7 +94,6 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     })
 
     const {
-      provider,
       // fromList,
       toList,
       bridge,
@@ -144,6 +146,15 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       fromBlock = currentToBlockNumber
     }
 
+    configRow.update({
+      kv: {
+        from: fromConfig.chain.id,
+        to: toConfig.chain.id,
+        startBlock: `${fromBlock}`,
+        endBlock: `${finalizedBlock.number}`,
+      },
+    })
+
     const blocksSection = configRow.issue(providerKey, 1)
     configRow.createCounter(terminalCounterTypes.TOKEN)
     await iterateOverRange(fromBlock, finalizedBlock.number, async (fromBlock, toBlock) => {
@@ -185,10 +196,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           const bridged = event.args.bridged as viem.Hex
           const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
           const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
-          const [
-            [name, symbol, decimals],
-            [bridgedName, bridgedSymbol, bridgedDecimals],
-          ] = await Promise.all([
+          const [[name, symbol, decimals], [bridgedName, bridgedSymbol, bridgedDecimals]] = await Promise.all([
             erc20Read(fromConfig.chain, fromClient, native),
             erc20Read(toConfig.chain, toClient, bridged),
           ])
@@ -223,41 +231,36 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         let count = toBridge.bridgeLinkOrderId
         for (const event of events) {
           const [native, bridged] = await Promise.all(
-            ([
-              [fromConfig.chain.id, event.args.native],
-              [toConfig.chain.id, event.args.bridged],
-            ] as const).map(
-              async ([chainId, addr]) => {
-                const providedId = viem.getAddress(addr as viem.Hex)
-                const networkId = chainIdToNetworkId(chainId)
-                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
-                if (!metadata) {
-                  return
-                }
-                // this should not err because we are not storing any image data
-                const { token } = await db.fetchImageAndStoreForToken(
-                  {
-                    // no images to associate
-                    uri: null,
-                    originalUri: null,
-                    listId: toList.listId,
-                    providerKey: provider.key,
-                    listTokenOrderId: count++,
-                    signal,
-                    token: {
-                      networkId,
-                      providedId,
-                      name: metadata.name,
-                      symbol: metadata.symbol,
-                      decimals: metadata.decimals,
-                    },
+            (
+              [
+                [fromConfig.chain.id, event.args.native],
+                [toConfig.chain.id, event.args.bridged],
+              ] as const
+            ).map(async ([chainId, addr]) => {
+              const providedId = viem.getAddress(addr as viem.Hex)
+              const networkId = chainIdToNetworkId(chainId)
+              const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
+              if (!metadata) {
+                return
+              }
+              // Use storeToken for efficient token insertion without image processing
+              const { token } = await db.storeToken(
+                {
+                  token: {
+                    networkId,
+                    providedId,
+                    name: metadata.name,
+                    symbol: metadata.symbol,
+                    decimals: metadata.decimals,
                   },
-                  tx,
-                )
-                configRow.increment(terminalCounterTypes.TOKEN, counterId.token([chainId, providedId]))
-                return token
-              },
-            ),
+                  listId: toList.listId,
+                  listTokenOrderId: count++,
+                },
+                tx,
+              )
+              configRow.increment(terminalCounterTypes.TOKEN, counterId.token([chainId, providedId]))
+              return token
+            }),
           )
           if (!native || !bridged) {
             continue

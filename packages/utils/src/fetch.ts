@@ -30,13 +30,14 @@ const defaultRetryOpts = {
   attempts: 5,
 }
 
-export const retry = async <T>(fn: () => Promise<T>, options = {}) => {
+export const retry = async <T>(fn: () => Promise<T>, options: Partial<typeof defaultRetryOpts> & { signal?: AbortSignal } = {}) => {
   const opts = {
     ...defaultRetryOpts,
     ...options,
   }
   let lastErr: Error | null = null
   do {
+    if (opts.signal?.aborted) throw new Error('aborted')
     try {
       return await fn()
     } catch (err) {
@@ -45,7 +46,14 @@ export const retry = async <T>(fn: () => Promise<T>, options = {}) => {
     }
     opts.attempts -= 1
     if (opts.attempts) {
-      await timeout(opts.delay).promise
+      if (opts.signal?.aborted) throw new Error('aborted')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, opts.delay)
+        opts.signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          resolve()
+        }, { once: true })
+      })
     }
   } while (opts.attempts)
   throw lastErr
@@ -105,17 +113,26 @@ export const limitByTime = (ms: number) => {
 
 const ipfsCompatableFetch = async (url: URL, options: Parameters<typeof fetch>[1]) => {
   const limiter = getLimiter(url)
-  return await limiter(async () => {
+  const signal = options?.signal
+  const limiterPromise = limiter(async () => {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const timeoutSignal = AbortSignal.timeout(10_000)
-    const anyAborted = options && options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal
+    const anyAborted = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
     const fetchOptions = {
       redirect: 'follow',
       signal: anyAborted,
-      // used to get around certain domains that check user agents
       ...options,
     } as const
     return fetch(url, fetchOptions)
   })
+  if (!signal) return limiterPromise
+  return Promise.race([
+    limiterPromise,
+    new Promise<never>((_, reject) => {
+      if (signal.aborted) return reject(new DOMException('Aborted', 'AbortError'))
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+    }),
+  ])
 }
 
 export const urlToPossibleLocations = (url: string | URL, ipfsDomains: string[]) => {

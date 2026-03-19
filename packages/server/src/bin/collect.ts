@@ -2,19 +2,31 @@ import * as collect from '../collect'
 import * as args from '../args'
 import { cleanup } from '../cleanup'
 import * as db from '../db'
-import { seedOrders } from '../db/create-orders'
 import { setDoesRender } from '../log/App'
-const { providers, logger } = args.collect()
+import _ from 'lodash'
+const { providers, logger, concurrency } = args.collect()
 
 setDoesRender(logger === 'terminal')
 
-db.getDB()
-  .migrate.latest()
-  .then(() => collect.main(providers()))
-  .then(() => seedOrders())
-  .catch((err) => console.log(err))
-  .then(cleanup)
-// .then(() => {
-//   // console.log('finished')
-//   process.exit(0)
-// })
+async function runCollect() {
+  const providerList = providers()
+  console.log('collect config: %o', {
+    providers: providerList,
+    logger,
+    concurrency,
+    count: providerList.length,
+  })
+  try {
+    const dbInstance = db.getDB()
+    await dbInstance.migrate.latest()
+    await db.purgeExpiredCache().catch(_.noop)
+    await collect.main(providerList, logger, concurrency)
+  } catch (err) {
+    console.error('Collection failed:', err)
+  } finally {
+    await cleanup()
+    process.exit(0)
+  }
+}
+
+runCollect()

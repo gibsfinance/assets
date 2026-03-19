@@ -76,6 +76,11 @@ export const attributionProviders: AttributionProvider[] = [
     imageUrl: 'etherscan.svg',
   },
   {
+    name: 'RouteScan',
+    link: 'https://routescan.io',
+    imageUrl: 'routescan.svg',
+  },
+  {
     name: 'Smoldapp',
     link: 'https://smold.app',
     imageUrl: 'smoldapp.svg',

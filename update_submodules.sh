@@ -1,38 +1,46 @@
-#!/bin/bash
+#!/bin/sh
+set -e
 
-# Function to clone a submodule with retries
+# Clone a submodule with retries
 clone_submodule_with_retry() {
-  local submodule_url=$1
-  local submodule_path=$2
-  local retries=3
-  local count=0
+  url="$1"
+  path="$2"
+  retries=3
+  count=0
 
   until [ "$count" -ge "$retries" ]; do
-    rm -rf $submodule_path
-    git clone "$submodule_url" "$submodule_path" && break
+    rm -rf "$path"
+    if git clone "$url" "$path"; then
+      return 0
+    fi
     count=$((count + 1))
     echo "Clone failed. Attempt $count/$retries..."
     sleep 2
   done
 
-  if [ "$count" -ge "$retries" ]; then
-    echo "Failed to clone submodule after $retries attempts."
-    exit 1
-  fi
+  echo "Failed to clone submodule after $retries attempts."
+  exit 1
 }
 
-# Create the submodules directory if it doesn't exist
 mkdir -p submodules
 
-# Read submodules from .gitmodules and clone them
+# Parse .gitmodules and clone each submodule
+submodule_path=""
 while IFS= read -r line; do
-  if [[ $line =~ path\ =\ (.*) ]]; then
-    submodule_path="${BASH_REMATCH[1]}"
-  elif [[ $line =~ url\ =\ (.*) ]]; then
-    submodule_url="${BASH_REMATCH[1]}"
-    echo "Cloning submodule: $submodule_path from $submodule_url"
-    clone_submodule_with_retry "$submodule_url" "$submodule_path"
-  fi
+  case "$line" in
+    *"path = "*)
+      submodule_path="${line#*path = }"
+      submodule_path="$(echo "$submodule_path" | tr -d '[:space:]')"
+      ;;
+    *"url = "*)
+      submodule_url="${line#*url = }"
+      submodule_url="$(echo "$submodule_url" | tr -d '[:space:]')"
+      if [ -n "$submodule_path" ] && [ -n "$submodule_url" ]; then
+        echo "Cloning submodule: $submodule_path from $submodule_url"
+        clone_submodule_with_retry "$submodule_url" "$submodule_path"
+      fi
+      ;;
+  esac
 done < .gitmodules
 
 echo "Submodules updated successfully."

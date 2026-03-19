@@ -1,7 +1,7 @@
-import { createPublicClient, http, type Chain, type Address } from 'viem'
-import { erc20Read } from '@gibs/utils/viem'
+import { type Chain, type Address } from 'viem'
+import { erc20Read, createChainClient } from '@gibs/utils/viem'
 import _ from 'lodash'
-import { limitBy } from '@gibs/utils'
+import { failureLog, limitBy } from '@gibs/utils'
 import {
   mainnet,
   polygon,
@@ -37,7 +37,7 @@ const providerKey = 'routescan'
 /**
  * Delay utility to add pauses between requests
  */
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Rate-limited chain processor for RouteScan
@@ -47,7 +47,11 @@ class RateLimitedChainProcessor {
   private lastRequestTime = 0
   private readonly minDelayMs = 500 // 2 RPS = 500ms between requests
 
-  async processChain<T>(chain: Chain, processorFn: (chain: Chain) => Promise<T>, signal?: AbortSignal): Promise<T | null> {
+  async processChain<T>(
+    chain: Chain,
+    processorFn: (chain: Chain) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T | null> {
     if (signal?.aborted) {
       return null
     }
@@ -119,11 +123,13 @@ type RouteScanResponse = {
 /**
  * Fetches tokens from RouteScan API for a specific chain
  */
+const oneHour = 1000 * 60 * 60
+
 async function fetchRouteScanTokens({
   chainId,
   signal,
   limit = 100,
-  nextToken
+  nextToken,
 }: {
   chainId: number
   signal?: AbortSignal
@@ -132,32 +138,41 @@ async function fetchRouteScanTokens({
 }): Promise<RouteScanResponse> {
   const qs = new URLSearchParams({
     limit: limit.toString(),
-    apiKey: process.env.ROUTESCAN_API_KEY || '',
-    ecosystem: 'ethereum',
-    sort: 'marketCap,desc',
     includedChainIds: chainId.toString(),
   })
+
+  if (process.env.ROUTESCAN_API_KEY) {
+    qs.set('apiKey', process.env.ROUTESCAN_API_KEY)
+  }
 
   if (nextToken) {
     qs.set('nextToken', nextToken)
   }
 
-  const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
-  const response = await fetch(url, { signal })
+  const cacheKey = `${providerKey}-tokens-${chainId}-${limit}-${nextToken ?? 'first'}`
 
-  if (!response.ok) {
-    throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
-  }
+  return db.cachedJSON<RouteScanResponse>(
+    cacheKey,
+    signal!,
+    async () => {
+      const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
+      const response = await fetch(url, { signal })
 
-  const data = await response.json()
+      if (!response.ok) {
+        throw new Error(`RouteScan API returned HTTP ${response.status}: ${response.statusText}`)
+      }
 
-  if (!data.items || !Array.isArray(data.items)) {
-    throw new Error('Invalid response format from RouteScan API')
-  }
+      const data = await response.json()
 
-  return data
+      if (!data.items || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from RouteScan API')
+      }
+
+      return data
+    },
+    { ttl: oneHour },
+  )
 }
-
 
 /**
  * Backfill missing token metadata using RPC calls
@@ -172,16 +187,19 @@ async function backfillTokenMetadata({
   signal?: AbortSignal
 }): Promise<{ name: string; symbol: string; decimals: number } | null> {
   try {
-    const client = createPublicClient({
-      chain,
-      transport: http(),
-    })
+    const client = createChainClient(chain)
 
-    const [name, symbol, decimals] = await erc20Read(chain, client, address)
+    const result = await Promise.race([
+      erc20Read(chain, client, address),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+    ])
+
+    if (!result) return null
+    const [name, symbol, decimals] = result
 
     return { name, symbol, decimals }
   } catch (error) {
-    console.error(`Failed to fetch metadata for token ${address} on chain ${chain.id}:`, error)
+    failureLog('metadata fetch failed %o on chain %o: %o', address, chain.id, (error as Error).message)
     return null
   }
 }
@@ -238,7 +256,14 @@ async function processToken({
 
     // Skip tokens that still don't have required metadata
     if (!tokenName || !tokenSymbol || tokenDecimals === undefined) {
-      console.log(`Skipping token ${address} - missing required metadata: name=${tokenName}, symbol=${tokenSymbol}, decimals=${tokenDecimals}`)
+      failureLog(
+        `skipping token %o on %o - missing metadata: name=%o symbol=%o decimals=%o`,
+        address,
+        chainKey,
+        tokenName,
+        tokenSymbol,
+        tokenDecimals,
+      )
       row.increment(terminalLogTypes.WARN, new Set([chainTokenId]))
       return false
     }
@@ -253,34 +278,24 @@ async function processToken({
       providedId: address,
     }
 
-    // Store in global list
-    await db.fetchImageAndStoreForToken({
-      listId: globalListId,
-      providerKey: providerId,
-      uri: null,
-      originalUri: null,
-      signal,
-      listTokenOrderId: totalProcessed,
-      token: tokenData,
-    })
-
-    // Store in chain-specific list
-    await db.fetchImageAndStoreForToken({
-      listId: chainListId,
-      providerKey: providerId,
-      uri: null,
-      originalUri: null,
-      signal,
-      listTokenOrderId: totalProcessed,
-      token: tokenData,
-    })
+    await Promise.all([
+      db.storeToken({
+        token: tokenData,
+        listId: globalListId,
+        listTokenOrderId: totalProcessed,
+      }),
+      db.storeToken({
+        token: tokenData,
+        listId: chainListId,
+        listTokenOrderId: totalProcessed,
+      }),
+    ])
 
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
     return true
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-    console.error(`Failed to process token ${address} on ${chainKey}:`, error)
+    failureLog('token processing failed %o on %o: %o', address, chainKey, (error as Error).message)
     return false
   }
 }
@@ -329,7 +344,7 @@ async function processChainTokens({
         chainId: chain.id,
         signal,
         limit: 100,
-        nextToken
+        nextToken,
       })
 
       if (routeScanResponse.items.length === 0) {
@@ -360,19 +375,21 @@ async function processChainTokens({
 
         task.increment(terminalCounterTypes.TOKEN, new Set([chainTokenId]))
 
-        return tokenLimiter(() => processToken({
-          chain,
-          tokenItem,
-          address,
-          network,
-          globalListId,
-          chainListId: chainList.listId,
-          providerId,
-          signal,
-          totalProcessed: totalProcessed + index,
-          row,
-          chainKey,
-        }))
+        return tokenLimiter(() =>
+          processToken({
+            chain,
+            tokenItem,
+            address,
+            network,
+            globalListId,
+            chainListId: chainList.listId,
+            providerId,
+            signal,
+            totalProcessed: totalProcessed + index,
+            row,
+            chainKey,
+          }),
+        )
       })
 
       const results = await Promise.all(tokenPromises)
@@ -390,10 +407,9 @@ async function processChainTokens({
 
     row.increment(terminalCounterTypes.NETWORK, new Set([chain.id.toString()]))
     // console.log(`Processed ${successCount}/${totalProcessed} tokens for ${chainKey}`)
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
-    console.error(`Failed to process chain ${chainKey}:`, error)
+    failureLog('chain processing failed %o: %o', chainKey, (error as Error).message)
   }
 }
 
@@ -407,17 +423,17 @@ type RouteScanBlockchain = {
   avalancheBlockchainId: string
   logo: string
   logoUrls: {
-    "32": string
-    "64": string
-    "256": string
-    "1024": string
+    '32': string
+    '64': string
+    '256': string
+    '1024': string
   }
   icon: string
   iconUrls: {
-    "32": string
-    "64": string
-    "256": string
-    "1024": string
+    '32': string
+    '64': string
+    '256': string
+    '1024': string
   }
   symbol: string
   rpcs: string[]
@@ -453,19 +469,29 @@ type RouteScanBlockchainsResponse = {
  * Fetch supported blockchains from RouteScan API
  */
 async function fetchRouteScanBlockchains(signal?: AbortSignal): Promise<RouteScanBlockchain[]> {
-  const response = await fetch(`https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`, { signal })
+  return db.cachedJSON<RouteScanBlockchain[]>(
+    `${providerKey}-blockchains`,
+    signal!,
+    async () => {
+      const response = await fetch(
+        `https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`,
+        { signal },
+      )
 
-  if (!response.ok) {
-    throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
-  }
+      if (!response.ok) {
+        throw new Error(`RouteScan blockchains API returned HTTP ${response.status}: ${response.statusText}`)
+      }
 
-  const data: RouteScanBlockchainsResponse = await response.json()
+      const data: RouteScanBlockchainsResponse = await response.json()
 
-  if (!data.items || !Array.isArray(data.items)) {
-    throw new Error('Invalid response format from RouteScan blockchains API')
-  }
+      if (!data.items || !Array.isArray(data.items)) {
+        throw new Error('Invalid response format from RouteScan blockchains API')
+      }
 
-  return data.items
+      return data.items
+    },
+    { ttl: oneHour },
+  )
 }
 
 /**
@@ -496,7 +522,7 @@ function mapRouteScanBlockchainToConfig(blockchain: RouteScanBlockchain): Chain 
 
   const viemChain = chainMappings[chainId]
   if (!viemChain) {
-    console.error(`RouteScan supports chain ${chainId} (${blockchain.name}) but we don't have viem support for it`)
+    failureLog('unsupported chain %o (%o) from RouteScan', chainId, blockchain.name)
     return null // Skip chains we don't have viem support for
   }
 
@@ -509,9 +535,7 @@ function mapRouteScanBlockchainToConfig(blockchain: RouteScanBlockchain): Chain 
 async function getRouteScanChainConfigs(signal?: AbortSignal): Promise<Chain[]> {
   const blockchains = await fetchRouteScanBlockchains(signal)
 
-  return _(blockchains)
-    .map(mapRouteScanBlockchainToConfig)
-    .compact().value()
+  return _(blockchains).map(mapRouteScanBlockchainToConfig).compact().value()
 }
 
 /**
@@ -544,7 +568,9 @@ export const collect = async (signal?: AbortSignal) => {
     const enabledChains = await getRouteScanChainConfigs(signal)
 
     if (enabledChains.length === 0) {
-      throw new Error('Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.')
+      throw new Error(
+        'Failed to fetch supported chains from RouteScan API. Cannot proceed without chain configuration.',
+      )
     }
     // Setup counters
     const section = row.issue(providerKey)
@@ -553,10 +579,7 @@ export const collect = async (signal?: AbortSignal) => {
     row.createCounter(terminalLogTypes.EROR, true)
     row.createCounter(terminalLogTypes.WARN, true)
 
-    row.incrementTotal(
-      terminalCounterTypes.NETWORK,
-      new Set(enabledChains.map(config => config.id.toString()))
-    )
+    row.incrementTotal(terminalCounterTypes.NETWORK, new Set(enabledChains.map((config) => config.id.toString())))
 
     // Process chains with rate-limited concurrency
     await chainLimiter.map(enabledChains, async (chainConfig) => {
@@ -573,12 +596,11 @@ export const collect = async (signal?: AbortSignal) => {
             signal,
           })
         },
-        signal
+        signal,
       )
     })
-
   } catch (error) {
-    console.error('RouteScan collector failed:', error)
+    failureLog('RouteScan collector failed: %o', (error as Error).message)
     throw error
   } finally {
     row.remove(providerKey)

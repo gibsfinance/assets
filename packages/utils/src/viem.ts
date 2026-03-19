@@ -10,8 +10,56 @@ import {
   erc20Abi,
   erc20Abi_bytes32,
   fromHex,
+  http,
+  fallback,
+  createPublicClient,
 } from 'viem'
 import type * as types from './types'
+
+const rpcTimeout = 5_000
+
+const defaultRpcOverrides: Record<number, string[]> = {
+  1: ['https://cloudflare-eth.com', 'https://ethereum.publicnode.com', 'https://eth.llamarpc.com'],
+  250: ['https://1rpc.io/ftm'],
+}
+
+/**
+ * Build a viem transport for a chain with fallback load balancing.
+ * Priority: RPC_{chainId} env var (comma-separated) > hardcoded overrides > chain defaults.
+ * Uses viem's fallback transport with ranking for multiple RPCs.
+ */
+export const buildTransport = (chain: Chain) => {
+  const envKey = `RPC_${chain.id}`
+  const envUrls = process.env[envKey]?.split(',').filter(Boolean)
+  const urls = envUrls?.length ? envUrls : (defaultRpcOverrides[chain.id] ?? chain.rpcUrls.default.http)
+
+  if (urls.length === 1) {
+    return http(urls[0], { timeout: rpcTimeout })
+  }
+
+  return fallback(
+    urls.map((url) => http(url, { timeout: rpcTimeout })),
+    { rank: false },
+  )
+}
+
+const defaultBatchSettings = {
+  multicall: {
+    batchSize: 32,
+    wait: 0,
+  },
+}
+
+/**
+ * Create a viem public client for a chain with fallback RPC load balancing.
+ */
+export const createChainClient = (chain: Chain): PublicClient => {
+  return createPublicClient({
+    chain,
+    transport: buildTransport(chain),
+    batch: defaultBatchSettings,
+  }) as PublicClient
+}
 
 /**
  * Multicall contract reader with enhanced error handling
@@ -56,6 +104,8 @@ export const multicallRead = async <T>({
 /**
  * ERC20 token data reader with fallback support
  */
+const erc20ReadTimeout = 15_000
+
 export const erc20Read = async (
   chain: Chain,
   client: PublicClient,
@@ -63,14 +113,14 @@ export const erc20Read = async (
   { skipBytes32 = false, mustExist = false }: { skipBytes32?: boolean; mustExist?: boolean } = {},
 ) => {
   const calls = [{ functionName: 'name' }, { functionName: 'symbol' }, { functionName: 'decimals' }]
-  return await multicallRead<types.TokenChainInfo>({
-    chain,
-    client,
-    abi: erc20Abi,
-    calls,
-    target,
-  })
-    .catch(async (err) => {
+  const result = Promise.race([
+    multicallRead<types.TokenChainInfo>({
+      chain,
+      client,
+      abi: erc20Abi,
+      calls,
+      target,
+    }).catch(async (err) => {
       if (skipBytes32) {
         throw err
       }
@@ -88,11 +138,15 @@ export const erc20Read = async (
             decimals,
           ] as types.TokenChainInfo,
       )
-    })
-    .catch(() => {
-      if (mustExist) {
-        throw new Error('unable to read token')
-      }
-      return ['', '', 18] as types.TokenChainInfo
-    })
+    }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`erc20Read timeout: ${chain.id} ${target}`)), erc20ReadTimeout),
+    ),
+  ])
+  return await result.catch(() => {
+    if (mustExist) {
+      throw new Error('unable to read token')
+    }
+    return ['', '', 18] as types.TokenChainInfo
+  })
 }

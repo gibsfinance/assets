@@ -1,30 +1,50 @@
-FROM node:23.6.1
-RUN apt-get update && apt-get install -y git
+# Build stage
+FROM node:24-alpine AS builder
 
-# Yarn is already included in the node:23.6.1 image
+RUN corepack enable && \
+    apk add --no-cache git && \
+    git config --global user.email "you@example.com" && \
+    git config --global user.name "Your Name"
 
-RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
-ARG NODE_ENV
+# Copy dependency files and submodule setup
+COPY update_submodules.sh /usr/local/bin/update_submodules.sh
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
+RUN chmod +x /usr/local/bin/update_submodules.sh
+
+# Update submodules
+RUN /usr/local/bin/update_submodules.sh
+
+# Copy packages
+COPY packages packages
+
+# Install dependencies and build
+RUN yarn install --immutable && \
+    yarn run build && \
+    yarn workspaces focus --all --production && \
+    yarn cache clean --all
+
+# Production stage
+FROM node:24-alpine AS production
+
+RUN corepack enable && \
+    apk add --no-cache git
+
+WORKDIR /usr/src/app
+
+ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV
 ARG FAKE_SPINNER
 ENV FAKE_SPINNER=$FAKE_SPINNER
 ARG PREVENT_WRITE_MISSING
 ENV PREVENT_WRITE_MISSING=$PREVENT_WRITE_MISSING
 
-# RUN git clone https://github.com/gibsfinance/assets .
-# RUN git pull --recurse-submodules
+# Copy only production dependencies and built files
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/packages ./packages
+COPY --from=builder /usr/src/app/submodules ./submodules
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
-COPY package.json package.json
-COPY yarn.lock yarn.lock
-COPY .gitmodules .gitmodules
-RUN git config --global user.email "you@example.com"
-RUN git config --global user.name "Your Name"
-RUN /usr/local/bin/update_submodules.sh
-COPY packages packages
-COPY tsconfig.json tsconfig.json
-RUN yarn --frozen-lockfile
 
-RUN yarn run build
 CMD ["yarn", "run", "collect"]

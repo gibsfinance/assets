@@ -12,15 +12,33 @@ let isRunning = true
 let isMunging = 0
 const globalDefaultLimit = 4
 
-let doesRender = true
+let doesRender = process.env.DISABLE_TERMINAL !== '1'
 
 export const setDoesRender = (doesRenderArg: boolean) => {
   doesRender = doesRenderArg
+  // When disabling rendering, also disable the global terminal
+  if (!doesRenderArg && terminal) {
+    try {
+      terminal.unmount()
+      terminal = null
+    } catch (err) {
+      // Ignore errors when cleaning up terminal
+    }
+  }
 }
+
+export const getDoesRender = () => doesRender
 
 export const doLog = (fn: () => void) => {
   if (doesRender) return
   fn()
+}
+
+export const destroyTerminal = () => {
+  if (!terminal) return
+  terminal.unmount()
+  terminal.cleanup()
+  terminal = null
 }
 
 // Handle Ctrl+C gracefully
@@ -109,11 +127,17 @@ export const createTerminal = () => {
 
 export const logCounter = (key: types.TerminalCounterType | string, action: string, counter?: types.Counter) => {
   doLog(() => {
-    log(`${action} counter %o`, _.omitBy({
-      key,
-      current: counter?.current?.size,
-      total: counter?.total?.size,
-    }, _.isNil))
+    log(
+      `${action} counter %o`,
+      _.omitBy(
+        {
+          key,
+          current: counter?.current?.size,
+          total: counter?.total?.size,
+        },
+        _.isNil,
+      ),
+    )
   })
 }
 

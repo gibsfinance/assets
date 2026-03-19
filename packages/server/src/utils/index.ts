@@ -21,7 +21,10 @@ import * as paths from '../paths'
 
 export const printFailures = () => {
   const failuresPath = path.join(paths.root, 'failures.json')
-  fs.writeFileSync(failuresPath, JSON.stringify(failures, null, 2))
+  fs.writeFileSync(
+    failuresPath,
+    JSON.stringify(failures, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
+  )
 }
 
 export const getFullChainId = (chainId: ChainId) => viem.toHex(chainId, { size: 32 })
@@ -78,26 +81,15 @@ export const toKeccakBytes = (s: string) => viem.keccak256(viem.toBytes(s)).slic
 export const directUri = ({ imageHash, ext, mode, uri }: Image) =>
   mode === imageMode.LINK ? uri : imageHash && ext ? `${config.rootURI}/image/direct/${imageHash}${ext}` : undefined
 
-const defaultBatchSettings = {
-  multicall: {
-    batchSize: 32,
-    wait: 0,
-  },
-}
+import { createChainClient } from '@gibs/utils/viem'
 
 /**
- * Memoized viem public client factory
+ * Memoized viem public client factory with fallback RPC load balancing.
+ * RPCs are configured via RPC_{chainId} env vars (comma-separated),
+ * hardcoded fallbacks for known-unreliable chains, or viem defaults.
  */
 export const chainToPublicClient = _.memoize((chain: viem.Chain): viem.PublicClient => {
-  let transport = viem.http()
-  if (chain.id === 250) {
-    transport = viem.http('https://1rpc.io/ftm')
-  }
-  return viem.createPublicClient({
-    chain,
-    transport,
-    batch: defaultBatchSettings,
-  }) as viem.PublicClient
+  return createChainClient(chain)
 })
 
 // main terminal section
