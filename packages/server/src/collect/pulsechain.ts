@@ -1,21 +1,29 @@
 import * as db from '../db'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
-export const collect = async () => {
-  // updateStatus({
-  //   provider: 'pulsechain',
-  //   message: 'Setting up PulseChain provider...',
-  //   phase: 'setup',
-  // } satisfies StatusProps)
+const providerKey = 'pulsechain'
 
-  await db.insertProvider({
-    key: 'pulsechain',
-    name: 'PulseChain',
-    description: 'a grass roots list curated by pulsechain devs',
-  })
+class PulsechainCollector extends BaseCollector {
+  readonly key = 'pulsechain'
 
-  // updateStatus({
-  //   provider: 'pulsechain',
-  //   message: 'Provider setup complete',
-  //   phase: 'complete',
-  // } satisfies StatusProps)
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+    await db.insertProvider({
+      key: providerKey,
+      name: 'PulseChain',
+      description: 'a grass roots list curated by pulsechain devs',
+    })
+
+    return [{
+      providerKey,
+      lists: [],
+    }]
+  }
+
+  async collect(_signal: AbortSignal): Promise<void> {
+    // Stub — only inserts the provider (done in discover)
+  }
 }
+
+const instance = new PulsechainCollector()
+export default instance
+export const collect = (signal: AbortSignal) => instance.collect(signal)
