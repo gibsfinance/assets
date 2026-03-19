@@ -1052,19 +1052,15 @@ export const getListOrderId = async (orderParam: string) => {
 
 export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
   const qSub = q
-    .leftJoin(tableNames.list, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    .leftJoin(tableNames.listOrderItem, function () {
+      this.on(`${tableNames.listOrderItem}.listKey`, `${tableNames.list}.key`)
+        .andOn(`${tableNames.listOrderItem}.providerId`, `${tableNames.list}.providerId`)
+        .andOnVal(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
     })
-    .fullOuterJoin(tableNames.listOrderItem, {
-      [`${tableNames.listOrderItem}.listKey`]: `${tableNames.list}.key`,
-      [`${tableNames.listOrderItem}.providerId`]: `${tableNames.list}.providerId`,
-    })
-    .leftJoin(tableNames.listOrder, {
-      [`${tableNames.listOrder}.listOrderId`]: `${tableNames.listOrderItem}.listOrderId`,
-    })
-    .where(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
     .denseRank('rank', function denseRankByConfiged() {
-      return this.orderBy(`${tableNames.listOrderItem}.ranking`, 'asc')
+      return this.orderBy(
+          t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string, 'asc',
+        )
         .orderBy(`${tableNames.list}.major`, 'desc')
         .orderBy(`${tableNames.list}.minor`, 'desc')
         .orderBy(`${tableNames.list}.patch`, 'desc')
@@ -1072,10 +1068,8 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
         .partitionBy([
           `${tableNames.token}.token_id`,
           `${tableNames.token}.network_id`,
-          `${tableNames.listOrderItem}.ranking`,
         ])
     })
-  // console.log(qSub.toSQL().toNative())
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
 }
 
