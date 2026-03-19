@@ -183,6 +183,8 @@ export const startPeriodicRefresh = (
       // Swallow errors — stale order is better than crash
     })
   }, intervalMs)
+  // Don't keep the process alive just for periodic refresh
+  refreshTimer.unref()
 
   return () => {
     if (refreshTimer) {
