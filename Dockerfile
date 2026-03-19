@@ -1,12 +1,14 @@
 # Build stage
 FROM node:24-alpine AS builder
 
-RUN corepack enable
-
 WORKDIR /usr/src/app
 
+ENV COREPACK_ENABLE_AUTO_PIN=0
+COPY package.json ./
+RUN corepack enable && corepack install
+
 # Copy dependency files
-COPY yarn.lock package.json .yarnrc.yml tsconfig.json ./
+COPY yarn.lock .yarnrc.yml tsconfig.json ./
 
 # Copy package files for workspaces
 COPY packages packages
@@ -20,9 +22,11 @@ RUN yarn install --immutable && \
 # Production stage
 FROM node:24-alpine AS production
 
-RUN corepack enable
-
 WORKDIR /usr/src/app
+
+ENV COREPACK_ENABLE_AUTO_PIN=0
+COPY package.json ./
+RUN corepack enable && corepack install
 
 ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV
@@ -34,6 +38,6 @@ ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 # Copy only production dependencies and built files
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/packages ./packages
-COPY package.json yarn.lock .yarnrc.yml tsconfig.json ./
+COPY yarn.lock .yarnrc.yml tsconfig.json ./
 
 CMD ["yarn", "run", "server"]

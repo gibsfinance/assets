@@ -133,6 +133,7 @@ export const buildManifestsFromDB = async (collectableKeys: string[]): Promise<M
   // Group by provider key
   const byProvider = new Map<string, { listKey: string }[]>()
   for (const row of rows as { provider_key: string; list_key: string }[]) {
+    if (!row.provider_key || !row.list_key) continue
     const existing = byProvider.get(row.provider_key) ?? []
     existing.push({ listKey: row.list_key })
     byProvider.set(row.provider_key, existing)
