@@ -1,10 +1,10 @@
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider } from './lib/contexts/ThemeContext'
 import { SettingsProvider } from './lib/contexts/SettingsContext'
 import { MetricsProvider } from './lib/contexts/MetricsContext'
 import { Layout } from './Layout'
 import Home from './lib/pages/Home'
-import Wizard from './lib/pages/Wizard'
+import Studio from './lib/pages/Studio'
 import Docs from './lib/pages/Docs'
 
 export function App() {
@@ -15,9 +15,10 @@ export function App() {
           <HashRouter>
             <Routes>
               <Route element={<Layout />}>
-                <Route path="/" element={<Home />} />
-                <Route path="/wizard" element={<Wizard />} />
-                <Route path="/docs" element={<Docs />} />
+                <Route index element={<Home />} />
+                <Route path="studio" element={<Studio />} />
+                <Route path="wizard" element={<Navigate to="/studio" replace />} />
+                <Route path="docs" element={<Docs />} />
               </Route>
             </Routes>
           </HashRouter>
