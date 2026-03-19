@@ -207,6 +207,9 @@ export const collect = async (
       }
     }
   } finally {
-    row.complete()
+    // Only complete the row if we created it (not passed from caller)
+    if (!ro) {
+      row.complete()
+    }
   }
 }

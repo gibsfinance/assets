@@ -142,8 +142,9 @@ export const logCounter = (key: types.TerminalCounterType | string, action: stri
 }
 
 export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: types.TerminalRow) => {
+  const fullId = _.compact([parent?.fullId, row.id]).join(' ')
   return {
-    fullId: _.compact([parent?.fullId, row.id]).join(' '),
+    fullId,
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
@@ -158,7 +159,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           row[k] = v
         }
         doLog(() => {
-          log(`updating row id=%o, kv=%o`, row.fullId, row.kv ?? {})
+          log(`updating row id=%o, kv=%o`, fullId, row.kv ?? {})
         })
       })
     },
