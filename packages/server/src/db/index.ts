@@ -33,6 +33,8 @@ import type {
   HeaderLink,
   CacheRequest,
   InsertableCacheRequest,
+  ImageVariant,
+  InsertableImageVariant,
 } from 'knex/types/tables'
 import { fetch } from '../fetch'
 import _ from 'lodash'
@@ -1069,6 +1071,54 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
         .partitionBy([`${tableNames.token}.token_id`, `${tableNames.token}.network_id`])
     })
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
+}
+
+export const getVariant = async (
+  imageHash: string,
+  width: number,
+  height: number,
+  format: string,
+  t: Tx = getDB(),
+): Promise<ImageVariant | undefined> => {
+  return t(tableNames.imageVariant)
+    .where({ imageHash, width, height, format })
+    .first()
+}
+
+export const insertVariant = async (
+  variant: InsertableImageVariant,
+  t: Tx = getDB(),
+): Promise<void> => {
+  await t(tableNames.imageVariant)
+    .insert(variant)
+    .onConflict(['imageHash', 'width', 'height', 'format'])
+    .merge({ content: variant.content, lastAccessedAt: t.fn.now() })
+}
+
+export const bumpVariantAccess = async (
+  imageHash: string,
+  width: number,
+  height: number,
+  format: string,
+  t: Tx = getDB(),
+): Promise<void> => {
+  await t(tableNames.imageVariant)
+    .where({ imageHash, width, height, format })
+    .increment('accessCount', 1)
+    .update({ lastAccessedAt: t.fn.now() })
+}
+
+export const pruneVariants = async (
+  minAccessCount: number = 3,
+  maxAgeHours: number = 24,
+  t: Tx = getDB(),
+): Promise<number> => {
+  const deleted = await t(tableNames.imageVariant)
+    .where('accessCount', '<', minAccessCount)
+    .andWhere('lastAccessedAt', '<', t.raw(`NOW() - INTERVAL '${maxAgeHours} hours'`))
+    .delete()
+  await t(tableNames.imageVariant).update({ accessCount: 0 })
+  return deleted
 }
 
 export const insertBridge = async (bridge: InsertableBridge, t: Tx = getDB()) => {
