@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
@@ -44,37 +44,24 @@ function createStreamIcon(sources: string[]): StreamIcon {
   const layer = pickLayer()
   const config = LAYER_CONFIG[layer]
   const size = Math.floor(randomBetween(config.sizeMin, config.sizeMax))
-
   const baseSpeed = layer === 'background' ? randomBetween(20, 35)
     : layer === 'middle' ? randomBetween(35, 55)
     : randomBetween(55, 80)
-
   const totalRange = PIPE_HEIGHT + OVERFLOW_PX * 2
   const y = -OVERFLOW_PX + Math.random() * (totalRange - size)
 
-  return {
-    id: nextId++,
-    src: sources[Math.floor(Math.random() * sources.length)],
-    size,
-    speed: baseSpeed,
-    y,
-    x: 0,
-    layer,
-  }
+  return { id: nextId++, src: sources[Math.floor(Math.random() * sources.length)], size, speed: baseSpeed, y, x: 0, layer }
 }
 
-interface FloatingIconsProps {
-  className?: string
-}
-
-export default function FloatingIcons({ className }: FloatingIconsProps) {
+export default function FloatingIcons({ className }: { className?: string }) {
   const { metrics } = useMetricsContext()
   const containerRef = useRef<HTMLDivElement>(null)
-  const [icons, setIcons] = useState<StreamIcon[]>([])
+  const dataRef = useRef<StreamIcon[]>([])
+  const [renderList, setRenderList] = useState<StreamIcon[]>([])
   const scrollVelocityRef = useRef(0)
   const lastScrollYRef = useRef(0)
   const animFrameRef = useRef(0)
-  const lastTimestampRef = useRef(0)
+  const lastTsRef = useRef(0)
 
   const prefersReducedMotion = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -84,7 +71,17 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     return metrics.networks.supported.slice(0, 30).map((net) => getApiUrl(`/image/${net.chainId}`))
   }, [metrics])
 
-  // Initialize with icons spread across the pipe
+  // Register element ref and immediately set its position
+  const refCallback = useCallback((el: HTMLImageElement | null) => {
+    if (!el) return
+    const id = Number(el.dataset.iconId)
+    const icon = dataRef.current.find((ic) => ic.id === id)
+    if (icon) {
+      el.style.transform = `translate3d(${icon.x}px, 0, 0)`
+    }
+  }, [])
+
+  // Init icons
   useEffect(() => {
     if (iconSources.length === 0) return
     const container = containerRef.current
@@ -97,27 +94,23 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       icon.x = randomBetween(-icon.size * 0.5, width + icon.size * 0.5)
       initial.push(icon)
     }
-    setIcons(initial)
+    dataRef.current = initial
+    setRenderList([...initial])
 
-    // Stagger additional icons
     let spawned = INITIAL_BATCH
     const timer = setInterval(() => {
-      if (spawned >= MAX_ICONS) {
-        clearInterval(timer)
-        return
-      }
-      setIcons((prev) => {
-        const icon = createStreamIcon(iconSources)
-        icon.x = randomBetween(-icon.size * 2, -icon.size)
-        return [...prev, icon]
-      })
+      if (spawned >= MAX_ICONS) { clearInterval(timer); return }
+      const icon = createStreamIcon(iconSources)
+      icon.x = randomBetween(-icon.size * 2, -icon.size)
+      dataRef.current.push(icon)
+      setRenderList([...dataRef.current])
       spawned++
     }, SPAWN_INTERVAL_MS)
 
     return () => clearInterval(timer)
   }, [iconSources])
 
-  // Animation loop using state updates (batched by React)
+  // Animation: direct DOM updates via querySelectorAll
   useEffect(() => {
     if (prefersReducedMotion || iconSources.length === 0) return
 
@@ -126,55 +119,50 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       lastScrollYRef.current = window.scrollY
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
-
-    const decayInterval = setInterval(() => {
-      scrollVelocityRef.current *= 0.85
-    }, 80)
+    const decay = setInterval(() => { scrollVelocityRef.current *= 0.85 }, 80)
 
     let running = true
+    let needsSync = false
 
-    const animate = (timestamp: number) => {
+    const animate = (ts: number) => {
       if (!running) return
-
       const container = containerRef.current
-      if (!container) {
-        animFrameRef.current = requestAnimationFrame(animate)
-        return
+      if (!container) { animFrameRef.current = requestAnimationFrame(animate); return }
+      const cw = container.offsetWidth
+
+      if (lastTsRef.current === 0) { lastTsRef.current = ts; animFrameRef.current = requestAnimationFrame(animate); return }
+      const dt = Math.min((ts - lastTsRef.current) / 1000, 0.1)
+      lastTsRef.current = ts
+      const sm = 1 + scrollVelocityRef.current * SCROLL_SPEED_FACTOR
+
+      // Update positions in data array
+      for (let i = 0; i < dataRef.current.length; i++) {
+        const icon = dataRef.current[i]
+        icon.x += icon.speed * dt * sm
+
+        if (icon.x > cw + icon.size) {
+          const fresh = createStreamIcon(iconSources)
+          fresh.x = randomBetween(-fresh.size * 2, -fresh.size)
+          dataRef.current[i] = fresh
+          needsSync = true
+        }
       }
 
-      const containerWidth = container.offsetWidth
-
-      if (lastTimestampRef.current === 0) {
-        lastTimestampRef.current = timestamp
-        animFrameRef.current = requestAnimationFrame(animate)
-        return
+      // Update DOM directly
+      const imgs = container.querySelectorAll<HTMLImageElement>('img[data-icon-id]')
+      for (const img of imgs) {
+        const id = Number(img.dataset.iconId)
+        const icon = dataRef.current.find((ic) => ic.id === id)
+        if (icon) {
+          img.style.transform = `translate3d(${icon.x}px, 0, 0)`
+        }
       }
 
-      const deltaSeconds = Math.min((timestamp - lastTimestampRef.current) / 1000, 0.1)
-      lastTimestampRef.current = timestamp
-      const scrollMultiplier = 1 + scrollVelocityRef.current * SCROLL_SPEED_FACTOR
-
-      setIcons((prev) => {
-        let changed = false
-        const next = prev.map((icon) => {
-          const newX = icon.x + icon.speed * deltaSeconds * scrollMultiplier
-
-          // Exited right — respawn on left
-          if (newX > containerWidth + icon.size) {
-            changed = true
-            const fresh = createStreamIcon(iconSources)
-            fresh.x = randomBetween(-fresh.size * 2, -fresh.size)
-            return fresh
-          }
-
-          if (newX !== icon.x) {
-            changed = true
-            return { ...icon, x: newX }
-          }
-          return icon
-        })
-        return changed ? next : prev
-      })
+      // Sync React when icons get replaced
+      if (needsSync) {
+        needsSync = false
+        setRenderList([...dataRef.current])
+      }
 
       animFrameRef.current = requestAnimationFrame(animate)
     }
@@ -185,8 +173,8 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       running = false
       cancelAnimationFrame(animFrameRef.current)
       window.removeEventListener('scroll', handleScroll)
-      clearInterval(decayInterval)
-      lastTimestampRef.current = 0
+      clearInterval(decay)
+      lastTsRef.current = 0
     }
   }, [prefersReducedMotion, iconSources])
 
@@ -194,15 +182,14 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     <div
       ref={containerRef}
       className={`relative w-full pointer-events-none ${className ?? ''}`}
-      style={{
-        height: PIPE_HEIGHT,
-        clipPath: `inset(${-OVERFLOW_PX}px 0px ${-OVERFLOW_PX}px 0px)`,
-      }}
+      style={{ height: PIPE_HEIGHT, clipPath: `inset(${-OVERFLOW_PX}px 0px ${-OVERFLOW_PX}px 0px)` }}
       aria-hidden="true"
     >
-      {icons.map((icon) => (
+      {renderList.map((icon) => (
         <img
           key={icon.id}
+          ref={refCallback}
+          data-icon-id={icon.id}
           src={icon.src}
           alt=""
           draggable={false}
