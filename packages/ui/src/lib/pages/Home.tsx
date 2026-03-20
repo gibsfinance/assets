@@ -145,7 +145,7 @@ export default function Home() {
           isTestnet,
         }
       })
-      .filter((n) => n.tokenCount > 0)
+      .filter((n) => n.tokenCount >= 10)
       .filter((n) => showTestnets || !n.isTestnet)
       .sort((a, b) => {
         if (!a.isTestnet && b.isTestnet) return -1
