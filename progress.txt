@@ -128,10 +128,13 @@
 - Network cards hidden when icon fails to load
 
 **Still TODO:**
+- Server: min-size filter on `/image/` endpoints — read dimensions from `content` blob with `image-size`, reject if below `?minWidth=N` or `?minHeight=N` threshold. No migration needed — just compute at serve time from existing binary data. Image table schema: `imageHash`, `content` (binary), `uri`, `ext`, `mode`, `createdAt`. No w/h columns exist.
+- After min-size filter: update hardcoded conveyor list to filter out small tokens, update the generation script to check dimensions
 - Badge bg/shape/padding controls (same options as token image)
 - Snap buttons on radial picker (TL, TR, BL, BR)
 - More dark mode cleanup in remaining components
-- Server-side image resizing (sharp integration)
+- Server-side image resizing with sharp (separate, later — much bigger scope)
+- Cloudflare cache rule for `/image/*` paths (currently `cf-cache-status: DYNAMIC` because no file extension)
 - Merge to staging after QA
 
 ## Next Up
