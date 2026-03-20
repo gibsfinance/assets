@@ -110,3 +110,19 @@ body {
   @apply bg-transparent text-accent-500 font-medium px-5 py-2.5 rounded-xl
          border border-accent-500/30 transition-all duration-150 hover:bg-accent-500/5;
 }
+
+/* Conveyor belt animation */
+@keyframes scroll-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-scroll {
+  animation: scroll-left linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll {
+    animation: none;
+  }
+}
