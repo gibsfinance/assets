@@ -4,7 +4,6 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
-import Image from '../components/Image'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
@@ -337,11 +336,16 @@ export default function Home() {
                     >
                       <div className="glass-card relative flex h-[160px] flex-col items-center justify-between p-3 transition-all duration-200 hover:border-accent-500/40 hover:shadow-glow-green-subtle">
                         <div className="flex flex-1 flex-col items-center">
-                          <Image
+                          <img
                             src={getApiUrl(`/image/${network.chainId}`)}
                             alt={network.name}
                             className="h-10 w-10 flex-shrink-0 rounded-full"
-                            size={40}
+                            width={40}
+                            height={40}
+                            onError={(e) => {
+                              const card = (e.target as HTMLElement).closest('button')
+                              if (card) card.style.display = 'none'
+                            }}
                           />
                           <div className="mt-2 flex w-full flex-1 flex-col justify-center text-center">
                             <div
