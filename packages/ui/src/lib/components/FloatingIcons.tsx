@@ -16,7 +16,6 @@ function ensureKeyframes() {
   document.head.appendChild(style)
 }
 
-/** Preload an image — resolves with the URL if it loads, rejects if it fails */
 function preloadImage(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -26,7 +25,6 @@ function preloadImage(url: string): Promise<string> {
   })
 }
 
-/** Shuffle array in place */
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -42,14 +40,14 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const row2 = useRef<HTMLDivElement>(null)
   const rowRefs = [row0, row1, row2]
   const [validSources, setValidSources] = useState<string[]>([])
+  const animApplied = useRef(false)
 
-  // Gather candidate URLs
   const candidates = useMemo(() => {
     if (!metrics) return []
     return metrics.networks.supported.slice(0, 30).map((net) => getApiUrl(`/image/${net.chainId}`))
   }, [metrics])
 
-  // Preload network icons, then fetch + preload token icons
+  // Load and validate icons — only update state twice: once for network icons, once when all tokens are done
   useEffect(() => {
     if (candidates.length === 0) return
     const controller = new AbortController()
@@ -63,14 +61,16 @@ export default function FloatingIcons({ className }: { className?: string }) {
         .map((r) => r.value)
 
       if (cancelled) return
-      if (good.length > 0) setValidSources(shuffle([...good]))
+      if (good.length > 0) {
+        animApplied.current = false
+        setValidSources(shuffle([...good]))
+      }
 
-      // Phase 2: fetch a few token lists directly for token icon diversity
+      // Phase 2: fetch token lists
       try {
         const res = await fetch(getApiUrl('/list'), { signal: controller.signal })
         if (!res.ok) return
         const allLists = await res.json() as Array<{ providerKey: string; key: string; chainId: string }>
-        // Pick lists from different chains for variety
         const targetChains = ['1', '369', '56', '137', '42161', '10', '8453']
         const picked: Array<{ providerKey: string; key: string }> = []
         for (const chainId of targetChains) {
@@ -101,19 +101,22 @@ export default function FloatingIcons({ className }: { className?: string }) {
 
         if (cancelled) return
 
-        // Preload token icons in batches of 20
+        // Preload ALL token icons, then update once
         const urlArr = [...tokenUrls]
         const tokenGood: string[] = []
         for (let i = 0; i < urlArr.length; i += 20) {
+          if (cancelled) break
           const batch = urlArr.slice(i, i + 20)
           const results = await Promise.allSettled(batch.map(preloadImage))
           for (const r of results) {
             if (r.status === 'fulfilled') tokenGood.push(r.value)
           }
-          // Update as we go so the conveyor fills up progressively
-          if (!cancelled && tokenGood.length > 0) {
-            setValidSources(shuffle([...good, ...tokenGood]))
-          }
+        }
+
+        // Single update when all tokens are validated
+        if (!cancelled && tokenGood.length > 0) {
+          animApplied.current = false
+          setValidSources(shuffle([...good, ...tokenGood]))
         }
       } catch { /* aborted */ }
     }
@@ -122,47 +125,61 @@ export default function FloatingIcons({ className }: { className?: string }) {
     return () => { cancelled = true; controller.abort() }
   }, [candidates])
 
-  // Apply animation via JS
+  // Memoize row icon arrays so they don't change on re-render
+  const rowIcons = useMemo(() => {
+    if (validSources.length === 0) return [[], [], []]
+    return [0, 1, 2].map((rowIdx) => {
+      const perRow = ICONS_PER_ROW * 2
+      const icons: string[] = []
+      for (let i = 0; i < perRow; i++) {
+        icons.push(validSources[(rowIdx * perRow + i) % validSources.length])
+      }
+      return icons
+    })
+  }, [validSources])
+
+  // Apply animation only when sources change (not every render)
   useEffect(() => {
+    if (validSources.length === 0 || animApplied.current) return
     ensureKeyframes()
-    for (let i = 0; i < rowRefs.length; i++) {
-      const el = rowRefs[i].current
-      if (!el) continue
-      el.style.setProperty('animation', `conveyor ${DURATIONS[i]}s linear infinite ${DIRECTIONS[i]}`, 'important')
-    }
-  })
+    // Small delay to let React commit the DOM first
+    requestAnimationFrame(() => {
+      for (let i = 0; i < rowRefs.length; i++) {
+        const el = rowRefs[i].current
+        if (!el) continue
+        el.style.setProperty('animation', 'none', 'important')
+        // Force reflow to restart animation cleanly
+        void el.offsetHeight
+        el.style.setProperty('animation', `conveyor ${DURATIONS[i]}s linear infinite ${DIRECTIONS[i]}`, 'important')
+      }
+      animApplied.current = true
+    })
+  }, [validSources])
 
   if (validSources.length === 0) return null
 
   return (
     <div className={`overflow-hidden space-y-1 ${className ?? ''}`} aria-hidden="true">
-      {[0, 1, 2].map((rowIdx) => {
-        const perRow = ICONS_PER_ROW * 2
-        const rowIcons: string[] = []
-        for (let i = 0; i < perRow; i++) {
-          rowIcons.push(validSources[(rowIdx * perRow + i) % validSources.length])
-        }
-        return (
-          <div key={rowIdx} className="overflow-hidden">
-            <div
-              ref={rowRefs[rowIdx]}
-              className="flex gap-3 items-center"
-              style={{ width: 'max-content' }}
-            >
-              {rowIcons.map((src, i) => (
-                <img
-                  key={`${rowIdx}-${i}`}
-                  src={src}
-                  alt=""
-                  draggable={false}
-                  className="rounded-full shrink-0"
-                  style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
-                />
-              ))}
-            </div>
+      {rowIcons.map((icons, rowIdx) => (
+        <div key={rowIdx} className="overflow-hidden">
+          <div
+            ref={rowRefs[rowIdx]}
+            className="flex gap-3 items-center"
+            style={{ width: 'max-content' }}
+          >
+            {icons.map((src, i) => (
+              <img
+                key={`${rowIdx}-${i}`}
+                src={src}
+                alt=""
+                draggable={false}
+                className="rounded-full shrink-0"
+                style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
+              />
+            ))}
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }
