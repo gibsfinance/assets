@@ -604,11 +604,11 @@ function InfiniteCanvas() {
       {/* Canvas content */}
       <div
         className="absolute inset-0 flex items-center justify-center"
-        style={{
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
-          transformOrigin: '0 0',
-        }}
       >
+        <div style={{
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
+        }}>
+
         {!hasToken && (
           <div className="flex flex-col items-center gap-3 pointer-events-none">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
@@ -624,9 +624,6 @@ function InfiniteCanvas() {
           <div
             className="relative inline-flex items-center justify-center"
             style={{
-              width: width + padding * 2,
-              height: height + padding * 2,
-              padding,
               borderRadius: borderRadiusCSS,
               boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
               backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
@@ -639,6 +636,7 @@ function InfiniteCanvas() {
               style={{
                 width,
                 height,
+                margin: padding > 0 ? padding : undefined,
                 borderRadius: borderRadiusCSS,
               }}
             />
@@ -663,6 +661,7 @@ function InfiniteCanvas() {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* Zoom indicator + reset */}
