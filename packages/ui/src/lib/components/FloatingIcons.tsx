@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
@@ -7,7 +7,6 @@ const SIZES = [32, 40, 48]
 const DURATIONS = [35, 45, 30]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 
-// Inject keyframes once into document head
 let keyframesInjected = false
 function ensureKeyframes() {
   if (keyframesInjected) return
@@ -23,11 +22,62 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const row1 = useRef<HTMLDivElement>(null)
   const row2 = useRef<HTMLDivElement>(null)
   const rowRefs = [row0, row1, row2]
+  const [tokenSources, setTokenSources] = useState<string[]>([])
 
-  const sources = useMemo(() => {
+  // Network icons (always available from metrics)
+  const networkSources = useMemo(() => {
     if (!metrics) return []
     return metrics.networks.supported.slice(0, 30).map((net) => getApiUrl(`/image/${net.chainId}`))
   }, [metrics])
+
+  // Fetch token icons from a couple of lists for variety
+  useEffect(() => {
+    if (!metrics || networkSources.length === 0) return
+    const controller = new AbortController()
+
+    async function fetchTokenIcons() {
+      try {
+        const res = await fetch(getApiUrl('/list'), { signal: controller.signal })
+        if (!res.ok) return
+        const lists = await res.json() as Array<{ providerKey: string; key: string }>
+        // Pick first 2 lists
+        const toFetch = lists.slice(0, 2)
+        const urls: string[] = []
+
+        for (const list of toFetch) {
+          try {
+            const listRes = await fetch(
+              getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=1`),
+              { signal: controller.signal },
+            )
+            if (!listRes.ok) continue
+            const tokens = await listRes.json() as Array<{ chainId: number; address: string }>
+            // Take up to 50 tokens from each list
+            for (const t of tokens.slice(0, 50)) {
+              urls.push(getApiUrl(`/image/${t.chainId}/${t.address}`))
+            }
+          } catch { /* skip failed list */ }
+        }
+
+        if (urls.length > 0) setTokenSources(urls)
+      } catch { /* aborted or failed */ }
+    }
+
+    void fetchTokenIcons()
+    return () => controller.abort()
+  }, [metrics, networkSources])
+
+  // Combine network + token sources, shuffle
+  const sources = useMemo(() => {
+    const all = [...networkSources, ...tokenSources]
+    if (all.length === 0) return []
+    // Fisher-Yates shuffle
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[all[i], all[j]] = [all[j], all[i]]
+    }
+    return all
+  }, [networkSources, tokenSources])
 
   // Inject keyframes and apply animation via JS to bypass Tailwind CSS layer overrides
   useEffect(() => {
