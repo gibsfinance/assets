@@ -3,7 +3,6 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
 const VISIBLE_COUNT = 40
-const EDGE_FADE_PERCENT = 0.08
 const SCROLL_SPEED_FACTOR = 0.015
 
 type Layer = 'background' | 'middle' | 'foreground'
@@ -15,14 +14,13 @@ interface StreamIcon {
   speed: number
   y: number
   x: number
-  baseOpacity: number
   layer: Layer
 }
 
-const LAYER_CONFIG: Record<Layer, { sizeMin: number; sizeMax: number; opacity: number; zIndex: number }> = {
-  background: { sizeMin: 20, sizeMax: 30, opacity: 0.12, zIndex: 0 },
-  middle: { sizeMin: 36, sizeMax: 52, opacity: 0.2, zIndex: 1 },
-  foreground: { sizeMin: 56, sizeMax: 72, opacity: 0.3, zIndex: 2 },
+const LAYER_CONFIG: Record<Layer, { sizeMin: number; sizeMax: number; zIndex: number }> = {
+  background: { sizeMin: 20, sizeMax: 30, zIndex: 0 },
+  middle: { sizeMin: 36, sizeMax: 52, zIndex: 1 },
+  foreground: { sizeMin: 56, sizeMax: 72, zIndex: 2 },
 }
 
 function randomBetween(min: number, max: number): number {
@@ -55,18 +53,8 @@ function createStreamIcon(sources: string[], containerWidth: number, spawnAtLeft
     speed: baseSpeed,
     y: randomBetween(5, 85),
     x: spawnAtLeft ? randomBetween(-size * 2, -size) : randomBetween(-size, containerWidth + size),
-    baseOpacity: config.opacity,
     layer,
   }
-}
-
-function computeEdgeOpacity(x: number, size: number, containerWidth: number): number {
-  if (containerWidth <= 0) return 0
-  const fadeDistance = containerWidth * EDGE_FADE_PERCENT
-  const center = x + size / 2
-  if (center < fadeDistance) return Math.max(0, center / fadeDistance)
-  if (center > containerWidth - fadeDistance) return Math.max(0, (containerWidth - center) / fadeDistance)
-  return 1
 }
 
 interface FloatingIconsProps {
@@ -174,9 +162,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
         const element = elementsRef.current.get(icon.id)
         if (!element) continue
 
-        const edgeOpacity = computeEdgeOpacity(icon.x, icon.size, containerWidth)
         element.style.transform = `translate3d(${icon.x}px, 0, 0)`
-        element.style.opacity = String(icon.baseOpacity * edgeOpacity)
       }
 
       // Batch React sync for new icons
@@ -222,9 +208,9 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
             left: 0,
             width: icon.size,
             height: icon.size,
-            opacity: prefersReducedMotion.current ? icon.baseOpacity : 0,
+            opacity: 1,
             transform: `translate3d(${icon.x}px, 0, 0)`,
-            willChange: prefersReducedMotion.current ? 'auto' : 'transform, opacity',
+            willChange: prefersReducedMotion.current ? 'auto' : 'transform',
             zIndex: LAYER_CONFIG[icon.layer].zIndex,
           }}
         />
