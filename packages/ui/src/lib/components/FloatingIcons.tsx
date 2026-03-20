@@ -97,13 +97,13 @@ export default function FloatingIcons({ className }: { className?: string }) {
   return (
     <div className={`overflow-hidden space-y-2 ${className ?? ''}`} aria-hidden="true">
       {[0, 1, 2].map((rowIdx) => {
-        // Each half of the loop gets unique icons — no duplicates anywhere
-        const halfA = sources.slice(rowIdx * ICONS_PER_ROW * 2, rowIdx * ICONS_PER_ROW * 2 + ICONS_PER_ROW)
-        const halfB = sources.slice(rowIdx * ICONS_PER_ROW * 2 + ICONS_PER_ROW, rowIdx * ICONS_PER_ROW * 2 + ICONS_PER_ROW * 2)
-        // If not enough for two unique halves, fall back to what we have
-        const doubled = halfB.length >= ICONS_PER_ROW
-          ? [...halfA, ...halfB]
-          : [...halfA, ...halfA]
+        // Draw unique icons per row, wrapping the shuffled pool if needed
+        const perRow = ICONS_PER_ROW * 2 // both halves of the loop
+        const rowIcons: string[] = []
+        for (let i = 0; i < perRow; i++) {
+          rowIcons.push(sources[(rowIdx * perRow + i) % sources.length])
+        }
+        const doubled = rowIcons
         return (
           <div key={rowIdx} className="overflow-hidden">
             <div
