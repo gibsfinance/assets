@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
-const MAX_ICONS = 40
-const INITIAL_BATCH = 15
-const SPAWN_INTERVAL_MS = 200
+const MAX_ICONS = 80
+const INITIAL_BATCH = 50
+const SPAWN_INTERVAL_MS = 150
 const SCROLL_SPEED_FACTOR = 0.015
-const PIPE_HEIGHT = 120
-const OVERFLOW_PX = 20
+const PIPE_HEIGHT = 100
+const OVERFLOW_PX = 40
 
 type Layer = 'background' | 'middle' | 'foreground'
 
@@ -109,7 +109,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     const icons: StreamIcon[] = []
     for (let i = 0; i < INITIAL_BATCH; i++) {
       const icon = createStreamIcon(iconSources)
-      icon.x = randomBetween(0, width * 0.8)
+      icon.x = randomBetween(-icon.size * 0.5, width + icon.size * 0.5)
       icons.push(icon)
     }
     iconsRef.current = icons
