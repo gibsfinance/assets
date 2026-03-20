@@ -433,17 +433,17 @@ function ConveyorIcon({ src, size }: { src: string; size: number }) {
 
   return (
     <a href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 pointer-events-auto relative" style={{ width: size, height: size }}>
-      <div
-        className="absolute inset-0 rounded-full bg-gray-200 dark:bg-surface-2 animate-pulse"
-      />
+      <div className="absolute inset-0 rounded-full bg-gray-100 dark:bg-surface-2" />
       <img
         src={src}
         alt=""
         draggable={false}
+        loading="lazy"
+        decoding="async"
         onLoad={handleLoad}
         onError={handleError}
         className="rounded-full relative"
-        style={{ width: size, height: size, opacity: 0, transition: 'opacity 0.2s' }}
+        style={{ width: size, height: size, opacity: 0 }}
       />
     </a>
   )
