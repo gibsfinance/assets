@@ -3,7 +3,7 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
 const ICONS_PER_ROW = 40
-const SIZES = [32, 40, 48]
+const SIZES = [24, 28, 32]
 const DURATIONS = [35, 45, 30]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 
