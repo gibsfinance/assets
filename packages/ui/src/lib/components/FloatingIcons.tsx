@@ -107,7 +107,18 @@ export default function FloatingIcons({ className }: { className?: string }) {
       spawned++
     }, SPAWN_INTERVAL_MS)
 
-    return () => clearInterval(timer)
+    // Reinitialize on resize
+    const observer = new ResizeObserver(() => {
+      const w = container.offsetWidth
+      for (const icon of dataRef.current) {
+        if (icon.x > w + icon.size) {
+          icon.x = randomBetween(-icon.size * 2, -icon.size)
+        }
+      }
+    })
+    observer.observe(container)
+
+    return () => { clearInterval(timer); observer.disconnect() }
   }, [iconSources])
 
   // Animation: direct DOM updates via querySelectorAll
@@ -193,6 +204,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
           src={icon.src}
           alt=""
           draggable={false}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
           className="absolute rounded-full"
           style={{
             top: `${icon.y}px`,
