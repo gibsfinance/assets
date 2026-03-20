@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
 import { getApiUrl } from '../utils'
 
 const SIZES = [28, 32, 36]
@@ -418,6 +418,37 @@ const ICON_PATHS: string[] = [
   '/image/8453',
 ]
 
+function ConveyorIcon({ src, size }: { src: string; size: number }) {
+  const handleLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    const skeleton = img.previousElementSibling as HTMLElement | null
+    if (skeleton) skeleton.style.display = 'none'
+    img.style.opacity = '1'
+  }, [])
+
+  const handleError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    // Keep skeleton visible, hide broken image
+    e.currentTarget.style.display = 'none'
+  }, [])
+
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 pointer-events-auto relative" style={{ width: size, height: size }}>
+      <div
+        className="absolute inset-0 rounded-full bg-gray-200 dark:bg-surface-2 animate-pulse"
+      />
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        onLoad={handleLoad}
+        onError={handleError}
+        className="rounded-full relative"
+        style={{ width: size, height: size, opacity: 0, transition: 'opacity 0.2s' }}
+      />
+    </a>
+  )
+}
+
 const TOTAL_HEIGHT = SIZES.reduce((a, b) => a + b, 0) + (SIZES.length - 1) * 4
 
 export default function FloatingIcons({ className }: { className?: string }) {
@@ -460,22 +491,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
             style={{ width: 'max-content' }}
           >
             {icons.map((src, i) => (
-              <a
-                key={`${rowIdx}-${i}`}
-                href={src}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 pointer-events-auto"
-              >
-                <img
-                  src={src}
-                  alt=""
-                  draggable={false}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  className="rounded-full"
-                  style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
-                />
-              </a>
+              <ConveyorIcon key={`${rowIdx}-${i}`} src={src} size={SIZES[rowIdx]} />
             ))}
           </div>
         </div>
