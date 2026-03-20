@@ -112,11 +112,27 @@
 - Network cards hide when icon fails to load
 - 40 commits total
 
-**Next: Studio configurator refactor**
-- Convert shape/shadow/background controls to compact dropdowns
-- Flatten everything into a horizontal toolbar at the top
-- Below: infinite scrollable/draggable canvas for token preview
-- Systematic dark mode audit across all components
+**Studio configurator refactored:**
+- Toolbar + infinite canvas layout (Figma-style)
+- Shape/Shadow/Background as dropdown/popover menus
+- Badge controls in popover (single toggle, no duplicate)
+- Padding control added to toolbar
+- Image uses margin for padding so BG shows around it
+- Canvas centers image on first render, draggable + zoomable
+- TokenDetailModal fully light/dark mode compliant
+
+**Conveyor belt (FloatingIcons):**
+- 3 rows: row 1+3 right, row 2 left (CSS keyframes)
+- Preload-validates icons before rendering (no broken images)
+- Fetches token icons from 7 lists across 5 chains for diversity
+- Network cards hidden when icon fails to load
+
+**Still TODO:**
+- Badge bg/shape/padding controls (same options as token image)
+- Snap buttons on radial picker (TL, TR, BL, BR)
+- More dark mode cleanup in remaining components
+- Server-side image resizing (sharp integration)
+- Merge to staging after QA
 
 ## Next Up
 
