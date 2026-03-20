@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
@@ -82,9 +82,8 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
   const lastTimestampRef = useRef(0)
   const scrollVelocityRef = useRef(0)
   const lastScrollYRef = useRef(0)
-  const mountedIconIds = useRef<Set<number>>(new Set())
-  const forceRender = useRef(0)
-  const setForceRender = useCallback(() => { forceRender.current++ }, [])
+  const [_renderKey, setRenderKey] = useState(0)
+  const triggerRender = useCallback(() => setRenderKey((k) => k + 1), [])
 
   const prefersReducedMotion = useRef(
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -115,9 +114,8 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       icons.push(createStreamIcon(iconSources, width, false))
     }
     iconsRef.current = icons
-    mountedIconIds.current = new Set(icons.map((ic) => ic.id))
-    setForceRender()
-  }, [iconSources, setForceRender])
+    triggerRender()
+  }, [iconSources, triggerRender])
 
   // Animation loop
   useEffect(() => {
@@ -166,11 +164,9 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
         // Icon exited right side — remove and spawn new one on left
         if (icon.x > containerWidth + icon.size) {
           elementsRef.current.delete(icon.id)
-          mountedIconIds.current.delete(icon.id)
 
           const newIcon = createStreamIcon(iconSources, containerWidth, true)
           iconsRef.current[i] = newIcon
-          mountedIconIds.current.add(newIcon.id)
           needsReactSync = true
           continue
         }
@@ -186,7 +182,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       // Batch React sync for new icons
       if (needsReactSync) {
         needsReactSync = false
-        setForceRender()
+        triggerRender()
       }
 
       animFrameRef.current = requestAnimationFrame(animate)
@@ -201,7 +197,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       clearInterval(decayInterval)
       lastTimestampRef.current = 0
     }
-  }, [iconSources, setForceRender])
+  }, [iconSources, triggerRender])
 
   // Sync React render with current icon state
   const currentIcons = iconsRef.current
