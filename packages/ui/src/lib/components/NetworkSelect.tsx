@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetricsContext } from '../contexts/MetricsContext'
@@ -11,35 +11,7 @@ interface NetworkSelectProps {
   onSelect: (chainId: string) => void
 }
 
-/**
- * @deprecated Legacy props interface — kept so Wizard.tsx continues to compile.
- * New code should use `NetworkSelectProps` (selectedChainId + onSelect(string)).
- */
-interface LegacyNetworkSelectProps {
-  isOpenToStart: boolean
-  network: NetworkInfo | null
-  onSelect: (network: NetworkInfo) => void
-  onNetworkName: (getName: (id: string | number) => string) => void
-}
-
-type Props = NetworkSelectProps | LegacyNetworkSelectProps
-
-function isLegacyProps(props: Props): props is LegacyNetworkSelectProps {
-  return 'network' in props || 'onNetworkName' in props
-}
-
-export default function NetworkSelect(props: Props) {
-  if (isLegacyProps(props)) {
-    return <LegacyNetworkSelect {...props} />
-  }
-  return <ModernNetworkSelect {...props} />
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Modern implementation (new StudioBrowser path)                            */
-/* -------------------------------------------------------------------------- */
-
-function ModernNetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) {
+export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { showTestnets, setShowTestnets } = useSettings()
   const { metrics } = useMetricsContext()
@@ -96,78 +68,6 @@ function ModernNetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) 
         onPick={(network) => {
           setIsOpen(false)
           onSelect(network.chainId.toString())
-        }}
-      />
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Legacy implementation (kept for Wizard.tsx backward-compat)               */
-/* -------------------------------------------------------------------------- */
-
-function LegacyNetworkSelect({
-  isOpenToStart,
-  network: selectedNetwork,
-  onSelect,
-  onNetworkName,
-}: LegacyNetworkSelectProps) {
-  const [isOpen, setIsOpen] = useState(isOpenToStart)
-  const { showTestnets, setShowTestnets } = useSettings()
-  const { metrics } = useMetricsContext()
-
-  // Expose getNetworkName to parent
-  useEffect(() => {
-    onNetworkName(getNetworkName)
-  }, [onNetworkName])
-
-  // On mount: read localStorage.selectedChainId, select it, clear the key
-  useEffect(() => {
-    const storedChainId = localStorage.getItem('selectedChainId')
-    if (!storedChainId || !metrics) return
-    const network = metrics.networks.supported.find(
-      (n) => n.chainId.toString() === storedChainId,
-    )
-    if (network) onSelect(network)
-    localStorage.removeItem('selectedChainId')
-  }, [metrics, onSelect])
-
-  const sortedNetworks = useMemo(() => {
-    if (!metrics) return []
-    return sortNetworks(metrics.networks.supported, showTestnets)
-  }, [metrics, showTestnets])
-
-  return (
-    <div className="relative w-full">
-      <div className="mb-2 flex items-center justify-end">
-        <TestnetToggle showTestnets={showTestnets} setShowTestnets={setShowTestnets} />
-      </div>
-
-      <button
-        type="button"
-        className="btn preset-tonal w-full justify-between px-3 py-2 text-left text-sm leading-6 border border-gray-500 hover:border-gray-400 items-center rounded-lg select-network"
-        onClick={() => setIsOpen(true)}
-      >
-        {selectedNetwork ? (
-          <span className="truncate">
-            {getNetworkName(selectedNetwork.chainId)} (Chain ID: {selectedNetwork.chainId})
-          </span>
-        ) : (
-          <span className="text-gray-500">Choose a network...</span>
-        )}
-        <i
-          className={`fas fa-chevron-down !m-0 flex-shrink-0 transition-transform flex items-center ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      <NetworkDialog
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        sortedNetworks={sortedNetworks}
-        selectedChainId={selectedNetwork?.chainId.toString() ?? null}
-        onPick={(network) => {
-          setIsOpen(false)
-          onSelect(network)
         }}
       />
     </div>

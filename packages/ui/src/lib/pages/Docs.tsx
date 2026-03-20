@@ -417,11 +417,11 @@ export default function Docs() {
             {/* CTA */}
             <div className="flex justify-center pb-8">
               <Link
-                to="/wizard"
+                to="/studio"
                 className="btn-primary inline-flex items-center gap-2"
               >
-                <i className="fas fa-hat-wizard" />
-                Try the Wizard
+                <i className="fas fa-wand-magic-sparkles" />
+                Open Studio
               </Link>
             </div>
           </main>
