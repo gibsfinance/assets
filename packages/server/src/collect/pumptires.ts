@@ -19,7 +19,8 @@ const limiter = limitBy<number>(providerKey, 1)
 const limitTokens = limitBy<[TokenInfo, number]>(`${providerKey}-tokens`, 16)
 const limitHighCapSorting = limitBy<types.TokenInfo>(`${providerKey}-highcap`, 16)
 type InsertHighCapToken = Omit<Parameters<typeof db.fetchImageAndStoreForToken>[0], 'listTokenOrderId'> & {
-  listTokenOrderId: bigint
+  listTokenOrderId: number
+  wplsReserve: bigint
 }
 const insertHighCapTokens = limitBy<[InsertHighCapToken, number]>(`${providerKey}-highcap-inserts`, 16)
 
@@ -401,7 +402,8 @@ export const collectAttempt = async (signal: AbortSignal) => {
               originalUri,
               providerKey,
               signal,
-              listTokenOrderId: wplsReserve,
+              listTokenOrderId: 0,
+              wplsReserve,
               token: {
                 name: token.name,
                 symbol: token.symbol,
@@ -419,7 +421,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
     )
     const sortedInserts = _(highCapTokens)
       .compact()
-      .sortBy((a) => -a.listTokenOrderId)
+      .sortBy((a) => -a.wplsReserve)
       .map((value, index) => [value, index] as [InsertHighCapToken, number])
       .value()
     row.createCounter('highcap', true)
