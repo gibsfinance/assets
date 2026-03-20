@@ -14,6 +14,9 @@ export function Layout() {
               Gib.Show
             </Link>
             <div className="flex items-center gap-4">
+              <Link to="/docs" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-accent-500 transition-colors">
+                Docs
+              </Link>
               <Link to="/studio" className="btn-primary text-sm">
                 Studio
               </Link>
