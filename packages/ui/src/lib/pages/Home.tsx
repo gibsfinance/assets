@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react'
+import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -145,7 +145,7 @@ export default function Home() {
           isTestnet,
         }
       })
-      .filter((n) => n.tokenCount >= 10)
+      .filter((n) => n.tokenCount > 0)
       .filter((n) => showTestnets || !n.isTestnet)
       .sort((a, b) => {
         if (!a.isTestnet && b.isTestnet) return -1
@@ -153,6 +153,28 @@ export default function Home() {
         return b.tokenCount - a.tokenCount
       })
   }, [metricsData, showTestnets])
+
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [gridCols, setGridCols] = useState(6)
+
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const detect = () => {
+      const style = getComputedStyle(el)
+      const cols = style.gridTemplateColumns.split(' ').length
+      if (cols > 0) setGridCols(cols)
+    }
+    detect()
+    const observer = new ResizeObserver(detect)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const MAX_ROWS = 3
+  const visibleCount = gridCols * MAX_ROWS
+  const visibleNetworks = filteredNetworks.slice(0, visibleCount)
+  const hiddenCount = filteredNetworks.length - visibleNetworks.length
 
   const mainnetNetworkCount = useMemo(() => {
     if (!metricsData) return 0
@@ -326,8 +348,8 @@ export default function Home() {
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                  {filteredNetworks.map((network) => (
+                <div ref={gridRef} className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                  {visibleNetworks.map((network) => (
                     <button
                       key={network.chainId}
                       type="button"
@@ -366,6 +388,11 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                {hiddenCount > 0 && (
+                  <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    and {hiddenCount} more network{hiddenCount === 1 ? '' : 's'}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="glass-card p-6">
