@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import StudioBrowser from '../components/StudioBrowser'
 import StudioConfigurator from '../components/StudioConfigurator'
 import TokenDetailModal from '../components/TokenDetailModal'
+import { ThemeToggle } from '../components/ThemeToggle'
 import { useStudio } from '../contexts/StudioContext'
 import type { Token } from '../types'
 
@@ -10,11 +12,21 @@ export default function Studio() {
   const [inspectToken, setInspectToken] = useState<Token | null>(null)
 
   return (
-    <div className="h-[calc(100vh-57px)]">
+    <div className="h-screen">
       {/* Desktop: split panel */}
       <div className="hidden lg:grid lg:grid-cols-[380px_1fr] h-full">
-        <div className="h-full border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base overflow-y-auto">
-          <StudioBrowser onInspectToken={setInspectToken} />
+        <div className="h-full flex flex-col border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
+          {/* Sidebar header: logo + toggle */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border-light dark:border-border-dark">
+            <Link to="/" className="font-heading text-xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
+              Gib.Show
+            </Link>
+            <ThemeToggle />
+          </div>
+          {/* Token browser */}
+          <div className="flex-1 overflow-y-auto">
+            <StudioBrowser onInspectToken={setInspectToken} />
+          </div>
         </div>
         <div className="h-full bg-surface-light-1 dark:bg-surface-1 overflow-y-auto">
           <StudioConfigurator />
@@ -23,7 +35,15 @@ export default function Studio() {
 
       {/* Mobile: tabbed */}
       <div className="lg:hidden h-full flex flex-col">
-        <div className="flex border-b border-border-light dark:border-border-dark">
+        {/* Mobile header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
+          <Link to="/" className="font-heading text-xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
+            Gib.Show
+          </Link>
+          <ThemeToggle />
+        </div>
+        {/* Tab bar */}
+        <div className="flex border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
           <button
             onClick={() => setActiveTab('browse')}
             className={`flex-1 py-3 text-sm font-medium transition-colors ${
