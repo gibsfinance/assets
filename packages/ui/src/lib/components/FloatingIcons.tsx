@@ -3,7 +3,7 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
 const ICONS_PER_ROW = 40
-const SIZES = [24, 28, 32]
+const SIZES = [28, 32, 36]
 const DURATIONS = [35, 45, 30]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 
@@ -16,12 +16,12 @@ function ensureKeyframes() {
   document.head.appendChild(style)
 }
 
-function preloadImage(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(url)
-    img.onerror = () => reject()
-    img.src = url
+/** Only accept SVG images — fast, tiny, no layout shift */
+function preloadSvg(url: string): Promise<string> {
+  return fetch(url, { method: 'HEAD' }).then((res) => {
+    const ct = res.headers.get('content-type') ?? ''
+    if (ct.includes('svg')) return url
+    throw new Error('not svg')
   })
 }
 
@@ -55,18 +55,14 @@ export default function FloatingIcons({ className }: { className?: string }) {
 
     async function load() {
       // Phase 1: validate network icons
-      const networkResults = await Promise.allSettled(candidates.map(preloadImage))
+      const networkResults = await Promise.allSettled(candidates.map(preloadSvg))
       const good: string[] = networkResults
         .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
         .map((r) => r.value)
 
       if (cancelled) return
-      if (good.length > 0) {
-        animApplied.current = false
-        setValidSources(shuffle([...good]))
-      }
 
-      // Phase 2: fetch token lists
+      // Phase 2: fetch token lists (don't render until we have the full pool)
       try {
         const res = await fetch(getApiUrl('/list'), { signal: controller.signal })
         if (!res.ok) return
@@ -107,18 +103,25 @@ export default function FloatingIcons({ className }: { className?: string }) {
         for (let i = 0; i < urlArr.length; i += 20) {
           if (cancelled) break
           const batch = urlArr.slice(i, i + 20)
-          const results = await Promise.allSettled(batch.map(preloadImage))
+          const results = await Promise.allSettled(batch.map(preloadSvg))
           for (const r of results) {
             if (r.status === 'fulfilled') tokenGood.push(r.value)
           }
         }
 
-        // Single update when all tokens are validated
-        if (!cancelled && tokenGood.length > 0) {
-          animApplied.current = false
-          setValidSources(shuffle([...good, ...tokenGood]))
+        // Single update with everything
+        if (!cancelled) {
+          const all = [...good, ...tokenGood]
+          if (all.length > 0) {
+            setValidSources(shuffle(all))
+          }
         }
-      } catch { /* aborted */ }
+      } catch {
+        // Token fetch failed — fall back to network icons only
+        if (!cancelled && good.length > 0) {
+          setValidSources(shuffle([...good]))
+        }
+      }
     }
 
     void load()
@@ -156,30 +159,55 @@ export default function FloatingIcons({ className }: { className?: string }) {
     })
   }, [validSources])
 
-  if (validSources.length === 0) return null
+  // Fixed height: sum of row sizes + gaps
+  const totalHeight = SIZES.reduce((a, b) => a + b, 0) + (SIZES.length - 1) * 4
 
   return (
-    <div className={`overflow-hidden space-y-1 ${className ?? ''}`} aria-hidden="true">
-      {rowIcons.map((icons, rowIdx) => (
-        <div key={rowIdx} className="overflow-hidden">
-          <div
-            ref={rowRefs[rowIdx]}
-            className="flex gap-3 items-center"
-            style={{ width: 'max-content' }}
-          >
-            {icons.map((src, i) => (
-              <img
-                key={`${rowIdx}-${i}`}
-                src={src}
-                alt=""
-                draggable={false}
-                className="rounded-full shrink-0"
-                style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
-              />
-            ))}
-          </div>
+    <div className={`overflow-hidden space-y-1 ${className ?? ''}`} style={{ height: totalHeight }} aria-hidden="true">
+      {validSources.length === 0 ? (
+        // Skeleton placeholder while loading
+        <div className="flex flex-col gap-1" style={{ height: totalHeight }}>
+          {SIZES.map((size, i) => (
+            <div key={i} className="flex gap-3 items-center overflow-hidden">
+              {Array.from({ length: 30 }, (_, j) => (
+                <div
+                  key={j}
+                  className="rounded-full shrink-0 bg-gray-200 dark:bg-surface-2 animate-pulse"
+                  style={{ width: size, height: size }}
+                />
+              ))}
+            </div>
+          ))}
         </div>
-      ))}
+      ) : (
+        rowIcons.map((icons, rowIdx) => (
+          <div key={rowIdx} className="overflow-hidden">
+            <div
+              ref={rowRefs[rowIdx]}
+              className="flex gap-3 items-center"
+              style={{ width: 'max-content' }}
+            >
+              {icons.map((src, i) => (
+                <a
+                  key={`${rowIdx}-${i}`}
+                  href={src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 pointer-events-auto"
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    draggable={false}
+                    className="rounded-full"
+                    style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   )
 }
