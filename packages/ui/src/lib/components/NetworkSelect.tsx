@@ -13,7 +13,7 @@ interface NetworkSelectProps {
 
 export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const { showTestnets, setShowTestnets } = useSettings()
+  const { showTestnets } = useSettings()
   const { metrics } = useMetricsContext()
 
   const sortedNetworks = useMemo(() => {
@@ -28,10 +28,6 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 
   return (
     <div className="relative w-full">
-      <div className="mb-2 flex items-center justify-end">
-        <TestnetToggle showTestnets={showTestnets} setShowTestnets={setShowTestnets} />
-      </div>
-
       <button
         type="button"
         className="flex w-full items-center justify-between rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
@@ -102,31 +98,6 @@ function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkIn
   })
 }
 
-function TestnetToggle({
-  showTestnets,
-  setShowTestnets,
-}: {
-  showTestnets: boolean
-  setShowTestnets: (v: boolean) => void
-}) {
-  return (
-    <label className="group flex cursor-pointer items-center gap-3">
-      <div className="relative flex">
-        <input
-          type="checkbox"
-          className="peer sr-only"
-          checked={showTestnets}
-          onChange={(e) => setShowTestnets(e.target.checked)}
-        />
-        <div className="h-6 w-11 rounded-full bg-surface-3 transition-colors peer-checked:bg-accent-500/20" />
-        <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-gray-400 dark:bg-white/60 transition-all peer-checked:translate-x-5 peer-checked:bg-accent-500" />
-      </div>
-      <span className="text-sm font-medium text-gray-500 dark:text-white/50 transition-colors group-hover:text-accent-500">
-        Show&nbsp;Testnets
-      </span>
-    </label>
-  )
-}
 
 function NetworkDialog({
   isOpen,
