@@ -131,24 +131,8 @@ export default function BadgeConfigurator() {
   const isDisabled = !badge.enabled
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Section header + enable toggle */}
-      <div className="flex items-center justify-between rounded-xl border border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-surface-1">
-        <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
-          Network Badge
-        </span>
-        <ToggleSwitch
-          id="badge-enabled"
-          label=""
-          checked={badge.enabled}
-          onChange={(enabled) => updateBadge({ enabled })}
-        />
-      </div>
+    <div className={`flex flex-col gap-4 transition-opacity ${isDisabled ? 'pointer-events-none opacity-40' : ''}`}>
 
-      {/* Controls grid */}
-      <div
-        className={`flex flex-col gap-4 transition-opacity ${isDisabled ? 'pointer-events-none opacity-40' : ''}`}
-      >
         {/* Position */}
         <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
@@ -250,6 +234,5 @@ export default function BadgeConfigurator() {
           )}
         </div>
       </div>
-    </div>
   )
 }
