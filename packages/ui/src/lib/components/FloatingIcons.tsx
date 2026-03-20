@@ -17,7 +17,19 @@ export default function FloatingIcons({ className }: { className?: string }) {
 
   return (
     <div className={`overflow-hidden ${className ?? ''}`} aria-hidden="true">
-      <div className="flex gap-6 animate-scroll" style={{ width: 'max-content' }}>
+      <style>{`
+        @keyframes conveyor-scroll {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+      `}</style>
+      <div
+        className="flex gap-6"
+        style={{
+          width: 'max-content',
+          animation: 'conveyor-scroll 30s linear infinite',
+        }}
+      >
         {icons.map((src, i) => (
           <img
             key={i}
