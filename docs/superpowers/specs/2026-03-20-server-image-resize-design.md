@@ -37,7 +37,8 @@ The `/image/` endpoints serve original-resolution images regardless of how the c
 - `w` + `h` → resize to fit within bounds, preserve aspect ratio (`sharp.resize({ fit: 'inside' })`)
 - `format` only (no `w`/`h`) → transcode to requested format at original dimensions, persist as variant
 - Source image smaller than requested size → serve original (no upscale)
-- `mode=LINK` images (empty buffer) → redirect as-is, ignore all resize/format params
+- `mode=LINK` images without resize params → redirect as-is (existing behavior)
+- `mode=LINK` images with resize params → fetch the remote `uri`, resize, serve the result, persist as variant. This handles providers like `pumptires` and `dexscreener` whose images are stored as links. First request incurs fetch latency; subsequent requests serve from `image_variant` cache.
 - SVG with `viewBox` → serve SVG as-is (scalable), ignore `w`/`h` (but `?format=png` still rasterizes)
 - SVG without `viewBox` → rasterize to PNG at requested size via sharp
 
@@ -94,10 +95,10 @@ Request: GET /image/1/0xabc?w=72&h=72&format=webp
           ├─ No → 404 (existing behavior)
           └─ Yes ─┐
                    ▼
-          mode=LINK? → redirect (ignore resize)
+          No w/h/format params? → sendImage() as-is (LINK=redirect, SAVE=binary)
                    │
                    ▼
-          No w/h/format params? → sendImage() as-is
+          mode=LINK? → fetch remote uri into buffer (first-request latency)
                    │
                    ▼
           SVG with viewBox and no format override? → serve as-is
