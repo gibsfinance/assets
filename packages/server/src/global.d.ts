@@ -158,6 +158,17 @@ declare module 'knex/types/tables.js' {
     expiresAt: Date
   }
   interface InsertableCacheRequest extends Omit<CacheRequest, TimestampKeys> {}
+  interface ImageVariant {
+    imageHash: string
+    width: number
+    height: number
+    format: string
+    content: Buffer
+    accessCount: number
+    createdAt: Date
+    lastAccessedAt: Date
+  }
+  interface InsertableImageVariant extends Omit<ImageVariant, 'accessCount' | 'createdAt' | 'lastAccessedAt'> {}
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network
@@ -172,5 +183,6 @@ declare module 'knex/types/tables.js' {
     [tableNames.bridgeLink]: BridgeLink
     [tableNames.headerLink]: HeaderLink
     [tableNames.cacheRequest]: CacheRequest
+    [tableNames.imageVariant]: ImageVariant
   }
 }
