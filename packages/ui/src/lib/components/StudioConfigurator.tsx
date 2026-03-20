@@ -128,6 +128,27 @@ function SizeControl() {
 }
 
 // ---------------------------------------------------------------------------
+// Toolbar: Padding control
+// ---------------------------------------------------------------------------
+
+function PaddingControl() {
+  const { appearance, updateAppearance } = useStudio()
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">Pad</span>
+      <input
+        type="number"
+        min={0}
+        max={64}
+        value={appearance.padding}
+        onChange={(e) => updateAppearance({ padding: Number(e.target.value) })}
+        className="w-12 rounded-md border border-border-light bg-gray-50 px-1.5 py-1 text-center text-xs text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Toolbar: Shape dropdown
 // ---------------------------------------------------------------------------
 
@@ -424,6 +445,7 @@ function Toolbar() {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-surface-base">
       <SizeControl />
+      <PaddingControl />
 
       <div className="h-4 w-px bg-border-light dark:bg-border-dark" />
 
@@ -506,7 +528,7 @@ function InfiniteCanvas() {
   )
 
   // Appearance computations
-  const { width, height, shape, borderRadius, shadow, backgroundColor } = appearance
+  const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance
   const borderRadiusCSS = shapeToRadius(shape, borderRadius)
   const boxShadow = SHADOW_MAP[shadow] ?? 'none'
 
@@ -601,7 +623,14 @@ function InfiniteCanvas() {
         {hasToken && (
           <div
             className="relative inline-flex items-center justify-center"
-            style={{ width, height }}
+            style={{
+              width: width + padding * 2,
+              height: height + padding * 2,
+              padding,
+              borderRadius: borderRadiusCSS,
+              boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
+              backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
+            }}
           >
             <img
               src={imageUrl}
@@ -611,8 +640,6 @@ function InfiniteCanvas() {
                 width,
                 height,
                 borderRadius: borderRadiusCSS,
-                boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
-                backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
               }}
             />
 
@@ -670,7 +697,7 @@ function InfiniteCanvas() {
  */
 export default function StudioConfigurator() {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-x-hidden">
       <Toolbar />
       <InfiniteCanvas />
     </div>

@@ -88,6 +88,7 @@ export interface StudioAppearance {
   height: number
   shape: 'circle' | 'rounded' | 'square'
   borderRadius: number
+  padding: number
   shadow: 'none' | 'subtle' | 'medium' | 'strong'
   backgroundColor: string
 }

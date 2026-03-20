@@ -29,6 +29,7 @@ const DEFAULT_APPEARANCE: StudioAppearance = {
   height: 64,
   shape: 'circle',
   borderRadius: 8,
+  padding: 0,
   shadow: 'none',
   backgroundColor: 'transparent',
 }
