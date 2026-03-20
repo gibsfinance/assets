@@ -69,12 +69,24 @@ body {
 
 /* Elevated card */
 .elevated-card {
-  @apply bg-surface-1 border border-border-dark rounded-2xl shadow-elevated;
+  @apply rounded-2xl border;
+}
+.elevated-card:where(.dark *) {
+  @apply bg-surface-1 border-border-dark shadow-elevated;
+}
+.elevated-card:where(:not(.dark) *) {
+  @apply bg-white border-border-light shadow-sm;
 }
 
 /* Glow card */
 .glow-card {
-  @apply bg-surface-1 border border-accent-500/20 rounded-2xl shadow-glow-green-subtle;
+  @apply rounded-2xl border;
+}
+.glow-card:where(.dark *) {
+  @apply bg-surface-1 border-accent-500/20 shadow-glow-green-subtle;
+}
+.glow-card:where(:not(.dark) *) {
+  @apply bg-white border-accent-500/20 shadow-sm;
 }
 
 /* Buttons */
@@ -85,8 +97,13 @@ body {
 }
 
 .btn-secondary {
-  @apply bg-white/5 text-white font-medium px-5 py-2.5 rounded-xl
-         border border-white/10 transition-all duration-150 hover:bg-white/10;
+  @apply font-medium px-5 py-2.5 rounded-xl border transition-all duration-150;
+}
+.btn-secondary:where(.dark *) {
+  @apply bg-white/5 text-white border-white/10 hover:bg-white/10;
+}
+.btn-secondary:where(:not(.dark) *) {
+  @apply bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200;
 }
 
 .btn-ghost {

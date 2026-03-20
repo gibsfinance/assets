@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useStudio } from '../contexts/StudioContext'
 import RadialPositionPicker from './RadialPositionPicker'
 
-/** Formats a ratio (0–1) as a percentage string, e.g. 0.3 → "30%" */
+/** Formats a ratio (0-1) as a percentage string, e.g. 0.3 -> "30%" */
 function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`
 }
@@ -42,7 +42,7 @@ function LabeledSlider({
       <div className="flex items-center justify-between">
         <label
           htmlFor={id}
-          className="text-xs font-medium text-white/60"
+          className="text-xs font-medium text-gray-500 dark:text-white/60"
         >
           {label}
         </label>
@@ -57,7 +57,7 @@ function LabeledSlider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface-3 accent-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-accent-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-surface-3"
       />
     </div>
   )
@@ -86,10 +86,12 @@ function ToggleSwitch({ id, label, checked, onChange, disabled = false }: Toggle
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
         />
-        <div className="h-6 w-11 rounded-full bg-surface-3 transition-colors peer-checked:bg-accent-500/20" />
-        <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white/40 transition-all peer-checked:translate-x-5 peer-checked:bg-accent-500" />
+        <div className="h-6 w-11 rounded-full bg-gray-200 transition-colors peer-checked:bg-accent-500/20 dark:bg-surface-3" />
+        <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-gray-400 transition-all peer-checked:translate-x-5 peer-checked:bg-accent-500 dark:bg-white/40" />
       </div>
-      <span className="text-sm font-medium text-white/70">{label}</span>
+      {label && (
+        <span className="text-sm font-medium text-gray-600 dark:text-white/70">{label}</span>
+      )}
     </label>
   )
 }
@@ -131,8 +133,8 @@ export default function BadgeConfigurator() {
   return (
     <div className="flex flex-col gap-4">
       {/* Section header + enable toggle */}
-      <div className="flex items-center justify-between rounded-xl border border-border-dark bg-surface-1 px-4 py-3">
-        <span className="font-heading text-sm font-semibold text-white/90">
+      <div className="flex items-center justify-between rounded-xl border border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-surface-1">
+        <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
           Network Badge
         </span>
         <ToggleSwitch
@@ -148,16 +150,16 @@ export default function BadgeConfigurator() {
         className={`flex flex-col gap-4 transition-opacity ${isDisabled ? 'pointer-events-none opacity-40' : ''}`}
       >
         {/* Position */}
-        <div className="rounded-xl border border-border-dark bg-surface-1 p-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-white/40">
+        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
             Position
           </p>
           <RadialPositionPicker angleDeg={badge.angleDeg} onChange={handleAngleChange} />
         </div>
 
         {/* Size + Overlap */}
-        <div className="rounded-xl border border-border-dark bg-surface-1 p-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-white/40">
+        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
             Scale
           </p>
           <div className="flex flex-col gap-4">
@@ -186,7 +188,7 @@ export default function BadgeConfigurator() {
             />
 
             {/* Overlap landmark labels */}
-            <div className="flex justify-between text-[10px] text-white/30">
+            <div className="flex justify-between text-[10px] text-gray-400 dark:text-white/30">
               <span>Float</span>
               <span>Edge</span>
               <span>Inset</span>
@@ -195,9 +197,9 @@ export default function BadgeConfigurator() {
         </div>
 
         {/* Ring controls */}
-        <div className="rounded-xl border border-border-dark bg-surface-1 p-4">
+        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-wide text-white/40">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
               Ring
             </p>
             <ToggleSwitch
@@ -215,7 +217,7 @@ export default function BadgeConfigurator() {
               <div className="flex items-center gap-3">
                 <label
                   htmlFor="badge-ring-color"
-                  className="min-w-0 flex-1 text-xs font-medium text-white/60"
+                  className="min-w-0 flex-1 text-xs font-medium text-gray-500 dark:text-white/60"
                 >
                   Color
                 </label>
@@ -226,9 +228,9 @@ export default function BadgeConfigurator() {
                     value={badge.ringColor}
                     disabled={isDisabled}
                     onChange={handleRingColorChange}
-                    className="h-8 w-12 cursor-pointer rounded-md border border-border-dark bg-surface-3 p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-8 w-12 cursor-pointer rounded-md border border-border-light bg-gray-50 p-0.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border-dark dark:bg-surface-3"
                   />
-                  <span className="font-mono text-xs text-white/50">{badge.ringColor}</span>
+                  <span className="font-mono text-xs text-gray-500 dark:text-white/50">{badge.ringColor}</span>
                 </div>
               </div>
 

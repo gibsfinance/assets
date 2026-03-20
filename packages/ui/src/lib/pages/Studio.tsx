@@ -13,8 +13,12 @@ export default function Studio() {
     <div className="h-[calc(100vh-57px)]">
       {/* Desktop: split panel */}
       <div className="hidden lg:grid lg:grid-cols-[380px_1fr] h-full">
-        <StudioBrowser onInspectToken={setInspectToken} />
-        <StudioConfigurator />
+        <div className="h-full border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base overflow-y-auto">
+          <StudioBrowser onInspectToken={setInspectToken} />
+        </div>
+        <div className="h-full bg-surface-light-1 dark:bg-surface-1 overflow-y-auto">
+          <StudioConfigurator />
+        </div>
       </div>
 
       {/* Mobile: tabbed */}
@@ -41,7 +45,7 @@ export default function Studio() {
             Configure
           </button>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-surface-base">
           {activeTab === 'browse' ? (
             <StudioBrowser onInspectToken={setInspectToken} />
           ) : (

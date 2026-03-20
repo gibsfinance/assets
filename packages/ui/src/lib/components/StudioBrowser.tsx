@@ -249,7 +249,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   /* ----- Render ---------------------------------------------------------- */
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-4 p-3">
       {/* Network selector */}
       <NetworkSelect selectedChainId={selectedChainId} onSelect={handleChainSelect} />
 
@@ -270,10 +270,10 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {/* Metadata toggle + pagination header */}
       {selectedChainId && (
         <div className="flex items-center justify-between">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-white/50">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-500 dark:text-white/50">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 rounded border-border-dark bg-surface-2 text-accent-500 focus:ring-accent-500/30"
+              className="h-3.5 w-3.5 rounded border-border-light bg-gray-50 text-accent-500 focus:ring-accent-500/30 dark:border-border-dark dark:bg-surface-2"
               checked={showMetadata}
               onChange={(e) => setShowMetadata(e.target.checked)}
             />
@@ -292,20 +292,20 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {/* Token list */}
       <div className="flex-1 overflow-y-auto">
         {!selectedChainId && (
-          <div className="flex h-48 items-center justify-center text-sm text-white/30">
+          <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             Select a network to browse tokens
           </div>
         )}
 
         {selectedChainId && isLoadingLists && filteredTokens.length === 0 && (
-          <div className="flex h-48 items-center justify-center text-sm text-white/40">
+          <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
             <i className="fas fa-spinner fa-spin mr-2" />
             Loading tokens...
           </div>
         )}
 
         {selectedChainId && !isLoadingLists && filteredTokens.length === 0 && (
-          <div className="flex h-48 items-center justify-center text-sm text-white/30">
+          <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             No tokens found
           </div>
         )}
@@ -325,12 +325,12 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                   className={`group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all ${
                     isSelected
                       ? 'bg-accent-500/10 shadow-glow-green-subtle ring-1 ring-accent-500/30'
-                      : 'hover:bg-surface-2'
+                      : 'hover:bg-gray-100 dark:hover:bg-surface-2'
                   }`}
                   onClick={() => selectToken(token)}
                 >
                   {/* Icon */}
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-2">
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                     {hasIcon ? (
                       <Image
                         src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
@@ -340,7 +340,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                         onError={() => handleIconError(token)}
                       />
                     ) : (
-                      <span className="text-xs font-bold text-white/30">
+                      <span className="text-xs font-bold text-gray-300 dark:text-white/30">
                         {token.symbol.slice(0, 2)}
                       </span>
                     )}
@@ -348,17 +348,17 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
                   {/* Name + symbol */}
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-white/90">
+                    <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
                       {token.name}
                     </span>
-                    <span className="truncate text-xs text-white/40">
+                    <span className="truncate text-xs text-gray-400 dark:text-white/40">
                       {token.symbol}
                       {showMetadata && (
                         <> &middot; {token.address.slice(0, 6)}...{token.address.slice(-4)}</>
                       )}
                     </span>
                     {showMetadata && (
-                      <span className="text-[10px] text-white/25">
+                      <span className="text-[10px] text-gray-300 dark:text-white/25">
                         {token.sourceList}
                       </span>
                     )}
@@ -367,7 +367,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                   {/* Inspect button */}
                   <button
                     type="button"
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-white/20 opacity-0 transition-all hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100"
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-300 opacity-0 transition-all hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20"
                     onClick={(e) => {
                       e.stopPropagation()
                       onInspectToken(token)
@@ -385,8 +385,8 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
       {/* Bottom pagination (visible when there are tokens) */}
       {filteredTokens.length > TOKENS_PER_PAGE && (
-        <div className="flex items-center justify-between border-t border-border-dark pt-3">
-          <span className="text-xs text-white/30">
+        <div className="flex items-center justify-between border-t border-border-light pt-3 dark:border-border-dark">
+          <span className="text-xs text-gray-400 dark:text-white/30">
             {filteredTokens.length} tokens
           </span>
           <PaginationControls

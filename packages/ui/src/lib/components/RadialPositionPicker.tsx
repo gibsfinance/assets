@@ -88,7 +88,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
       {/* Circle track */}
       <div
         ref={circleRef}
-        className="relative flex-shrink-0 cursor-crosshair rounded-full border border-border-dark bg-surface-2 select-none"
+        className="relative flex-shrink-0 cursor-crosshair rounded-full border border-border-light bg-gray-100 select-none dark:border-border-dark dark:bg-surface-2"
         style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
         onPointerDown={handlePointerDown}
         role="slider"
@@ -100,7 +100,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
       >
         {/* Center dot */}
         <div
-          className="absolute rounded-full bg-white/10"
+          className="absolute rounded-full bg-gray-300 dark:bg-white/10"
           style={{
             width: 4,
             height: 4,
@@ -140,7 +140,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
 
       {/* Degree input */}
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-wide text-white/40">
+        <label className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
           Angle
         </label>
         <input
@@ -149,10 +149,10 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           max={359}
           value={Math.round(angleDeg)}
           onChange={handleInputChange}
-          className="w-16 rounded-md border border-border-dark bg-surface-3 px-2 py-1 text-center text-sm text-white/90 focus:border-accent-500/60 focus:outline-none focus:ring-1 focus:ring-accent-500/30"
+          className="w-16 rounded-md border border-border-light bg-gray-50 px-2 py-1 text-center text-sm text-gray-800 focus:border-accent-500/60 focus:outline-none focus:ring-1 focus:ring-accent-500/30 dark:border-border-dark dark:bg-surface-3 dark:text-white/90"
           aria-label="Angle in degrees"
         />
-        <span className="text-[10px] text-white/30">degrees</span>
+        <span className="text-[10px] text-gray-400 dark:text-white/30">degrees</span>
       </div>
     </div>
   )

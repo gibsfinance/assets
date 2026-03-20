@@ -56,7 +56,7 @@ function ProviderRow({
       draggable
       className={[
         'flex cursor-grab items-center gap-3 rounded-lg px-3 py-2 transition-all select-none',
-        'bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+        'bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 dark:bg-surface-2',
         isDragging ? 'opacity-40' : 'opacity-100',
         isDragOver ? 'border border-accent-500 bg-accent-500/5' : 'border border-transparent',
         isSelected ? 'ring-2 ring-accent-500/70' : '',
@@ -70,19 +70,19 @@ function ProviderRow({
     >
       {/* Grip handle */}
       <span
-        className="cursor-grab text-white/30 select-none"
+        className="cursor-grab text-gray-300 select-none dark:text-white/30"
         aria-hidden="true"
       >
-        ⠿
+        &#x2807;
       </span>
 
       {/* Provider name */}
-      <span className="flex-1 text-sm font-medium capitalize text-white/80">
+      <span className="flex-1 text-sm font-medium capitalize text-gray-700 dark:text-white/80">
         {provider}
       </span>
 
       {/* Position badge */}
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-[10px] font-mono text-white/40">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-mono text-gray-500 dark:bg-surface-3 dark:text-white/40">
         {index + 1}
       </span>
     </div>
@@ -208,10 +208,10 @@ export default function ListResolutionOrder() {
       {({ open }) => (
         <div className="elevated-card overflow-hidden">
           {/* Toggle button */}
-          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-white/[0.02]">
+          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.02]">
             <div className="flex items-center gap-2">
               <i className="fas fa-layer-group text-xs text-accent-500" />
-              <span className="font-heading text-sm font-semibold text-white/90">
+              <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
                 Resolution Order
               </span>
               {!isDefault && (
@@ -221,7 +221,7 @@ export default function ListResolutionOrder() {
               )}
             </div>
             <i
-              className={`fas fa-chevron-down text-xs text-white/40 transition-transform duration-200 ${
+              className={`fas fa-chevron-down text-xs text-gray-400 transition-transform duration-200 dark:text-white/40 ${
                 open ? 'rotate-180' : ''
               }`}
             />
@@ -231,13 +231,13 @@ export default function ListResolutionOrder() {
           <DisclosurePanel>
             <div className="flex flex-col gap-1.5 px-4 pb-4 pt-1">
               {/* Instruction hint */}
-              <p className="mb-1 text-[11px] text-white/30">
+              <p className="mb-1 text-[11px] text-gray-400 dark:text-white/30">
                 Drag or use{' '}
-                <kbd className="rounded border border-white/10 bg-surface-3 px-1 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:border-white/10 dark:bg-surface-3">
                   Enter
                 </kbd>{' '}
                 to select, then{' '}
-                <kbd className="rounded border border-white/10 bg-surface-3 px-1 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:border-white/10 dark:bg-surface-3">
                   ↑↓
                 </kbd>{' '}
                 to move.

@@ -31,7 +31,7 @@ function shapeToRadius(shape: string, borderRadius: number): string {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-medium uppercase tracking-wide text-white/40">
+    <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
       {children}
     </p>
   )
@@ -66,14 +66,19 @@ const BACKGROUND_SWATCHES = [
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16">
+    <div className="elevated-card flex flex-col items-center justify-center gap-4 p-12">
       {/* Faded token icon silhouette */}
-      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-surface-2">
-        <i className="fas fa-coins text-3xl text-white/10" />
+      <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
+        <i className="fas fa-coins text-3xl text-gray-300 dark:text-white/10" />
       </div>
-      <p className="text-center text-sm text-white/30">
-        Select a token to start configuring
-      </p>
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-sm font-medium text-gray-500 dark:text-white/40">
+          No token selected
+        </p>
+        <p className="text-center text-xs text-gray-400 dark:text-white/25">
+          Choose a token from the browser panel to start configuring
+        </p>
+      </div>
     </div>
   )
 }
@@ -111,44 +116,56 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
       <div className="elevated-card flex flex-col items-center gap-3 p-6">
         <SectionHeading>Preview</SectionHeading>
 
+        {/* Checkerboard preview background */}
         <div
-          className="relative inline-flex items-center justify-center"
+          className="flex items-center justify-center rounded-xl p-6"
           style={{
-            width,
-            height,
+            backgroundImage:
+              'linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)',
+            backgroundSize: '16px 16px',
+            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+            backgroundColor: '#f3f4f6',
           }}
         >
-          {/* Token image */}
-          <img
-            src={imageUrl}
-            alt={tokenName}
+          <div
+            className="relative inline-flex items-center justify-center"
             style={{
               width,
               height,
-              borderRadius: borderRadiusCSS,
-              boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
-              backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
             }}
-          />
-
-          {/* Badge */}
-          {badge.enabled && badgePosition && (
+          >
+            {/* Token image */}
             <img
-              src={networkUrl}
-              alt={networkName}
+              src={imageUrl}
+              alt={tokenName}
               style={{
-                position: 'absolute',
-                top: Math.round(badgePosition.top),
-                left: Math.round(badgePosition.left),
-                width: Math.round(badgePosition.badgeSize),
-                height: Math.round(badgePosition.badgeSize),
-                borderRadius: '50%',
-                ...(badge.ringEnabled
-                  ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
-                  : {}),
+                width,
+                height,
+                borderRadius: borderRadiusCSS,
+                boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
+                backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
               }}
             />
-          )}
+
+            {/* Badge */}
+            {badge.enabled && badgePosition && (
+              <img
+                src={networkUrl}
+                alt={networkName}
+                style={{
+                  position: 'absolute',
+                  top: Math.round(badgePosition.top),
+                  left: Math.round(badgePosition.left),
+                  width: Math.round(badgePosition.badgeSize),
+                  height: Math.round(badgePosition.badgeSize),
+                  borderRadius: '50%',
+                  ...(badge.ringEnabled
+                    ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
+                    : {}),
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -156,7 +173,7 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
       <div className="grid grid-cols-3 gap-2">
         {/* Avatar preview */}
         <div className="elevated-card flex flex-col items-center gap-2 p-3">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-white/30">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/30">
             Avatar
           </span>
           <img
@@ -169,7 +186,7 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
 
         {/* Card preview */}
         <div className="elevated-card flex flex-col items-center gap-2 p-3">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-white/30">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/30">
             Card
           </span>
           <div className="flex flex-col items-center gap-1">
@@ -179,7 +196,7 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
               className="rounded-lg"
               style={{ width: 24, height: 24 }}
             />
-            <span className="max-w-full truncate text-[10px] font-medium text-white/70">
+            <span className="max-w-full truncate text-[10px] font-medium text-gray-600 dark:text-white/70">
               {tokenName}
             </span>
           </div>
@@ -187,7 +204,7 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
 
         {/* List item preview */}
         <div className="elevated-card flex flex-col items-center gap-2 p-3">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-white/30">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/30">
             List
           </span>
           <div className="flex w-full items-center gap-1.5 overflow-hidden">
@@ -198,10 +215,10 @@ function PreviewArea({ imageUrl, networkUrl, networkName }: PreviewAreaProps) {
               style={{ width: 16, height: 16 }}
             />
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[9px] font-medium text-white/70">
+              <span className="truncate text-[9px] font-medium text-gray-600 dark:text-white/70">
                 {tokenSymbol}
               </span>
-              <span className="truncate text-[8px] font-mono text-white/30">
+              <span className="truncate text-[8px] font-mono text-gray-400 dark:text-white/30">
                 {tokenAddress.slice(0, 6)}...
               </span>
             </div>
@@ -287,17 +304,17 @@ function AppearanceControls() {
 
       {/* Size */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-white/60">Size</label>
+        <label className="text-xs font-medium text-gray-500 dark:text-white/60">Size</label>
         <div className="flex items-center gap-2">
           <div className="flex flex-1 items-center gap-1">
-            <span className="text-[10px] text-white/30">W</span>
+            <span className="text-[10px] text-gray-400 dark:text-white/30">W</span>
             <input
               type="number"
               min={16}
               max={512}
               value={appearance.width}
               onChange={(e) => handleWidthChange(Number(e.target.value))}
-              className="w-full rounded-lg border border-border-dark bg-surface-2 px-2 py-1.5 text-center text-sm text-white/80 focus:border-accent-500 focus:outline-none"
+              className="w-full rounded-lg border border-border-light bg-gray-50 px-2 py-1.5 text-center text-sm text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
             />
           </div>
 
@@ -308,7 +325,7 @@ function AppearanceControls() {
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
               aspectLinked
                 ? 'bg-accent-500/15 text-accent-500'
-                : 'bg-surface-2 text-white/30 hover:text-white/50'
+                : 'bg-gray-100 text-gray-400 hover:text-gray-500 dark:bg-surface-2 dark:text-white/30 dark:hover:text-white/50'
             }`}
             aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}
           >
@@ -316,14 +333,14 @@ function AppearanceControls() {
           </button>
 
           <div className="flex flex-1 items-center gap-1">
-            <span className="text-[10px] text-white/30">H</span>
+            <span className="text-[10px] text-gray-400 dark:text-white/30">H</span>
             <input
               type="number"
               min={16}
               max={512}
               value={appearance.height}
               onChange={(e) => handleHeightChange(Number(e.target.value))}
-              className="w-full rounded-lg border border-border-dark bg-surface-2 px-2 py-1.5 text-center text-sm text-white/80 focus:border-accent-500 focus:outline-none"
+              className="w-full rounded-lg border border-border-light bg-gray-50 px-2 py-1.5 text-center text-sm text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
             />
           </div>
         </div>
@@ -331,7 +348,7 @@ function AppearanceControls() {
 
       {/* Shape */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-white/60">Shape</label>
+        <label className="text-xs font-medium text-gray-500 dark:text-white/60">Shape</label>
         <div className="flex gap-2">
           {SHAPE_OPTIONS.map((option) => (
             <button
@@ -341,7 +358,7 @@ function AppearanceControls() {
               className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition-all ${
                 appearance.shape === option.value
                   ? 'border-accent-500 bg-accent-500/10 text-accent-500'
-                  : 'border-border-dark bg-surface-2 text-white/50 hover:text-white/70'
+                  : 'border-border-light bg-gray-50 text-gray-500 hover:text-gray-700 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:text-white/70'
               }`}
             >
               <i className={`fas ${option.icon} text-sm`} />
@@ -353,7 +370,7 @@ function AppearanceControls() {
         {/* Border radius slider (only for rounded) */}
         {appearance.shape === 'rounded' && (
           <div className="flex items-center gap-3">
-            <label htmlFor="border-radius" className="shrink-0 text-xs text-white/40">
+            <label htmlFor="border-radius" className="shrink-0 text-xs text-gray-400 dark:text-white/40">
               Radius
             </label>
             <input
@@ -364,7 +381,7 @@ function AppearanceControls() {
               step={1}
               value={appearance.borderRadius}
               onChange={handleBorderRadiusChange}
-              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-accent-500"
+              className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-200 accent-accent-500 dark:bg-surface-3"
             />
             <span className="min-w-[3ch] text-right font-mono text-xs text-accent-500">
               {appearance.borderRadius}px
@@ -375,8 +392,8 @@ function AppearanceControls() {
 
       {/* Shadow */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-white/60">Shadow</label>
-        <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
+        <label className="text-xs font-medium text-gray-500 dark:text-white/60">Shadow</label>
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
           {SHADOW_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -384,8 +401,8 @@ function AppearanceControls() {
               onClick={() => handleShadowChange(option.value)}
               className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all ${
                 appearance.shadow === option.value
-                  ? 'bg-surface-3 text-white shadow-sm'
-                  : 'text-white/40 hover:text-white/70'
+                  ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
+                  : 'text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70'
               }`}
             >
               {option.label}
@@ -396,7 +413,7 @@ function AppearanceControls() {
 
       {/* Background */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-white/60">Background</label>
+        <label className="text-xs font-medium text-gray-500 dark:text-white/60">Background</label>
         <div className="flex items-center gap-2">
           {BACKGROUND_SWATCHES.map((swatch) => (
             <button
@@ -407,13 +424,13 @@ function AppearanceControls() {
               className={`relative h-8 w-8 shrink-0 rounded-lg border-2 transition-all ${
                 appearance.backgroundColor === swatch.value
                   ? 'border-accent-500 ring-2 ring-accent-500/30'
-                  : 'border-border-dark hover:border-white/30'
+                  : 'border-border-light hover:border-gray-400 dark:border-border-dark dark:hover:border-white/30'
               }`}
               style={
                 swatch.value === 'transparent'
                   ? {
                       backgroundImage:
-                        'linear-gradient(45deg, #333 25%, transparent 25%), linear-gradient(-45deg, #333 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #333 75%), linear-gradient(-45deg, transparent 75%, #333 75%)',
+                        'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
                       backgroundSize: '8px 8px',
                       backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px',
                     }
@@ -428,14 +445,14 @@ function AppearanceControls() {
               type="color"
               value={isCustomBackground ? appearance.backgroundColor : '#666666'}
               onChange={handleCustomColorChange}
-              className="h-8 w-8 cursor-pointer rounded-lg border-2 border-border-dark bg-surface-3 p-0.5"
+              className="h-8 w-8 cursor-pointer rounded-lg border-2 border-border-light bg-gray-50 p-0.5 dark:border-border-dark dark:bg-surface-3"
               aria-label="Custom background color"
             />
           </div>
 
           {/* Display current color */}
           {isCustomBackground && (
-            <span className="font-mono text-xs text-white/40">
+            <span className="font-mono text-xs text-gray-400 dark:text-white/40">
               {appearance.backgroundColor}
             </span>
           )}
@@ -463,28 +480,28 @@ function SvgOptions({ imageUrl }: SvgOptionsProps) {
     <div className="elevated-card flex flex-col gap-3 p-4">
       <SectionHeading>SVG Options</SectionHeading>
 
-      <div className="flex items-start gap-2 rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2.5 text-xs text-blue-400">
+      <div className="flex items-start gap-2 rounded-lg border border-blue-500/20 bg-blue-50 px-3 py-2.5 text-xs text-blue-600 dark:bg-blue-500/5 dark:text-blue-400">
         <i className="fas fa-info-circle mt-0.5 shrink-0" />
         <span>
-          This image is in SVG format. SVG images can be rendered as an <code className="rounded bg-surface-3 px-1">&lt;img&gt;</code> tag
+          This image is in SVG format. SVG images can be rendered as an <code className="rounded bg-gray-200 px-1 dark:bg-surface-3">&lt;img&gt;</code> tag
           or inlined for color customization.
         </span>
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="text-xs font-medium text-white/60">
+        <label className="text-xs font-medium text-gray-500 dark:text-white/60">
           Render mode
         </label>
-        <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
           <button
             type="button"
-            className="flex-1 rounded-md bg-surface-3 px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+            className="flex-1 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white"
           >
             &lt;img src&gt;
           </button>
           <button
             type="button"
-            className="flex-1 rounded-md px-3 py-1.5 text-xs font-medium text-white/40 hover:text-white/70"
+            className="flex-1 rounded-md px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70"
             disabled
             title="Inline SVG mode — coming soon"
           >
@@ -534,53 +551,51 @@ export default function StudioConfigurator() {
   )
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      <div className="flex flex-col gap-6 p-4">
-        {/* Empty state */}
-        {!hasToken && (
-          <>
-            <EmptyState />
-            <div className="pointer-events-none opacity-40">
-              <AppearanceControls />
-            </div>
-          </>
-        )}
-
-        {/* Active configurator */}
-        {hasToken && (
-          <>
-            {/* 1. Preview area */}
-            <PreviewArea
-              imageUrl={imageUrl}
-              networkUrl={networkUrl}
-              networkName={networkName}
-            />
-
-            {/* 2. Appearance controls */}
+    <div className="flex flex-col gap-6 p-4">
+      {/* Empty state */}
+      {!hasToken && (
+        <>
+          <EmptyState />
+          <div className="pointer-events-none opacity-40">
             <AppearanceControls />
+          </div>
+        </>
+      )}
 
-            {/* 3. Badge section */}
-            <BadgeConfigurator />
+      {/* Active configurator */}
+      {hasToken && (
+        <>
+          {/* 1. Preview area */}
+          <PreviewArea
+            imageUrl={imageUrl}
+            networkUrl={networkUrl}
+            networkName={networkName}
+          />
 
-            {/* 4. SVG options (conditional) */}
-            <SvgOptions imageUrl={imageUrl} />
+          {/* 2. Appearance controls */}
+          <AppearanceControls />
 
-            {/* 5. List resolution order */}
-            <ListResolutionOrder />
+          {/* 3. Badge section */}
+          <BadgeConfigurator />
 
-            {/* 6. Code output */}
-            <div className="elevated-card p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <i className="fas fa-code text-xs text-accent-500" />
-                <span className="font-heading text-sm font-semibold text-white/90">
-                  Code Output
-                </span>
-              </div>
-              <CodeOutput />
+          {/* 4. SVG options (conditional) */}
+          <SvgOptions imageUrl={imageUrl} />
+
+          {/* 5. List resolution order */}
+          <ListResolutionOrder />
+
+          {/* 6. Code output */}
+          <div className="elevated-card p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <i className="fas fa-code text-xs text-accent-500" />
+              <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
+                Code Output
+              </span>
             </div>
-          </>
-        )}
-      </div>
+            <CodeOutput />
+          </div>
+        </>
+      )}
     </div>
   )
 }
