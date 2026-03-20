@@ -65,29 +65,38 @@ export default function FloatingIcons({ className }: { className?: string }) {
       if (cancelled) return
       if (good.length > 0) setValidSources(shuffle([...good]))
 
-      // Phase 2: fetch token lists for more icons
+      // Phase 2: fetch a few token lists directly for token icon diversity
       try {
         const res = await fetch(getApiUrl('/list'), { signal: controller.signal })
         if (!res.ok) return
-        const lists = await res.json() as Array<{ providerKey: string; key: string }>
-        const chainIds = ['1', '369', '56', '137', '42161']
-        const tokenUrls = new Set<string>()
+        const allLists = await res.json() as Array<{ providerKey: string; key: string; chainId: string }>
+        // Pick lists from different chains for variety
+        const targetChains = ['1', '369', '56', '137', '42161', '10', '8453']
+        const picked: Array<{ providerKey: string; key: string }> = []
+        for (const chainId of targetChains) {
+          const match = allLists.find((l) => l.chainId === chainId)
+          if (match) picked.push(match)
+          if (picked.length >= 7) break
+        }
 
-        for (const list of lists.slice(0, 5)) {
-          for (const chainId of chainIds) {
-            if (tokenUrls.size >= 500 || cancelled) break
-            try {
-              const listRes = await fetch(
-                getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`),
-                { signal: controller.signal },
-              )
-              if (!listRes.ok) continue
-              const tokens = await listRes.json() as Array<{ chainId: number; address: string }>
-              for (const t of tokens.slice(0, 50)) {
+        const tokenUrls = new Set<string>()
+        for (const list of picked) {
+          if (tokenUrls.size >= 500 || cancelled) break
+          try {
+            const listRes = await fetch(
+              getApiUrl(`/list/${list.providerKey}/${list.key}`),
+              { signal: controller.signal },
+            )
+            if (!listRes.ok) continue
+            const data = await listRes.json()
+            const tokens = (data.tokens || data) as Array<{ chainId: number; address: string }>
+            if (!Array.isArray(tokens)) continue
+            for (const t of tokens.slice(0, 100)) {
+              if (t.chainId && t.address) {
                 tokenUrls.add(getApiUrl(`/image/${t.chainId}/${t.address}`))
               }
-            } catch { /* skip */ }
-          }
+            }
+          } catch { /* skip */ }
         }
 
         if (cancelled) return
