@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
@@ -40,26 +40,25 @@ function pickLayer(): Layer {
 
 let nextId = 0
 
-function createStreamIcon(sources: string[], size?: number): StreamIcon {
+function createStreamIcon(sources: string[]): StreamIcon {
   const layer = pickLayer()
   const config = LAYER_CONFIG[layer]
-  const iconSize = size ?? Math.floor(randomBetween(config.sizeMin, config.sizeMax))
+  const size = Math.floor(randomBetween(config.sizeMin, config.sizeMax))
 
   const baseSpeed = layer === 'background' ? randomBetween(20, 35)
     : layer === 'middle' ? randomBetween(35, 55)
     : randomBetween(55, 80)
 
-  // y ranges from -OVERFLOW_PX to PIPE_HEIGHT + OVERFLOW_PX (icons can poke out top and bottom)
   const totalRange = PIPE_HEIGHT + OVERFLOW_PX * 2
-  const y = -OVERFLOW_PX + Math.random() * (totalRange - iconSize)
+  const y = -OVERFLOW_PX + Math.random() * (totalRange - size)
 
   return {
     id: nextId++,
     src: sources[Math.floor(Math.random() * sources.length)],
-    size: iconSize,
+    size,
     speed: baseSpeed,
     y,
-    x: 0, // always spawn at left edge (caller sets actual x)
+    x: 0,
     layer,
   }
 }
@@ -71,79 +70,61 @@ interface FloatingIconsProps {
 export default function FloatingIcons({ className }: FloatingIconsProps) {
   const { metrics } = useMetricsContext()
   const containerRef = useRef<HTMLDivElement>(null)
-  const iconsRef = useRef<StreamIcon[]>([])
-  const elementsRef = useRef<Map<number, HTMLImageElement>>(new Map())
-  const animFrameRef = useRef(0)
-  const lastTimestampRef = useRef(0)
+  const [icons, setIcons] = useState<StreamIcon[]>([])
   const scrollVelocityRef = useRef(0)
   const lastScrollYRef = useRef(0)
-  const spawnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [_renderKey, setRenderKey] = useState(0)
-  const triggerRender = useCallback(() => setRenderKey((k) => k + 1), [])
+  const animFrameRef = useRef(0)
+  const lastTimestampRef = useRef(0)
 
-  const prefersReducedMotion = useRef(
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  )
+  const prefersReducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   const iconSources = useMemo(() => {
     if (!metrics) return []
     return metrics.networks.supported.slice(0, 30).map((net) => getApiUrl(`/image/${net.chainId}`))
   }, [metrics])
 
-  const setElementRef = useCallback((id: number, element: HTMLImageElement | null) => {
-    if (element) {
-      elementsRef.current.set(id, element)
-    } else {
-      elementsRef.current.delete(id)
-    }
-  }, [])
-
-  // Staggered initialization: start with a few, add more over time
+  // Initialize with icons spread across the pipe
   useEffect(() => {
     if (iconSources.length === 0) return
     const container = containerRef.current
     if (!container) return
-
-    // Start with initial batch spread across the left half
     const width = container.offsetWidth
-    const icons: StreamIcon[] = []
+
+    const initial: StreamIcon[] = []
     for (let i = 0; i < INITIAL_BATCH; i++) {
       const icon = createStreamIcon(iconSources)
       icon.x = randomBetween(-icon.size * 0.5, width + icon.size * 0.5)
-      icons.push(icon)
+      initial.push(icon)
     }
-    iconsRef.current = icons
-    triggerRender()
+    setIcons(initial)
 
-    // Gradually add more icons from the left
+    // Stagger additional icons
     let spawned = INITIAL_BATCH
-    spawnTimerRef.current = setInterval(() => {
+    const timer = setInterval(() => {
       if (spawned >= MAX_ICONS) {
-        if (spawnTimerRef.current) clearInterval(spawnTimerRef.current)
+        clearInterval(timer)
         return
       }
-      const icon = createStreamIcon(iconSources)
-      icon.x = randomBetween(-icon.size * 2, -icon.size)
-      iconsRef.current.push(icon)
+      setIcons((prev) => {
+        const icon = createStreamIcon(iconSources)
+        icon.x = randomBetween(-icon.size * 2, -icon.size)
+        return [...prev, icon]
+      })
       spawned++
-      triggerRender()
     }, SPAWN_INTERVAL_MS)
 
-    return () => {
-      if (spawnTimerRef.current) clearInterval(spawnTimerRef.current)
-    }
-  }, [iconSources, triggerRender])
+    return () => clearInterval(timer)
+  }, [iconSources])
 
-  // Animation loop
+  // Animation loop using state updates (batched by React)
   useEffect(() => {
-    if (prefersReducedMotion.current) return
+    if (prefersReducedMotion || iconSources.length === 0) return
 
     const handleScroll = () => {
-      const currentY = window.scrollY
-      scrollVelocityRef.current = Math.abs(currentY - lastScrollYRef.current)
-      lastScrollYRef.current = currentY
+      scrollVelocityRef.current = Math.abs(window.scrollY - lastScrollYRef.current)
+      lastScrollYRef.current = window.scrollY
     }
-
     window.addEventListener('scroll', handleScroll, { passive: true })
 
     const decayInterval = setInterval(() => {
@@ -151,10 +132,10 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     }, 80)
 
     let running = true
-    let needsReactSync = false
 
     const animate = (timestamp: number) => {
       if (!running) return
+
       const container = containerRef.current
       if (!container) {
         animFrameRef.current = requestAnimationFrame(animate)
@@ -171,34 +152,29 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
 
       const deltaSeconds = Math.min((timestamp - lastTimestampRef.current) / 1000, 0.1)
       lastTimestampRef.current = timestamp
-
       const scrollMultiplier = 1 + scrollVelocityRef.current * SCROLL_SPEED_FACTOR
 
-      for (let i = iconsRef.current.length - 1; i >= 0; i--) {
-        const icon = iconsRef.current[i]
-        icon.x += icon.speed * deltaSeconds * scrollMultiplier
+      setIcons((prev) => {
+        let changed = false
+        const next = prev.map((icon) => {
+          const newX = icon.x + icon.speed * deltaSeconds * scrollMultiplier
 
-        // Icon exited right side — replace with new one entering from left
-        if (icon.x > containerWidth + icon.size) {
-          elementsRef.current.delete(icon.id)
+          // Exited right — respawn on left
+          if (newX > containerWidth + icon.size) {
+            changed = true
+            const fresh = createStreamIcon(iconSources)
+            fresh.x = randomBetween(-fresh.size * 2, -fresh.size)
+            return fresh
+          }
 
-          const newIcon = createStreamIcon(iconSources)
-          newIcon.x = randomBetween(-newIcon.size * 2, -newIcon.size)
-          iconsRef.current[i] = newIcon
-          needsReactSync = true
-          continue
-        }
-
-        const element = elementsRef.current.get(icon.id)
-        if (!element) continue
-
-        element.style.transform = `translate3d(${icon.x}px, 0, 0)`
-      }
-
-      if (needsReactSync) {
-        needsReactSync = false
-        triggerRender()
-      }
+          if (newX !== icon.x) {
+            changed = true
+            return { ...icon, x: newX }
+          }
+          return icon
+        })
+        return changed ? next : prev
+      })
 
       animFrameRef.current = requestAnimationFrame(animate)
     }
@@ -212,9 +188,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       clearInterval(decayInterval)
       lastTimestampRef.current = 0
     }
-  }, [iconSources, triggerRender])
-
-  const currentIcons = iconsRef.current
+  }, [prefersReducedMotion, iconSources])
 
   return (
     <div
@@ -222,15 +196,13 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
       className={`relative w-full pointer-events-none ${className ?? ''}`}
       style={{
         height: PIPE_HEIGHT,
-        // Clip left/right but allow top/bottom overflow for the conveyor effect
         clipPath: `inset(${-OVERFLOW_PX}px 0px ${-OVERFLOW_PX}px 0px)`,
       }}
       aria-hidden="true"
     >
-      {currentIcons.map((icon) => (
+      {icons.map((icon) => (
         <img
           key={icon.id}
-          ref={(el) => setElementRef(icon.id, el)}
           src={icon.src}
           alt=""
           draggable={false}
@@ -241,7 +213,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
             width: icon.size,
             height: icon.size,
             transform: `translate3d(${icon.x}px, 0, 0)`,
-            willChange: prefersReducedMotion.current ? 'auto' : 'transform',
+            willChange: prefersReducedMotion ? 'auto' : 'transform',
             zIndex: LAYER_CONFIG[icon.layer].zIndex,
           }}
         />
