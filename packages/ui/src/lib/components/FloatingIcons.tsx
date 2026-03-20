@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
-const ICONS_PER_ROW = 20
+const ICONS_PER_ROW = 40
 const SIZES = [32, 40, 48]
 const DURATIONS = [35, 45, 30]
 
