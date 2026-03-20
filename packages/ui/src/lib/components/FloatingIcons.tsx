@@ -33,8 +33,10 @@ export default function FloatingIcons({ className }: { className?: string }) {
           from { transform: translateX(-50%); }
           to { transform: translateX(0); }
         }
+        .conveyor-right { animation: conveyor-right var(--dur) linear infinite !important; }
+        .conveyor-left { animation: conveyor-left var(--dur) linear infinite !important; }
         @media (prefers-reduced-motion: reduce) {
-          .conveyor-row { animation: none !important; }
+          .conveyor-right, .conveyor-left { animation: none !important; }
         }
       `}</style>
       {rows.map((row, rowIdx) => {
@@ -46,11 +48,11 @@ export default function FloatingIcons({ className }: { className?: string }) {
         return (
           <div key={rowIdx} className="overflow-hidden">
             <div
-              className="conveyor-row flex gap-4 items-center"
+              className={`conveyor-${row.direction} flex gap-4 items-center`}
               style={{
                 width: 'max-content',
-                animation: `conveyor-${row.direction} ${row.duration}s linear infinite`,
-              }}
+                '--dur': `${row.duration}s`,
+              } as React.CSSProperties}
             >
               {doubled.map((src, i) => (
                 <img
