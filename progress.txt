@@ -1,0 +1,211 @@
+# Gib.Show — Progress
+
+## Session History (2026-03-18 → 2026-03-19)
+
+### 1. Image Priority Ordering (completed, merged to staging)
+- Two-phase collection pipeline: discover() → order sync → collect()
+- BaseCollector abstract class, 33 collectors converted
+- Rankings from collectables.ts key order (1000-spacing, bigint)
+- applyOrder() rewritten with LEFT JOIN + COALESCE for unranked fallback
+- Periodic 60s refresh of default order
+- Spec: `docs/superpowers/specs/2026-03-18-image-priority-ordering-design.md`
+- Plan: `docs/superpowers/plans/2026-03-18-image-priority-ordering.md`
+
+### 2. Infrastructure Fixes (completed, merged to staging)
+- Dependency security: lodash 4.17.23, file-type 21.3.3
+- CI: 5 parallel jobs (lint, typecheck, build, unit-test, integration-test)
+- CI: Docker layer caching with buildx + GHA cache
+- Docker: Separated install/build layers for better caching
+- Docker: Corepack pre-install for Node 24
+- Production: null provider key guard in buildManifestsFromDB
+- Production: PUBLIC_BASE_URL build arg in Dockerfile builder stage
+- Frontend: Routescan insignia (icon only, no text)
+- Frontend: Attribution logo height to prevent layout shift
+- Misc: README rewrite, failures.json write guard, process.exit removal
+
+### 3. Svelte → React Conversion (completed, merged to staging)
+- 10 commits, 67 files changed (4,446 insertions, 4,471 deletions)
+- Stack: React 19 + React Router 7 (HashRouter) + Headless UI 2 + Tailwind CSS 4 + Shiki + Iconify React + Vite 6
+- All 15 components, 3 pages, 5 hooks, 3 contexts ported
+- Floating icons: scroll-reactive behavior (idle drift + scroll acceleration, hero-contained)
+- getNetworkName() consolidated into single shared utility
+- Build succeeds, zero Svelte files remain
+- Spec: `docs/superpowers/specs/2026-03-19-ui-frontend-spec.md`
+- Plan: `docs/superpowers/plans/2026-03-19-svelte-to-react.md`
+
+### 4. Visual Refresh + WYSIWYG Studio (completed, in worktree react-conversion)
+- 19 commits, design spec + plan + full implementation
+- Spec: `docs/superpowers/specs/2026-03-19-visual-refresh-wysiwyg-design.md`
+- Plan: `docs/superpowers/plans/2026-03-19-visual-refresh-wysiwyg.md`
+
+**Design System:**
+- Vibrant Web3/DeFi aesthetic: gradients, glow effects, glassmorphism cards
+- Color tokens: accent-400/500/600 (#33e69b/#00DC82/#00b368), cyan-500 (#0ea5e9)
+- Dark surfaces: surface-base → surface-3, Light surfaces: surface-light-base → surface-light-3
+- Typography: Space Grotesk (headings), Inter (body), JetBrains Mono (code)
+- Card variants: glass-card, elevated-card, glow-card
+- Button variants: btn-primary (gradient), btn-secondary, btn-ghost
+- All defined in Tailwind CSS 4 @theme + app.css utility classes
+
+**Full-Page Physics Animation:**
+- 60-80 floating token/network icons on a fixed-position `<canvas>`
+- Collision physics: damped elastic bounces, mass proportional to icon size
+- Spatial hash grid for O(n) collision detection (only within same depth layer)
+- Wall bounces, scroll force, mouse repulsion ("parting the waters" effect)
+- 3 depth layers: background (20-30px), middle (40-60px), foreground (60-80px)
+- 4% chance of "monster" icon (168px)
+- `prefers-reduced-motion` fallback to static icons
+- Engine in `lib/physics/` (types.ts, engine.ts, forces.ts) — pure functions, testable
+
+**Studio Page (replaces Wizard):**
+- Route: `#/studio` (with `#/wizard` → `#/studio` redirect)
+- Split-panel layout: 380px token browser (left) + configurator (right)
+- Mobile: tabbed view switching Browse/Configure
+- **StudioBrowser (left panel):**
+  - NetworkSelect (refactored to accept chainId strings), TokenSearch, TokenListFilter
+  - Token list fetching ported from Wizard.tsx (batched, 2 concurrent)
+  - Token rows with icon, name, symbol, address, optional metadata
+  - Info button (ℹ) opens TokenDetailModal
+  - Selected row has green glow highlight
+- **TokenDetailModal:**
+  - Headless UI Dialog with hero, image metadata (via useImageMetadata HEAD fetch), SVG indicator
+  - List presence, API endpoint URLs, "Configure in Studio" action
+- **StudioConfigurator (right panel):**
+  - Live preview with all appearance config applied (size, shape, shadow, background, badge)
+  - Mini context previews: avatar, card, list item
+  - Appearance controls: size (W×H), shape picker, shadow segmented, background swatches+picker
+  - BadgeConfigurator: toggle, 360° RadialPositionPicker (drag or type degrees), size slider (15-60%), overlap slider (-50% to +50%), ring toggle+color+thickness
+  - SVG-specific options (conditional on format detection)
+  - ListResolutionOrder: drag-and-drop provider priority with keyboard alternative
+  - CodeOutput: React/HTML/img tabs, snippet/component mode, Shiki highlighting, copy buttons
+  - Badge position uses shared utility (badgePositionToCSS in lib/utils/badge-position.ts)
+  - `<img>` tab shows badge warning when badge is enabled
+
+**Docs Page Refresh:**
+- Sticky sidebar navigation (DocsSidebar) with IntersectionObserver active section tracking
+- EndpointCard: glass card with GET method badge, param highlighting, expandable example
+- FrameworkSwitcher: HTML/JavaScript/React/cURL tab bar for code examples
+- Quick filter bar for endpoint search
+- Mobile: sidebar collapses to horizontal scrolling tabs
+
+**Reskinned Components:**
+- Home: PhysicsCanvas background, glass cards, gradient text, CountUpNumber (IntersectionObserver animated count-up)
+- Layout: gradient logo, "Studio" nav button, backdrop-blur header
+- Attribution, ThemeToggle, ErrorMessage, CodeBlock: all updated to design system
+
+**New State Management:**
+- StudioContext: selectedToken, selectedChainId, appearance, badge, codeFormat, codeMode, resolutionOrder, activeTab
+- Cross-page chain pre-selection: StudioContext reads/clears localStorage.selectedChainId on mount
+- useImageMetadata hook: HEAD fetch + Image decode, module-level Map cache
+- ImageMetadata type: format, width, height, fileSize, contentType
+
+**Deleted Components (replaced by Studio):**
+- Wizard.tsx, ApiTypeSelector.tsx, TokenAddressInput.tsx, TokenBrowser.tsx, TokenListSelector.tsx, TokenPreview.tsx, UrlDisplay.tsx
+
+### 5. Polish + Iteration (in progress, worktree react-conversion)
+- Fixed pumptires collector bigint hang (listTokenOrderId)
+- Fixed Studio light mode (NetworkSelect, TokenSearch, TokenListFilter, StudioConfigurator, BadgeConfigurator, etc.)
+- Replaced physics canvas with 3-row CSS conveyor belt (icons streaming left/right/left)
+- Token icon diversity: preload-validates from 5 lists across 5 chains, ~500 unique icons
+- Moved logo + theme toggle into Studio sidebar, hidden global header on Studio
+- Testnet toggle converted to tooltip icon in sidebar
+- Network cards hide when icon fails to load
+- 40 commits total
+
+**Next: Studio configurator refactor**
+- Convert shape/shadow/background controls to compact dropdowns
+- Flatten everything into a horizontal toolbar at the top
+- Below: infinite scrollable/draggable canvas for token preview
+- Systematic dark mode audit across all components
+
+## Next Up
+
+### Merge to staging
+- The worktree `react-conversion` has all visual refresh + Studio work
+- Needs visual QA in browser before merge
+
+### Server-Side Image Resizing (Phase 3, separate spec)
+- Add `sharp` to server package
+- Query params: `?w=64&h=64` on `/image/:chainId/:address`
+- Resize/fit on the fly, cache result
+- Enables the WYSIWYG to generate URLs with exact dimensions
+
+### Future Enhancements
+- Collapsible drawer layout for Studio browser panel (VS Code sidebar pattern)
+- Arbitrary badge images (not just network icons)
+- OpenAPI/Swagger auto-generated docs
+- Knex → Drizzle ORM migration
+
+## Architecture Notes
+
+### Current file structure (packages/ui/src/)
+```
+├── main.tsx, App.tsx, Layout.tsx, app.css
+└── lib/
+    ├── config.ts, networks.json, types.ts, attribution-providers.ts
+    ├── utils/
+    │   ├── index.ts            — getApiUrl(), initializeApiBase()
+    │   ├── network-name.ts     — getNetworkName()
+    │   └── badge-position.ts   — badgePositionToCSS() polar→CSS
+    ├── hooks/
+    │   ├── useLocalStorage.ts  — Generic localStorage<->state sync
+    │   ├── useMetrics.ts       — Metrics fetch + localStorage cache (3hr TTL, chunking)
+    │   ├── useTokenBrowser.ts  — enabledLists Set + tokensByList Map
+    │   └── useImageMetadata.ts — HEAD fetch + Image decode, module-level cache
+    ├── contexts/
+    │   ├── ThemeContext.tsx     — isDark + toggle(), localStorage('theme')
+    │   ├── SettingsContext.tsx  — showTestnets, localStorage('showTestnets')
+    │   ├── MetricsContext.tsx   — Wraps useMetrics()
+    │   └── StudioContext.tsx   — Token selection, appearance, badge, code, resolution order
+    ├── physics/
+    │   ├── types.ts            — PhysicsIcon, Vector2D, PhysicsConfig, SpatialCell
+    │   ├── engine.ts           — stepPhysics(), createIcon(), spatial hash grid
+    │   └── forces.ts           — wall bounce, mouse repel, scroll force, collision, edge opacity
+    ├── components/
+    │   ├── PhysicsCanvas.tsx   — Full-page canvas with physics simulation
+    │   ├── StudioBrowser.tsx   — Left panel: search, filters, token list, pagination
+    │   ├── StudioConfigurator.tsx — Right panel: preview, controls, code output
+    │   ├── TokenDetailModal.tsx — Full metadata modal
+    │   ├── BadgeConfigurator.tsx — 360° badge controls
+    │   ├── RadialPositionPicker.tsx — Circular drag control
+    │   ├── CodeOutput.tsx      — Code generation + Shiki display
+    │   ├── ListResolutionOrder.tsx — Drag-and-drop provider ordering
+    │   ├── CountUpNumber.tsx   — Animated count-up on scroll
+    │   ├── DocsSidebar.tsx     — Sticky anchor navigation
+    │   ├── EndpointCard.tsx    — Glass card for API endpoints
+    │   ├── FrameworkSwitcher.tsx — Code language tab bar
+    │   ├── Attribution.tsx     — Provider logos footer
+    │   ├── CodeBlock.tsx       — Shiki syntax highlighting
+    │   ├── ErrorMessage.tsx    — Error state with GitHub issue link
+    │   ├── Image.tsx           — Smart image with fallback
+    │   ├── NetworkSelect.tsx   — Chain selector (refactored for chainId strings)
+    │   ├── PaginationControls.tsx — Page navigation
+    │   ├── ThemeToggle.tsx     — Dark/light mode button
+    │   ├── TokenSearch.tsx     — Search + global search + list filter
+    │   └── TokenListFilter.tsx — List checkbox popover
+    ├── pages/
+    │   ├── Home.tsx            — Landing with physics canvas
+    │   ├── Studio.tsx          — Split-panel browser + configurator
+    │   └── Docs.tsx            — API documentation with sidebar
+    └── types/
+        └── metrics.ts          — PlatformMetrics interfaces
+```
+
+### Server API endpoints (used by frontend)
+- `GET /list` — all available lists
+- `GET /list/{providerKey}/{listKey}?chainId={id}` — specific list
+- `GET /networks` — supported networks
+- `GET /image/{chainId}` — network icon
+- `GET /image/{chainId}/{address}` — token icon (priority-ordered)
+- `GET /image/direct/{hash}` — direct by hash
+- `GET /image/fallback/{order}/{chainId}/{address}` — with explicit order (comma-separated provider keys)
+
+### Key design decisions
+- Tailwind CSS 4 @theme for design tokens — raw utilities + Headless UI for primitives
+- Hash-based routing (#/studio, #/docs) — no server required for routing
+- localStorage caching with 3hr TTL and chunking for large token lists
+- No web3/wallet integration — pure read-only asset browser
+- Static SPA build deployed to Railway
+- Physics engine as pure functions in lib/physics/ — reusable, testable
+- Badge position as polar coordinates (angle + overlap) → CSS absolute positioning
+- StudioContext owns cross-page chain pre-selection via localStorage
