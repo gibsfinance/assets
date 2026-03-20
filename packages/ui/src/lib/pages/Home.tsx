@@ -7,7 +7,7 @@ import { getApiUrl } from '../utils'
 import Image from '../components/Image'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
-import PhysicsCanvas from '../components/PhysicsCanvas'
+import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
 
 const features = [
@@ -172,12 +172,10 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-light-base dark:bg-surface-base">
-      {/* Physics canvas background */}
-      <PhysicsCanvas />
-
       {/* Hero Section */}
-      <section className="relative z-10 py-16 md:py-24">
-        <div className="mx-auto max-w-4xl px-4 text-center">
+      <section className="relative overflow-hidden py-16 md:py-24">
+        <FloatingIcons />
+        <div className="relative z-10 mx-auto max-w-4xl px-4 text-center">
           <p className="mb-4 font-heading text-lg font-medium tracking-wide text-gray-600 dark:text-gray-300">
             Welcome to
           </p>
@@ -195,7 +193,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="mt-12">
+        <div className="relative z-10 mt-12">
           <Attribution />
         </div>
       </section>
