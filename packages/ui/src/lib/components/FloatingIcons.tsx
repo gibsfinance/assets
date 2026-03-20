@@ -41,7 +41,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
         if (!res.ok) return
         const lists = await res.json() as Array<{ providerKey: string; key: string }>
         // Pick first 2 lists
-        const toFetch = lists.slice(0, 2)
+        const toFetch = lists.slice(0, 3)
         const urls: string[] = []
 
         for (const list of toFetch) {
@@ -53,7 +53,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
             if (!listRes.ok) continue
             const tokens = await listRes.json() as Array<{ chainId: number; address: string }>
             // Take up to 50 tokens from each list
-            for (const t of tokens.slice(0, 50)) {
+            for (const t of tokens.slice(0, 100)) {
               urls.push(getApiUrl(`/image/${t.chainId}/${t.address}`))
             }
           } catch { /* skip failed list */ }
