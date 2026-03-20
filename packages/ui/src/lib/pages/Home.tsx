@@ -172,9 +172,10 @@ export default function Home() {
   }, [])
 
   const MAX_ROWS = 3
-  const visibleCount = gridCols * MAX_ROWS
-  const visibleNetworks = filteredNetworks.slice(0, visibleCount)
-  const hiddenCount = filteredNetworks.length - visibleNetworks.length
+  const maxVisible = gridCols * MAX_ROWS
+  const evenCount = Math.floor(Math.min(filteredNetworks.length, maxVisible) / gridCols) * gridCols
+  const visibleNetworks = filteredNetworks.slice(0, evenCount)
+  const hiddenCount = filteredNetworks.length - evenCount
 
   const mainnetNetworkCount = useMemo(() => {
     if (!metricsData) return 0
