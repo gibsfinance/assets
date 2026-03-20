@@ -2,8 +2,12 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
-const VISIBLE_COUNT = 40
+const MAX_ICONS = 40
+const INITIAL_BATCH = 5
+const SPAWN_INTERVAL_MS = 300
 const SCROLL_SPEED_FACTOR = 0.015
+const PIPE_HEIGHT = 120
+const OVERFLOW_PX = 20
 
 type Layer = 'background' | 'middle' | 'foreground'
 
@@ -36,23 +40,26 @@ function pickLayer(): Layer {
 
 let nextId = 0
 
-function createStreamIcon(sources: string[], containerWidth: number, spawnAtLeft: boolean): StreamIcon {
+function createStreamIcon(sources: string[], size?: number): StreamIcon {
   const layer = pickLayer()
   const config = LAYER_CONFIG[layer]
-  const size = Math.floor(randomBetween(config.sizeMin, config.sizeMax))
+  const iconSize = size ?? Math.floor(randomBetween(config.sizeMin, config.sizeMax))
 
-  // Foreground icons move faster than background — creates depth/parallax
   const baseSpeed = layer === 'background' ? randomBetween(20, 35)
     : layer === 'middle' ? randomBetween(35, 55)
     : randomBetween(55, 80)
 
+  // y ranges from -OVERFLOW_PX to PIPE_HEIGHT + OVERFLOW_PX (icons can poke out top and bottom)
+  const totalRange = PIPE_HEIGHT + OVERFLOW_PX * 2
+  const y = -OVERFLOW_PX + Math.random() * (totalRange - iconSize)
+
   return {
     id: nextId++,
     src: sources[Math.floor(Math.random() * sources.length)],
-    size,
+    size: iconSize,
     speed: baseSpeed,
-    y: randomBetween(5, 85),
-    x: spawnAtLeft ? randomBetween(-size * 2, -size) : randomBetween(-size, containerWidth + size),
+    y,
+    x: 0, // always spawn at left edge (caller sets actual x)
     layer,
   }
 }
@@ -70,6 +77,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
   const lastTimestampRef = useRef(0)
   const scrollVelocityRef = useRef(0)
   const lastScrollYRef = useRef(0)
+  const spawnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [_renderKey, setRenderKey] = useState(0)
   const triggerRender = useCallback(() => setRenderKey((k) => k + 1), [])
 
@@ -90,19 +98,40 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     }
   }, [])
 
-  // Initialize icons spread across the container
+  // Staggered initialization: start with a few, add more over time
   useEffect(() => {
     if (iconSources.length === 0) return
     const container = containerRef.current
     if (!container) return
-    const width = container.offsetWidth
 
+    // Start with initial batch spread across the left half
+    const width = container.offsetWidth
     const icons: StreamIcon[] = []
-    for (let i = 0; i < VISIBLE_COUNT; i++) {
-      icons.push(createStreamIcon(iconSources, width, false))
+    for (let i = 0; i < INITIAL_BATCH; i++) {
+      const icon = createStreamIcon(iconSources)
+      icon.x = randomBetween(-icon.size, width * 0.4)
+      icons.push(icon)
     }
     iconsRef.current = icons
     triggerRender()
+
+    // Gradually add more icons from the left
+    let spawned = INITIAL_BATCH
+    spawnTimerRef.current = setInterval(() => {
+      if (spawned >= MAX_ICONS) {
+        if (spawnTimerRef.current) clearInterval(spawnTimerRef.current)
+        return
+      }
+      const icon = createStreamIcon(iconSources)
+      icon.x = randomBetween(-icon.size * 2, -icon.size)
+      iconsRef.current.push(icon)
+      spawned++
+      triggerRender()
+    }, SPAWN_INTERVAL_MS)
+
+    return () => {
+      if (spawnTimerRef.current) clearInterval(spawnTimerRef.current)
+    }
   }, [iconSources, triggerRender])
 
   // Animation loop
@@ -149,11 +178,12 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
         const icon = iconsRef.current[i]
         icon.x += icon.speed * deltaSeconds * scrollMultiplier
 
-        // Icon exited right side — remove and spawn new one on left
+        // Icon exited right side — replace with new one entering from left
         if (icon.x > containerWidth + icon.size) {
           elementsRef.current.delete(icon.id)
 
-          const newIcon = createStreamIcon(iconSources, containerWidth, true)
+          const newIcon = createStreamIcon(iconSources)
+          newIcon.x = randomBetween(-newIcon.size * 2, -newIcon.size)
           iconsRef.current[i] = newIcon
           needsReactSync = true
           continue
@@ -165,7 +195,6 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
         element.style.transform = `translate3d(${icon.x}px, 0, 0)`
       }
 
-      // Batch React sync for new icons
       if (needsReactSync) {
         needsReactSync = false
         triggerRender()
@@ -185,14 +214,17 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     }
   }, [iconSources, triggerRender])
 
-  // Sync React render with current icon state
   const currentIcons = iconsRef.current
 
   return (
     <div
       ref={containerRef}
-      className={`relative w-full overflow-hidden pointer-events-none ${className ?? ''}`}
-      style={{ height: 120 }}
+      className={`relative w-full pointer-events-none ${className ?? ''}`}
+      style={{
+        height: PIPE_HEIGHT,
+        // Clip left/right but allow top/bottom overflow for the conveyor effect
+        clipPath: `inset(${-OVERFLOW_PX}px 0px ${-OVERFLOW_PX}px 0px)`,
+      }}
       aria-hidden="true"
     >
       {currentIcons.map((icon) => (
@@ -204,11 +236,10 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
           draggable={false}
           className="absolute rounded-full"
           style={{
-            top: `${icon.y}%`,
+            top: icon.y,
             left: 0,
             width: icon.size,
             height: icon.size,
-            opacity: 1,
             transform: `translate3d(${icon.x}px, 0, 0)`,
             willChange: prefersReducedMotion.current ? 'auto' : 'transform',
             zIndex: LAYER_CONFIG[icon.layer].zIndex,
