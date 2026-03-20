@@ -34,7 +34,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 
       <button
         type="button"
-        className="flex w-full items-center justify-between rounded-xl border border-border-dark bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
+        className="flex w-full items-center justify-between rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
         onClick={() => setIsOpen(true)}
       >
         {selectedNetwork ? (
@@ -50,10 +50,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
               }}
             />
             {getNetworkName(selectedNetwork.chainId)}{' '}
-            <span className="text-white/40">(Chain ID: {selectedNetwork.chainId})</span>
+            <span className="text-gray-400 dark:text-white/40">(Chain ID: {selectedNetwork.chainId})</span>
           </span>
         ) : (
-          <span className="text-white/40">Choose a network...</span>
+          <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
         )}
         <i
           className={`fas fa-chevron-down flex-shrink-0 text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
@@ -119,9 +119,9 @@ function TestnetToggle({
           onChange={(e) => setShowTestnets(e.target.checked)}
         />
         <div className="h-6 w-11 rounded-full bg-surface-3 transition-colors peer-checked:bg-accent-500/20" />
-        <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white/60 transition-all peer-checked:translate-x-5 peer-checked:bg-accent-500" />
+        <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-gray-400 dark:bg-white/60 transition-all peer-checked:translate-x-5 peer-checked:bg-accent-500" />
       </div>
-      <span className="text-sm font-medium text-white/50 transition-colors group-hover:text-accent-500">
+      <span className="text-sm font-medium text-gray-500 dark:text-white/50 transition-colors group-hover:text-accent-500">
         Show&nbsp;Testnets
       </span>
     </label>
@@ -167,9 +167,9 @@ function NetworkDialog({
           leaveFrom="translate-x-0"
           leaveTo="-translate-x-full"
         >
-          <DialogPanel className="fixed inset-y-0 left-0 w-[480px] overflow-y-auto border-r border-border-dark bg-surface-base shadow-elevated">
-            <div className="sticky top-0 z-10 border-b border-border-dark bg-surface-base/90 px-4 py-3 backdrop-blur-sm">
-              <h2 className="font-heading text-lg font-semibold text-white">
+          <DialogPanel className="fixed inset-y-0 left-0 w-[480px] overflow-y-auto border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base shadow-elevated">
+            <div className="sticky top-0 z-10 border-b border-border-light dark:border-border-dark bg-white/90 dark:bg-surface-base/90 px-4 py-3 backdrop-blur-sm">
+              <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">
                 Select Network
               </h2>
             </div>
@@ -196,9 +196,9 @@ function NetworkDialog({
                         ;(e.target as HTMLImageElement).style.display = 'none'
                       }}
                     />
-                    <span className="text-white/90">{getNetworkName(network.chainId)}</span>
+                    <span className="text-gray-900 dark:text-white/90">{getNetworkName(network.chainId)}</span>
                   </span>
-                  <span className="flex-shrink-0 whitespace-nowrap text-sm text-white/30">
+                  <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-400 dark:text-white/30">
                     Chain {network.chainId}
                   </span>
                 </button>
