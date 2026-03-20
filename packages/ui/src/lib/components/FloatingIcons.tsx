@@ -94,9 +94,13 @@ export default function FloatingIcons({ className }: { className?: string }) {
   return (
     <div className={`overflow-hidden space-y-2 ${className ?? ''}`} aria-hidden="true">
       {[0, 1, 2].map((rowIdx) => {
-        const icons = Array.from({ length: ICONS_PER_ROW }, (_, i) =>
-          sources[(rowIdx * ICONS_PER_ROW + i) % sources.length]
-        )
+        // Each row gets its own shuffle
+        const pool = [...sources]
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[pool[i], pool[j]] = [pool[j], pool[i]]
+        }
+        const icons = Array.from({ length: ICONS_PER_ROW }, (_, i) => pool[i % pool.length])
         const doubled = [...icons, ...icons]
         return (
           <div key={rowIdx} className="overflow-hidden">
