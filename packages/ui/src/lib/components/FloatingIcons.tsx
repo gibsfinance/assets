@@ -1,58 +1,59 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useRef } from 'react'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
 const ICONS_PER_ROW = 40
 const SIZES = [32, 40, 48]
 const DURATIONS = [35, 45, 30]
+const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
+
+// Inject keyframes once into document head
+let keyframesInjected = false
+function ensureKeyframes() {
+  if (keyframesInjected) return
+  keyframesInjected = true
+  const style = document.createElement('style')
+  style.textContent = '@keyframes conveyor{from{transform:translateX(0)}to{transform:translateX(-50%)}}'
+  document.head.appendChild(style)
+}
 
 export default function FloatingIcons({ className }: { className?: string }) {
   const { metrics } = useMetricsContext()
+  const row0 = useRef<HTMLDivElement>(null)
+  const row1 = useRef<HTMLDivElement>(null)
+  const row2 = useRef<HTMLDivElement>(null)
+  const rowRefs = [row0, row1, row2]
 
   const sources = useMemo(() => {
     if (!metrics) return []
     return metrics.networks.supported.slice(0, 30).map((net) => getApiUrl(`/image/${net.chainId}`))
   }, [metrics])
 
-  if (sources.length === 0) return null
+  // Inject keyframes and apply animation via JS to bypass Tailwind CSS layer overrides
+  useEffect(() => {
+    ensureKeyframes()
+    for (let i = 0; i < rowRefs.length; i++) {
+      const el = rowRefs[i].current
+      if (!el) continue
+      el.style.setProperty('animation', `conveyor ${DURATIONS[i]}s linear infinite ${DIRECTIONS[i]}`, 'important')
+    }
+  })
 
-  const rows = [
-    { size: SIZES[0], duration: DURATIONS[0], direction: 'right' as const },
-    { size: SIZES[1], duration: DURATIONS[1], direction: 'left' as const },
-    { size: SIZES[2], duration: DURATIONS[2], direction: 'right' as const },
-  ]
+  if (sources.length === 0) return null
 
   return (
     <div className={`overflow-hidden space-y-2 ${className ?? ''}`} aria-hidden="true">
-      <style>{`
-        @keyframes conveyor-right {
-          from { transform: translateX(0); }
-          to { transform: translateX(-50%); }
-        }
-        @keyframes conveyor-left {
-          from { transform: translateX(-50%); }
-          to { transform: translateX(0); }
-        }
-        .conveyor-right { animation: conveyor-right var(--dur) linear infinite !important; }
-        .conveyor-left { animation: conveyor-left var(--dur) linear infinite !important; }
-        @media (prefers-reduced-motion: reduce) {
-          .conveyor-right, .conveyor-left { animation: none !important; }
-        }
-      `}</style>
-      {rows.map((row, rowIdx) => {
+      {[0, 1, 2].map((rowIdx) => {
         const icons = Array.from({ length: ICONS_PER_ROW }, (_, i) =>
           sources[(rowIdx * ICONS_PER_ROW + i) % sources.length]
         )
         const doubled = [...icons, ...icons]
-
         return (
           <div key={rowIdx} className="overflow-hidden">
             <div
-              className={`conveyor-${row.direction} flex gap-4 items-center`}
-              style={{
-                width: 'max-content',
-                '--dur': `${row.duration}s`,
-              } as React.CSSProperties}
+              ref={rowRefs[rowIdx]}
+              className="flex gap-4 items-center"
+              style={{ width: 'max-content' }}
             >
               {doubled.map((src, i) => (
                 <img
@@ -62,7 +63,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
                   draggable={false}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                   className="rounded-full shrink-0"
-                  style={{ width: row.size, height: row.size }}
+                  style={{ width: SIZES[rowIdx], height: SIZES[rowIdx] }}
                 />
               ))}
             </div>
