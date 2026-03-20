@@ -41,25 +41,28 @@ export default function FloatingIcons({ className }: { className?: string }) {
         if (!res.ok) return
         const lists = await res.json() as Array<{ providerKey: string; key: string }>
         // Pick first 2 lists
-        const toFetch = lists.slice(0, 3)
-        const urls: string[] = []
+        // Fetch from multiple lists across different chains for max diversity
+        const chainIds = ['1', '369', '56', '137', '42161']
+        const urls = new Set<string>()
 
-        for (const list of toFetch) {
-          try {
-            const listRes = await fetch(
-              getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=1`),
-              { signal: controller.signal },
-            )
-            if (!listRes.ok) continue
-            const tokens = await listRes.json() as Array<{ chainId: number; address: string }>
-            // Take up to 50 tokens from each list
-            for (const t of tokens.slice(0, 100)) {
-              urls.push(getApiUrl(`/image/${t.chainId}/${t.address}`))
-            }
-          } catch { /* skip failed list */ }
+        for (const list of lists.slice(0, 5)) {
+          for (const chainId of chainIds) {
+            if (urls.size >= 500) break
+            try {
+              const listRes = await fetch(
+                getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`),
+                { signal: controller.signal },
+              )
+              if (!listRes.ok) continue
+              const tokens = await listRes.json() as Array<{ chainId: number; address: string }>
+              for (const t of tokens.slice(0, 50)) {
+                urls.add(getApiUrl(`/image/${t.chainId}/${t.address}`))
+              }
+            } catch { /* skip */ }
+          }
         }
 
-        if (urls.length > 0) setTokenSources(urls)
+        if (urls.size > 0) setTokenSources([...urls])
       } catch { /* aborted or failed */ }
     }
 
