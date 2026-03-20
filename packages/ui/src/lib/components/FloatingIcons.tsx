@@ -3,8 +3,8 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { getApiUrl } from '../utils'
 
 const MAX_ICONS = 40
-const INITIAL_BATCH = 5
-const SPAWN_INTERVAL_MS = 300
+const INITIAL_BATCH = 15
+const SPAWN_INTERVAL_MS = 200
 const SCROLL_SPEED_FACTOR = 0.015
 const PIPE_HEIGHT = 120
 const OVERFLOW_PX = 20
@@ -109,7 +109,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
     const icons: StreamIcon[] = []
     for (let i = 0; i < INITIAL_BATCH; i++) {
       const icon = createStreamIcon(iconSources)
-      icon.x = randomBetween(-icon.size, width * 0.4)
+      icon.x = randomBetween(0, width * 0.8)
       icons.push(icon)
     }
     iconsRef.current = icons
@@ -236,7 +236,7 @@ export default function FloatingIcons({ className }: FloatingIconsProps) {
           draggable={false}
           className="absolute rounded-full"
           style={{
-            top: icon.y,
+            top: `${icon.y}px`,
             left: 0,
             width: icon.size,
             height: icon.size,
