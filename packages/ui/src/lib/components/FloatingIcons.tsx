@@ -510,17 +510,14 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const row2 = useRef<HTMLDivElement>(null)
   const rowRefs = [row0, row1, row2]
 
-  const allSources = useMemo(() => shuffle(ICON_PATHS.map((p) => getApiUrl(p))), [])
+  const allUrls = useMemo(() => ICON_PATHS.map((p) => getApiUrl(p)), [])
 
-  const rowIcons = useMemo(() => {
-    const total = allSources.length
-    const perRow = Math.floor(total / 3)
-    return [0, 1, 2].map((rowIdx) => {
-      const offset = rowIdx * perRow
-      const half = shuffle(allSources.slice(offset, offset + perRow))
+  const rowIcons = useMemo(() =>
+    [0, 1, 2].map(() => {
+      const half = shuffle(allUrls)
       return [...half, ...half]
-    })
-  }, [allSources])
+    }),
+  [allUrls])
 
   useEffect(() => {
     ensureKeyframes()
