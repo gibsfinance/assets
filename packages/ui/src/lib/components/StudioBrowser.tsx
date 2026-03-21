@@ -411,38 +411,34 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                           {token.address.slice(0, 6)}...{token.address.slice(-4)}
                         </span>
                       </div>
-                      <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-xs text-gray-400 dark:text-white/40">
                           {token.symbol}
                         </span>
                         <button
                           type="button"
-                          className="truncate text-[10px] text-accent-500/70 hover:text-accent-500 hover:underline"
+                          className="flex items-center gap-1 truncate text-[10px] text-accent-500/70 hover:text-accent-500"
                           onClick={(e) => {
                             e.stopPropagation()
-                            openEditor(token.sourceList)
+                            if ((token.listReferences?.length ?? 0) > 1) {
+                              toggleExpand(iconKey)
+                            } else {
+                              openEditor(token.sourceList)
+                            }
                           }}
                         >
-                          {token.sourceList}
+                          <span className="truncate hover:underline">{token.sourceList}</span>
+                          {(token.listReferences?.length ?? 0) > 1 && (
+                            <>
+                              <span className="flex-shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
+                                +{token.listReferences!.length - 1}
+                              </span>
+                              <i className={`fas fa-chevron-${expandedTokens.has(iconKey) ? 'up' : 'down'} flex-shrink-0 text-[7px] text-gray-400 dark:text-white/30`} />
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
-
-                    {/* Expand chevron (only if multiple lists) */}
-                    {(token.listReferences?.length ?? 0) > 1 && (
-                      <button
-                        type="button"
-                        className="flex h-6 items-center gap-0.5 rounded px-1 text-[10px] text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-white/30 dark:hover:bg-surface-2 dark:hover:text-white/60"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleExpand(iconKey)
-                        }}
-                        title={`${token.listReferences!.length} lists`}
-                      >
-                        <i className={`fas fa-chevron-${expandedTokens.has(iconKey) ? 'up' : 'down'} text-[8px]`} />
-                        <span>{token.listReferences!.length}</span>
-                      </button>
-                    )}
 
                     {/* Info button */}
                     <button
