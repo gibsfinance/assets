@@ -57,8 +57,8 @@ export default function TokenListFilter({
       </PopoverButton>
 
       <PopoverPanel
-        anchor="bottom end"
-        className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-surface-3 dark:bg-surface-1"
+        anchor="bottom"
+        className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-surface-3 dark:bg-surface-1"
       >
         <div className="flex flex-col gap-2 p-3">
           {/* Header */}

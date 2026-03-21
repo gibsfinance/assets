@@ -9,7 +9,7 @@ import type { NetworkInfo } from '../types'
 
 interface NetworkSelectProps {
   selectedChainId: string | null
-  onSelect: (chainId: string) => void
+  onSelect: (chainId: string | null) => void
 }
 
 export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) {
@@ -49,9 +49,32 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
         ) : (
           <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
         )}
-        <i
-          className={`fas fa-chevron-down flex-shrink-0 text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
+        <span className="flex flex-shrink-0 items-center gap-1">
+          {selectedNetwork && (
+            <span
+              role="button"
+              tabIndex={0}
+              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSelect(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onSelect(null)
+                }
+              }}
+              title="Clear selection"
+            >
+              <i className="fas fa-times text-[10px]" />
+            </span>
+          )}
+          <i
+            className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </span>
       </button>
 
       <NetworkDialog
