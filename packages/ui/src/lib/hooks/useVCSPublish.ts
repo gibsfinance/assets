@@ -65,7 +65,7 @@ function getToken(provider: string): string | null {
 
 /** GitHub publisher — uses server proxy for OAuth token exchange */
 export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {
-  const GITHUB_CLIENT_ID = 'Ov23liXXXXXXXXXXXXXX' // TODO: replace with real client ID
+  const GITHUB_CLIENT_ID = (typeof process !== 'undefined' && process.env?.VITE_GITHUB_CLIENT_ID) || ''
 
   return {
     name: 'GitHub',
