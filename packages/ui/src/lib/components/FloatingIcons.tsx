@@ -5,7 +5,7 @@ import Image from './Image'
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const GAP = 12 // gap-3 = 12px
-const ROW_SPEEDS = [18, 24, 22] // pixels per second per row — top row slowest
+const ROW_SPEEDS = [18, 22, 26] // pixels per second per row — top slowest, bottom fastest
 
 let keyframesInjected = false
 function ensureKeyframes() {
