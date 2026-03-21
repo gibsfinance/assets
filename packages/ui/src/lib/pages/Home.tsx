@@ -8,6 +8,7 @@ import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
+import Image from '../components/Image'
 
 const features = [
   {
@@ -370,21 +371,16 @@ export default function Home() {
                     >
                       <div className="glass-card relative flex h-[160px] flex-col items-center justify-between p-3 transition-all duration-200 hover:border-accent-500/40 hover:shadow-glow-green-subtle">
                         <div className="flex flex-1 flex-col items-center">
-                          <div className="relative h-10 w-10 flex-shrink-0">
-                            <div className="absolute inset-0 rounded-full bg-gray-200 dark:bg-surface-2" />
-                            <img
-                              src={getApiUrl(`/image/${network.chainId}`)}
-                              alt={network.name}
-                              className="relative h-10 w-10 rounded-full"
-                              width={40}
-                              height={40}
-                              onLoad={(e) => {
-                                const skeleton = e.currentTarget.previousElementSibling as HTMLElement | null
-                                if (skeleton) skeleton.style.display = 'none'
-                              }}
-                              onError={() => handleImageError(network.chainId)}
-                            />
-                          </div>
+                          <Image
+                            src={getApiUrl(`/image/${network.chainId}`)}
+                            alt={network.name}
+                            size={40}
+                            skeleton
+                            lazy
+                            shape="circle"
+                            className="rounded-full"
+                            onError={() => handleImageError(network.chainId)}
+                          />
                           <div className="mt-2 flex w-full flex-1 flex-col justify-center text-center">
                             <div
                               className="line-clamp-2 px-1 text-sm font-medium leading-tight text-gray-900 dark:text-white"

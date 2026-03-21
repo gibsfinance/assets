@@ -1,5 +1,6 @@
-import { useEffect, useRef, useMemo, useState } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import { getApiUrl } from '../utils'
+import Image from './Image'
 
 const SIZES = [28, 32, 36]
 const DURATIONS = [35, 45, 30]
@@ -472,42 +473,16 @@ const ICON_PATHS: string[] = [
 ]
 
 function ConveyorIcon({ src, size }: { src: string; size: number }) {
-  const ref = useRef<HTMLAnchorElement>(null)
-  const [loaded, setLoaded] = useState(false)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '200px' },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
   return (
-    <a ref={ref} href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 pointer-events-auto relative" style={{ width: size, height: size }}>
-      <div className="absolute inset-0 rounded-full bg-gray-100 dark:bg-surface-2" style={loaded ? { display: 'none' } : undefined} />
-      {visible && (
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          decoding="async"
-          onLoad={() => setLoaded(true)}
-          onError={(e) => { e.currentTarget.style.display = 'none' }}
-          className="rounded-full relative"
-          style={{ width: size, height: size, opacity: loaded ? 1 : 0 }}
-        />
-      )}
-    </a>
+    <Image
+      src={src}
+      size={size}
+      href={src}
+      skeleton
+      lazy
+      shape="circle"
+      className="rounded-full pointer-events-auto"
+    />
   )
 }
 
