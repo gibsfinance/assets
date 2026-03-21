@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { toTokenListJson } from './useVCSPublish'
+import {
+  toTokenListJson,
+  createGitHubPublisher,
+  createGitLabPublisher,
+  createGiteaPublisher,
+} from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
 
 describe('toTokenListJson', () => {
@@ -75,5 +80,63 @@ describe('toTokenListJson', () => {
     const parsed = JSON.parse(json)
     expect(parsed.tokens[0]).not.toHaveProperty('order')
     expect(parsed.tokens[0]).not.toHaveProperty('imageUri')
+  })
+})
+
+describe('createGitHubPublisher', () => {
+  it('creates a publisher with correct name and icon', () => {
+    const publisher = createGitHubPublisher('https://gib.show')
+    expect(publisher.name).toBe('GitHub')
+    expect(publisher.icon).toBe('fab fa-github')
+  })
+
+  it('starts unauthorized', () => {
+    const publisher = createGitHubPublisher('https://gib.show')
+    expect(publisher.isAuthorized()).toBe(false)
+  })
+})
+
+describe('createGitLabPublisher', () => {
+  it('creates a publisher with correct name for gitlab.com', () => {
+    const publisher = createGitLabPublisher({
+      clientId: 'test-id',
+      serverBaseUrl: 'https://gib.show',
+    })
+    expect(publisher.name).toBe('GitLab')
+    expect(publisher.icon).toBe('fab fa-gitlab')
+  })
+
+  it('includes hostname for self-hosted instances', () => {
+    const publisher = createGitLabPublisher({
+      serverUrl: 'https://git.mycompany.com',
+      clientId: 'test-id',
+      serverBaseUrl: 'https://gib.show',
+    })
+    expect(publisher.name).toBe('GitLab (git.mycompany.com)')
+  })
+
+  it('starts unauthorized', () => {
+    const publisher = createGitLabPublisher({
+      clientId: 'test-id',
+      serverBaseUrl: 'https://gib.show',
+    })
+    expect(publisher.isAuthorized()).toBe(false)
+  })
+})
+
+describe('createGiteaPublisher', () => {
+  it('creates a publisher with hostname in name', () => {
+    const publisher = createGiteaPublisher({
+      serverUrl: 'https://gitea.example.com',
+    })
+    expect(publisher.name).toBe('Gitea (gitea.example.com)')
+    expect(publisher.icon).toBe('fas fa-code-branch')
+  })
+
+  it('starts unauthorized', () => {
+    const publisher = createGiteaPublisher({
+      serverUrl: 'https://gitea.example.com',
+    })
+    expect(publisher.isAuthorized()).toBe(false)
   })
 })
