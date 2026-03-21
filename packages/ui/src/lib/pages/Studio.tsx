@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import ListEditor from '../components/ListEditor'
 import StudioBrowser from '../components/StudioBrowser'
 import StudioConfigurator from '../components/StudioConfigurator'
@@ -13,8 +13,16 @@ import type { Token } from '../types'
 export default function Studio() {
   const { activeTab, setActiveTab } = useStudio()
   const { showTestnets, setShowTestnets } = useSettings()
-  const { isOpen: editorOpen } = useListEditor()
+  const { isOpen: editorOpen, openNewEditor } = useListEditor()
   const [inspectToken, setInspectToken] = useState<Token | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('editor') === 'new') {
+      openNewEditor()
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, openNewEditor, setSearchParams])
 
   return (
     <div className="h-screen">
@@ -41,7 +49,18 @@ export default function Studio() {
                 <Link to="/" className="font-heading text-xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
                   Gib.Show
                 </Link>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={openNewEditor}
+                    className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500 hover:text-accent-500 hover:bg-accent-500/10"
+                    title="New List"
+                  >
+                    <i className="fas fa-plus text-sm" />
+                    <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      New List
+                    </span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowTestnets(!showTestnets)}

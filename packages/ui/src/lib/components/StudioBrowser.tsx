@@ -32,8 +32,12 @@ const POPULAR_CHAIN_COUNT = 8
 
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
-  const { metrics } = useMetricsContext()
-  const { openEditor } = useListEditor()
+  const { metrics, fetchMetrics } = useMetricsContext()
+  const { openEditor, openNewEditor } = useListEditor()
+
+  useEffect(() => {
+    if (!metrics) fetchMetrics()
+  }, [metrics, fetchMetrics])
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
