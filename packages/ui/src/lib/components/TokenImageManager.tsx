@@ -106,7 +106,7 @@ export default function TokenImageManager({
           onClick={() => fileInputRef.current?.click()}
           className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 transition-colors hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:text-white/60 dark:hover:border-accent-500/40"
         >
-          <i className="fas fa-upload text-gray-400" />
+          <i className="fas fa-upload text-gray-400 dark:text-white/40" />
           Upload image
         </button>
         <input
