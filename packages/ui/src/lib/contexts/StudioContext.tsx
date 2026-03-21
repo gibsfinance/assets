@@ -9,7 +9,7 @@ interface StudioState {
   codeFormat: CodeFormat
   codeMode: CodeMode
   resolutionOrder: string[] | null
-  activeTab: 'browse' | 'configure'
+  activeTab: 'browse' | 'configure' | 'editor'
 }
 
 interface StudioContextValue extends StudioState {
@@ -20,7 +20,7 @@ interface StudioContextValue extends StudioState {
   setCodeFormat: (format: CodeFormat) => void
   setCodeMode: (mode: CodeMode) => void
   setResolutionOrder: (order: string[] | null) => void
-  setActiveTab: (tab: 'browse' | 'configure') => void
+  setActiveTab: (tab: 'browse' | 'configure' | 'editor') => void
   reset: () => void
 }
 
@@ -100,7 +100,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, resolutionOrder }))
   }, [])
 
-  const setActiveTab = useCallback((activeTab: 'browse' | 'configure') => {
+  const setActiveTab = useCallback((activeTab: 'browse' | 'configure' | 'editor') => {
     setState((s) => ({ ...s, activeTab }))
   }, [])
 
