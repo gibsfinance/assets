@@ -3,21 +3,20 @@
   "version": "1.0.0",
   "type": "module",
   "description": "React components for Gib.Show token images",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsc",
     "test": "vitest run"
   },
-  "keywords": [
-    "react",
-    "tokens",
-    "images",
-    "web3",
-    "erc20"
-  ],
+  "keywords": ["react", "tokens", "images", "web3", "erc20"],
   "author": "gibs",
   "license": "ISC",
   "dependencies": {
