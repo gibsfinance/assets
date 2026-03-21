@@ -110,7 +110,7 @@ export interface BadgeConfig {
   ringThickness: number
 }
 
-export type CodeFormat = 'react' | 'html' | 'img'
+export type CodeFormat = 'sdk' | 'react' | 'html' | 'img'
 export type CodeMode = 'snippet' | 'component'
 
 export interface ImageMetadata {

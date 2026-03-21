@@ -53,6 +53,20 @@ function buildNetworkUrl(chainId: string, apiBase: string): string {
 // Code generators
 // ---------------------------------------------------------------------------
 
+function generateSdkSnippet(
+  chainId: string,
+  address: string,
+  appearance: StudioAppearance,
+): string {
+  const { width } = appearance
+  const lines = [
+    `import { TokenImage } from '@gibs/react'`,
+    ``,
+    `<TokenImage chainId={${chainId}} address="${address}" size={${width}} />`,
+  ]
+  return lines.join('\n')
+}
+
 function generateReactSnippet(
   tokenName: string,
   imageUrl: string,
@@ -286,6 +300,7 @@ interface FormatTabsProps {
 
 function FormatTabs({ value, onChange }: FormatTabsProps) {
   const tabs: { label: string; value: CodeFormat }[] = [
+    { label: 'SDK', value: 'sdk' },
     { label: 'React', value: 'react' },
     { label: 'HTML', value: 'html' },
     { label: '<img>', value: 'img' },
@@ -427,6 +442,13 @@ export default function CodeOutput() {
 
   const generatedCode = useMemo(() => {
     switch (codeFormat) {
+      case 'sdk':
+        return generateSdkSnippet(
+          selectedChainId ?? '1',
+          selectedToken?.address ?? '0x0000000000000000000000000000000000000000',
+          appearance,
+        )
+
       case 'react':
         return codeMode === 'component'
           ? generateReactComponent(tokenName, imageUrl, networkUrl, appearance, badge)
@@ -438,7 +460,7 @@ export default function CodeOutput() {
       case 'img':
         return generateImgTag(tokenName, imageUrl, appearance)
     }
-  }, [codeFormat, codeMode, tokenName, imageUrl, networkUrl, appearance, badge])
+  }, [codeFormat, codeMode, tokenName, imageUrl, networkUrl, appearance, badge, selectedChainId, selectedToken])
 
   // `component` mode only applies to React — disable the mode switch for other formats
   const isModeDisabled = codeFormat !== 'react'

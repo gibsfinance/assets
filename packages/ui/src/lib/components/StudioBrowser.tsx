@@ -213,7 +213,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
-    (chainId: string) => {
+    (chainId: string | null) => {
       selectChain(chainId)
       setSearchState(null)
     },

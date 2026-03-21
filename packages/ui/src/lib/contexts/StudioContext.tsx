@@ -14,7 +14,7 @@ interface StudioState {
 
 interface StudioContextValue extends StudioState {
   selectToken: (token: Token) => void
-  selectChain: (chainId: string) => void
+  selectChain: (chainId: string | null) => void
   updateAppearance: (updates: Partial<StudioAppearance>) => void
   updateBadge: (updates: Partial<BadgeConfig>) => void
   setCodeFormat: (format: CodeFormat) => void
@@ -52,7 +52,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     selectedChainId: null,
     appearance: { ...DEFAULT_APPEARANCE },
     badge: { ...DEFAULT_BADGE },
-    codeFormat: 'react',
+    codeFormat: 'sdk',
     codeMode: 'snippet',
     resolutionOrder: null,
     activeTab: 'browse',
@@ -76,7 +76,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const selectChain = useCallback((chainId: string) => {
+  const selectChain = useCallback((chainId: string | null) => {
     setState((s) => ({ ...s, selectedChainId: chainId }))
   }, [])
 
@@ -110,7 +110,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       ...s,
       appearance: { ...DEFAULT_APPEARANCE },
       badge: { ...DEFAULT_BADGE },
-      codeFormat: 'react' as CodeFormat,
+      codeFormat: 'sdk' as CodeFormat,
       codeMode: 'snippet' as CodeMode,
       resolutionOrder: null,
     }))

@@ -69,7 +69,7 @@ body {
 
 /* Elevated card */
 .elevated-card {
-  @apply rounded-2xl border;
+  @apply rounded-lg border;
 }
 .elevated-card:where(.dark *) {
   @apply bg-surface-1 border-border-dark shadow-elevated;
