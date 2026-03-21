@@ -7,6 +7,7 @@ import * as paths from '../paths'
 import * as types from '../types'
 import { config } from './config'
 import * as fileType from 'file-type'
+import { sanitizeImage } from '../sanitize'
 import * as utils from '../utils'
 import { Tx, imageMode, tableNames } from './tables'
 import type {
@@ -212,10 +213,12 @@ export const insertImage = async (
     })
     return null
   }
+  // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
+  const sanitized = await sanitizeImage(image, ext)
   const shouldSave = args.checkShouldSave(providerKey)
   const insertable = {
     uri: originalUri,
-    content: shouldSave ? image : Buffer.from([]),
+    content: shouldSave ? sanitized : Buffer.from([]),
     imageHash,
     ext,
     mode: shouldSave ? imageMode.SAVE : imageMode.LINK,
