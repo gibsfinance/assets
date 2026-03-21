@@ -3,6 +3,7 @@ import { router as imageRouter } from './image'
 import { router as listRouter } from './list'
 import { router as networksRouter } from './networks'
 import { router as statsRouter } from './stats'
+import { router as githubRouter } from './github'
 
 export const router = Router() as Router
 
@@ -20,3 +21,6 @@ router.use('/networks', networksRouter)
 
 // gib.show/stats
 router.use('/stats', statsRouter)
+
+// GitHub OAuth token exchange proxy
+router.use('/api/github', githubRouter)
