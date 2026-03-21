@@ -5,7 +5,7 @@ import Image from './Image'
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const GAP = 12 // gap-3 = 12px
-const TARGET_SPEED = 32 // pixels per second — gentle drift
+const ROW_SPEEDS = [18, 24, 22] // pixels per second per row — top row slowest
 
 let keyframesInjected = false
 function ensureKeyframes() {
@@ -511,7 +511,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
         if (!el) continue
         // Duration scales with content width so speed stays constant
         const halfWidth = el.scrollWidth / 2
-        const duration = Math.round(halfWidth / TARGET_SPEED)
+        const duration = Math.round(halfWidth / ROW_SPEEDS[i])
         el.style.setProperty('animation', `conveyor ${duration}s linear infinite ${DIRECTIONS[i]}`, 'important')
       }
     })
