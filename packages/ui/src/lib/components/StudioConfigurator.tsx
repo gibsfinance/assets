@@ -331,6 +331,34 @@ function BackgroundPopover() {
             {appearance.backgroundColor}
           </span>
         )}
+
+        {appearance.backgroundColor !== 'transparent' && appearance.padding === 0 && (
+          <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+            <i className="fas fa-lightbulb mt-0.5 flex-shrink-0 text-[9px]" />
+            <span>
+              Background won't be visible without padding.{' '}
+              <button
+                type="button"
+                className="font-medium underline"
+                onClick={() => updateAppearance({ padding: 8 })}
+              >
+                Add padding
+              </button>
+              {appearance.shape === 'square' && (
+                <>
+                  {' or '}
+                  <button
+                    type="button"
+                    className="font-medium underline"
+                    onClick={() => updateAppearance({ shape: 'rounded', borderRadius: 12 })}
+                  >
+                    round corners
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
       </PopoverPanel>
     </Popover>
   )
