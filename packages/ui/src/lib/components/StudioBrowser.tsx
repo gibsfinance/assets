@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
+import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
@@ -32,6 +33,7 @@ const POPULAR_CHAIN_COUNT = 8
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
   const { metrics } = useMetricsContext()
+  const { openEditor } = useListEditor()
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
@@ -424,9 +426,16 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                         <span className="text-xs text-gray-400 dark:text-white/40">
                           {token.symbol}
                         </span>
-                        <span className="truncate text-[10px] text-accent-500/70">
+                        <button
+                          type="button"
+                          className="truncate text-[10px] text-accent-500/70 hover:text-accent-500 hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEditor(token.sourceList)
+                          }}
+                        >
                           {token.sourceList}
-                        </span>
+                        </button>
                       </div>
                     </div>
 
@@ -462,7 +471,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
                   {/* Expanded sub-rows */}
                   {expandedTokens.has(iconKey) && token.listReferences && (
-                    <TokenSubRows references={token.listReferences} />
+                    <TokenSubRows references={token.listReferences} onNavigateToList={openEditor} />
                   )}
                 </div>
               )
