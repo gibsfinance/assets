@@ -337,6 +337,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                         alt={token.symbol}
                         className="rounded-full object-contain"
                         size={28}
+                        skeleton
+                        lazy
+                        shape="circle"
                         onError={() => handleIconError(token)}
                       />
                     ) : (

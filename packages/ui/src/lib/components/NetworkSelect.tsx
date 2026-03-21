@@ -4,6 +4,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useMetricsContext } from '../contexts/MetricsContext'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
+import Image from './Image'
 import type { NetworkInfo } from '../types'
 
 interface NetworkSelectProps {
@@ -35,15 +36,12 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
       >
         {selectedNetwork ? (
           <span className="flex items-center gap-2 truncate">
-            <img
+            <Image
               src={getApiUrl(`/image/${selectedNetwork.chainId}`)}
-              alt=""
-              width={20}
-              height={20}
+              size={20}
+              skeleton
+              shape="circle"
               className="inline-block rounded-full"
-              onError={(e) => {
-                ;(e.target as HTMLImageElement).style.display = 'none'
-              }}
             />
             {getNetworkName(selectedNetwork.chainId)}{' '}
             <span className="text-gray-400 dark:text-white/40">(Chain ID: {selectedNetwork.chainId})</span>
@@ -157,15 +155,13 @@ function NetworkDialog({
                   onClick={() => onPick(network)}
                 >
                   <span className="mr-2 flex items-center gap-3 truncate">
-                    <img
+                    <Image
                       src={getApiUrl(`/image/${network.chainId}`)}
-                      alt=""
-                      width={24}
-                      height={24}
+                      size={24}
+                      skeleton
+                      lazy
+                      shape="circle"
                       className="inline-block rounded-full"
-                      onError={(e) => {
-                        ;(e.target as HTMLImageElement).style.display = 'none'
-                      }}
                     />
                     <span className="text-gray-900 dark:text-white/90">{getNetworkName(network.chainId)}</span>
                   </span>
