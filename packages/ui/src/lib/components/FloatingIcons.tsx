@@ -4,7 +4,7 @@ import { getApiUrl } from '../utils'
 const SIZES = [28, 32, 36]
 const DURATIONS = [35, 45, 30]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
-const ICONS_PER_ROW = 40
+const GAP = 12 // gap-3 = 12px
 
 let keyframesInjected = false
 function ensureKeyframes() {
@@ -512,16 +512,15 @@ export default function FloatingIcons({ className }: { className?: string }) {
 
   const allSources = useMemo(() => shuffle(ICON_PATHS.map((p) => getApiUrl(p))), [])
 
-  const rowIcons = useMemo(() =>
-    [0, 1, 2].map((rowIdx) => {
-      const perRow = ICONS_PER_ROW * 2
-      const icons: string[] = []
-      for (let i = 0; i < perRow; i++) {
-        icons.push(allSources[(rowIdx * perRow + i) % allSources.length])
-      }
-      return icons
-    }),
-  [allSources])
+  const rowIcons = useMemo(() => {
+    const total = allSources.length
+    const perRow = Math.floor(total / 3)
+    return [0, 1, 2].map((rowIdx) => {
+      const offset = rowIdx * perRow
+      const half = shuffle(allSources.slice(offset, offset + perRow))
+      return [...half, ...half]
+    })
+  }, [allSources])
 
   useEffect(() => {
     ensureKeyframes()
