@@ -84,7 +84,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
     return (
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
-          <img src={getApiUrl('/image/1')} alt="Ethereum" className="h-12 w-12 rounded-full" />
+          <Image src={getApiUrl('/image/1')} alt="Ethereum" size={48} skeleton lazy shape="circle" className="rounded-full" />
           <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
         </div>
         <CodeBlock code={displayUrl} />
