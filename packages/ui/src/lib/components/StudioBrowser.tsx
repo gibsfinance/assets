@@ -8,7 +8,7 @@ import NetworkSelect from './NetworkSelect'
 import TokenSearch from './TokenSearch'
 import PaginationControls from './PaginationControls'
 import Image from './Image'
-import type { Token, SearchUpdate } from '../types'
+import type { Token, TokenListReference, SearchUpdate } from '../types'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
@@ -63,26 +63,42 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
     const tokenMap = new Map<string, Token>()
 
-    // Non-bridge tokens first
-    for (const [listKey, tokens] of tokensByList.entries()) {
-      if (!enabledLists.has(listKey) || listKey.includes('bridge')) continue
-      for (const token of tokens) {
-        if (token.chainId.toString() !== selectedChainId) continue
-        if (!token.hasIcon) continue
-        const key = `${token.chainId}-${token.address.toLowerCase()}`
-        if (!tokenMap.has(key)) tokenMap.set(key, token)
+    const addToken = (token: Token) => {
+      if (token.chainId.toString() !== selectedChainId) return
+      if (!token.hasIcon) return
+      const key = `${token.chainId}-${token.address.toLowerCase()}`
+      const ref: TokenListReference = {
+        sourceList: token.sourceList,
+        imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
+        imageFormat: '',
+      }
+      const existing = tokenMap.get(key)
+      if (existing) {
+        if (!existing.listReferences) {
+          existing.listReferences = [{
+            sourceList: existing.sourceList,
+            imageUri: getApiUrl(`/image/${existing.chainId}/${existing.address}`),
+            imageFormat: '',
+          }]
+        }
+        if (!existing.listReferences.some(r => r.sourceList === ref.sourceList)) {
+          existing.listReferences.push(ref)
+        }
+      } else {
+        tokenMap.set(key, { ...token, listReferences: [ref] })
       }
     }
 
-    // Bridge tokens only if not already present
+    // Non-bridge tokens first
+    for (const [listKey, tokens] of tokensByList.entries()) {
+      if (!enabledLists.has(listKey) || listKey.includes('bridge')) continue
+      for (const token of tokens) addToken(token)
+    }
+
+    // Bridge tokens (accumulate references even if token already present)
     for (const [listKey, tokens] of tokensByList.entries()) {
       if (!enabledLists.has(listKey) || !listKey.includes('bridge')) continue
-      for (const token of tokens) {
-        if (token.chainId.toString() !== selectedChainId) continue
-        if (!token.hasIcon) continue
-        const key = `${token.chainId}-${token.address.toLowerCase()}`
-        if (!tokenMap.has(key)) tokenMap.set(key, token)
-      }
+      for (const token of tokens) addToken(token)
     }
 
     return Array.from(tokenMap.values())
