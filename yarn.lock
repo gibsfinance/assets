@@ -6344,6 +6344,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"idb-keyval@npm:^6.2.2":
+  version: 6.2.2
+  resolution: "idb-keyval@npm:6.2.2"
+  checksum: 10c0/b52f0d2937cc2ec9f1da536b0b5c0875af3043ca210714beaffead4ec1f44f2ad322220305fd024596203855224d9e3523aed83e971dfb62ddc21b5b1721aeef
+  languageName: node
+  linkType: hard
+
 "ieee754@npm:^1.2.1":
   version: 1.2.1
   resolution: "ieee754@npm:1.2.1"
@@ -9942,6 +9949,7 @@ __metadata:
     "@vitejs/plugin-react": "npm:^4"
     eslint: "npm:^9.25.1"
     globals: "npm:^16.0.0"
+    idb-keyval: "npm:^6.2.2"
     lodash: "npm:^4.17.21"
     postcss: "npm:^8.4.49"
     prettier: "npm:^3.1.1"
