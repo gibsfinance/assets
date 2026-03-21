@@ -277,14 +277,14 @@ export default function Home() {
                 >
                   <div className="grid gap-6 lg:grid-cols-2">
                     {/* Visual Preview */}
-                    <div className="flex items-center justify-center rounded-xl bg-surface-light-2 p-4 dark:bg-surface-2">
+                    <div className="flex items-center justify-center rounded-lg bg-surface-light-2 p-4 dark:bg-surface-2">
                       <ExamplePreview type={example.type} displayUrl={example.displayUrl} />
                     </div>
 
                     {/* Description */}
                     <div className="space-y-4">
                       <div className="flex items-center gap-4">
-                        <div className="rounded-xl bg-accent-500/10 p-3">
+                        <div className="rounded-lg bg-accent-500/10 p-3">
                           <i className={`fas ${example.icon} text-2xl text-accent-500`}></i>
                         </div>
                         <h3 className="font-heading text-lg font-bold text-gray-900 dark:text-white">
@@ -408,7 +408,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="glass-card p-6">
-                <div className="h-[400px] animate-pulse rounded-xl bg-surface-light-2 dark:bg-surface-2"></div>
+                <div className="h-[400px] animate-pulse rounded-lg bg-surface-light-2 dark:bg-surface-2"></div>
               </div>
             )}
           </section>

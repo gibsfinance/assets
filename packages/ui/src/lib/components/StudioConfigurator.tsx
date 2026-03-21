@@ -358,7 +358,7 @@ function BadgePopover() {
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-80 rounded-xl border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
+        className="z-50 mt-2 w-80 rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
       >
         <div className="mb-3 flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
@@ -405,7 +405,7 @@ function ResolutionOrderPopover() {
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-72 rounded-xl border border-border-light bg-white shadow-lg dark:border-border-dark dark:bg-surface-1"
+        className="z-50 mt-2 w-72 rounded-lg border border-border-light bg-white shadow-lg dark:border-border-dark dark:bg-surface-1"
       >
         <ListResolutionOrder />
       </PopoverPanel>
@@ -429,7 +429,7 @@ function CodePopover() {
       </PopoverButton>
       <PopoverPanel
         anchor="bottom end"
-        className="z-50 mt-2 w-[28rem] rounded-xl border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
+        className="z-50 mt-2 w-[28rem] rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
       >
         <CodeOutput />
       </PopoverPanel>

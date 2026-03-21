@@ -134,7 +134,7 @@ export default function BadgeConfigurator() {
     <div className={`flex flex-col gap-4 transition-opacity ${isDisabled ? 'pointer-events-none opacity-40' : ''}`}>
 
         {/* Position */}
-        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
+        <div className="rounded-lg border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
             Position
           </p>
@@ -142,7 +142,7 @@ export default function BadgeConfigurator() {
         </div>
 
         {/* Size + Overlap */}
-        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
+        <div className="rounded-lg border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
             Scale
           </p>
@@ -181,7 +181,7 @@ export default function BadgeConfigurator() {
         </div>
 
         {/* Ring controls */}
-        <div className="rounded-xl border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
+        <div className="rounded-lg border border-border-light bg-white p-4 dark:border-border-dark dark:bg-surface-1">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
               Ring

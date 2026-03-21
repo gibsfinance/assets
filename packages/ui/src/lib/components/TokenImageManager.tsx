@@ -58,7 +58,7 @@ export default function TokenImageManager({
     : previewUri.match(/\.(svg|png|webp|jpg|jpeg|gif)(\?|$)/i)?.[1] || 'auto'
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-lg dark:border-surface-3 dark:bg-surface-1">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-surface-3 dark:bg-surface-1">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-900 dark:text-white">Token Image</h4>

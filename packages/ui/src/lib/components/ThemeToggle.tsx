@@ -41,7 +41,7 @@ export function ThemeToggle() {
 
   return (
     <button
-      className="flex items-center justify-center w-9 h-9 rounded-xl bg-surface-light-2 dark:bg-surface-2 border border-border-light dark:border-border-dark hover:bg-surface-light-3 dark:hover:bg-surface-3 transition-all duration-150 text-gray-700 dark:text-gray-300"
+      className="flex items-center justify-center w-9 h-9 rounded-lg bg-surface-light-2 dark:bg-surface-2 border border-border-light dark:border-border-dark hover:bg-surface-light-3 dark:hover:bg-surface-3 transition-all duration-150 text-gray-700 dark:text-gray-300"
       onClick={toggle}
       title={title}
     >
