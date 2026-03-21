@@ -42,9 +42,11 @@ export default function ListEditor() {
     createList,
     setActiveList,
     updateList,
+    deleteList,
     addToken,
     removeToken,
     reorderTokens,
+    lists,
   } = useListEditor()
 
   const [importUrl, setImportUrl] = useState('')
@@ -298,7 +300,7 @@ export default function ListEditor() {
             {/* Import URL */}
             <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-link text-xs text-gray-400" />
+                <i className="fas fa-link text-xs text-gray-400 dark:text-white/40" />
                 Import from URL
               </div>
               <div className="flex gap-2">
@@ -323,7 +325,7 @@ export default function ListEditor() {
             {/* Paste JSON */}
             <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-paste text-xs text-gray-400" />
+                <i className="fas fa-paste text-xs text-gray-400 dark:text-white/40" />
                 Paste JSON
               </div>
               <textarea
@@ -342,6 +344,43 @@ export default function ListEditor() {
                 Parse & Import
               </button>
             </div>
+
+            {/* My Lists */}
+            {lists.length > 0 && (
+              <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">My Lists</span>
+                  <span className="text-[10px] text-gray-400 dark:text-white/30">{lists.length} saved</span>
+                </div>
+                <div className="max-h-[200px] space-y-1 overflow-y-auto">
+                  {lists.map((list) => (
+                    <div
+                      key={list.id}
+                      className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-gray-50 cursor-pointer dark:hover:bg-surface-2"
+                      onClick={() => setActiveList(list)}
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-500 dark:bg-surface-2 dark:text-white/40">
+                        {list.tokens.length}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-gray-800 dark:text-white/80">{list.name}</div>
+                        <div className="text-[10px] text-gray-400 dark:text-white/30">
+                          {list.source.type} · {new Date(list.updatedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                        title="Delete list"
+                        onClick={(e) => { e.stopPropagation(); deleteList(list.id) }}
+                      >
+                        <i className="fas fa-trash-alt text-[10px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
