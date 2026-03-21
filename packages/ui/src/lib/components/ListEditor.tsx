@@ -1,7 +1,23 @@
 import { useState, useCallback } from 'react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
 import Image from './Image'
+import ListTokenRow from './ListTokenRow'
+import { useRpcMetadata } from '../hooks/useRpcMetadata'
 import type { LocalToken } from '../hooks/useLocalLists'
 
 export default function ListEditor() {
@@ -12,12 +28,87 @@ export default function ListEditor() {
     createList,
     setActiveList,
     updateList,
+    addToken,
+    removeToken,
+    reorderTokens,
   } = useListEditor()
 
   const [importUrl, setImportUrl] = useState('')
   const [pasteJson, setPasteJson] = useState('')
   const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [addAddress, setAddAddress] = useState('')
+
+  const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id || !activeList) return
+      const oldIndex = activeList.tokens.findIndex((t) => `${t.chainId}-${t.address}` === active.id)
+      const newIndex = activeList.tokens.findIndex((t) => `${t.chainId}-${t.address}` === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+      const newTokens = [...activeList.tokens]
+      const [moved] = newTokens.splice(oldIndex, 1)
+      newTokens.splice(newIndex, 0, moved)
+      const updated = await reorderTokens(activeList.id, newTokens)
+      if (updated) setActiveList(updated)
+    },
+    [activeList, reorderTokens, setActiveList],
+  )
+
+  const handleAddToken = useCallback(async () => {
+    if (!addAddress.trim() || !activeList) return
+    const address = addAddress.trim().toLowerCase()
+    if (activeList.tokens.some((t) => t.address.toLowerCase() === address)) {
+      setError('Token already in list')
+      return
+    }
+    const chainId = activeList.tokens[0]?.chainId || 1
+    const updated = await addToken(activeList.id, {
+      chainId,
+      address,
+      name: '',
+      symbol: '',
+      decimals: 18,
+    })
+    if (updated) {
+      setActiveList(updated)
+      setAddAddress('')
+    }
+  }, [addAddress, activeList, addToken, setActiveList])
+
+  const handleRemoveToken = useCallback(
+    async (address: string) => {
+      if (!activeList) return
+      const updated = await removeToken(activeList.id, address)
+      if (updated) setActiveList(updated)
+    },
+    [activeList, removeToken, setActiveList],
+  )
+
+  const handleLoadMetadata = useCallback(async () => {
+    if (!activeList || activeList.tokens.length === 0) return
+    const chainId = activeList.tokens[0]?.chainId || 1
+    const results = await loadMetadata(activeList.tokens, chainId)
+    const updatedTokens = activeList.tokens.map((token) => {
+      const meta = results.find((r) => r.address.toLowerCase() === token.address.toLowerCase())
+      if (!meta) return token
+      return {
+        ...token,
+        name: meta.name || token.name,
+        symbol: meta.symbol || token.symbol,
+        decimals: meta.decimals ?? token.decimals,
+      }
+    })
+    const updated = await reorderTokens(activeList.id, updatedTokens)
+    if (updated) setActiveList(updated)
+  }, [activeList, loadMetadata, reorderTokens, setActiveList])
 
   const handleCreateNew = useCallback(async () => {
     const list = await createList({
@@ -36,15 +127,17 @@ export default function ListEditor() {
       const res = await fetch(getApiUrl(`/list/${provider}/${key}`))
       if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)
       const data = await res.json()
-      const tokens: LocalToken[] = (data.tokens || []).map((t: Record<string, unknown>, i: number) => ({
-        chainId: Number(t.chainId),
-        address: String(t.address),
-        name: String(t.name || ''),
-        symbol: String(t.symbol || ''),
-        decimals: Number(t.decimals || 18),
-        imageUri: t.logoURI ? String(t.logoURI) : undefined,
-        order: i,
-      }))
+      const tokens: LocalToken[] = (data.tokens || []).map(
+        (t: Record<string, unknown>, i: number) => ({
+          chainId: Number(t.chainId),
+          address: String(t.address),
+          name: String(t.name || ''),
+          symbol: String(t.symbol || ''),
+          decimals: Number(t.decimals || 18),
+          imageUri: t.logoURI ? String(t.logoURI) : undefined,
+          order: i,
+        }),
+      )
       const list = await createList({
         name: data.name || editingSourceKey,
         description: data.description || '',
@@ -71,16 +164,19 @@ export default function ListEditor() {
       const res = await fetch(importUrl.trim())
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
       const data = await res.json()
-      if (!data.tokens || !Array.isArray(data.tokens)) throw new Error('Invalid token list format')
-      const tokens: LocalToken[] = data.tokens.map((t: Record<string, unknown>, i: number) => ({
-        chainId: Number(t.chainId),
-        address: String(t.address),
-        name: String(t.name || ''),
-        symbol: String(t.symbol || ''),
-        decimals: Number(t.decimals || 18),
-        imageUri: t.logoURI ? String(t.logoURI) : undefined,
-        order: i,
-      }))
+      if (!data.tokens || !Array.isArray(data.tokens))
+        throw new Error('Invalid token list format')
+      const tokens: LocalToken[] = data.tokens.map(
+        (t: Record<string, unknown>, i: number) => ({
+          chainId: Number(t.chainId),
+          address: String(t.address),
+          name: String(t.name || ''),
+          symbol: String(t.symbol || ''),
+          decimals: Number(t.decimals || 18),
+          imageUri: t.logoURI ? String(t.logoURI) : undefined,
+          order: i,
+        }),
+      )
       const list = await createList({
         name: data.name || 'Imported List',
         description: data.description || '',
@@ -101,15 +197,17 @@ export default function ListEditor() {
     setError(null)
     try {
       const data = JSON.parse(pasteJson.trim())
-      const tokens: LocalToken[] = (data.tokens || [data]).flat().map((t: Record<string, unknown>, i: number) => ({
-        chainId: Number(t.chainId || 1),
-        address: String(t.address),
-        name: String(t.name || ''),
-        symbol: String(t.symbol || ''),
-        decimals: Number(t.decimals || 18),
-        imageUri: t.logoURI ? String(t.logoURI) : undefined,
-        order: i,
-      }))
+      const tokens: LocalToken[] = (data.tokens || [data])
+        .flat()
+        .map((t: Record<string, unknown>, i: number) => ({
+          chainId: Number(t.chainId || 1),
+          address: String(t.address),
+          name: String(t.name || ''),
+          symbol: String(t.symbol || ''),
+          decimals: Number(t.decimals || 18),
+          imageUri: t.logoURI ? String(t.logoURI) : undefined,
+          order: i,
+        }))
       const list = await createList({
         name: data.name || 'Pasted List',
         source: { type: 'paste' },
@@ -122,11 +220,14 @@ export default function ListEditor() {
     }
   }, [pasteJson, createList, setActiveList])
 
-  const handleNameChange = useCallback(async (name: string) => {
-    if (!activeList) return
-    const updated = await updateList(activeList.id, { name })
-    if (updated) setActiveList(updated)
-  }, [activeList, updateList, setActiveList])
+  const handleNameChange = useCallback(
+    async (name: string) => {
+      if (!activeList) return
+      const updated = await updateList(activeList.id, { name })
+      if (updated) setActiveList(updated)
+    },
+    [activeList, updateList, setActiveList],
+  )
 
   // ─── Creation Menu (no active list) ───────────────────────────
   if (!activeList) {
@@ -248,7 +349,7 @@ export default function ListEditor() {
     <div className="flex h-full flex-col bg-white dark:bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
           <input
             type="text"
             value={activeList.name}
@@ -280,36 +381,73 @@ export default function ListEditor() {
         )}
       </div>
 
-      {/* Token list (simple view — drag-and-drop in Phase 3) */}
+      {/* Toolbar: add token + load RPC */}
+      <div className="flex items-center gap-2 border-b border-border-light px-4 py-2 dark:border-border-dark">
+        <div className="flex flex-1 gap-2">
+          <input
+            type="text"
+            placeholder="0x... token address"
+            value={addAddress}
+            onChange={(e) => setAddAddress(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddToken()}
+            className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-xs text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+          />
+          <button
+            type="button"
+            onClick={handleAddToken}
+            disabled={!addAddress.trim()}
+            className="btn-primary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={handleLoadMetadata}
+          disabled={isLoadingMetadata || activeList.tokens.length === 0}
+          className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+          title="Load name, symbol, decimals from chain RPC"
+        >
+          {isLoadingMetadata
+            ? `${metadataProgress.done}/${metadataProgress.total}`
+            : 'Load RPC'}
+        </button>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="border-b border-border-light px-4 py-2 dark:border-border-dark">
+          <div className="rounded-lg bg-red-50 p-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            {error}
+          </div>
+        </div>
+      )}
+
+      {/* Sortable token list */}
       <div className="flex-1 overflow-y-auto">
         {activeList.tokens.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
-            No tokens yet. Add some to get started.
+            No tokens yet. Add an address above.
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-surface-3">
-            {activeList.tokens.map((token) => (
-              <div key={`${token.chainId}-${token.address}`} className="flex items-center gap-3 px-4 py-2">
-                <Image
-                  src={token.imageUri || getApiUrl(`/image/${token.chainId}/${token.address}`)}
-                  size={24}
-                  skeleton
-                  lazy
-                  shape="circle"
-                  className="rounded-full"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={activeList.tokens.map((t) => `${t.chainId}-${t.address}`)}
+              strategy={verticalListSortingStrategy}
+            >
+              {activeList.tokens.map((token) => (
+                <ListTokenRow
+                  key={`${token.chainId}-${token.address}`}
+                  token={token}
+                  onRemove={handleRemoveToken}
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between">
-                    <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">{token.name}</span>
-                    <span className="flex-shrink-0 font-mono text-[10px] text-gray-400 dark:text-white/30">
-                      {token.address.slice(0, 6)}...{token.address.slice(-4)}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400 dark:text-white/40">{token.symbol}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
