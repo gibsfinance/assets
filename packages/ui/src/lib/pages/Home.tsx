@@ -171,11 +171,22 @@ export default function Home() {
     return () => observer.disconnect()
   }, [])
 
+  const [failedChains, setFailedChains] = useState<Set<number>>(() => new Set())
+  const handleImageError = useCallback((chainId: number) => {
+    setFailedChains((prev) => {
+      if (prev.has(chainId)) return prev
+      const next = new Set(prev)
+      next.add(chainId)
+      return next
+    })
+  }, [])
+
   const MAX_ROWS = 3
+  const loadableNetworks = filteredNetworks.filter((n) => !failedChains.has(n.chainId))
   const maxVisible = gridCols * MAX_ROWS
-  const evenCount = Math.floor(Math.min(filteredNetworks.length, maxVisible) / gridCols) * gridCols
-  const visibleNetworks = filteredNetworks.slice(0, evenCount)
-  const hiddenCount = filteredNetworks.length - evenCount
+  const evenCount = Math.floor(Math.min(loadableNetworks.length, maxVisible) / gridCols) * gridCols
+  const visibleNetworks = loadableNetworks.slice(0, evenCount)
+  const hiddenCount = loadableNetworks.length - evenCount
 
   const mainnetNetworkCount = useMemo(() => {
     if (!metricsData) return 0
@@ -371,9 +382,7 @@ export default function Home() {
                                 const skeleton = e.currentTarget.previousElementSibling as HTMLElement | null
                                 if (skeleton) skeleton.style.display = 'none'
                               }}
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none'
-                              }}
+                              onError={() => handleImageError(network.chainId)}
                             />
                           </div>
                           <div className="mt-2 flex w-full flex-1 flex-col justify-center text-center">
