@@ -662,25 +662,40 @@ function InfiniteCanvas() {
               }}
             />
 
-            {badge.enabled && badgePosition && (
-              <Image
-                src={networkUrl}
-                alt={networkName}
-                skeleton
-                shape="circle"
-                width={Math.round(badgePosition.badgeSize)}
-                height={Math.round(badgePosition.badgeSize)}
-                style={{
-                  position: 'absolute',
-                  top: Math.round(badgePosition.top),
-                  left: Math.round(badgePosition.left),
-                  borderRadius: '50%',
-                  ...(badge.ringEnabled
-                    ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
-                    : {}),
-                }}
-              />
-            )}
+            {badge.enabled && badgePosition && (() => {
+              const badgeShape = badge.badgeShape ?? 'circle'
+              const badgePadding = badge.badgePadding ?? 0
+              const badgeBackground = badge.badgeBackground ?? 'transparent'
+              const badgeBorderRadius = badgeShape === 'circle' ? '50%' : '0'
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: Math.round(badgePosition.top),
+                    left: Math.round(badgePosition.left),
+                    borderRadius: badgeBorderRadius,
+                    padding: badgePadding > 0 ? badgePadding : undefined,
+                    backgroundColor: badgeBackground !== 'transparent' ? badgeBackground : undefined,
+                    ...(badge.ringEnabled
+                      ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
+                      : {}),
+                  }}
+                >
+                  <Image
+                    src={networkUrl}
+                    alt={networkName}
+                    skeleton
+                    shape={badgeShape === 'circle' ? 'circle' : 'rect'}
+                    width={Math.round(badgePosition.badgeSize)}
+                    height={Math.round(badgePosition.badgeSize)}
+                    style={{
+                      borderRadius: badgeBorderRadius,
+                      display: 'block',
+                    }}
+                  />
+                </div>
+              )
+            })()}
           </div>
         )}
         </div>
