@@ -419,10 +419,16 @@ export default function Home() {
             <p className="text-lg text-gray-600 dark:text-gray-300">
               Open the Studio to browse tokens, configure URLs, and explore the API.
             </p>
-            <button type="button" onClick={() => navigate('/studio')} className="btn-primary inline-flex items-center gap-2">
-              <i className="fas fa-flask"></i>
-              Open Studio
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button type="button" onClick={() => navigate('/studio')} className="btn-primary inline-flex items-center gap-2">
+                <i className="fas fa-flask"></i>
+                Open Studio
+              </button>
+              <button type="button" onClick={() => navigate('/studio?editor=new')} className="btn-secondary inline-flex items-center gap-2">
+                <i className="fas fa-list-ul"></i>
+                Create a List
+              </button>
+            </div>
           </section>
         </div>
       </div>
