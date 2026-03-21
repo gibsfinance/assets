@@ -1,0 +1,68 @@
+name: Publish SDK
+
+on:
+  push:
+    tags:
+      - 'sdk-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - name: Typecheck SDK
+        run: npx tsc --noEmit -p packages/sdk/tsconfig.json
+      - name: Typecheck React
+        run: npx tsc --noEmit -p packages/react/tsconfig.json
+      - name: Test SDK
+        run: cd packages/sdk && npx vitest run
+      - name: Test UI (includes SDK integration tests)
+        run: cd packages/ui && npx vitest run
+
+  publish-sdk:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+          registry-url: 'https://registry.npmjs.org'
+      - run: yarn install --immutable
+      - name: Build SDK
+        run: cd packages/sdk && yarn build
+      - name: Publish @gibs/sdk
+        run: cd packages/sdk && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-react:
+    needs: publish-sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+          registry-url: 'https://registry.npmjs.org'
+      - run: yarn install --immutable
+      - name: Build React package
+        run: cd packages/react && yarn build
+      - name: Publish @gibs/react
+        run: cd packages/react && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
