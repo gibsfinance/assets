@@ -1052,6 +1052,13 @@ export const getListOrderId = async (orderParam: string) => {
   return listOrderId
 }
 
+/**
+ * Apply dense-rank ordering to select the top image per token.
+ * SVGs are always preferred over raster images regardless of provider ranking.
+ *
+ * PRECONDITION: The query `q` must already join the `image` table
+ * (all callers in image/handlers.ts do this via getListTokens).
+ */
 export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
   const qSub = q
     .leftJoin(tableNames.listOrderItem, function () {
@@ -1061,9 +1068,13 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
     })
     .denseRank('rank', function denseRankByConfiged() {
       return this.orderBy(
-        t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string,
+        t.raw(`CASE WHEN ${tableNames.image}.ext = '.svg' THEN 0 ELSE 1 END`) as unknown as string,
         'asc',
       )
+        .orderBy(
+          t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string,
+          'asc',
+        )
         .orderBy(`${tableNames.list}.major`, 'desc')
         .orderBy(`${tableNames.list}.minor`, 'desc')
         .orderBy(`${tableNames.list}.patch`, 'desc')

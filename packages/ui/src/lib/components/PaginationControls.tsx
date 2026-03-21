@@ -21,10 +21,19 @@ export default function PaginationControls({
   const canGoLower = currentPage > 1
   const canGoHigher = currentPage < totalPages
 
+  const buttonClass =
+    'flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ' +
+    'border-border-light bg-surface-light-2 text-gray-500 ' +
+    'dark:border-border-dark dark:bg-surface-2 dark:text-white/60 ' +
+    'hover:border-accent-500/30 hover:text-accent-500 ' +
+    'disabled:cursor-not-allowed disabled:opacity-30 ' +
+    'disabled:hover:border-border-light disabled:hover:text-gray-500 ' +
+    'dark:disabled:hover:border-border-dark dark:disabled:hover:text-white/60'
+
   return (
     <div className="flex items-center gap-2">
       <button
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-dark bg-surface-2 text-white/60 transition-colors hover:border-accent-500/30 hover:text-accent-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border-dark disabled:hover:text-white/60"
+        className={buttonClass}
         aria-label="Previous page"
         onClick={() => canGoLower && onPageChange(currentPage - 1)}
         disabled={!canGoLower}
@@ -32,12 +41,12 @@ export default function PaginationControls({
         <i className="fas fa-chevron-left text-xs" />
       </button>
 
-      <span className="min-w-[5rem] text-center text-sm text-white/50">
+      <span className="min-w-[5rem] text-center text-sm text-gray-400 dark:text-white/50">
         {totalPages > 0 ? `${currentPage} / ${totalPages}` : '0 / 0'}
       </span>
 
       <button
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-dark bg-surface-2 text-white/60 transition-colors hover:border-accent-500/30 hover:text-accent-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border-dark disabled:hover:text-white/60"
+        className={buttonClass}
         aria-label="Next page"
         onClick={() => canGoHigher && onPageChange(currentPage + 1)}
         disabled={!canGoHigher}
