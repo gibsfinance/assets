@@ -313,17 +313,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         />
       )}
 
-      {/* Pagination header */}
-      {selectedChainId && (
-        <div className="flex items-center justify-end">
-          <PaginationControls
-            currentPage={currentPage}
-            totalItems={filteredTokens.length}
-            tokensPerPage={TOKENS_PER_PAGE}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
 
       {/* Token list */}
       <div className="flex-1 overflow-y-auto">
