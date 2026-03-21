@@ -6,11 +6,18 @@ export interface TokenInfo {
   decimals: number
 }
 
+export interface TokenListReference {
+  sourceList: string
+  imageUri: string
+  imageFormat: string
+}
+
 export interface Token extends TokenInfo {
   hasIcon: boolean
   sourceList: string
   isBridgeToken?: boolean
   chainName?: string
+  listReferences?: TokenListReference[]
 }
 
 export type ApiType = 'token' | 'network' | 'list'
