@@ -3,9 +3,9 @@ import { getApiUrl } from '../utils'
 import Image from './Image'
 
 const SIZES = [28, 32, 36]
-const DURATIONS = [35, 45, 30]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const GAP = 12 // gap-3 = 12px
+const TARGET_SPEED = 45 // pixels per second — gentle drift
 
 let keyframesInjected = false
 function ensureKeyframes() {
@@ -509,7 +509,10 @@ export default function FloatingIcons({ className }: { className?: string }) {
       for (let i = 0; i < rowRefs.length; i++) {
         const el = rowRefs[i].current
         if (!el) continue
-        el.style.setProperty('animation', `conveyor ${DURATIONS[i]}s linear infinite ${DIRECTIONS[i]}`, 'important')
+        // Duration scales with content width so speed stays constant
+        const halfWidth = el.scrollWidth / 2
+        const duration = Math.round(halfWidth / TARGET_SPEED)
+        el.style.setProperty('animation', `conveyor ${duration}s linear infinite ${DIRECTIONS[i]}`, 'important')
       }
     })
   }, [])
