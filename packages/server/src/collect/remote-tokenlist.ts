@@ -29,6 +29,8 @@ type Input = {
   isDefault?: boolean
   /** a list of addresses to blacklist images to speed up load time */
   blacklist?: Set<string>
+  /** rewrite logoURI before fetching (e.g., thumb → large) */
+  rewriteLogoURI?: (uri: string) => string
 }
 
 /**
@@ -90,6 +92,7 @@ export const collect =
     isDefault = true,
     blacklist = new Set<string>(),
     row: ro,
+    rewriteLogoURI,
   }: Input) =>
   async (signal: AbortSignal) => {
     const id = `${providerKey}/${listKey}`
@@ -120,8 +123,8 @@ export const collect =
         if (blacked.has(token.address.toLowerCase())) {
           token.logoURI = ''
         }
-        if (token.logoURI?.includes('/thumb/')) {
-          token.logoURI = token.logoURI.replace('/thumb/', '/large/')
+        if (rewriteLogoURI && token.logoURI) {
+          token.logoURI = rewriteLogoURI(token.logoURI)
         }
       })
       const kv: KV = {}
