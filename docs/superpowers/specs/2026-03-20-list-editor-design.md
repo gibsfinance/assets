@@ -35,9 +35,21 @@ This spec covers three sub-features that ship together:
 
 ### Token Deduplication
 
-Tokens are deduplicated by address within a chain. When multiple lists reference the same token:
+Tokens are deduplicated by address within a chain. The deduplication happens **client-side** by accumulating tokens from multiple list fetches (StudioBrowser already fetches lists independently and merges them). The `Token` type gains a `listReferences` field:
 
-- **Default view**: Show one row with the highest-priority image (SVG preferred, then by provider ranking)
+```typescript
+interface TokenListReference {
+  sourceList: string           // e.g. 'piteas/exchange'
+  imageUri: string             // the image URL from this list
+  imageFormat: string          // 'svg', 'png', 'webp', etc. (from content-type header or ext)
+}
+```
+
+When merging tokens across lists, tokens with the same `address + chainId` are grouped. The primary display uses the first reference with an SVG image, falling back to the first reference by fetch order. All references are stored for the expand view.
+
+When multiple lists reference the same token:
+
+- **Default view**: Show one row with the best image (SVG preferred)
 - **Expand chevron** `[▼ 3]`: Shows count of lists, click toggles sub-rows:
 
 ```
@@ -51,11 +63,11 @@ Tokens are deduplicated by address within a chain. When multiple lists reference
 - `[↗]` — opens the image URL directly in new tab
 - `[→]` — navigates to that list in the list editor (slides panel left)
 - Each sub-row shows its own image thumbnail and format badge (svg/png/webp)
-- Sub-rows are sorted: SVGs first, then by provider priority
+- Sub-rows are sorted: SVGs first, then by fetch order
 
-### Pagination Dark Mode Fix
+### Pagination Dark Mode
 
-The pagination controls at the bottom of the token browser have black text in dark mode. Fix to use proper dark mode classes.
+Verify `PaginationControls.tsx` dark mode classes. The component already uses `dark:` variants — if the bug persists, it may be a parent container issue. Investigate and fix the actual cause.
 
 ## Sub-Feature 2: List Editor
 
@@ -65,17 +77,21 @@ Three panels always exist in the DOM, but only two are visible at a time. The vi
 
 ```
  off-screen left          ←── viewport ──→         (default)
-[List Editor 1000px]  [Browser 280px]  [Studio Canvas 1000px]
+[List Editor (flex)]  [Browser 380px]  [Studio Canvas (flex)]
 ```
 
-**Default**: Browser + Studio Canvas visible (current behavior).
+**Default**: Browser + Studio Canvas visible (current two-panel layout, unchanged).
 **Edit mode**: Browser + List Editor visible. Triggered by clicking a list name in the token browser or the `[→]` button in expanded sub-rows.
+
+The browser panel stays at **380px** (matching the current `lg:grid-cols-[380px_1fr]`). The editor and canvas panels each take the remaining viewport width (`flex: 1`).
 
 Implementation: A single flex container with `translateX` animation. The browser panel is always centered. Sliding left reveals the editor, sliding right returns to studio.
 
-### List Editor Panel
+#### Mobile
 
-The 1000px editor panel contains:
+On mobile (`< lg`), the list editor replaces the current tab content. A third tab "Editor" appears in the tab bar when a list is being edited. Closing the editor removes the tab. No horizontal sliding on mobile — tabs handle the navigation.
+
+### List Editor Panel
 
 #### Header
 - List name (editable)
@@ -84,7 +100,7 @@ The 1000px editor panel contains:
 - Close button (slides back to studio)
 
 #### Token Table
-- Drag-and-drop reorderable rows
+- Drag-and-drop reorderable rows using `@dnd-kit/core` + `@dnd-kit/sortable` (React 19 compatible, accessible)
 - Each row: image thumbnail, name, symbol, address, decimals, actions (remove, resize image)
 - Add token: by address (auto-fetches metadata via RPC) or search existing
 - Bulk import: paste addresses (one per line)
@@ -93,6 +109,8 @@ The 1000px editor panel contains:
 - Per-token image: click to upload replacement, resize via the server's `?w=N&h=N` endpoint
 - Preview at multiple sizes (32, 64, 128, 256)
 - Format indicator (SVG/PNG/WebP/JPG)
+- Images stored as remote URLs only (not data URIs) to avoid localStorage size limits
+- Uploaded images: convert to a data URI temporarily for preview, but publish as a file in the GitHub repo
 
 #### Metadata from RPC
 - Chain selector (viem built-in chains + custom RPC input)
@@ -102,16 +120,15 @@ The 1000px editor panel contains:
 
 ### Data Model (Client-Side)
 
-Lists are stored in localStorage as `gib-lists`:
+Lists are stored in IndexedDB via a thin wrapper (avoids localStorage's 5-10MB limit for lists with many tokens):
 
 ```typescript
 interface LocalList {
   id: string                    // uuid
   name: string
   description: string
-  chainId: number
+  tokens: LocalToken[]          // tokens carry their own chainId
   source: LocalListSource
-  tokens: LocalToken[]
   createdAt: string             // ISO timestamp
   updatedAt: string
 }
@@ -124,14 +141,17 @@ interface LocalListSource {
 }
 
 interface LocalToken {
+  chainId: number               // per-token chain (supports multi-chain lists)
   address: string
   name: string
   symbol: string
   decimals: number
-  imageUri?: string             // custom uploaded image data URI or remote URL
+  imageUri?: string             // remote URL (not data URI)
   order: number                 // for drag-and-drop ordering
 }
 ```
+
+**Multi-chain lists**: `chainId` lives on `LocalToken`, not `LocalList`. This supports importing Uniswap-format lists that span multiple chains. The editor's chain selector filters the token view but doesn't restrict the list to a single chain.
 
 ### List Creation Flows
 
@@ -142,17 +162,28 @@ interface LocalToken {
 
 ### Publishing to GitHub
 
-OAuth flow using GitHub's device flow (no server needed):
+Standard OAuth web flow with a thin server proxy (GitHub's token exchange endpoint does not support CORS):
 
 1. User clicks "Publish to GitHub"
-2. App initiates GitHub device authorization (client-side, using a public OAuth app client ID)
-3. User authorizes in browser
-4. App creates/updates repo with the list as a standard token list JSON
-5. Confirmation with repo link
+2. App redirects to GitHub authorization URL (standard web flow)
+3. GitHub redirects back with auth code to a callback URL
+4. Server proxy at `/api/github/token` exchanges code for access token
+5. Access token returned to client, stored in localStorage
+6. App creates/updates repo via GitHub API (client-side with token)
+7. Confirmation with repo link
 
 The token list JSON follows the [Uniswap Token List](https://tokenlists.org/) standard format for interoperability.
 
-GitHub token stored in localStorage, scoped to `public_repo`.
+**Server endpoint**: `POST /api/github/token` — accepts `{ code }`, exchanges with GitHub for access token, returns `{ access_token }`. This is the only server-side piece for publishing.
+
+### Editor-Browser Synchronization
+
+When the editor panel is visible alongside the browser:
+
+- **Adding a token**: The browser's token list does NOT update in real-time (the browser shows server data, not local edits). The browser panel is read-only context.
+- **Forking a list**: The browser shows the list as "forked" with a badge if it detects a local copy exists.
+- **Sliding back to Studio**: Local list state is preserved. Re-opening the editor restores it.
+- The editor and browser are independent views — the editor works with local data, the browser shows server data. No real-time sync needed.
 
 ## Sub-Feature 3: SVG Ranking Boost
 
@@ -174,7 +205,7 @@ ORDER BY
   list_token.listTokenOrderId ASC
 ```
 
-This means: among all images for a token, SVGs always win regardless of which provider they came from. Within SVGs (or within rasters), provider priority still applies.
+**Precondition**: All callers of `applyOrder` must join the `image` table before passing the query builder. This is currently true for all callers in `image/handlers.ts` (they join `image` via `getListTokens`). If new callers are added, they must also join `image` or the query will fail. Add a comment in `applyOrder` documenting this dependency.
 
 ### Impact
 
@@ -188,7 +219,13 @@ This means: among all images for a token, SVGs always win regardless of which pr
 - User accounts or authentication (except GitHub OAuth for publishing)
 - Real-time collaboration on lists
 - List marketplace or discovery
-- Image upload to the server (images reference URLs or are embedded as data URIs)
+- Server-side image upload (images reference URLs; uploaded images go to GitHub repo)
+
+## Dependencies
+
+- `@dnd-kit/core` + `@dnd-kit/sortable` — drag-and-drop (React 19 compatible)
+- `viem` — already in the server, add to UI for RPC metadata loading
+- `idb-keyval` — lightweight IndexedDB wrapper (or similar, ~1KB)
 
 ## Files Overview
 
@@ -196,20 +233,23 @@ This means: among all images for a token, SVGs always win regardless of which pr
 - `packages/ui/src/lib/components/ListEditor.tsx` — main editor panel
 - `packages/ui/src/lib/components/ListTokenRow.tsx` — editable token row with drag handle
 - `packages/ui/src/lib/components/TokenSubRows.tsx` — expanded multi-list reference rows
-- `packages/ui/src/lib/hooks/useLocalLists.ts` — localStorage CRUD for lists
+- `packages/ui/src/lib/hooks/useLocalLists.ts` — IndexedDB CRUD for lists
 - `packages/ui/src/lib/hooks/useRpcMetadata.ts` — viem multicall for token metadata
-- `packages/ui/src/lib/hooks/useGitHubPublish.ts` — GitHub device flow + repo push
+- `packages/ui/src/lib/hooks/useGitHubPublish.ts` — GitHub OAuth + repo push
+- `packages/server/src/server/github.ts` — thin proxy for GitHub token exchange
 
 ### Modified Files
 - `packages/ui/src/lib/components/StudioBrowser.tsx` — new token row layout, deduplication, expand/collapse
-- `packages/ui/src/lib/pages/Studio.tsx` — three-panel sliding layout
-- `packages/ui/src/lib/components/PaginationControls.tsx` — dark mode fix
+- `packages/ui/src/lib/pages/Studio.tsx` — three-panel sliding layout + mobile tab
+- `packages/ui/src/lib/types.ts` — add `TokenListReference`, extend `Token`
 - `packages/server/src/db/index.ts` — SVG ranking boost in `applyOrder`
+- `packages/server/src/server/routes.ts` — mount GitHub proxy route
 
 ## Testing
 
-- Unit: `useLocalLists` — CRUD operations, localStorage persistence
+- Unit: `useLocalLists` — CRUD operations, IndexedDB persistence
 - Unit: Token deduplication logic — address grouping, SVG preference, sorting
-- Unit: `parseResizeParams` already tested, verify SVG ranking in isolation
+- Unit: SVG ranking boost — verify `applyOrder` query orders SVGs first
 - Integration: Three-panel slide animation, panel state preservation
+- Integration: GitHub token exchange proxy
 - E2E: Create list → add tokens → load RPC metadata → publish to GitHub (mock)
