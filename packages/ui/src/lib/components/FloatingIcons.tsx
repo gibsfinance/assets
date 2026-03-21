@@ -5,7 +5,7 @@ import Image from './Image'
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const GAP = 12 // gap-3 = 12px
-const TARGET_SPEED = 45 // pixels per second — gentle drift
+const TARGET_SPEED = 32 // pixels per second — gentle drift
 
 let keyframesInjected = false
 function ensureKeyframes() {
