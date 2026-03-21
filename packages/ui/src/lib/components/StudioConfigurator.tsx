@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Menu,
   MenuButton,
@@ -444,26 +444,25 @@ function ResolutionOrderPopover() {
 }
 
 // ---------------------------------------------------------------------------
-// Toolbar: Code popover
+// Toolbar: Code toggle button
 // ---------------------------------------------------------------------------
 
-function CodePopover() {
+function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
-    <Popover className="relative">
-      <PopoverButton
-        className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3"
-        aria-label="Code output"
-      >
-        <i className="fas fa-code text-[10px]" />
-        <span className="hidden sm:inline">Code</span>
-      </PopoverButton>
-      <PopoverPanel
-        anchor="bottom end"
-        className="z-50 mt-2 w-[28rem] rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
-      >
-        <CodeOutput />
-      </PopoverPanel>
-    </Popover>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
+        active
+          ? 'border-accent-500/30 bg-accent-500/10 text-accent-500'
+          : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
+      }`}
+      aria-label={active ? 'Hide code output' : 'Show code output'}
+      aria-pressed={active}
+    >
+      <i className="fas fa-code text-[10px]" />
+      <span className="hidden sm:inline">Code</span>
+    </button>
   )
 }
 
@@ -471,7 +470,7 @@ function CodePopover() {
 // Toolbar bar (assembled)
 // ---------------------------------------------------------------------------
 
-function Toolbar() {
+function Toolbar({ showCode, onToggleCode }: { showCode: boolean; onToggleCode: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-surface-base">
       <SizeControl />
@@ -493,7 +492,7 @@ function Toolbar() {
 
       <BadgePopover />
       <ResolutionOrderPopover />
-      <CodePopover />
+      <CodeToggleButton active={showCode} onClick={onToggleCode} />
     </div>
   )
 }
@@ -722,20 +721,56 @@ function InfiniteCanvas() {
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Code panel (collapsible bottom panel)
 // ---------------------------------------------------------------------------
+
+function CodePanel({ open }: { open: boolean }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
+
+  // Measure content height for smooth transition
+  useEffect(() => {
+    if (!panelRef.current) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setHeight(entry.contentRect.height)
+      }
+    })
+    observer.observe(panelRef.current)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div
+      className={`flex-shrink-0 overflow-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border-light dark:border-border-dark' : ''}`}
+      style={{ maxHeight: open ? `${Math.min(height, 400)}px` : 0 }}
+    >
+      <div ref={panelRef} className="p-4 bg-white dark:bg-surface-base overflow-y-auto" style={{ maxHeight: 400 }}>
+        <CodeOutput />
+      </div>
+    </div>
+  )
+}
 
 /**
  * StudioConfigurator -- compact toolbar at top with dropdowns/popovers,
- * infinite draggable + zoomable canvas below showing the token preview.
+ * infinite draggable + zoomable canvas below showing the token preview,
+ * and a collapsible code output panel at the bottom.
  *
  * Reads/writes all state via `useStudio()` context.
  */
 export default function StudioConfigurator() {
+  const [showCode, setShowCode] = useState(false)
+
+  const handleToggleCode = useCallback(() => {
+    setShowCode((v) => !v)
+  }, [])
+
   return (
     <div className="flex h-full flex-col overflow-x-hidden">
-      <Toolbar />
+      <Toolbar showCode={showCode} onToggleCode={handleToggleCode} />
       <InfiniteCanvas />
+      <CodePanel open={showCode} />
     </div>
   )
 }

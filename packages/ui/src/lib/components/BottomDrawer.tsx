@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react'
 
-type DrawerState = 'collapsed' | 'half' | 'full'
+export type DrawerState = 'collapsed' | 'half' | 'full'
 
 interface BottomDrawerProps {
   children: ReactNode
@@ -10,18 +10,17 @@ interface BottomDrawerProps {
   enabled?: boolean
 }
 
-const COLLAPSED_HEIGHT = 48
-const HALF_HEIGHT_RATIO = 0.4
-const DRAG_THRESHOLD = 40
+export const COLLAPSED_HEIGHT = 48
+export const HALF_HEIGHT_RATIO = 0.4
 
 /** Cycle through drawer states on tap */
-function nextState(current: DrawerState): DrawerState {
+export function nextState(current: DrawerState): DrawerState {
   if (current === 'collapsed') return 'half'
   if (current === 'half') return 'full'
   return 'collapsed'
 }
 
-function getTranslateY(state: DrawerState, viewportHeight: number): number {
+export function getTranslateY(state: DrawerState, viewportHeight: number): number {
   if (state === 'collapsed') return viewportHeight - COLLAPSED_HEIGHT
   if (state === 'half') return viewportHeight * (1 - HALF_HEIGHT_RATIO)
   return 0
@@ -38,6 +37,8 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
   const touchStartY = useRef(0)
   const touchStartTime = useRef(0)
   const currentTranslateY = useRef(0)
+  /** Prevents onClick from firing after touchEnd (double-cycle on mobile) */
+  const wasTouched = useRef(false)
 
   // Track viewport height changes (e.g. orientation, keyboard)
   useEffect(() => {
@@ -55,12 +56,32 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     }
   }, [enabled])
 
+  // Lock body scroll when drawer is fully open
+  useEffect(() => {
+    if (drawerState === 'full') {
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = '' }
+    }
+  }, [drawerState])
+
+  // Escape key to collapse
+  useEffect(() => {
+    if (drawerState === 'collapsed') return
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDrawerState('collapsed')
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [drawerState])
+
   const baseTranslateY = getTranslateY(drawerState, viewportHeight)
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       const touch = e.touches[0]
       if (!touch) return
+      wasTouched.current = true
       touchStartY.current = touch.clientY
       touchStartTime.current = Date.now()
       currentTranslateY.current = baseTranslateY
@@ -76,7 +97,6 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
       const touch = e.touches[0]
       if (!touch) return
       const deltaY = touch.clientY - touchStartY.current
-      // Clamp so the drawer can't go above the viewport top
       const newOffset = Math.max(deltaY, -currentTranslateY.current)
       setDragOffset(newOffset)
     },
@@ -87,6 +107,9 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     if (!isDragging) return
     setIsDragging(false)
 
+    // Reset wasTouched after the click event has had a chance to fire
+    requestAnimationFrame(() => { wasTouched.current = false })
+
     const elapsed = Date.now() - touchStartTime.current
     const wasTap = Math.abs(dragOffset) < 8 && elapsed < 300
 
@@ -96,29 +119,16 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
       return
     }
 
-    // Determine target state based on final position + velocity
     const velocity = dragOffset / Math.max(elapsed, 1)
     const isFlickDown = velocity > 0.3
     const isFlickUp = velocity < -0.3
-
     const finalY = currentTranslateY.current + dragOffset
 
     if (isFlickUp) {
-      // Flick up: go to the next higher state
-      if (drawerState === 'collapsed') {
-        setDrawerState('half')
-      } else {
-        setDrawerState('full')
-      }
+      setDrawerState(drawerState === 'collapsed' ? 'half' : 'full')
     } else if (isFlickDown) {
-      // Flick down: go to the next lower state
-      if (drawerState === 'full') {
-        setDrawerState('half')
-      } else {
-        setDrawerState('collapsed')
-      }
+      setDrawerState(drawerState === 'full' ? 'half' : 'collapsed')
     } else {
-      // Snap to nearest state based on position
       const fullY = getTranslateY('full', viewportHeight)
       const halfY = getTranslateY('half', viewportHeight)
       const collapsedY = getTranslateY('collapsed', viewportHeight)
@@ -139,6 +149,12 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     setDragOffset(0)
   }, [isDragging, dragOffset, drawerState, viewportHeight])
 
+  const handleClick = useCallback(() => {
+    // Skip if this click was preceded by a touch (already handled in touchEnd)
+    if (wasTouched.current) return
+    setDrawerState(nextState)
+  }, [])
+
   const handleBackdropClick = useCallback(() => {
     setDrawerState('collapsed')
   }, [])
@@ -149,6 +165,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     ? Math.max(0, baseTranslateY + dragOffset)
     : baseTranslateY
 
+  const isOpen = drawerState !== 'collapsed'
   const showBackdrop = drawerState === 'full' && !isDragging
 
   return (
@@ -164,7 +181,10 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
 
       {/* Drawer */}
       <div
-        className="fixed inset-x-0 top-0 z-50 lg:hidden flex flex-col bg-white dark:bg-surface-base rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)]"
+        role="dialog"
+        aria-modal={isOpen}
+        aria-label="Token configurator"
+        className="fixed inset-x-0 top-0 z-50 lg:hidden flex flex-col bg-white dark:bg-surface-base rounded-t-lg shadow-[0_-4px_20px_rgba(0,0,0,0.15)]"
         style={{
           height: `${viewportHeight}px`,
           transform: `translateY(${translateY}px)`,
@@ -179,9 +199,10 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onClick={() => {
-            if (!isDragging) setDrawerState(nextState)
-          }}
+          onClick={handleClick}
+          role="button"
+          tabIndex={0}
+          aria-label={isOpen ? 'Collapse drawer' : 'Expand drawer'}
         >
           {/* Drag indicator */}
           <div className="flex justify-center pt-2.5 pb-1">

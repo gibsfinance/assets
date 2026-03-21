@@ -118,7 +118,10 @@ export default function Studio() {
         </div>
 
         {/* Main content: browser or editor */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-surface-base">
+        <div
+          className="flex-1 overflow-y-auto bg-white dark:bg-surface-base"
+          style={{ paddingBottom: selectedToken ? 48 : 0 }}
+        >
           {editorOpen ? (
             <ListEditor />
           ) : (
