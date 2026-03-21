@@ -109,7 +109,7 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
               </div>
 
               {/* Image metadata */}
-              <div className="mb-4 rounded-xl bg-gray-50 dark:bg-surface-2 p-4">
+              <div className="mb-4 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
                   Image Metadata
                 </p>
@@ -142,7 +142,7 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
               </div>
 
               {/* List presence */}
-              <div className="mb-4 rounded-xl bg-gray-50 dark:bg-surface-2 p-4">
+              <div className="mb-4 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
                   Source List
                 </p>
@@ -152,7 +152,7 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
               </div>
 
               {/* API endpoint */}
-              <div className="mb-6 rounded-xl bg-gray-50 dark:bg-surface-2 p-4">
+              <div className="mb-6 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
                   API Endpoint
                 </p>

@@ -468,7 +468,7 @@ export default function CodeOutput() {
       )}
 
       {/* Code block */}
-      <div className="overflow-hidden rounded-xl border border-border-light dark:border-border-dark">
+      <div className="overflow-hidden rounded-lg border border-border-light dark:border-border-dark">
         <CodeBlock
           code={generatedCode}
           lang={codeLanguage}

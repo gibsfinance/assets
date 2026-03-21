@@ -258,12 +258,12 @@ export default function TokenSearch({
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
       {/* Search bar */}
-      <div className="flex flex-1 items-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-2 px-3 py-2">
-        <i className="fas fa-search text-sm text-gray-400 dark:text-white/30" />
+      <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-surface-3 dark:bg-surface-2">
+        <i className="fas fa-search text-xs text-gray-400 dark:text-white/30" />
         <input
           type="search"
           placeholder={`Search ${count} tokens on ${networkName}...`}
-          className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white/80 outline-none placeholder:text-gray-400 dark:placeholder:text-white/30"
+          className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white/80 dark:placeholder:text-white/30"
           value={query}
           onKeyDown={handleInput}
           onChange={(e) => {
@@ -279,7 +279,7 @@ export default function TokenSearch({
           onToggleAll={onToggleAll}
         />
         <button
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm transition-colors ${
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
             query
               ? 'bg-accent-500/10 text-accent-500 hover:bg-accent-500/20'
               : 'cursor-not-allowed text-gray-300 dark:text-white/20'

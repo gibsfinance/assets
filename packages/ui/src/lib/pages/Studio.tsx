@@ -45,7 +45,7 @@ export default function Studio() {
                   <button
                     type="button"
                     onClick={() => setShowTestnets(!showTestnets)}
-                    className={`relative group w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                    className={`relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
                       showTestnets
                         ? 'bg-accent-500/10 text-accent-500'
                         : 'bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500'

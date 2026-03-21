@@ -21,7 +21,7 @@ export default function CodeBlock({
   lang = 'console',
   theme: themeInput,
   base = 'overflow-x-auto font-mono',
-  rounded = 'rounded-xl',
+  rounded = 'rounded-lg',
   shadow = '',
   classes = 'bg-surface-light-2 dark:bg-surface-1',
   preBase = '',

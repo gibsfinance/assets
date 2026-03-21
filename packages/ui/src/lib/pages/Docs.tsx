@@ -318,7 +318,7 @@ export default function Docs() {
                 placeholder="Filter endpoints…"
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="w-full rounded-xl border border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 py-2.5 pl-9 pr-4 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/50"
+                className="w-full rounded-lg border border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 py-2.5 pl-9 pr-4 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/50"
               />
             </div>
 
@@ -407,7 +407,7 @@ export default function Docs() {
                   <CodeBlock
                     code={activeExample.code}
                     lang={activeExample.lang}
-                    rounded="rounded-xl"
+                    rounded="rounded-lg"
                     prePadding="[&>pre]:px-4 [&>pre]:py-4 [&>pre]:w-fit"
                   />
                 </div>
