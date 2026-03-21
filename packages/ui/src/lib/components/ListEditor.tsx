@@ -18,6 +18,7 @@ import { getApiUrl } from '../utils'
 import Image from './Image'
 import ListTokenRow from './ListTokenRow'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
+import { useVCSPublish, createGitHubPublisher } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
 
 export default function ListEditor() {
@@ -40,6 +41,8 @@ export default function ListEditor() {
   const [addAddress, setAddAddress] = useState('')
 
   const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
+  const { publish, isPublishing, publishResult, error: publishError } = useVCSPublish()
+  const githubPublisher = createGitHubPublisher(getApiUrl(''))
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -360,14 +363,49 @@ export default function ListEditor() {
             {activeList.source.type}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={closeEditor}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80"
-        >
-          <i className="fas fa-times" />
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => activeList && publish(githubPublisher, activeList)}
+            disabled={isPublishing || !activeList || activeList.tokens.length === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+            title="Publish to GitHub"
+          >
+            <i className="fab fa-github text-sm" />
+            {isPublishing ? 'Publishing...' : 'Publish'}
+          </button>
+          <button
+            type="button"
+            onClick={closeEditor}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80"
+          >
+            <i className="fas fa-times" />
+          </button>
+        </div>
       </div>
+
+      {/* Publish result banner */}
+      {publishResult && (
+        <div className="border-b border-border-light bg-green-50 px-4 py-2 dark:border-border-dark dark:bg-green-900/20">
+          <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
+            <i className="fas fa-check-circle" />
+            <span>Published!</span>
+            <a href={publishResult.repoUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+              View repo
+            </a>
+            {publishResult.fileUrl && (
+              <a href={publishResult.fileUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+                View file
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+      {publishError && (
+        <div className="border-b border-border-light bg-red-50 px-4 py-2 dark:border-border-dark dark:bg-red-900/20">
+          <span className="text-xs text-red-600 dark:text-red-400">{publishError}</span>
+        </div>
+      )}
 
       {/* Token count bar */}
       <div className="flex items-center justify-between border-b border-border-light px-4 py-2 dark:border-border-dark">
