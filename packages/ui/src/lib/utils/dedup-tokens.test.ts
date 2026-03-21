@@ -1,60 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { Token, TokenListReference } from '../types'
-
-/**
- * Pure extraction of the deduplication logic from StudioBrowser.
- * Mirrors the useMemo in StudioBrowser that builds filteredTokens
- * from tokensByList + enabledLists for a given selectedChainId.
- */
-function deduplicateTokens(
-  tokensByList: Map<string, Token[]>,
-  enabledLists: Set<string>,
-  selectedChainId: string,
-): Token[] {
-  const tokenMap = new Map<string, Token>()
-
-  const addToken = (token: Token) => {
-    if (token.chainId.toString() !== selectedChainId) return
-    if (!token.hasIcon) return
-    const key = `${token.chainId}-${token.address.toLowerCase()}`
-    const ref: TokenListReference = {
-      sourceList: token.sourceList,
-      imageUri: `/image/${token.chainId}/${token.address}`,
-      imageFormat: '',
-    }
-    const existing = tokenMap.get(key)
-    if (existing) {
-      if (!existing.listReferences) {
-        existing.listReferences = [
-          {
-            sourceList: existing.sourceList,
-            imageUri: `/image/${existing.chainId}/${existing.address}`,
-            imageFormat: '',
-          },
-        ]
-      }
-      if (!existing.listReferences.some((r) => r.sourceList === ref.sourceList)) {
-        existing.listReferences.push(ref)
-      }
-    } else {
-      tokenMap.set(key, { ...token, listReferences: [ref] })
-    }
-  }
-
-  // Non-bridge lists first
-  for (const [listKey, tokens] of tokensByList.entries()) {
-    if (!enabledLists.has(listKey) || listKey.includes('bridge')) continue
-    for (const token of tokens) addToken(token)
-  }
-
-  // Bridge lists second
-  for (const [listKey, tokens] of tokensByList.entries()) {
-    if (!enabledLists.has(listKey) || !listKey.includes('bridge')) continue
-    for (const token of tokens) addToken(token)
-  }
-
-  return Array.from(tokenMap.values())
-}
+import type { Token } from '../types'
+import { deduplicateTokens } from './dedup-tokens'
 
 function makeToken(
   address: string,
@@ -188,5 +134,13 @@ describe('deduplicateTokens', () => {
     expect(chain137).toHaveLength(1)
     expect(chain1[0].chainId).toBe(1)
     expect(chain137[0].chainId).toBe(137)
+  })
+
+  it('prepends imageUriPrefix when provided', () => {
+    const tokensByList = new Map([
+      ['listA', [makeToken('0xabc', 'provA/listA')]],
+    ])
+    const result = deduplicateTokens(tokensByList, new Set(['listA']), '1', 'https://api.example.com')
+    expect(result[0].listReferences![0].imageUri).toBe('https://api.example.com/image/1/0xabc')
   })
 })

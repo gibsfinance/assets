@@ -22,6 +22,18 @@ import { useRpcMetadata } from '../hooks/useRpcMetadata'
 import { useVCSPublish, createGitHubPublisher } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
 
+function rawTokenToLocal(t: Record<string, unknown>, index: number): LocalToken {
+  return {
+    chainId: Number(t.chainId || 1),
+    address: String(t.address),
+    name: String(t.name || ''),
+    symbol: String(t.symbol || ''),
+    decimals: Number(t.decimals || 18),
+    imageUri: t.logoURI ? String(t.logoURI) : undefined,
+    order: index,
+  }
+}
+
 export default function ListEditor() {
   const {
     activeList,
@@ -132,17 +144,7 @@ export default function ListEditor() {
       const res = await fetch(getApiUrl(`/list/${provider}/${key}`))
       if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)
       const data = await res.json()
-      const tokens: LocalToken[] = (data.tokens || []).map(
-        (t: Record<string, unknown>, i: number) => ({
-          chainId: Number(t.chainId),
-          address: String(t.address),
-          name: String(t.name || ''),
-          symbol: String(t.symbol || ''),
-          decimals: Number(t.decimals || 18),
-          imageUri: t.logoURI ? String(t.logoURI) : undefined,
-          order: i,
-        }),
-      )
+      const tokens: LocalToken[] = (data.tokens || []).map(rawTokenToLocal)
       const list = await createList({
         name: data.name || editingSourceKey,
         description: data.description || '',
@@ -171,17 +173,7 @@ export default function ListEditor() {
       const data = await res.json()
       if (!data.tokens || !Array.isArray(data.tokens))
         throw new Error('Invalid token list format')
-      const tokens: LocalToken[] = data.tokens.map(
-        (t: Record<string, unknown>, i: number) => ({
-          chainId: Number(t.chainId),
-          address: String(t.address),
-          name: String(t.name || ''),
-          symbol: String(t.symbol || ''),
-          decimals: Number(t.decimals || 18),
-          imageUri: t.logoURI ? String(t.logoURI) : undefined,
-          order: i,
-        }),
-      )
+      const tokens: LocalToken[] = data.tokens.map(rawTokenToLocal)
       const list = await createList({
         name: data.name || 'Imported List',
         description: data.description || '',
@@ -204,15 +196,7 @@ export default function ListEditor() {
       const data = JSON.parse(pasteJson.trim())
       const tokens: LocalToken[] = (data.tokens || [data])
         .flat()
-        .map((t: Record<string, unknown>, i: number) => ({
-          chainId: Number(t.chainId || 1),
-          address: String(t.address),
-          name: String(t.name || ''),
-          symbol: String(t.symbol || ''),
-          decimals: Number(t.decimals || 18),
-          imageUri: t.logoURI ? String(t.logoURI) : undefined,
-          order: i,
-        }))
+        .map(rawTokenToLocal)
       const list = await createList({
         name: data.name || 'Pasted List',
         source: { type: 'paste' },

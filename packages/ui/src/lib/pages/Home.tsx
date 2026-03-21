@@ -68,10 +68,13 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
     return (
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
-          <img
+          <Image
             src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
             alt="WBTC Token"
-            className="h-12 w-12 rounded-full"
+            skeleton
+            shape="circle"
+            size={48}
+            className="rounded-full"
           />
           <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
         </div>
@@ -97,20 +100,29 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
           <div className="flex -space-x-4">
-            <img
+            <Image
               src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
               alt="Token 1"
-              className="h-12 w-12 rounded-full border-2 border-surface-2"
+              skeleton
+              shape="circle"
+              size={48}
+              className="rounded-full border-2 border-surface-2"
             />
-            <img
+            <Image
               src={getApiUrl('/image/1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
               alt="Token 2"
-              className="h-12 w-12 rounded-full border-2 border-surface-2"
+              skeleton
+              shape="circle"
+              size={48}
+              className="rounded-full border-2 border-surface-2"
             />
-            <img
+            <Image
               src={getApiUrl('/image/1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
               alt="Token 3"
-              className="h-12 w-12 rounded-full border-2 border-surface-2"
+              skeleton
+              shape="circle"
+              size={48}
+              className="rounded-full border-2 border-surface-2"
             />
           </div>
           <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>

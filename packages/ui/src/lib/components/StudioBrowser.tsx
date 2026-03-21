@@ -6,12 +6,13 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
+import { deduplicateTokens } from '../utils/dedup-tokens'
 import NetworkSelect from './NetworkSelect'
 import TokenSearch from './TokenSearch'
 import PaginationControls from './PaginationControls'
 import Image from './Image'
 import TokenSubRows from './TokenSubRows'
-import type { Token, TokenListReference, SearchUpdate } from '../types'
+import type { Token, SearchUpdate } from '../types'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
@@ -85,48 +86,8 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     if (searchState?.isGlobalSearching && searchState.tokens.length > 0) {
       return searchState.tokens
     }
-
-    const tokenMap = new Map<string, Token>()
-
-    const addToken = (token: Token) => {
-      if (token.chainId.toString() !== selectedChainId) return
-      if (!token.hasIcon) return
-      const key = `${token.chainId}-${token.address.toLowerCase()}`
-      const ref: TokenListReference = {
-        sourceList: token.sourceList,
-        imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
-        imageFormat: '',
-      }
-      const existing = tokenMap.get(key)
-      if (existing) {
-        if (!existing.listReferences) {
-          existing.listReferences = [{
-            sourceList: existing.sourceList,
-            imageUri: getApiUrl(`/image/${existing.chainId}/${existing.address}`),
-            imageFormat: '',
-          }]
-        }
-        if (!existing.listReferences.some(r => r.sourceList === ref.sourceList)) {
-          existing.listReferences.push(ref)
-        }
-      } else {
-        tokenMap.set(key, { ...token, listReferences: [ref] })
-      }
-    }
-
-    // Non-bridge tokens first
-    for (const [listKey, tokens] of tokensByList.entries()) {
-      if (!enabledLists.has(listKey) || listKey.includes('bridge')) continue
-      for (const token of tokens) addToken(token)
-    }
-
-    // Bridge tokens (accumulate references even if token already present)
-    for (const [listKey, tokens] of tokensByList.entries()) {
-      if (!enabledLists.has(listKey) || !listKey.includes('bridge')) continue
-      for (const token of tokens) addToken(token)
-    }
-
-    return Array.from(tokenMap.values())
+    if (!selectedChainId) return []
+    return deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
   }, [tokensByList, enabledLists, selectedChainId, searchState])
 
   const tokenCount = useMemo(() => {

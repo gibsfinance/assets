@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import {
   Menu,
   MenuButton,
@@ -9,12 +9,14 @@ import {
   PopoverPanel,
 } from '@headlessui/react'
 import { useStudio } from '../contexts/StudioContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import { badgePositionToCSS } from '../utils/badge-position'
 import BadgeConfigurator from './BadgeConfigurator'
 import ListResolutionOrder from './ListResolutionOrder'
 import CodeOutput from './CodeOutput'
+import Image from './Image'
 
 // ---------------------------------------------------------------------------
 // Shadow + shape helpers
@@ -522,17 +524,7 @@ function InfiniteCanvas() {
   const isDragging = useRef(false)
   const lastPointer = useRef({ x: 0, y: 0 })
 
-  // Detect dark mode for checkerboard
-  const [isDarkMode, setIsDarkMode] = useState(false)
-  useEffect(() => {
-    const root = document.documentElement
-    const observer = new MutationObserver(() => {
-      setIsDarkMode(root.classList.contains('dark'))
-    })
-    setIsDarkMode(root.classList.contains('dark'))
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] })
-    return () => observer.disconnect()
-  }, [])
+  const { isDark } = useTheme()
 
   // Build image URLs
   const imageUrl = useMemo(() => {
@@ -620,7 +612,7 @@ function InfiniteCanvas() {
       ref={containerRef}
       className="relative flex-1 cursor-grab select-none overflow-hidden active:cursor-grabbing"
       style={{
-        backgroundImage: isDarkMode ? CHECKERBOARD_SVG_DARK : CHECKERBOARD_SVG,
+        backgroundImage: isDark ? CHECKERBOARD_SVG_DARK : CHECKERBOARD_SVG,
         backgroundSize: '20px 20px',
       }}
       onPointerDown={handlePointerDown}
@@ -657,29 +649,31 @@ function InfiniteCanvas() {
               backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
             }}
           >
-            <img
+            <Image
               src={imageUrl}
               alt={tokenName}
-              draggable={false}
+              skeleton
+              shape={shape === 'circle' ? 'circle' : 'rect'}
+              width={width}
+              height={height}
               style={{
-                width,
-                height,
                 margin: padding > 0 ? padding : undefined,
                 borderRadius: borderRadiusCSS,
               }}
             />
 
             {badge.enabled && badgePosition && (
-              <img
+              <Image
                 src={networkUrl}
                 alt={networkName}
-                draggable={false}
+                skeleton
+                shape="circle"
+                width={Math.round(badgePosition.badgeSize)}
+                height={Math.round(badgePosition.badgeSize)}
                 style={{
                   position: 'absolute',
                   top: Math.round(badgePosition.top),
                   left: Math.round(badgePosition.left),
-                  width: Math.round(badgePosition.badgeSize),
-                  height: Math.round(badgePosition.badgeSize),
                   borderRadius: '50%',
                   ...(badge.ringEnabled
                     ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
