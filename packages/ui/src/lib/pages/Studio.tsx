@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import BottomDrawer from '../components/BottomDrawer'
+import Image from '../components/Image'
 import ListEditor from '../components/ListEditor'
 import StudioBrowser from '../components/StudioBrowser'
 import StudioConfigurator from '../components/StudioConfigurator'
@@ -8,10 +10,11 @@ import { ThemeToggle } from '../components/ThemeToggle'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useStudio } from '../contexts/StudioContext'
 import { useSettings } from '../contexts/SettingsContext'
+import { getApiUrl } from '../utils'
 import type { Token } from '../types'
 
 export default function Studio() {
-  const { activeTab, setActiveTab } = useStudio()
+  const { selectedToken } = useStudio()
   const { showTestnets, setShowTestnets } = useSettings()
   const { isOpen: editorOpen, openNewEditor } = useListEditor()
   const [inspectToken, setInspectToken] = useState<Token | null>(null)
@@ -94,59 +97,62 @@ export default function Studio() {
         </div>
       </div>
 
-      {/* Mobile: tabbed */}
+      {/* Mobile: browser + bottom drawer */}
       <div className="lg:hidden h-full flex flex-col">
         {/* Mobile header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
           <Link to="/" className="font-heading text-xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
             Gib.Show
           </Link>
-          <ThemeToggle />
-        </div>
-        {/* Tab bar */}
-        <div className="flex border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
-          {editorOpen && (
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setActiveTab('editor')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'editor'
-                  ? 'text-accent-500 border-b-2 border-accent-500'
-                  : 'text-gray-500'
-              }`}
+              type="button"
+              onClick={openNewEditor}
+              className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500 hover:text-accent-500 hover:bg-accent-500/10"
+              title="New List"
             >
-              Editor
+              <i className="fas fa-plus text-sm" />
             </button>
-          )}
-          <button
-            onClick={() => setActiveTab('browse')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'browse'
-                ? 'text-accent-500 border-b-2 border-accent-500'
-                : 'text-gray-500'
-            }`}
-          >
-            Browse
-          </button>
-          <button
-            onClick={() => setActiveTab('configure')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'configure'
-                ? 'text-accent-500 border-b-2 border-accent-500'
-                : 'text-gray-500'
-            }`}
-          >
-            Configure
-          </button>
+            <ThemeToggle />
+          </div>
         </div>
+
+        {/* Main content: browser or editor */}
         <div className="flex-1 overflow-y-auto bg-white dark:bg-surface-base">
-          {activeTab === 'editor' && editorOpen ? (
+          {editorOpen ? (
             <ListEditor />
-          ) : activeTab === 'browse' ? (
-            <StudioBrowser onInspectToken={setInspectToken} />
           ) : (
-            <StudioConfigurator />
+            <StudioBrowser onInspectToken={setInspectToken} />
           )}
         </div>
+
+        {/* Bottom drawer: configurator */}
+        <BottomDrawer
+          enabled={!!selectedToken}
+          handle={
+            selectedToken ? (
+              <div className="flex items-center gap-2">
+                {selectedToken.hasIcon && (
+                  <Image
+                    src={getApiUrl(`/image/${selectedToken.chainId}/${selectedToken.address}`)}
+                    alt={selectedToken.symbol}
+                    size={20}
+                    skeleton
+                    shape="circle"
+                  />
+                )}
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                  {selectedToken.name}
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {selectedToken.symbol}
+                </span>
+              </div>
+            ) : undefined
+          }
+        >
+          <StudioConfigurator />
+        </BottomDrawer>
       </div>
 
       {/* Token Detail Modal */}
