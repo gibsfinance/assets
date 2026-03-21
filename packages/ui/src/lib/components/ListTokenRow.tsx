@@ -7,9 +7,10 @@ import type { LocalToken } from '../hooks/useLocalLists'
 interface ListTokenRowProps {
   token: LocalToken
   onRemove: (address: string) => void
+  onImageClick: (token: LocalToken) => void
 }
 
-export default function ListTokenRow({ token, onRemove }: ListTokenRowProps) {
+export default function ListTokenRow({ token, onRemove, onImageClick }: ListTokenRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${token.chainId}-${token.address}`,
   })
@@ -37,14 +38,24 @@ export default function ListTokenRow({ token, onRemove }: ListTokenRowProps) {
       </button>
 
       {/* Icon */}
-      <Image
-        src={token.imageUri || getApiUrl(`/image/${token.chainId}/${token.address}`)}
-        size={24}
-        skeleton
-        lazy
-        shape="circle"
-        className="rounded-full"
-      />
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onImageClick(token)
+        }}
+        className="flex-shrink-0 rounded-full ring-2 ring-transparent transition-all hover:ring-accent-500/40"
+        title="Edit image"
+      >
+        <Image
+          src={token.imageUri || getApiUrl(`/image/${token.chainId}/${token.address}`)}
+          size={24}
+          skeleton
+          lazy
+          shape="circle"
+          className="rounded-full"
+        />
+      </button>
 
       {/* Info */}
       <div className="min-w-0 flex-1">

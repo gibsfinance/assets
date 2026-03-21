@@ -17,6 +17,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
 import Image from './Image'
 import ListTokenRow from './ListTokenRow'
+import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
 import { useVCSPublish, createGitHubPublisher } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
@@ -39,6 +40,7 @@ export default function ListEditor() {
   const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [addAddress, setAddAddress] = useState('')
+  const [editingImageToken, setEditingImageToken] = useState<LocalToken | null>(null)
 
   const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
   const { publish, isPublishing, publishResult, error: publishError } = useVCSPublish()
@@ -232,6 +234,21 @@ export default function ListEditor() {
     [activeList, updateList, setActiveList],
   )
 
+  const handleImageChange = useCallback(
+    async (uri: string) => {
+      if (!activeList || !editingImageToken) return
+      const updatedTokens = activeList.tokens.map((t) =>
+        t.address.toLowerCase() === editingImageToken.address.toLowerCase() &&
+        t.chainId === editingImageToken.chainId
+          ? { ...t, imageUri: uri }
+          : t,
+      )
+      const updated = await reorderTokens(activeList.id, updatedTokens)
+      if (updated) setActiveList(updated)
+    },
+    [activeList, editingImageToken, reorderTokens, setActiveList],
+  )
+
   // ─── Creation Menu (no active list) ───────────────────────────
   if (!activeList) {
     return (
@@ -349,7 +366,7 @@ export default function ListEditor() {
 
   // ─── Active List View ─────────────────────────────────────────
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-surface-base">
+    <div className="relative flex h-full flex-col bg-white dark:bg-surface-base">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
         <div className="flex min-w-0 items-center gap-3">
@@ -482,12 +499,26 @@ export default function ListEditor() {
                   key={`${token.chainId}-${token.address}`}
                   token={token}
                   onRemove={handleRemoveToken}
+                  onImageClick={setEditingImageToken}
                 />
               ))}
             </SortableContext>
           </DndContext>
         )}
       </div>
+
+      {/* Image manager overlay */}
+      {editingImageToken && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40">
+          <TokenImageManager
+            chainId={editingImageToken.chainId}
+            address={editingImageToken.address}
+            currentImageUri={editingImageToken.imageUri}
+            onImageChange={handleImageChange}
+            onClose={() => setEditingImageToken(null)}
+          />
+        </div>
+      )}
     </div>
   )
 }
