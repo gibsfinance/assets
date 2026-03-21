@@ -1293,6 +1293,7 @@ __metadata:
   resolution: "@gibs/sdk@workspace:packages/sdk"
   dependencies:
     typescript: "npm:^5.8.3"
+    vitest: "npm:^4.1.0"
   languageName: unknown
   linkType: soft
 

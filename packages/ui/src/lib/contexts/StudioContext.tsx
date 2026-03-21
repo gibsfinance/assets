@@ -42,6 +42,9 @@ const DEFAULT_BADGE: BadgeConfig = {
   ringEnabled: true,
   ringColor: '#09090b',
   ringThickness: 2,
+  badgeShape: 'circle',
+  badgePadding: 0,
+  badgeBackground: 'transparent',
 }
 
 const StudioCtx = createContext<StudioContextValue | null>(null)

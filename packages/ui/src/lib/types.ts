@@ -108,6 +108,9 @@ export interface BadgeConfig {
   ringEnabled: boolean
   ringColor: string
   ringThickness: number
+  badgeShape?: 'circle' | 'square'
+  badgePadding?: number
+  badgeBackground?: string
 }
 
 export type CodeFormat = 'sdk' | 'react' | 'html' | 'img'
