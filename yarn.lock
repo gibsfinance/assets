@@ -1275,6 +1275,27 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@gibs/react@workspace:packages/react":
+  version: 0.0.0-use.local
+  resolution: "@gibs/react@workspace:packages/react"
+  dependencies:
+    "@gibs/sdk": "workspace:*"
+    "@types/react": "npm:^19.1.2"
+    react: "npm:^19.1.0"
+    typescript: "npm:^5.8.3"
+  peerDependencies:
+    react: ">=18"
+  languageName: unknown
+  linkType: soft
+
+"@gibs/sdk@workspace:*, @gibs/sdk@workspace:packages/sdk":
+  version: 0.0.0-use.local
+  resolution: "@gibs/sdk@workspace:packages/sdk"
+  dependencies:
+    typescript: "npm:^5.8.3"
+  languageName: unknown
+  linkType: soft
+
 "@gibs/utils@npm:^1.0.0, @gibs/utils@workspace:packages/utils":
   version: 0.0.0-use.local
   resolution: "@gibs/utils@workspace:packages/utils"
@@ -3241,7 +3262,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:^19.2.14":
+"@types/react@npm:^19.1.2, @types/react@npm:^19.2.14":
   version: 19.2.14
   resolution: "@types/react@npm:19.2.14"
   dependencies:
@@ -8916,7 +8937,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react@npm:^19.2.4":
+"react@npm:^19.1.0, react@npm:^19.2.4":
   version: 19.2.4
   resolution: "react@npm:19.2.4"
   checksum: 10c0/cd2c9ff67a720799cc3b38a516009986f7fc4cb8d3e15716c6211cf098d1357ee3e348ab05ad0600042bbb0fd888530ba92e329198c92eafa0994f5213396596

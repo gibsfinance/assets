@@ -1,0 +1,26 @@
+{
+  "name": "@gibs/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SDK for Gib.Show token metadata and image API",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "tokens",
+    "images",
+    "web3",
+    "erc20",
+    "token-list"
+  ],
+  "author": "gibs",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

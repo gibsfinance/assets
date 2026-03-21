@@ -24,6 +24,8 @@
   },
   "workspaces": [
     "packages/utils",
+    "packages/sdk",
+    "packages/react",
     "packages/dexscreener",
     "packages/ui",
     "packages/server"
