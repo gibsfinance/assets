@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
+import { useMetricsContext } from '../contexts/MetricsContext'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
@@ -26,8 +27,25 @@ interface AvailableList {
 
 const TOKENS_PER_PAGE = 25
 
+const POPULAR_CHAIN_COUNT = 8
+
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
+  const { metrics } = useMetricsContext()
+
+  const popularChains = useMemo(() => {
+    if (!metrics) return []
+    return metrics.networks.supported
+      .map((n: { chainId: number }) => ({
+        chainId: String(n.chainId),
+        name: getNetworkName(n.chainId),
+        tokenCount: metrics.tokenList.byChain[n.chainId] || 0,
+      }))
+      .filter((n: { tokenCount: number }) => n.tokenCount >= 10)
+      .filter((n: { name: string }) => !n.name.toLowerCase().includes('testnet'))
+      .sort((a: { tokenCount: number }, b: { tokenCount: number }) => b.tokenCount - a.tokenCount)
+      .slice(0, POPULAR_CHAIN_COUNT)
+  }, [metrics])
 
   const {
     enabledLists,
@@ -308,8 +326,35 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {/* Token list */}
       <div className="flex-1 overflow-y-auto">
         {!selectedChainId && (
-          <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
-            Select a network to browse tokens
+          <div className="flex flex-col items-center gap-4 px-4 py-8">
+            <p className="text-sm text-gray-400 dark:text-white/30">Select a network to browse tokens</p>
+            {popularChains.length > 0 && (
+              <div className="w-full">
+                <p className="mb-2 text-xs font-medium text-gray-500 dark:text-white/40">Popular chains</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {popularChains.map((chain) => (
+                    <button
+                      key={chain.chainId}
+                      type="button"
+                      className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40"
+                      onClick={() => handleChainSelect(chain.chainId)}
+                    >
+                      <Image
+                        src={getApiUrl(`/image/${chain.chainId}`)}
+                        size={20}
+                        skeleton
+                        shape="circle"
+                        className="rounded-full"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{chain.name}</div>
+                        <div className="text-[10px] text-gray-400 dark:text-white/30">{chain.tokenCount.toLocaleString()} tokens</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
