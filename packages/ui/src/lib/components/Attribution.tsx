@@ -1,5 +1,8 @@
 import { attributionProviders } from '../attribution-providers'
 import { useTheme } from '../contexts/ThemeContext'
+import Image from './Image'
+
+const CONTAINER_SIZE = 40
 
 export default function Attribution() {
   const { isDark } = useTheme()
@@ -10,26 +13,29 @@ export default function Attribution() {
         Powered by
       </p>
 
-      <div className="flex flex-wrap max-w-sm gap-4 items-center justify-center">
+      <div className="flex flex-wrap max-w-md gap-3 items-center justify-center">
         {attributionProviders.map((provider) => (
           <a
             key={provider.name}
             href={provider.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center p-0 hover:opacity-80 hover:scale-105 transition-all duration-150"
             title={provider.name}
+            className="flex items-center justify-center rounded-lg bg-gray-50 dark:bg-surface-2 hover:bg-gray-100 dark:hover:bg-surface-3 transition-colors"
+            style={{ width: CONTAINER_SIZE, height: CONTAINER_SIZE }}
           >
-            <img
+            <Image
               src={
                 provider.imageUrl.startsWith('http')
                   ? provider.imageUrl
                   : `/logos/${isDark ? 'dark' : 'light'}/${provider.imageUrl}`
               }
               alt={provider.name}
-              width={48}
-              height={24}
-              className="max-h-12 max-w-24 object-contain"
+              size={24}
+              skeleton
+              shape="rect"
+              lazy
+              className="object-contain"
             />
           </a>
         ))}
