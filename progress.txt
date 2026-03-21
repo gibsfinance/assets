@@ -1,5 +1,44 @@
 # Gib.Show — Progress
 
+## Session 3 continued (2026-03-20)
+
+### Token Row Layout + SVG Ranking (completed, merged to staging)
+- Two-line token rows: name+address top, symbol+list bottom, info button right
+- Token deduplication with expandable multi-list sub-rows (TokenSubRows component)
+- SVG ranking boost in applyOrder — SVGs always preferred over rasters
+- Pagination dark mode fix
+- Popular chain quick-picks in Studio empty state (top 8 by token count)
+
+### CoinGecko Dual Lists (completed, merged to staging)
+- Separate thumb and large lists per platform (e.g., coingecko/ethereum + coingecko/ethereum-large)
+- rewriteLogoURI callback on remote-tokenlist (not blanket rewrite)
+- Original lists preserved as fallback
+
+### List Editor Phase 1 (completed, merged to staging)
+- ListEditorContext for editor state (open/close, active list)
+- ListEditor shell component with creation menu
+- Three-panel sliding layout: [Editor] [Browser 380px] [Configurator]
+- CSS translateX transition between studio mode and edit mode
+- Mobile: third "Editor" tab when editing
+- Token sub-rows and list name wired to openEditor
+
+### List Editor Phase 2 (completed, merged to staging)
+- useLocalLists hook with IndexedDB CRUD (idb-keyval)
+- List creation: new, fork remote, import URL, paste JSON
+- Active list view with editable name, token list, source badge
+- ListEditorContext wired to useLocalLists with full CRUD
+- Removed duplicate top pagination
+
+### In Progress: List Editor Phase 3
+- Token table with @dnd-kit drag-and-drop reordering
+- Add/remove tokens
+- RPC metadata loading via viem
+
+### Remaining
+- Phase 4: GitHub/GitLab/VCS publish (pluggable VCSPublisher interface)
+- Phase 5: Image management (upload, resize, preview at multiple sizes)
+- Badge controls, radial snap buttons, dark mode cleanup
+
 ## Session 3 (2026-03-20)
 
 ### Server-Side Image Resize (completed, merged to staging)
