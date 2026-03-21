@@ -472,12 +472,12 @@ const ICON_PATHS: string[] = [
   '/image/98866',
 ]
 
-function ConveyorIcon({ src, size }: { src: string; size: number }) {
+function ConveyorIcon({ src, href, size }: { src: string; href: string; size: number }) {
   return (
     <Image
       src={src}
       size={size}
-      href={src}
+      href={href}
       skeleton
       lazy
       shape="circle"
@@ -494,14 +494,17 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const row2 = useRef<HTMLDivElement>(null)
   const rowRefs = [row0, row1, row2]
 
-  const allUrls = useMemo(() => ICON_PATHS.map((p) => getApiUrl(p)), [])
+  const allIcons = useMemo(() => ICON_PATHS.map((p) => ({
+    src: getApiUrl(`${p}?w=72&h=72&format=webp`),
+    href: getApiUrl(p),
+  })), [])
 
   const rowIcons = useMemo(() =>
     [0, 1, 2].map(() => {
-      const half = shuffle(allUrls)
+      const half = shuffle(allIcons)
       return [...half, ...half]
     }),
-  [allUrls])
+  [allIcons])
 
   useEffect(() => {
     ensureKeyframes()
@@ -526,8 +529,8 @@ export default function FloatingIcons({ className }: { className?: string }) {
             className="flex gap-3 items-center"
             style={{ width: 'max-content' }}
           >
-            {icons.map((src, i) => (
-              <ConveyorIcon key={`${rowIdx}-${i}`} src={src} size={SIZES[rowIdx]} />
+            {icons.map((icon, i) => (
+              <ConveyorIcon key={`${rowIdx}-${i}`} src={icon.src} href={icon.href} size={SIZES[rowIdx]} />
             ))}
           </div>
         </div>
