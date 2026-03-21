@@ -60,6 +60,7 @@
     "@types/pg": "^8.11.6",
     "@types/puppeteer": "^5.4.7",
     "@types/response-time": "^2.3.8",
+    "@types/sharp": "^0.32.0",
     "@types/supertest": "^6.0.2",
     "@types/yargs": "^17.0.32",
     "eslint": "^8.57.0",
@@ -70,7 +71,8 @@
     "supertest": "^7.0.0",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^7.12.0"
+    "typescript-eslint": "^7.12.0",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@coingecko/coingecko-typescript": "^1.13.0",
@@ -105,6 +107,7 @@
     "puppeteer-core": "^24.17.1",
     "react": "^18.2.0",
     "response-time": "^2.3.2",
+    "sharp": "^0.34.5",
     "tsx": "^4.11.2",
     "viem": "^2.37.5",
     "yargs": "^17.7.2"

@@ -5,8 +5,6 @@ import { useMetricsContext } from '../contexts/MetricsContext'
 import type { ListDescription, SearchUpdate, Token } from '../types'
 import TokenListFilter from './TokenListFilter'
 
-type SearchUpdateExtension = Partial<SearchUpdate>
-
 interface TokenSearchProps {
   onSearchUpdate: (state: SearchUpdate) => void
   count: number
@@ -51,24 +49,12 @@ export default function TokenSearch({
   onToggleAll,
 }: TokenSearchProps) {
   const [query, setQuery] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
+  const [_isSearching, setIsSearching] = useState(false)
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const searchAbortControllerRef = useRef<AbortController | null>(null)
   const { metrics } = useMetricsContext()
 
-  const updateOutside = useCallback(
-    (update?: SearchUpdateExtension) => {
-      onSearchUpdate({
-        query,
-        isSearching,
-        isGlobalSearching,
-        tokens: [],
-        isError: false,
-        ...update,
-      })
-    },
-    [onSearchUpdate, query, isSearching, isGlobalSearching],
-  )
+
 
   const performGlobalSearch = useCallback(async () => {
     // Cancel any previous ongoing search
@@ -272,14 +258,12 @@ export default function TokenSearch({
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
       {/* Search bar */}
-      <div className="input-group input-group-divider flex-1 grid-cols-[auto_1fr_auto] rounded-t-lg rounded-b-none flex flex-row items-center gap-2">
-        <div className="input-group-shim px-2">
-          <i className="fas fa-search"></i>
-        </div>
+      <div className="flex flex-1 items-center gap-2 rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-2 px-3 py-2">
+        <i className="fas fa-search text-sm text-gray-400 dark:text-white/30" />
         <input
           type="search"
           placeholder={`Search ${count} tokens on ${networkName}...`}
-          className="input border-none ring-0 pl-0 outline-none"
+          className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white/80 outline-none placeholder:text-gray-400 dark:placeholder:text-white/30"
           value={query}
           onKeyDown={handleInput}
           onChange={(e) => {
@@ -295,13 +279,17 @@ export default function TokenSearch({
           onToggleAll={onToggleAll}
         />
         <button
-          className={`input-group-shim variant-soft-primary flex gap-2 items-center pr-2 ${!query ? 'cursor-not-allowed' : ''}`}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm transition-colors ${
+            query
+              ? 'bg-accent-500/10 text-accent-500 hover:bg-accent-500/20'
+              : 'cursor-not-allowed text-gray-300 dark:text-white/20'
+          }`}
           type="button"
           onClick={performGlobalSearch}
           disabled={!query}
         >
-          <i className="fas fa-globe"></i>
-          <span className="hidden sm:flex whitespace-pre">Search</span>
+          <i className="fas fa-globe" />
+          <span className="hidden sm:inline">Search</span>
         </button>
       </div>
     </div>

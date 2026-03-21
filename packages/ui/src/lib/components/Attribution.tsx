@@ -5,8 +5,8 @@ export default function Attribution() {
   const { isDark } = useTheme()
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-surface-600 dark:text-surface-300 text-center italic">
+    <div className="flex flex-col items-center gap-4 py-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400 text-center italic">
         Powered by
       </p>
 
@@ -17,7 +17,7 @@ export default function Attribution() {
             href={provider.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center p-0 hover:opacity-75 transition-opacity"
+            className="flex items-center justify-center p-0 hover:opacity-80 hover:scale-105 transition-all duration-150"
             title={provider.name}
           >
             <img

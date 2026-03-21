@@ -13,6 +13,7 @@ import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
+import { maybeResize } from './resize'
 
 export const getListTokens = async ({
   chainId,
@@ -179,7 +180,7 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-  async (req, res) => {
+  async (req, res, next) => {
     const img = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
@@ -187,10 +188,11 @@ export const getImage =
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
+    if (await maybeResize(req, res, img)) return
     sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
   }
 
-export const getImageAndFallback: RequestHandler = async (req, res) => {
+export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
   let img = await getListImage(true)({
@@ -208,6 +210,7 @@ export const getImageAndFallback: RequestHandler = async (req, res) => {
       listKey,
     })
   }
+  if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
@@ -223,6 +226,7 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
   if (!img) {
     return next(httpErrors.NotFound('image not found'))
   }
+  if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
@@ -238,8 +242,9 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   return img
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res) => {
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
   const img = await bestGuessNeworkImage(req.params.chainId)
+  if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
@@ -275,6 +280,7 @@ export const tryMultiple: RequestHandler<
     if (!address) {
       const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
       if (!img) continue
+      if (await maybeResize(req, res, img)) return
       return sendImage(res, img, resolveImageMode(req.query.mode))
     }
     if (order && order.length !== 64 /* check if hex */) {
@@ -298,6 +304,7 @@ export const tryMultiple: RequestHandler<
       }).catch(ignoreNotFound)
     }
     if (img) {
+      if (await maybeResize(req, res, img)) return
       return sendImage(res, img, resolveImageMode(req.query.mode))
     }
   }
@@ -321,6 +328,7 @@ export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
     }
   }
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  r = r.set('x-resize', 'original')
   if (img.uri) {
     if (img.uri.startsWith('http') || img.uri.startsWith('ipfs')) {
       r = r.set('x-uri', img.uri)

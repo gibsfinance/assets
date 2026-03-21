@@ -18,41 +18,31 @@ export default function PaginationControls({
     [totalItems, tokensPerPage],
   )
 
-  const canGoLower = useMemo(() => currentPage > 1, [currentPage])
-  const canGoHigher = useMemo(() => currentPage < totalPages, [currentPage, totalPages])
-
-  function goToPreviousPage() {
-    if (!canGoLower) return
-    onPageChange(currentPage - 1)
-  }
-
-  function goToNextPage() {
-    if (!canGoHigher) return
-    onPageChange(currentPage + 1)
-  }
+  const canGoLower = currentPage > 1
+  const canGoHigher = currentPage < totalPages
 
   return (
     <div className="flex items-center gap-2">
       <button
-        className="variant-ghost-surface btn"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-dark bg-surface-2 text-white/60 transition-colors hover:border-accent-500/30 hover:text-accent-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border-dark disabled:hover:text-white/60"
         aria-label="Previous page"
-        onClick={() => goToPreviousPage()}
-        disabled={currentPage === 1}
+        onClick={() => canGoLower && onPageChange(currentPage - 1)}
+        disabled={!canGoLower}
       >
-        <i className="fas fa-chevron-left"></i>
+        <i className="fas fa-chevron-left text-xs" />
       </button>
 
-      <span className="text-sm text-surface-600 dark:text-surface-300">
-        Page {currentPage} of {totalPages}
+      <span className="min-w-[5rem] text-center text-sm text-white/50">
+        {totalPages > 0 ? `${currentPage} / ${totalPages}` : '0 / 0'}
       </span>
 
       <button
-        className="variant-ghost-surface btn"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-dark bg-surface-2 text-white/60 transition-colors hover:border-accent-500/30 hover:text-accent-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border-dark disabled:hover:text-white/60"
         aria-label="Next page"
-        onClick={() => goToNextPage()}
-        disabled={currentPage === totalPages}
+        onClick={() => canGoHigher && onPageChange(currentPage + 1)}
+        disabled={!canGoHigher}
       >
-        <i className="fas fa-chevron-right"></i>
+        <i className="fas fa-chevron-right text-xs" />
       </button>
     </div>
   )

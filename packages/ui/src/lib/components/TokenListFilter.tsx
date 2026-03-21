@@ -50,56 +50,60 @@ export default function TokenListFilter({
   }
 
   return (
-    <Popover className="relative flex border-l pl-2 border-surface-500">
-      <PopoverButton className="list-filter-dropdown w-full sm:w-auto relative flex flex-row items-center">
-        <i className="fas fa-filter mr-2"></i>({count})
+    <Popover className="relative flex border-l border-border-light dark:border-border-dark pl-2">
+      <PopoverButton className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-white/50 transition-colors hover:text-accent-500">
+        <i className="fas fa-filter" />
+        <span>({count})</span>
       </PopoverButton>
 
       <PopoverPanel
         anchor="bottom end"
-        className="list-filter-dropdown card bg-surface-100-900 absolute right-0 z-50 mt-1 w-64"
+        className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-1 shadow-elevated"
       >
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between px-2 pt-2">
-            <h3 className="h4">Token Lists</h3>
+        <div className="flex flex-col gap-2 p-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h3 className="font-heading text-sm font-semibold text-gray-900 dark:text-white">Token Lists</h3>
             <button
-              className="variant-soft btn btn-sm"
+              className="btn-ghost px-3 py-1 text-xs"
               type="button"
               onClick={handleToggleAll}
             >
-              <i className="fas fa-check-double mr-2"></i>
+              <i className="fas fa-check-double mr-1" />
               Toggle All
             </button>
           </div>
 
-          <label className="input-group input-group-divider grid-cols-[auto_1fr_auto] rounded-container-token px-2">
-            <div className="ig-cell">
-              <i className="fas fa-search"></i>
-            </div>
+          {/* Search */}
+          <div className="flex items-center gap-2 rounded-lg border border-border-light dark:border-border-dark bg-gray-50 dark:bg-surface-2 px-3 py-1.5">
+            <i className="fas fa-search text-xs text-gray-400 dark:text-white/30" />
             <input
               type="search"
               placeholder="Search lists..."
-              className="input"
+              className="w-full bg-transparent text-sm text-gray-900 dark:text-white/80 outline-none placeholder:text-gray-400 dark:placeholder:text-white/30"
               value={listSearchQuery}
               onChange={(e) => setListSearchQuery(e.target.value)}
             />
-          </label>
+          </div>
 
-          <div className="overflow-y-auto" style={{ maxHeight: '300px' }}>
+          {/* List items */}
+          <div className="max-h-[300px] overflow-y-auto">
             {filteredLists.map(([listKey, tokens]) => (
               <label
                 key={listKey}
-                className="hover:bg-surface-hover flex cursor-pointer items-center gap-2 px-2"
+                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent-500/5"
               >
                 <input
                   type="checkbox"
-                  className="checkbox"
+                  className="h-4 w-4 rounded border-border-light dark:border-border-dark bg-gray-50 dark:bg-surface-2 text-accent-500 focus:ring-accent-500/30"
                   checked={enabledLists.has(listKey)}
                   onChange={(e) => onToggleList(listKey, e.target.checked)}
                 />
-                <div className="flex-1">
-                  <div className="font-medium">{listKey}</div>
-                  <div className="text-xs opacity-75">
+                <div className="flex-1 overflow-hidden">
+                  <div className="truncate text-sm font-medium text-gray-900 dark:text-white/80">
+                    {listKey}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-white/40">
                     {tokens.filter((token) => token.chainId === selectedChain).length}{' '}
                     tokens
                   </div>

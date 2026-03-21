@@ -120,6 +120,9 @@ export const collect =
         if (blacked.has(token.address.toLowerCase())) {
           token.logoURI = ''
         }
+        if (token.logoURI?.includes('/thumb/')) {
+          token.logoURI = token.logoURI.replace('/thumb/', '/large/')
+        }
       })
       const kv: KV = {}
       if (blacked.size) {

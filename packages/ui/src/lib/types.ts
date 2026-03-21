@@ -82,3 +82,34 @@ export interface CodeBlockProps {
   prePadding?: string
   preClasses?: string
 }
+
+export interface StudioAppearance {
+  width: number
+  height: number
+  shape: 'circle' | 'rounded' | 'square'
+  borderRadius: number
+  padding: number
+  shadow: 'none' | 'subtle' | 'medium' | 'strong'
+  backgroundColor: string
+}
+
+export interface BadgeConfig {
+  enabled: boolean
+  angleDeg: number
+  sizeRatio: number
+  overlap: number
+  ringEnabled: boolean
+  ringColor: string
+  ringThickness: number
+}
+
+export type CodeFormat = 'react' | 'html' | 'img'
+export type CodeMode = 'snippet' | 'component'
+
+export interface ImageMetadata {
+  format: string
+  width: number | null
+  height: number | null
+  fileSize: number | null
+  contentType: string
+}

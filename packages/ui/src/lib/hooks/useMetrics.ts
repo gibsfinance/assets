@@ -201,7 +201,16 @@ export type MetricsHookResult = {
 }
 
 export function useMetrics(): MetricsHookResult {
-  const [metrics, setMetrics] = useState<PlatformMetrics | null>(null)
+  const [metrics, setMetrics] = useState<PlatformMetrics | null>(() => {
+    // Load cached metrics immediately on init so all pages see data
+    try {
+      const raw = localStorage.getItem('metrics')
+      if (!raw) return null
+      const entry = JSON.parse(raw) as CacheEntry<PlatformMetrics>
+      if (isCacheValid(entry)) return entry.data
+    } catch { /* ignore parse errors */ }
+    return null
+  })
   const [isLoading, setIsLoading] = useState(false)
   const isLoadingRef = useRef(false)
 
