@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { getApiUrl } from '../utils'
 
 const SIZES = [28, 32, 36]
@@ -472,32 +472,41 @@ const ICON_PATHS: string[] = [
 ]
 
 function ConveyorIcon({ src, size }: { src: string; size: number }) {
-  const handleLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget
-    const skeleton = img.previousElementSibling as HTMLElement | null
-    if (skeleton) skeleton.style.display = 'none'
-    img.style.opacity = '1'
-  }, [])
+  const ref = useRef<HTMLAnchorElement>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [visible, setVisible] = useState(false)
 
-  const handleError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    // Keep skeleton visible, hide broken image
-    e.currentTarget.style.display = 'none'
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
   }, [])
 
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 pointer-events-auto relative" style={{ width: size, height: size }}>
-      <div className="absolute inset-0 rounded-full bg-gray-100 dark:bg-surface-2" />
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        loading="lazy"
-        decoding="async"
-        onLoad={handleLoad}
-        onError={handleError}
-        className="rounded-full relative"
-        style={{ width: size, height: size, opacity: 0 }}
-      />
+    <a ref={ref} href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 pointer-events-auto relative" style={{ width: size, height: size }}>
+      <div className="absolute inset-0 rounded-full bg-gray-100 dark:bg-surface-2" style={loaded ? { display: 'none' } : undefined} />
+      {visible && (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+          className="rounded-full relative"
+          style={{ width: size, height: size, opacity: loaded ? 1 : 0 }}
+        />
+      )}
     </a>
   )
 }
