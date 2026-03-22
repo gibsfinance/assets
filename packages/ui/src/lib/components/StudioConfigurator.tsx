@@ -678,21 +678,45 @@ function InfiniteCanvas() {
         </div>
       </div>
 
-      {/* Zoom indicator + reset */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
-        <span className="rounded-md bg-white/80 px-2 py-0.5 font-mono text-[10px] text-gray-600 backdrop-blur dark:bg-surface-2/80 dark:text-white/50">
-          {Math.round(transform.zoom * 100)}%
+      {/* Zoom controls */}
+      <div className="absolute bottom-3 right-3 flex flex-col items-center gap-0.5 rounded-lg bg-white/80 backdrop-blur shadow-sm dark:bg-surface-2/80">
+        {/* Reset */}
+        <button
+          type="button"
+          onClick={resetView}
+          className="flex h-7 w-7 items-center justify-center rounded-t-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          aria-label="Reset view"
+          title="Reset view"
+        >
+          <i className="fas fa-crosshairs text-[10px]" />
+        </button>
+
+        {/* Zoom in */}
+        <button
+          type="button"
+          onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom * 1.25) }))}
+          className="flex h-6 w-7 items-center justify-center text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <i className="fas fa-plus text-[9px]" />
+        </button>
+
+        {/* Zoom percentage */}
+        <span className="flex h-6 w-7 items-center justify-center font-mono text-[9px] text-gray-500 dark:text-white/40">
+          {Math.round(transform.zoom * 100)}
         </span>
-        {(transform.x !== 0 || transform.y !== 0 || transform.zoom !== 1) && (
-          <button
-            type="button"
-            onClick={resetView}
-            className="rounded-md bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 backdrop-blur transition-colors hover:text-gray-700 dark:bg-surface-2/80 dark:text-white/40 dark:hover:text-white/60"
-            aria-label="Reset canvas view"
-          >
-            Reset
-          </button>
-        )}
+
+        {/* Zoom out */}
+        <button
+          type="button"
+          onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom / 1.25) }))}
+          className="flex h-6 w-7 items-center justify-center rounded-b-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <i className="fas fa-minus text-[9px]" />
+        </button>
       </div>
     </div>
   )
