@@ -266,6 +266,16 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         {!selectedChainId && (
           <div className="flex flex-col items-center gap-4 px-4 py-8">
             <p className="text-sm text-gray-400 dark:text-white/30">Select a network to browse tokens</p>
+            {!metrics && (
+              <div className="w-full space-y-2">
+                <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-surface-3" />
+                <div className="grid grid-cols-2 gap-2">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="h-12 animate-pulse rounded-lg bg-gray-100 dark:bg-surface-2" />
+                  ))}
+                </div>
+              </div>
+            )}
             {popularChains.length > 0 && (
               <div className="w-full">
                 <p className="mb-2 text-xs font-medium text-gray-500 dark:text-white/40">Popular chains</p>

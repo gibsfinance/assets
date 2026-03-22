@@ -483,7 +483,7 @@ function clampZoom(zoom: number): number {
 }
 
 /** Checkerboard SVG data URI for a transparent-style canvas background */
-const CHECKERBOARD_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='10' height='10' fill='%23e5e7eb'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23e5e7eb'/%3E%3C/svg%3E")`
+const CHECKERBOARD_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23f8f8f8'/%3E%3Crect width='10' height='10' fill='%23e0e0e0'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23e0e0e0'/%3E%3C/svg%3E")`
 const CHECKERBOARD_SVG_DARK = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23111113'/%3E%3Crect width='10' height='10' fill='%231a1a1e'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%231a1a1e'/%3E%3C/svg%3E")`
 
 function InfiniteCanvas() {
