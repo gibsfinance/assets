@@ -25,3 +25,5 @@ docs/superpowers/
 !.yarn/plugins
 !.yarn/releases
 .claude/worktrees/
+.screenshots/
+.playwright-mcp/
