@@ -136,14 +136,28 @@ const loadChainId = async (blockchainKey: string) => {
 
   const chainList = await getChainListResult()
   const sterilizedBlockchainKey = sterilize(blockchainKey)
-  const chain = chainList.find(
+  // Sterilize is aggressive (strips "chain", "net", etc.) which can create
+  // collisions — e.g. "smartchain" → "smart" matches "Smart Mainnet" (661898459)
+  // instead of BNB Smart Chain (56). When multiple chains match, prefer the one
+  // whose original name/slug contains the blockchain key as a substring.
+  const candidates = chainList.filter(
     (c) =>
-      sterilize(c.name) === sterilizedBlockchainKey ||
       sterilize(c.chainSlug) === sterilizedBlockchainKey ||
+      sterilize(c.name) === sterilizedBlockchainKey ||
       sterilize(c.chain) === sterilizedBlockchainKey,
   )
+  const chain =
+    // Exact slug match first
+    candidates.find((c) => c.chainSlug === blockchainKey) ||
+    // Then prefer candidate whose name contains the key (ignoring spaces/separators)
+    candidates.find(
+      (c) =>
+        c.name?.toLowerCase().replace(/[\s-_]/g, '').includes(blockchainKey) ||
+        c.chainSlug?.toLowerCase().replace(/[\s-_]/g, '').includes(blockchainKey),
+    ) ||
+    // Fall back to first match
+    candidates[0]
   const row = utils.terminal.get(providerKey)!
-  // chain id from chain list is more trustworthy
   if (chain) {
     chainId = chain.chainId
   }
