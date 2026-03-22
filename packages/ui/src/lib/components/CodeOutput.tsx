@@ -74,25 +74,43 @@ function generateReactSnippet(
   appearance: StudioAppearance,
   badge: BadgeConfig,
 ): string {
-  const { width, height, shape, borderRadius, shadow } = appearance
+  const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance
   const borderRadiusCSS = shapeToCSS(shape, borderRadius)
   const shadowCSS = shadowToCSS(shadow)
+  const paddedWidth = width + padding * 2
+  const paddedHeight = height + padding * 2
 
   const imgStyleParts: string[] = [
     `width: ${width}`,
     `height: ${height}`,
     `borderRadius: '${borderRadiusCSS}'`,
   ]
-  if (shadowCSS) imgStyleParts.push(`boxShadow: '${shadowCSS}'`)
+
+  const wrapperStyleParts: string[] = [
+    `borderRadius: '${borderRadiusCSS}'`,
+  ]
+  if (padding > 0) wrapperStyleParts.push(`padding: ${padding}`)
+  if (shadowCSS) wrapperStyleParts.push(`boxShadow: '${shadowCSS}'`)
+  if (backgroundColor !== 'transparent') wrapperStyleParts.push(`backgroundColor: '${backgroundColor}'`)
 
   const imgStyle = `{ ${imgStyleParts.join(', ')} }`
+  const needsWrapper = badge.enabled || padding > 0 || shadowCSS || backgroundColor !== 'transparent'
 
-  if (!badge.enabled) {
+  if (!needsWrapper) {
     return `<img\n  src="${imageUrl}"\n  alt="${tokenName}"\n  style={${imgStyle}}\n/>`
   }
 
+  if (!badge.enabled) {
+    const wrapperStyle = `{ display: 'inline-block', ${wrapperStyleParts.join(', ')} }`
+    return [
+      `<div style={${wrapperStyle}}>`,
+      `  <img src="${imageUrl}" alt="${tokenName}" style={${imgStyle}} />`,
+      `</div>`,
+    ].join('\n')
+  }
+
   const { top, left, badgeSize } = badgePositionToCSS(
-    width,
+    paddedWidth,
     badge.angleDeg,
     badge.sizeRatio,
     badge.overlap,
@@ -111,9 +129,10 @@ function generateReactSnippet(
   }
 
   const badgeStyle = `{ ${badgeStyleParts.join(', ')} }`
+  const containerStyle = `{ position: 'relative', display: 'inline-block', width: ${paddedWidth}, height: ${paddedHeight}, ${wrapperStyleParts.join(', ')} }`
 
   return [
-    `<div style={{ position: 'relative', display: 'inline-block', width: ${width}, height: ${height} }}>`,
+    `<div style={${containerStyle}}>`,
     `  <img`,
     `    src="${imageUrl}"`,
     `    alt="${tokenName}"`,
@@ -232,25 +251,43 @@ function generateHtmlSnippet(
   appearance: StudioAppearance,
   badge: BadgeConfig,
 ): string {
-  const { width, height, shape, borderRadius, shadow } = appearance
+  const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance
   const borderRadiusCSS = shapeToCSS(shape, borderRadius)
   const shadowCSS = shadowToCSS(shadow)
+  const paddedWidth = width + padding * 2
+  const paddedHeight = height + padding * 2
 
   const imgStyleParts = [
     `width: ${width}px`,
     `height: ${height}px`,
     `border-radius: ${borderRadiusCSS}`,
   ]
-  if (shadowCSS) imgStyleParts.push(`box-shadow: ${shadowCSS}`)
-
   const imgStyle = imgStyleParts.join('; ')
 
-  if (!badge.enabled) {
+  const wrapperStyleParts = [
+    `border-radius: ${borderRadiusCSS}`,
+  ]
+  if (padding > 0) wrapperStyleParts.push(`padding: ${padding}px`)
+  if (shadowCSS) wrapperStyleParts.push(`box-shadow: ${shadowCSS}`)
+  if (backgroundColor !== 'transparent') wrapperStyleParts.push(`background: ${backgroundColor}`)
+
+  const needsWrapper = badge.enabled || padding > 0 || shadowCSS || backgroundColor !== 'transparent'
+
+  if (!needsWrapper) {
     return `<img src="${imageUrl}" alt="${tokenName}" style="${imgStyle}" />`
   }
 
+  if (!badge.enabled) {
+    const wrapperStyle = `display: inline-block; ${wrapperStyleParts.join('; ')}`
+    return [
+      `<div style="${wrapperStyle}">`,
+      `  <img src="${imageUrl}" alt="${tokenName}" style="${imgStyle}" />`,
+      `</div>`,
+    ].join('\n')
+  }
+
   const { top, left, badgeSize } = badgePositionToCSS(
-    width,
+    paddedWidth,
     badge.angleDeg,
     badge.sizeRatio,
     badge.overlap,
@@ -269,9 +306,10 @@ function generateHtmlSnippet(
   }
 
   const badgeStyle = badgeStyleParts.join('; ')
+  const containerStyle = `position: relative; display: inline-block; width: ${paddedWidth}px; height: ${paddedHeight}px; ${wrapperStyleParts.join('; ')}`
 
   return [
-    `<div style="position: relative; display: inline-block; width: ${width}px; height: ${height}px">`,
+    `<div style="${containerStyle}">`,
     `  <img src="${imageUrl}" alt="${tokenName}" style="${imgStyle}" />`,
     `  <img src="${networkUrl}" alt="Network" style="${badgeStyle}" />`,
     `</div>`,
@@ -496,7 +534,7 @@ export default function CodeOutput() {
           lang={codeLanguage}
           base="overflow-x-auto"
           rounded=""
-          prePadding="[&>pre]:px-4 [&>pre]:py-4 [&>pre]:w-full"
+          prePadding="[&>pre]:px-4 [&>pre]:py-4 [&>pre]:w-fit"
         />
       </div>
 

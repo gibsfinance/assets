@@ -551,10 +551,12 @@ function InfiniteCanvas() {
   const borderRadiusCSS = shapeToRadius(shape, borderRadius)
   const boxShadow = SHADOW_MAP[shadow] ?? 'none'
 
+  // Badge position is relative to the full padded container, not just the image
+  const paddedSize = width + padding * 2
   const badgePosition = useMemo(() => {
     if (!badge.enabled) return null
-    return badgePositionToCSS(width, badge.angleDeg, badge.sizeRatio, badge.overlap)
-  }, [badge.enabled, badge.angleDeg, badge.sizeRatio, badge.overlap, width])
+    return badgePositionToCSS(paddedSize, badge.angleDeg, badge.sizeRatio, badge.overlap)
+  }, [badge.enabled, badge.angleDeg, badge.sizeRatio, badge.overlap, paddedSize])
 
   const tokenName = selectedToken?.name ?? 'Token'
   const hasToken = selectedToken !== null
@@ -646,6 +648,7 @@ function InfiniteCanvas() {
               borderRadius: borderRadiusCSS,
               boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
               backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
+              padding: padding > 0 ? padding : undefined,
             }}
           >
             <Image
@@ -656,8 +659,8 @@ function InfiniteCanvas() {
               width={width}
               height={height}
               style={{
-                margin: padding > 0 ? padding : undefined,
                 borderRadius: borderRadiusCSS,
+                display: 'block',
               }}
             />
 
@@ -742,10 +745,10 @@ function CodePanel({ open }: { open: boolean }) {
 
   return (
     <div
-      className={`flex-shrink-0 overflow-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border-light dark:border-border-dark' : ''}`}
+      className={`flex-shrink-0 overflow-y-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border-light dark:border-border-dark' : ''}`}
       style={{ maxHeight: open ? `${Math.min(height, 400)}px` : 0 }}
     >
-      <div ref={panelRef} className="p-4 bg-white dark:bg-surface-base overflow-y-auto" style={{ maxHeight: 400 }}>
+      <div ref={panelRef} className="p-4 bg-white dark:bg-surface-base overflow-auto" style={{ maxHeight: 400 }}>
         <CodeOutput />
       </div>
     </div>
