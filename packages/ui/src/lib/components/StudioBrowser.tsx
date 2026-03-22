@@ -34,7 +34,7 @@ const POPULAR_CHAIN_COUNT = 8
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
   const { metrics, providers, fetchMetrics } = useMetricsContext()
-  const { openEditor, openNewEditor } = useListEditor()
+  const { isOpen: editorOpen, activeList, addToken, openEditor, openNewEditor } = useListEditor()
 
   useEffect(() => {
     if (!metrics) fetchMetrics()
@@ -331,12 +331,25 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
               return (
                 <div key={iconKey}>
                   <div
-                    className={`group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-all ${
+                    className={`group flex cursor-pointer items-center gap-3 px-3 py-2 transition-all border-l-2 ${
                       isSelected
-                        ? 'bg-accent-500/10 shadow-glow-green-subtle ring-1 ring-accent-500/30'
-                        : 'hover:bg-gray-100 dark:hover:bg-surface-2'
+                        ? 'border-accent-500 bg-accent-500/10'
+                        : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
                     }`}
-                    onClick={() => selectToken(token)}
+                    onClick={() => {
+                      if (editorOpen && activeList) {
+                        addToken(activeList.id, {
+                          chainId: typeof token.chainId === 'string' ? Number(token.chainId) : token.chainId,
+                          address: token.address,
+                          name: token.name,
+                          symbol: token.symbol,
+                          decimals: token.decimals ?? 18,
+                          imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
+                        })
+                      } else {
+                        selectToken(token)
+                      }
+                    }}
                   >
                     {/* Icon */}
                     <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
@@ -397,17 +410,29 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                       </div>
                     </div>
 
-                    {/* Info button */}
+                    {/* Action button: add to list when editor open, inspect otherwise */}
                     <button
                       type="button"
                       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-300 opacity-0 transition-all hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onInspectToken(token)
+                        if (editorOpen && activeList) {
+                          addToken(activeList.id, {
+                            chainId: typeof token.chainId === 'string' ? Number(token.chainId) : token.chainId,
+                            address: token.address,
+                            name: token.name,
+                            symbol: token.symbol,
+                            decimals: token.decimals ?? 18,
+                            imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
+                          })
+                        } else {
+                          onInspectToken(token)
+                        }
                       }}
-                      title="Inspect token"
+                      title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
+                      aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
                     >
-                      <i className="fas fa-info-circle text-sm" />
+                      <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
                     </button>
                   </div>
 
