@@ -11,11 +11,16 @@ const priorityNames: Record<number, string> = {
   324: 'zkSync Era',
   534352: 'Scroll',
   250: 'Fantom Opera',
+  900: 'Sonic',
   1030: 'Conflux eSpace',
   5000: 'Mantle',
   8453: 'Base',
+  43114: 'Avalanche C-Chain',
   59144: 'Linea',
   7777777: 'Zora',
+  245022934: 'Neon EVM MainNet',
+  661898459: 'PulseChain Testnet v4',
+  728126428: 'Tron Mainnet',
 }
 
 export function getNetworkName(chainId: string | number): string {
