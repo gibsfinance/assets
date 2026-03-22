@@ -3308,15 +3308,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/sharp@npm:^0.32.0":
-  version: 0.32.0
-  resolution: "@types/sharp@npm:0.32.0"
-  dependencies:
-    sharp: "npm:*"
-  checksum: 10c0/a101c5bf17220b51e339164fabf779993e1757fcae1610f2647d36a24d7f15bf857fd747ec559b8fef667c9ea38caab09dc3ba4d49095fef2a06e5ae1819e639
-  languageName: node
-  linkType: hard
-
 "@types/superagent@npm:^8.1.0":
   version: 8.1.9
   resolution: "@types/superagent@npm:8.1.9"
@@ -9415,7 +9406,6 @@ __metadata:
     "@types/puppeteer": "npm:^5.4.7"
     "@types/react": "npm:^18.2.66"
     "@types/response-time": "npm:^2.3.8"
-    "@types/sharp": "npm:^0.32.0"
     "@types/supertest": "npm:^6.0.2"
     "@types/yargs": "npm:^17.0.32"
     "@uniswap/token-lists": "npm:^1.0.0-beta.34"
@@ -9473,7 +9463,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sharp@npm:*, sharp@npm:^0.34.5":
+"sharp@npm:^0.34.5":
   version: 0.34.5
   resolution: "sharp@npm:0.34.5"
   dependencies:
