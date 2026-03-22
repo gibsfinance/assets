@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import BottomDrawer from '../components/BottomDrawer'
 import Image from '../components/Image'
@@ -13,19 +13,100 @@ import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
 import type { Token } from '../types'
 
+/**
+ * Studio page — URL hash params drive navigational state:
+ *   ?chain=1           — browsing Ethereum
+ *   ?chain=1&token=0x  — token selected for configurator
+ *   ?editor=new        — list editor creation menu
+ *   ?editor=<listId>   — editing a specific list
+ *
+ * Appearance/badge/code preferences stay in localStorage (via StudioContext).
+ */
 export default function Studio() {
-  const { selectedToken } = useStudio()
+  const { selectedToken, selectedChainId, selectToken, selectChain } = useStudio()
   const { showTestnets, setShowTestnets } = useSettings()
-  const { isOpen: editorOpen, openNewEditor } = useListEditor()
+  const { isOpen: editorOpen, activeList, openNewEditor, openEditor, closeEditor } = useListEditor()
   const [inspectToken, setInspectToken] = useState<Token | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // ---------------------------------------------------------------------------
+  // URL → State: apply URL params on mount and when URL changes
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (searchParams.get('editor') === 'new') {
-      openNewEditor()
-      setSearchParams({}, { replace: true })
+    const chain = searchParams.get('chain')
+    const editor = searchParams.get('editor')
+
+    // Sync chain from URL
+    if (chain && chain !== selectedChainId) {
+      selectChain(chain)
     }
-  }, [searchParams, openNewEditor, setSearchParams])
+
+    // Sync editor from URL
+    if (editor === 'new' && !editorOpen) {
+      openNewEditor()
+    } else if (editor && editor !== 'new' && !editorOpen) {
+      openEditor(editor)
+    } else if (!editor && editorOpen) {
+      closeEditor()
+    }
+  // Only run when URL changes, not when state changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  // ---------------------------------------------------------------------------
+  // State → URL: update URL when navigational state changes
+  // ---------------------------------------------------------------------------
+  const updateUrl = useCallback(
+    (updates: Record<string, string | null>) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        for (const [key, value] of Object.entries(updates)) {
+          if (value === null) {
+            next.delete(key)
+          } else {
+            next.set(key, value)
+          }
+        }
+        return next
+      }, { replace: true })
+    },
+    [setSearchParams],
+  )
+
+  // Sync chain selection to URL
+  useEffect(() => {
+    const urlChain = searchParams.get('chain')
+    if (selectedChainId && selectedChainId !== urlChain) {
+      updateUrl({ chain: selectedChainId })
+    } else if (!selectedChainId && urlChain) {
+      updateUrl({ chain: null })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChainId])
+
+  // Sync token selection to URL
+  useEffect(() => {
+    const urlToken = searchParams.get('token')
+    if (selectedToken && selectedToken.address !== urlToken) {
+      updateUrl({ token: selectedToken.address, chain: String(selectedToken.chainId) })
+    } else if (!selectedToken && urlToken) {
+      updateUrl({ token: null })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedToken])
+
+  // Sync editor state to URL
+  useEffect(() => {
+    const urlEditor = searchParams.get('editor')
+    if (editorOpen && activeList && activeList.id !== urlEditor) {
+      updateUrl({ editor: activeList.id })
+    } else if (editorOpen && !activeList && urlEditor !== 'new') {
+      updateUrl({ editor: 'new' })
+    } else if (!editorOpen && urlEditor) {
+      updateUrl({ editor: null })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorOpen, activeList])
 
   return (
     <div className="h-screen">

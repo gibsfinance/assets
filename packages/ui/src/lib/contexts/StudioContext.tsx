@@ -53,9 +53,8 @@ const DEFAULT_BADGE: BadgeConfig = {
 
 const STORAGE_KEY = 'gib-studio-state'
 
-interface PersistedState {
-  selectedToken: Token | null
-  selectedChainId: string | null
+/** Only visual preferences are persisted — navigational state lives in the URL */
+interface PersistedPrefs {
   appearance: StudioAppearance
   badge: BadgeConfig
   codeFormat: CodeFormat
@@ -63,7 +62,7 @@ interface PersistedState {
   resolutionOrder: string[] | null
 }
 
-function loadPersistedState(): Partial<PersistedState> {
+function loadPersistedPrefs(): Partial<PersistedPrefs> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return {}
@@ -73,10 +72,8 @@ function loadPersistedState(): Partial<PersistedState> {
   }
 }
 
-function savePersistedState(state: StudioState): void {
-  const persisted: PersistedState = {
-    selectedToken: state.selectedToken,
-    selectedChainId: state.selectedChainId,
+function savePersistedPrefs(state: StudioState): void {
+  const persisted: PersistedPrefs = {
     appearance: state.appearance,
     badge: state.badge,
     codeFormat: state.codeFormat,
@@ -98,28 +95,28 @@ const StudioCtx = createContext<StudioContextValue | null>(null)
 
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StudioState>(() => {
-    const persisted = loadPersistedState()
+    const prefs = loadPersistedPrefs()
     return {
-      selectedToken: persisted.selectedToken ?? null,
-      selectedChainId: persisted.selectedChainId ?? null,
-      appearance: { ...DEFAULT_APPEARANCE, ...persisted.appearance },
-      badge: { ...DEFAULT_BADGE, ...persisted.badge },
-      codeFormat: persisted.codeFormat ?? 'sdk',
-      codeMode: persisted.codeMode ?? 'snippet',
-      resolutionOrder: persisted.resolutionOrder ?? null,
-      activeTab: persisted.selectedToken ? 'configure' : 'browse',
+      selectedToken: null,
+      selectedChainId: null,
+      appearance: { ...DEFAULT_APPEARANCE, ...prefs.appearance },
+      badge: { ...DEFAULT_BADGE, ...prefs.badge },
+      codeFormat: prefs.codeFormat ?? 'sdk',
+      codeMode: prefs.codeMode ?? 'snippet',
+      resolutionOrder: prefs.resolutionOrder ?? null,
+      activeTab: 'browse',
     }
   })
 
-  // Persist state changes (debounced to avoid thrashing localStorage)
+  // Persist preferences (debounced)
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(() => savePersistedState(state), 300)
+    saveTimeout.current = setTimeout(() => savePersistedPrefs(state), 300)
     return () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }
   }, [state])
 
-  // Cross-page chain pre-selection: reads localStorage.selectedChainId on mount
+  // Cross-page chain pre-selection from Home page network grid
   useEffect(() => {
     const storedChainId = localStorage.getItem('selectedChainId')
     if (storedChainId) {
