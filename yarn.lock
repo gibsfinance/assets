@@ -1308,6 +1308,7 @@ __metadata:
     promise-limit: "npm:^2.7.0"
     typescript: "npm:^5.8.3"
     viem: "npm:^2.47.5"
+    vitest: "npm:^4.1.0"
   languageName: unknown
   linkType: soft
 

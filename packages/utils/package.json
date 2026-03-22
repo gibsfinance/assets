@@ -5,7 +5,8 @@
   "description": "Utility functions for your project",
   "main": "index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "gibs",
@@ -23,6 +24,7 @@
     "viem": "^2.47.5"
   },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0"
   }
 }
