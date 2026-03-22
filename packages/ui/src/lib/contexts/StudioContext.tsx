@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import type { Token, StudioAppearance, BadgeConfig, CodeFormat, CodeMode } from '../types'
 
 interface StudioState {
@@ -47,19 +47,77 @@ const DEFAULT_BADGE: BadgeConfig = {
   badgeBackground: 'transparent',
 }
 
+// ---------------------------------------------------------------------------
+// localStorage persistence
+// ---------------------------------------------------------------------------
+
+const STORAGE_KEY = 'gib-studio-state'
+
+interface PersistedState {
+  selectedToken: Token | null
+  selectedChainId: string | null
+  appearance: StudioAppearance
+  badge: BadgeConfig
+  codeFormat: CodeFormat
+  codeMode: CodeMode
+  resolutionOrder: string[] | null
+}
+
+function loadPersistedState(): Partial<PersistedState> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
+function savePersistedState(state: StudioState): void {
+  const persisted: PersistedState = {
+    selectedToken: state.selectedToken,
+    selectedChainId: state.selectedChainId,
+    appearance: state.appearance,
+    badge: state.badge,
+    codeFormat: state.codeFormat,
+    codeMode: state.codeMode,
+    resolutionOrder: state.resolutionOrder,
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted))
+  } catch {
+    // localStorage full or unavailable
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
 const StudioCtx = createContext<StudioContextValue | null>(null)
 
 export function StudioProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<StudioState>({
-    selectedToken: null,
-    selectedChainId: null,
-    appearance: { ...DEFAULT_APPEARANCE },
-    badge: { ...DEFAULT_BADGE },
-    codeFormat: 'sdk',
-    codeMode: 'snippet',
-    resolutionOrder: null,
-    activeTab: 'browse',
+  const [state, setState] = useState<StudioState>(() => {
+    const persisted = loadPersistedState()
+    return {
+      selectedToken: persisted.selectedToken ?? null,
+      selectedChainId: persisted.selectedChainId ?? null,
+      appearance: { ...DEFAULT_APPEARANCE, ...persisted.appearance },
+      badge: { ...DEFAULT_BADGE, ...persisted.badge },
+      codeFormat: persisted.codeFormat ?? 'sdk',
+      codeMode: persisted.codeMode ?? 'snippet',
+      resolutionOrder: persisted.resolutionOrder ?? null,
+      activeTab: persisted.selectedToken ? 'configure' : 'browse',
+    }
   })
+
+  // Persist state changes (debounced to avoid thrashing localStorage)
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(() => savePersistedState(state), 300)
+    return () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }
+  }, [state])
 
   // Cross-page chain pre-selection: reads localStorage.selectedChainId on mount
   useEffect(() => {
@@ -107,7 +165,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, activeTab }))
   }, [])
 
-  /** Resets appearance and badge config to defaults. Preserves selected token/chain. */
   const reset = useCallback(() => {
     setState((s) => ({
       ...s,
