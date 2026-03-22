@@ -640,12 +640,16 @@ function InfiniteCanvas() {
               const badgePadding = badge.badgePadding ?? 0
               const badgeBackground = badge.badgeBackground ?? 'transparent'
               const badgeBorderRadius = badgeShape === 'circle' ? '50%' : '0'
+              // Offset position to account for ring border + padding
+              // so the badge image stays centered at the calculated point
+              const ringOffset = badge.ringEnabled ? badge.ringThickness : 0
+              const positionOffset = ringOffset + badgePadding
               return (
                 <div
                   style={{
                     position: 'absolute',
-                    top: Math.round(badgePosition.top),
-                    left: Math.round(badgePosition.left),
+                    top: Math.round(badgePosition.top) - positionOffset,
+                    left: Math.round(badgePosition.left) - positionOffset,
                     borderRadius: badgeBorderRadius,
                     padding: badgePadding > 0 ? badgePadding : undefined,
                     backgroundColor: badgeBackground !== 'transparent' ? badgeBackground : undefined,

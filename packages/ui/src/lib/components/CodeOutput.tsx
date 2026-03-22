@@ -124,10 +124,11 @@ function generateReactSnippet(
     badge.overlap,
   )
 
+  const ringOffset = badge.ringEnabled ? badge.ringThickness : 0
   const badgeStyleParts = [
     'position: \'absolute\'',
-    `top: ${Math.round(top)}`,
-    `left: ${Math.round(left)}`,
+    `top: ${Math.round(top) - ringOffset}`,
+    `left: ${Math.round(left) - ringOffset}`,
     `width: ${Math.round(badgeSize)}`,
     `height: ${Math.round(badgeSize)}`,
     "borderRadius: '50%'",
@@ -301,10 +302,11 @@ function generateHtmlSnippet(
     badge.overlap,
   )
 
+  const htmlRingOffset = badge.ringEnabled ? badge.ringThickness : 0
   const badgeStyleParts = [
     'position: absolute',
-    `top: ${Math.round(top)}px`,
-    `left: ${Math.round(left)}px`,
+    `top: ${Math.round(top) - htmlRingOffset}px`,
+    `left: ${Math.round(left) - htmlRingOffset}px`,
     `width: ${Math.round(badgeSize)}px`,
     `height: ${Math.round(badgeSize)}px`,
     'border-radius: 50%',
