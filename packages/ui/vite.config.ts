@@ -28,6 +28,14 @@ export default defineConfig({
     react(),
   ],
   base: './',
+  server: {
+    proxy: process.env.PUBLIC_BASE_URL ? undefined : {
+      '/image': { target: 'http://localhost:3456', changeOrigin: true },
+      '/list': { target: 'http://localhost:3456', changeOrigin: true },
+      '/token': { target: 'http://localhost:3456', changeOrigin: true },
+      '/api': { target: 'http://localhost:3456', changeOrigin: true },
+    },
+  },
   preview: {
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },
