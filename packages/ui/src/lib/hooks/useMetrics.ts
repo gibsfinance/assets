@@ -193,6 +193,7 @@ function clearCacheEntries(): void {
 
 export type MetricsHookResult = {
   metrics: PlatformMetrics | null
+  providers: ListDescription[]
   isLoading: boolean
   fetchMetrics: (forceFresh?: boolean) => Promise<void>
   fetchTokenList: (provider: string) => Promise<Token[] | null>
@@ -211,6 +212,7 @@ export function useMetrics(): MetricsHookResult {
     } catch { /* ignore parse errors */ }
     return null
   })
+  const [providers, setProviders] = useState<ListDescription[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const isLoadingRef = useRef(false)
 
@@ -249,15 +251,17 @@ export function useMetrics(): MetricsHookResult {
     const cachedData = getFromCache<ListDescription[]>(cacheKey)
 
     if (cachedData) {
+      setProviders(cachedData)
       return cachedData
     }
 
     try {
       const response = await fetch(getApiUrl('/list'))
       if (!response.ok) return []
-      const providers = (await response.json()) as ListDescription[]
-      setToCache(cacheKey, providers)
-      return providers
+      const result = (await response.json()) as ListDescription[]
+      setToCache(cacheKey, result)
+      setProviders(result)
+      return result
     } catch (error) {
       console.error('Failed to fetch providers:', error)
       return []
@@ -412,5 +416,5 @@ export function useMetrics(): MetricsHookResult {
     clearCacheEntries()
   }, [])
 
-  return { metrics, isLoading, fetchMetrics, fetchTokenList, fetchProviders, clearCache }
+  return { metrics, providers, isLoading, fetchMetrics, fetchTokenList, fetchProviders, clearCache }
 }

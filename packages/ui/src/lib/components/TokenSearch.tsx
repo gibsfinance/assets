@@ -31,7 +31,7 @@ export default function TokenSearch({
   const [_isSearching, setIsSearching] = useState(false)
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const searchAbortControllerRef = useRef<AbortController | null>(null)
-  const { metrics } = useMetricsContext()
+  const { metrics, providers: contextProviders, fetchProviders } = useMetricsContext()
 
 
 
@@ -73,8 +73,8 @@ export default function TokenSearch({
     }
 
     try {
-      const response = await fetch(getApiUrl('/list'))
-      if (!response.ok) {
+      const lists = contextProviders.length ? contextProviders : await fetchProviders()
+      if (!lists.length) {
         onSearchUpdate({
           query,
           isSearching: false,
@@ -84,8 +84,6 @@ export default function TokenSearch({
         })
         return
       }
-
-      const lists = (await response.json()) as ListDescription[]
       const availableLists = lists.filter((list) => list.chainType === 'evm')
       const globalLists = availableLists.filter((list) => list.chainId === '0')
       const chainSpecificLists = availableLists.filter((list) => list.chainId !== '0')

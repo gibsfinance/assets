@@ -33,7 +33,7 @@ const POPULAR_CHAIN_COUNT = 8
 
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
-  const { metrics, fetchMetrics } = useMetricsContext()
+  const { metrics, providers, fetchMetrics } = useMetricsContext()
   const { openEditor, openNewEditor } = useListEditor()
 
   useEffect(() => {
@@ -106,43 +106,25 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     return filteredTokens.slice(start, start + TOKENS_PER_PAGE)
   }, [filteredTokens, currentPage])
 
-  /* ----- Fetch available lists on mount ---------------------------------- */
+  /* ----- Derive available lists from context providers -------------------- */
   useEffect(() => {
-    let cancelled = false
-
-    async function fetchLists() {
-      try {
-        const response = await fetch(getApiUrl('/list'))
-        if (cancelled || !response.ok) return
-
-        const data = await response.json()
-        if (cancelled) return
-
-        const uniqueLists = new Map<string, AvailableList>()
-        data.forEach((info: Record<string, unknown>) => {
-          const key = `${info.providerKey}-${info.key}-${info.chainId}`
-          if (!uniqueLists.has(key)) {
-            uniqueLists.set(key, {
-              key: info.key as string,
-              name: (info.name as string) || (info.key as string),
-              providerKey: info.providerKey as string,
-              chainId: info.chainId?.toString() || '0',
-              type: (info.type as string) || 'hosted',
-              default: (info.default as boolean) || false,
-            })
-          }
+    if (!providers.length) return
+    const uniqueLists = new Map<string, AvailableList>()
+    providers.forEach((info) => {
+      const key = `${info.providerKey}-${info.key}-${info.chainId}`
+      if (!uniqueLists.has(key)) {
+        uniqueLists.set(key, {
+          key: info.key as string,
+          name: (info.name as string) || (info.key as string),
+          providerKey: info.providerKey as string,
+          chainId: info.chainId?.toString() || '0',
+          type: (info.type as string) || 'hosted',
+          default: (info.default as boolean) || false,
         })
-        setAvailableLists(Array.from(uniqueLists.values()))
-      } catch (error) {
-        console.error('Failed to fetch available lists:', error)
       }
-    }
-
-    fetchLists()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    })
+    setAvailableLists(Array.from(uniqueLists.values()))
+  }, [providers])
 
   /* ----- Fetch token lists when chain changes ---------------------------- */
   const processListWithRetry = useCallback(

@@ -18,7 +18,7 @@ export default function PhysicsCanvas() {
   const scrollDeltaRef = useRef(0)
   const lastScrollY = useRef(0)
   const animFrameRef = useRef<number>(0)
-  const { metrics } = useMetricsContext()
+  const { metrics, providers: contextProviders, fetchProviders } = useMetricsContext()
 
   const prefersReducedMotion = useRef(
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -39,11 +39,10 @@ export default function PhysicsCanvas() {
 
   const fetchTokenSources = useCallback(async (): Promise<string[]> => {
     try {
-      const response = await fetch(getApiUrl('/list'))
-      if (!response.ok) return []
+      const providersList = contextProviders.length ? contextProviders : await fetchProviders()
+      if (!providersList.length) return []
 
-      const providers = (await response.json()) as Array<{ providerKey: string }>
-      const firstProviders = providers.slice(0, 3).map((p) => p.providerKey)
+      const firstProviders = providersList.slice(0, 3).map((p) => p.providerKey)
 
       const tokenAddresses: string[] = []
       await Promise.all(
