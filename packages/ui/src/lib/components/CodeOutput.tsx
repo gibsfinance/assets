@@ -58,13 +58,21 @@ function generateSdkSnippet(
   address: string,
   appearance: StudioAppearance,
 ): string {
-  const { width } = appearance
-  const lines = [
-    `import { TokenImage } from '@gibs/react'`,
+  const { width, shape } = appearance
+  const shapeAttr = shape === 'rect' ? ' shape="rect"' : ''
+  return [
+    `import { GibProvider, TokenImage } from '@gibs/react'`,
     ``,
-    `<TokenImage chainId={${chainId}} address="${address}" size={${width}} />`,
-  ]
-  return lines.join('\n')
+    `<GibProvider>`,
+    `  <TokenImage`,
+    `    chainId={${chainId}}`,
+    `    address="${address}"`,
+    `    size={${width}}${shapeAttr}`,
+    `    skeleton`,
+    `    lazy`,
+    `  />`,
+    `</GibProvider>`,
+  ].join('\n')
 }
 
 function generateReactSnippet(

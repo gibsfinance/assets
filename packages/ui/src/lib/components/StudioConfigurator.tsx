@@ -17,6 +17,7 @@ import BadgeConfigurator from './BadgeConfigurator'
 import ListResolutionOrder from './ListResolutionOrder'
 import CodeOutput from './CodeOutput'
 import Image from './Image'
+import NumberStepper from './NumberStepper'
 
 // ---------------------------------------------------------------------------
 // Shadow + shape helpers
@@ -70,8 +71,7 @@ function SizeControl() {
   const [aspectLinked, setAspectLinked] = useState(true)
 
   const handleWidthChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(event.target.value)
+    (value: number) => {
       if (aspectLinked) {
         updateAppearance({ width: value, height: value })
         return
@@ -82,8 +82,7 @@ function SizeControl() {
   )
 
   const handleHeightChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(event.target.value)
+    (value: number) => {
       if (aspectLinked) {
         updateAppearance({ width: value, height: value })
         return
@@ -95,19 +94,11 @@ function SizeControl() {
 
   return (
     <div className="flex items-center gap-1">
-      <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">W</span>
-      <input
-        type="number"
-        min={16}
-        max={512}
-        value={appearance.width}
-        onChange={handleWidthChange}
-        className="w-14 rounded-md border border-border-light bg-gray-50 px-1.5 py-1 text-center text-xs text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
-      />
+      <NumberStepper label="W" value={appearance.width} onChange={handleWidthChange} min={16} max={512} />
       <button
         type="button"
         onClick={() => setAspectLinked((v) => !v)}
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors ${
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
           aspectLinked
             ? 'bg-accent-500/15 text-accent-500'
             : 'bg-gray-100 text-gray-400 hover:text-gray-600 dark:bg-surface-2 dark:text-white/30 dark:hover:text-white/50'
@@ -116,15 +107,7 @@ function SizeControl() {
       >
         <i className={`fas ${aspectLinked ? 'fa-link' : 'fa-link-slash'} text-[9px]`} />
       </button>
-      <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">H</span>
-      <input
-        type="number"
-        min={16}
-        max={512}
-        value={appearance.height}
-        onChange={handleHeightChange}
-        className="w-14 rounded-md border border-border-light bg-gray-50 px-1.5 py-1 text-center text-xs text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
-      />
+      <NumberStepper label="H" value={appearance.height} onChange={handleHeightChange} min={16} max={512} />
     </div>
   )
 }
@@ -136,17 +119,14 @@ function SizeControl() {
 function PaddingControl() {
   const { appearance, updateAppearance } = useStudio()
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">Pad</span>
-      <input
-        type="number"
-        min={0}
-        max={64}
-        value={appearance.padding}
-        onChange={(e) => updateAppearance({ padding: Number(e.target.value) })}
-        className="w-12 rounded-md border border-border-light bg-gray-50 px-1.5 py-1 text-center text-xs text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
-      />
-    </div>
+    <NumberStepper
+      label="Pad"
+      value={appearance.padding}
+      onChange={(value) => updateAppearance({ padding: value })}
+      min={0}
+      max={64}
+      width="w-[64px]"
+    />
   )
 }
 
@@ -159,17 +139,10 @@ function ShapeDropdown() {
 
   const currentLabel = SHAPE_OPTIONS.find((o) => o.value === appearance.shape)?.label ?? 'Circle'
 
-  const handleBorderRadiusChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      updateAppearance({ borderRadius: Number(event.target.value) })
-    },
-    [updateAppearance],
-  )
-
   return (
     <div className="flex items-center gap-1">
       <Menu>
-        <MenuButton className="flex items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
+        <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
           {currentLabel}
           <i className="fas fa-chevron-down text-[8px] text-gray-400 dark:text-white/40" />
         </MenuButton>
@@ -196,14 +169,12 @@ function ShapeDropdown() {
       </Menu>
 
       {appearance.shape === 'rounded' && (
-        <input
-          type="number"
+        <NumberStepper
+          value={appearance.borderRadius}
+          onChange={(value) => updateAppearance({ borderRadius: value })}
           min={0}
           max={Math.min(appearance.width, appearance.height) / 2}
-          value={appearance.borderRadius}
-          onChange={handleBorderRadiusChange}
-          className="w-12 rounded-md border border-border-light bg-gray-50 px-1.5 py-1 text-center text-xs text-gray-700 focus:border-accent-500 focus:outline-none dark:border-border-dark dark:bg-surface-2 dark:text-white/80"
-          title="Border radius"
+          width="w-[60px]"
         />
       )}
     </div>
