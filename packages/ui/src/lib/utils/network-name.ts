@@ -18,8 +18,8 @@ const priorityNames: Record<number, string> = {
   43114: 'Avalanche C-Chain',
   59144: 'Linea',
   7777777: 'Zora',
+  943: 'PulseChain Testnet v4',
   245022934: 'Neon EVM MainNet',
-  661898459: 'PulseChain Testnet v4',
   728126428: 'Tron Mainnet',
 }
 
