@@ -27,3 +27,4 @@ docs/superpowers/
 .claude/worktrees/
 .screenshots/
 .playwright-mcp/
+packages/ui/e2e/test-results/

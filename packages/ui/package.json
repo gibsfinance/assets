@@ -11,10 +11,13 @@
     "check": "tsc --noEmit",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.1",
+    "@playwright/test": "^1.58.2",
     "@rollup/plugin-replace": "^6.0.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
