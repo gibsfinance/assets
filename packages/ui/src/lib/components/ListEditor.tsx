@@ -13,13 +13,20 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
 import Image from './Image'
 import ListTokenRow from './ListTokenRow'
 import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
-import { useVCSPublish, createGitHubPublisher } from '../hooks/useVCSPublish'
+import {
+  useVCSPublish,
+  createGitHubPublisher,
+  createGitLabPublisher,
+  createGiteaPublisher,
+  type VCSPublisher,
+} from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
 
 function rawTokenToLocal(t: Record<string, unknown>, index: number): LocalToken {
@@ -58,7 +65,10 @@ export default function ListEditor() {
 
   const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
   const { publish, isPublishing, publishResult, error: publishError } = useVCSPublish()
-  const githubPublisher = createGitHubPublisher(getApiUrl(''))
+
+  const publishers: VCSPublisher[] = [
+    createGitHubPublisher(getApiUrl('')),
+  ]
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -404,16 +414,38 @@ export default function ListEditor() {
           </span>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => activeList && publish(githubPublisher, activeList)}
-            disabled={isPublishing || !activeList || activeList.tokens.length === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-            title="Publish to GitHub"
-          >
-            <i className="fab fa-github text-sm" />
-            {isPublishing ? 'Publishing...' : 'Publish'}
-          </button>
+          <Menu>
+            <MenuButton
+              disabled={isPublishing || !activeList || activeList.tokens.length === 0}
+              className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+            >
+              <i className="fas fa-cloud-arrow-up text-sm" />
+              {isPublishing ? 'Publishing...' : 'Publish'}
+              <i className="fas fa-chevron-down text-[8px] opacity-60" />
+            </MenuButton>
+            <MenuItems
+              anchor="bottom end"
+              className="z-50 mt-1 w-56 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2"
+            >
+              {publishers.map((pub) => (
+                <MenuItem key={pub.name}>
+                  <button
+                    type="button"
+                    onClick={() => activeList && publish(pub, activeList)}
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3"
+                  >
+                    <i className={`${pub.icon} text-sm w-4 text-center ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`} />
+                    <span className="flex-1 font-medium text-gray-700 dark:text-white/80">{pub.name}</span>
+                    {pub.isAuthorized() ? (
+                      <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[10px] font-medium text-accent-500">Connected</span>
+                    ) : (
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-surface-3 dark:text-white/40">Connect</span>
+                    )}
+                  </button>
+                </MenuItem>
+              ))}
+            </MenuItems>
+          </Menu>
           <button
             type="button"
             onClick={closeEditor}
