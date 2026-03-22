@@ -92,7 +92,7 @@ export default function TokenSearch({
       for (const list of globalLists) {
         try {
           const url = getApiUrl(`/list/${list.providerKey}/${list.key}`)
-          console.log('Fetching global list:', url)
+          // fetch global list
           const listResponse = await fetch(url, {
             signal: abortController.signal,
           })
@@ -125,7 +125,7 @@ export default function TokenSearch({
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Search aborted')
+            // search aborted
             return
           }
           console.error(
@@ -148,7 +148,7 @@ export default function TokenSearch({
 
         try {
           const url = getApiUrl(`/list/${list.providerKey}/${list.key}`)
-          console.log('Fetching chain-specific list:', url)
+          // fetch chain-specific list
           const listResponse = await fetch(url, {
             signal: abortController.signal,
           })
@@ -182,7 +182,7 @@ export default function TokenSearch({
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Search aborted')
+            // search aborted
             return
           }
           if (error instanceof Error && !error.message.includes('404')) {

@@ -150,7 +150,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
             setListTokens(listKey, tokens)
           }
         } else if (response.status === 404) {
-          console.log(`List ${list.providerKey}/${list.key} not available for chain ${chainId}`)
+          // list not available for this chain
           toggleList(`${list.providerKey}/${list.key}`, false)
         } else {
           console.error(

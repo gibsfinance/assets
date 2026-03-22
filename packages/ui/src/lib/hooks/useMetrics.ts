@@ -185,7 +185,7 @@ function clearCacheEntries(): void {
         localStorage.removeItem(`${key}_meta`)
       }
     })
-    console.log('Cache cleared successfully')
+    // cache cleared
   } catch (error) {
     console.error('Error clearing cache:', error)
   }
@@ -235,7 +235,7 @@ export function useMetrics(): MetricsHookResult {
       const tokens = data.tokens || []
 
       if (tokens.length > 0) {
-        console.log(`Fetched ${tokens.length} tokens from ${provider}`)
+        
       }
 
       setToCache(cacheKey, tokens)
@@ -282,7 +282,7 @@ export function useMetrics(): MetricsHookResult {
         return []
       }
       const networks = (await response.json()) as Network[]
-      console.log(networks)
+      
       const values = networks.filter((n) => n.type === 'evm').map((network) => network.chainId)
       setToCache(cacheKey, values)
       return values
@@ -308,7 +308,7 @@ export function useMetrics(): MetricsHookResult {
           }
         } else {
           // Only clear cache if forceFresh is true
-          console.log('Force refreshing metrics, clearing cache...')
+          
           clearCacheEntries()
         }
 
@@ -332,8 +332,6 @@ export function useMetrics(): MetricsHookResult {
               .map((p) => p.providerKey),
           ),
         ]
-
-        console.log('Fetching token lists from providers:', uniqueProviders)
 
         // Fetch all token lists in parallel
         const allTokenLists = await Promise.all(
@@ -367,7 +365,7 @@ export function useMetrics(): MetricsHookResult {
         for (const [chainId, tokens] of Object.entries(tokensByChain)) {
           const count = tokens?.size || 0
           byChain[chainId] = count
-          console.log(`Chain ${chainId}: ${count} tokens`)
+          
         }
 
         // Calculate total
@@ -389,7 +387,7 @@ export function useMetrics(): MetricsHookResult {
         }
 
         // Cache the computed metrics
-        console.log('metrics', computedMetrics)
+        
         setToCache('metrics', computedMetrics)
         setMetrics(computedMetrics)
       } catch (error) {
