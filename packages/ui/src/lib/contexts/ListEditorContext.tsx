@@ -45,17 +45,31 @@ export function ListEditorProvider({ children }: { children: ReactNode }) {
     }
   }, [localLists.isLoading, localLists.lists, state.editingListId])
 
-  const openEditor = useCallback((sourceList: string) => {
+  const openEditor = useCallback((sourceOrId: string) => {
     restoredRef.current = false
-    const localFork = localLists.lists.find(
-      (l) => l.source.remoteProvider === sourceList.split('/')[0] &&
-             l.source.remoteKey === sourceList.split('/')[1]
-    )
+
+    // If it contains a slash, treat as remote source key (provider/key)
+    if (sourceOrId.includes('/')) {
+      const localFork = localLists.lists.find(
+        (l) => l.source.remoteProvider === sourceOrId.split('/')[0] &&
+               l.source.remoteKey === sourceOrId.split('/')[1]
+      )
+      setState({
+        isOpen: true,
+        editingListId: localFork?.id ?? null,
+        editingSourceKey: sourceOrId,
+        activeList: localFork ?? null,
+      })
+      return
+    }
+
+    // Otherwise treat as a local list ID
+    const localList = localLists.lists.find((l) => l.id === sourceOrId)
     setState({
       isOpen: true,
-      editingListId: localFork?.id ?? null,
-      editingSourceKey: sourceList,
-      activeList: localFork ?? null,
+      editingListId: sourceOrId,
+      editingSourceKey: null,
+      activeList: localList ?? null,
     })
   }, [localLists.lists])
 
