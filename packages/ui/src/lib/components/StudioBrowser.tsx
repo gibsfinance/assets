@@ -220,9 +220,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   )
 
   useEffect(() => {
-    if (!selectedChainId) return
+    if (!selectedChainId || availableLists.length === 0) return
     tryFetchTokenLists(Number(selectedChainId))
-  }, [selectedChainId, tryFetchTokenLists])
+  }, [selectedChainId, availableLists, tryFetchTokenLists])
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
