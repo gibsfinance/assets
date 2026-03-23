@@ -34,7 +34,7 @@ const POPULAR_CHAIN_COUNT = 8
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
   const { metrics, providers, fetchMetrics } = useMetricsContext()
-  const { isOpen: editorOpen, activeList, addToken, openEditor, openNewEditor } = useListEditor()
+  const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor, openNewEditor } = useListEditor()
 
   useEffect(() => {
     if (!metrics) fetchMetrics()
@@ -74,6 +74,37 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   /* Refs to avoid re-triggering effects when mutable state changes */
   const availableListsRef = useRef<AvailableList[]>([])
   availableListsRef.current = availableLists
+
+  /** Add token to active list, or auto-create a new list first */
+  const addTokenToEditor = useCallback(
+    async (token: Token) => {
+      const localToken = {
+        chainId: typeof token.chainId === 'string' ? Number(token.chainId) : token.chainId,
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals ?? 18,
+        imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
+      }
+
+      if (activeList) {
+        const updated = await addToken(activeList.id, localToken)
+        if (updated) setActiveList(updated)
+        return
+      }
+
+      // No active list — create one with this token
+      const newList = await createList({
+        name: 'New List',
+        source: { type: 'scratch' },
+        tokens: [{ ...localToken, order: 0 }],
+      })
+      if (newList) {
+        setActiveList(newList)
+      }
+    },
+    [activeList, addToken, createList, setActiveList],
+  )
 
   /* ----- Derived --------------------------------------------------------- */
   const selectedChainNumeric = selectedChainId ? Number(selectedChainId) : null
@@ -337,15 +368,8 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                         : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
                     }`}
                     onClick={() => {
-                      if (editorOpen && activeList) {
-                        addToken(activeList.id, {
-                          chainId: typeof token.chainId === 'string' ? Number(token.chainId) : token.chainId,
-                          address: token.address,
-                          name: token.name,
-                          symbol: token.symbol,
-                          decimals: token.decimals ?? 18,
-                          imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
-                        })
+                      if (editorOpen) {
+                        addTokenToEditor(token)
                       } else {
                         selectToken(token)
                       }
@@ -410,21 +434,18 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                       </div>
                     </div>
 
-                    {/* Action button: add to list when editor open, inspect otherwise */}
+                    {/* Action button: + when editor open (always visible), info otherwise */}
                     <button
                       type="button"
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-300 opacity-0 transition-all hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20"
+                      className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-all ${
+                        editorOpen
+                          ? 'text-accent-500/60 hover:bg-accent-500/10 hover:text-accent-500'
+                          : 'text-gray-300 opacity-0 hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20'
+                      }`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (editorOpen && activeList) {
-                          addToken(activeList.id, {
-                            chainId: typeof token.chainId === 'string' ? Number(token.chainId) : token.chainId,
-                            address: token.address,
-                            name: token.name,
-                            symbol: token.symbol,
-                            decimals: token.decimals ?? 18,
-                            imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
-                          })
+                        if (editorOpen) {
+                          addTokenToEditor(token)
                         } else {
                           onInspectToken(token)
                         }
