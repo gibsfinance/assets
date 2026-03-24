@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, fireEvent } from '@testing-library/react'
 import GibImage from './gib-image'
 
 function getImg(container: HTMLElement) {
@@ -84,5 +84,45 @@ describe('GibImage', () => {
   it('passes alt text to the img', () => {
     const { container } = render(<GibImage src={src} alt="WBTC" lazy={false} />)
     expect(getImg(container).getAttribute('alt')).toBe('WBTC')
+  })
+
+  it('calls onLoad prop when image loads', () => {
+    const onLoad = vi.fn()
+    const { container } = render(<GibImage src={src} lazy={false} onLoad={onLoad} />)
+    fireEvent.load(getImg(container))
+    expect(onLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onError prop when image fails to load', () => {
+    const onError = vi.fn()
+    const { container } = render(<GibImage src={src} lazy={false} onError={onError} />)
+    fireEvent.error(getImg(container))
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it('sets opacity to 1 after image loads', () => {
+    const { container } = render(<GibImage src={src} lazy={false} />)
+    const img = getImg(container)
+    expect(img.style.opacity).toBe('0')
+    fireEvent.load(img)
+    expect(img.style.opacity).toBe('1')
+  })
+
+  it('hides the img after an error (failed state removes it from DOM)', () => {
+    const { container } = render(<GibImage src={src} lazy={false} />)
+    const img = getImg(container)
+    fireEvent.error(img)
+    // After failure, the img is no longer rendered (failed=true removes it)
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('does not throw when onLoad prop is omitted', () => {
+    const { container } = render(<GibImage src={src} lazy={false} />)
+    expect(() => fireEvent.load(getImg(container))).not.toThrow()
+  })
+
+  it('does not throw when onError prop is omitted', () => {
+    const { container } = render(<GibImage src={src} lazy={false} />)
+    expect(() => fireEvent.error(getImg(container))).not.toThrow()
   })
 })

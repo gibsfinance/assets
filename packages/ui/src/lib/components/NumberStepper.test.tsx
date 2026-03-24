@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import NumberStepper from './NumberStepper'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 describe('NumberStepper component', () => {
   describe('rendering', () => {
@@ -169,6 +172,91 @@ describe('NumberStepper component', () => {
       render(<NumberStepper value={5} onChange={onChange} />)
       const input = screen.getByRole('textbox')
       fireEvent.change(input, { target: { value: '' } })
+      expect(onChange).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hold-to-repeat (mouse)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    it('holding increase button triggers rapid increment after 400ms', () => {
+      const onChange = vi.fn()
+      render(<NumberStepper value={5} onChange={onChange} step={1} max={9999} />)
+      const btn = screen.getByLabelText('Increase')
+
+      // Single click fires synchronously (from onClick), so clear before mouseDown
+      fireEvent.mouseDown(btn)
+      // No interval fires yet — within initial delay
+      expect(onChange).not.toHaveBeenCalled()
+
+      // Advance past the 400ms initial timeout to trigger setInterval
+      act(() => { vi.advanceTimersByTime(400) })
+      // Interval hasn't fired yet — first tick is 80ms away
+      expect(onChange).not.toHaveBeenCalled()
+
+      // Advance 80ms → first rapid increment
+      act(() => { vi.advanceTimersByTime(80) })
+      expect(onChange).toHaveBeenCalledTimes(1)
+      expect(onChange).toHaveBeenCalledWith(6)
+
+      // Advance another 80ms → second increment
+      act(() => { vi.advanceTimersByTime(80) })
+      expect(onChange).toHaveBeenCalledTimes(2)
+    })
+
+    it('holding decrease button triggers rapid decrement after 400ms', () => {
+      const onChange = vi.fn()
+      render(<NumberStepper value={50} onChange={onChange} step={1} min={0} />)
+      const btn = screen.getByLabelText('Decrease')
+
+      fireEvent.mouseDown(btn)
+      act(() => { vi.advanceTimersByTime(400) })
+      act(() => { vi.advanceTimersByTime(80) })
+      expect(onChange).toHaveBeenCalledWith(49)
+    })
+
+    it('mouseUp stops the hold before interval fires', () => {
+      const onChange = vi.fn()
+      render(<NumberStepper value={5} onChange={onChange} />)
+      const btn = screen.getByLabelText('Increase')
+
+      fireEvent.mouseDown(btn)
+      // Release before initial delay expires
+      fireEvent.mouseUp(btn)
+      act(() => { vi.advanceTimersByTime(400) })
+      act(() => { vi.advanceTimersByTime(80) })
+
+      // No rapid-fire calls (the onClick from the click event fires separately, but mouseUp cleared hold)
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('mouseLeave stops the hold', () => {
+      const onChange = vi.fn()
+      render(<NumberStepper value={5} onChange={onChange} />)
+      const btn = screen.getByLabelText('Increase')
+
+      fireEvent.mouseDown(btn)
+      // Leave the button before rapid fire kicks in
+      fireEvent.mouseLeave(btn)
+      act(() => { vi.advanceTimersByTime(400) })
+      act(() => { vi.advanceTimersByTime(80) })
+
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
+    it('intervals are cleared on component unmount', () => {
+      const onChange = vi.fn()
+      const { unmount } = render(<NumberStepper value={5} onChange={onChange} />)
+      const btn = screen.getByLabelText('Increase')
+
+      fireEvent.mouseDown(btn)
+      act(() => { vi.advanceTimersByTime(400) })
+      // Unmount while holding
+      unmount()
+      // Advance time — no more calls after unmount
+      act(() => { vi.advanceTimersByTime(500) })
       expect(onChange).not.toHaveBeenCalled()
     })
   })

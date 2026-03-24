@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { responseToBuffer, urlToPossibleLocations, retry, cacheResult, limitByTime, limitBy, cancelAllRequests, getLimiter } from './fetch'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { responseToBuffer, urlToPossibleLocations, retry, cacheResult, limitByTime, limitBy, cancelAllRequests, getLimiter, fetch as iterativeFetch } from './fetch'
 
 describe('responseToBuffer', () => {
   it('returns buffer from successful response', async () => {
@@ -207,5 +207,99 @@ describe('getLimiter', () => {
     const limiter = getLimiter(url)
     const result = await limiter(() => Promise.resolve('ok'))
     expect(result).toBe('ok')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// fetch (iterativeIpfsCompatableFetch) tests
+// ---------------------------------------------------------------------------
+
+/** Build a minimal Response-like object that satisfies the fetch contract. */
+const makeOkResponse = (body = 'ok'): Response =>
+  new Response(body, { status: 200 })
+
+describe('fetch (iterativeIpfsCompatableFetch)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('fetches a simple HTTP URL successfully', async () => {
+    const mockResponse = makeOkResponse('hello')
+    vi.mocked(global.fetch).mockResolvedValue(mockResponse)
+
+    const response = await iterativeFetch('https://example.com/data')
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(response).toBe(mockResponse)
+  })
+
+  it('expands an IPFS URL to multiple domain candidates and returns first success', async () => {
+    const mockResponse = makeOkResponse('ipfs content')
+    // First domain succeeds
+    vi.mocked(global.fetch).mockResolvedValue(mockResponse)
+
+    const ipfsDomains = ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/']
+    const response = await iterativeFetch('ipfs://QmTestHash123', undefined, ipfsDomains)
+
+    // Should only need one fetch call because the first domain succeeded
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(response).toBe(mockResponse)
+  })
+
+  it('tries the next IPFS domain when the first fails', async () => {
+    const mockResponse = makeOkResponse('second domain content')
+    vi.mocked(global.fetch)
+      .mockRejectedValueOnce(new Error('first domain unavailable'))
+      .mockResolvedValue(mockResponse)
+
+    const ipfsDomains = ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/']
+    const response = await iterativeFetch('ipfs://QmTestHash456', undefined, ipfsDomains)
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(response).toBe(mockResponse)
+  })
+
+  it('throws the last error when all URL candidates fail', async () => {
+    vi.mocked(global.fetch)
+      .mockRejectedValueOnce(new Error('first failed'))
+      .mockRejectedValueOnce(new Error('second failed'))
+
+    const ipfsDomains = ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/']
+    await expect(
+      iterativeFetch('ipfs://QmTestHashFail', undefined, ipfsDomains),
+    ).rejects.toThrow('second failed')
+  })
+
+  it('respects an already-aborted signal and rejects without calling fetch', async () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    vi.mocked(global.fetch).mockResolvedValue(makeOkResponse())
+
+    await expect(
+      iterativeFetch('https://example.com/data', { signal: controller.signal }),
+    ).rejects.toThrow()
+
+    // fetch itself should not have been called — the abort check happens before the network call
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('uses per-host rate limiting (getLimiter) so concurrent calls to the same host are serialised', async () => {
+    const responses = [makeOkResponse('first'), makeOkResponse('second')]
+    let callIndex = 0
+    vi.mocked(global.fetch).mockImplementation(async () => responses[callIndex++])
+
+    const [r1, r2] = await Promise.all([
+      iterativeFetch('https://ratelimit-test.example.com/a'),
+      iterativeFetch('https://ratelimit-test.example.com/b'),
+    ])
+
+    expect(r1).toBe(responses[0])
+    expect(r2).toBe(responses[1])
+    expect(global.fetch).toHaveBeenCalledTimes(2)
   })
 })

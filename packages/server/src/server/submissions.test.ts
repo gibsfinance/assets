@@ -28,7 +28,7 @@ vi.mock('../db', () => ({
 vi.stubGlobal('fetch', vi.fn())
 
 import express from 'express'
-import { router } from './submissions'
+import { router, resolveImageMode } from './submissions'
 
 /** Extracted slugify from source for local assertions */
 const slugify = (s: string) =>
@@ -557,5 +557,81 @@ describe('slugify', () => {
 
   it('returns empty string for all-special-character input', () => {
     expect(slugify('!!!@@@###')).toBe('')
+  })
+})
+
+describe('resolveImageMode', () => {
+  it('auto mode + >= 100 subscribers resolves to save', () => {
+    expect(resolveImageMode({ image_mode: 'auto', subscriber_count: 100 })).toBe('save')
+    expect(resolveImageMode({ image_mode: 'auto', subscriber_count: 200 })).toBe('save')
+  })
+
+  it('auto mode + exactly 100 subscribers resolves to save', () => {
+    expect(resolveImageMode({ image_mode: 'auto', subscriber_count: 100 })).toBe('save')
+  })
+
+  it('auto mode + < 100 subscribers resolves to link', () => {
+    expect(resolveImageMode({ image_mode: 'auto', subscriber_count: 99 })).toBe('link')
+    expect(resolveImageMode({ image_mode: 'auto', subscriber_count: 0 })).toBe('link')
+  })
+
+  it('save mode + < 10 subscribers + stale access (>30 days) resolves to link', () => {
+    const staleDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 9,
+      last_accessed_at: staleDate,
+    })).toBe('link')
+  })
+
+  it('save mode + < 10 subscribers + recent access returns null', () => {
+    const recentDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 9,
+      last_accessed_at: recentDate,
+    })).toBeNull()
+  })
+
+  it('save mode + >= 10 subscribers returns null regardless of access time', () => {
+    const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 10,
+      last_accessed_at: staleDate,
+    })).toBeNull()
+  })
+
+  it('save mode + exactly 10 subscribers returns null', () => {
+    const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 10,
+      last_accessed_at: staleDate,
+    })).toBeNull()
+  })
+
+  it('save mode + < 10 subscribers + null last_accessed_at resolves to link (Infinity days)', () => {
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 9,
+      last_accessed_at: null,
+    })).toBe('link')
+  })
+
+  it('save mode + < 10 subscribers + undefined last_accessed_at resolves to link (Infinity days)', () => {
+    expect(resolveImageMode({
+      image_mode: 'save',
+      subscriber_count: 9,
+    })).toBe('link')
+  })
+
+  it('link mode returns null (no transition needed)', () => {
+    expect(resolveImageMode({ image_mode: 'link', subscriber_count: 0 })).toBeNull()
+    expect(resolveImageMode({ image_mode: 'link', subscriber_count: 200 })).toBeNull()
+  })
+
+  it('unknown mode returns null', () => {
+    expect(resolveImageMode({ image_mode: 'unknown', subscriber_count: 50 })).toBeNull()
   })
 })

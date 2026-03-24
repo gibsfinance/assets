@@ -1,12 +1,65 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 
 // Mock heavy transitive dependencies so vitest never resolves them
-vi.mock('../../db', () => ({}))
-vi.mock('../../../config', () => ({ default: {} }))
-vi.mock('../../db/tables', () => ({ imageMode: { LINK: 'LINK' } }))
-vi.mock('sharp', () => ({ default: vi.fn() }))
+vi.mock('../../db/tables', () => ({ imageMode: { LINK: 'link' } }))
 
-import { parseResizeParams, svgHasViewBox, checkRateLimit, extToFormat, formatToContentType } from './resize'
+vi.mock('sharp', () => {
+  const mockPipeline = {
+    resize: vi.fn().mockReturnThis(),
+    toFormat: vi.fn().mockReturnThis(),
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized')),
+  }
+  return { default: vi.fn(() => mockPipeline) }
+})
+
+vi.mock('../../db', () => ({
+  getVariant: vi.fn(),
+  bumpVariantAccess: vi.fn().mockResolvedValue(undefined),
+  insertVariant: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../config', () => ({
+  default: { cacheSeconds: 86400 },
+}))
+
+import { parseResizeParams, svgHasViewBox, checkRateLimit, extToFormat, formatToContentType, maybeResize } from './resize'
+import * as db from '../../db'
+import sharp from 'sharp'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function mockReq(query: Record<string, string> = {}): any {
+  return { query }
+}
+
+function mockRes(): any {
+  const res: any = {}
+  res.set = vi.fn().mockReturnValue(res)
+  res.contentType = vi.fn().mockReturnValue(res)
+  res.send = vi.fn().mockReturnValue(res)
+  return res
+}
+
+function makeImage(overrides: Partial<{
+  imageHash: string
+  content: Buffer
+  ext: string
+  uri: string
+  mode: string
+  createdAt: Date
+}> = {}): any {
+  return {
+    imageHash: 'abc123',
+    content: Buffer.from('fake-image-data'),
+    ext: '.png',
+    uri: 'https://example.com/image.png',
+    mode: 'save',
+    createdAt: new Date(),
+    ...overrides,
+  }
+}
 
 describe('parseResizeParams', () => {
   it('returns null when no resize params', () => {
@@ -67,6 +120,25 @@ describe('svgHasViewBox', () => {
   it('handles empty buffer', () => {
     expect(svgHasViewBox(Buffer.from(''))).toBe(false)
   })
+
+  it('handles buffer shorter than 4096 bytes without viewBox', () => {
+    const small = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>')
+    expect(small.length).toBeLessThan(4096)
+    expect(svgHasViewBox(small)).toBe(false)
+  })
+
+  it('handles buffer shorter than 4096 bytes with viewBox', () => {
+    const small = Buffer.from('<svg viewBox="0 0 100 100"><circle r="10"/></svg>')
+    expect(small.length).toBeLessThan(4096)
+    expect(svgHasViewBox(small)).toBe(true)
+  })
+
+  it('only reads first 4096 bytes (viewBox beyond limit not detected)', () => {
+    const prefix = Buffer.alloc(4096, 'a')
+    const suffix = Buffer.from(' viewBox="0 0 100 100"')
+    const combined = Buffer.concat([prefix, suffix])
+    expect(svgHasViewBox(combined)).toBe(false)
+  })
 })
 
 describe('extToFormat', () => {
@@ -87,6 +159,17 @@ describe('extToFormat', () => {
     expect(extToFormat('.bmp')).toBe('png')
     expect(extToFormat('.tiff')).toBe('png')
   })
+
+  it('works without leading dot', () => {
+    expect(extToFormat('png')).toBe('png')
+    expect(extToFormat('jpg')).toBe('jpeg')
+    expect(extToFormat('jpeg')).toBe('jpeg')
+    expect(extToFormat('webp')).toBe('webp')
+    expect(extToFormat('avif')).toBe('avif')
+    expect(extToFormat('svg')).toBe('png')
+    expect(extToFormat('svg+xml')).toBe('png')
+    expect(extToFormat('bmp')).toBe('png')
+  })
 })
 
 describe('formatToContentType', () => {
@@ -96,9 +179,20 @@ describe('formatToContentType', () => {
     expect(formatToContentType('jpg')).toBe('image/jpeg')
     expect(formatToContentType('avif')).toBe('image/avif')
   })
+
+  it('falls back to application/octet-stream for unknown formats', () => {
+    expect(formatToContentType('bmp')).toBe('application/octet-stream')
+    expect(formatToContentType('tiff')).toBe('application/octet-stream')
+    expect(formatToContentType('')).toBe('application/octet-stream')
+    expect(formatToContentType('jpeg')).toBe('application/octet-stream')
+  })
 })
 
 describe('checkRateLimit', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('allows up to 5 inserts per image', () => {
     const hash = 'test-per-image-' + Date.now()
     for (let i = 0; i < 5; i++) {
@@ -113,5 +207,465 @@ describe('checkRateLimit', () => {
     for (let i = 0; i < 5; i++) checkRateLimit(hash1)
     expect(checkRateLimit(hash1)).toBe(false)
     expect(checkRateLimit(hash2)).toBe(true) // different image, still has budget
+  })
+
+  it('enforces global limit of 100 across different image hashes', () => {
+    // Use fake timers so no windows expire during this test
+    vi.useFakeTimers()
+    const base = 'global-limit-test-' + Date.now()
+    // Each unique hash gets 5 slots: 20 hashes × 5 = 100 total
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 5; j++) {
+        checkRateLimit(`${base}-${i}`)
+      }
+    }
+    // The 101st call on any new hash should be blocked by the global limit
+    expect(checkRateLimit(`${base}-new`)).toBe(false)
+  })
+
+  it('resets per-image window after WINDOW_MS elapses', () => {
+    vi.useFakeTimers()
+    const hash = 'test-window-reset-' + Date.now()
+
+    // Exhaust the per-image limit
+    for (let i = 0; i < 5; i++) checkRateLimit(hash)
+    expect(checkRateLimit(hash)).toBe(false)
+
+    // Advance past the 60-second window
+    vi.advanceTimersByTime(61_000)
+
+    // Should be allowed again after window resets
+    expect(checkRateLimit(hash)).toBe(true)
+  })
+
+  it('resets global window after WINDOW_MS elapses', () => {
+    // Pin time to a known epoch so the global window initialises at T=0
+    const T0 = 2_000_000_000_000
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+
+    const base = 'global-reset-' + T0
+
+    // Fill 100 slots within the window starting at T0
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 5; j++) checkRateLimit(`${base}-${i}`)
+    }
+
+    // Confirm the global limit is now hit
+    expect(checkRateLimit(`${base}-blocked`)).toBe(false)
+
+    // Advance past the 60-second global window — global counter should reset
+    vi.setSystemTime(T0 + 61_000)
+
+    expect(checkRateLimit(`${base}-reset`)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// maybeResize + sendVariant
+// ---------------------------------------------------------------------------
+
+describe('maybeResize', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    // Default: no cached variant
+    vi.mocked(db.getVariant).mockResolvedValue(undefined as any)
+    vi.mocked(db.bumpVariantAccess).mockResolvedValue(undefined as any)
+    vi.mocked(db.insertVariant).mockResolvedValue(undefined as any)
+
+    // Re-wire the sharp mock pipeline after resetAllMocks
+    const mockPipeline = {
+      resize: vi.fn().mockReturnThis(),
+      toFormat: vi.fn().mockReturnThis(),
+      toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized')),
+    }
+    vi.mocked(sharp).mockReturnValue(mockPipeline as any)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // -------------------------------------------------------------------------
+  // 1. Returns false when no resize params
+  // -------------------------------------------------------------------------
+  it('returns false when query has no w, h, or format', async () => {
+    const req = mockReq({})
+    const res = mockRes()
+    const img = makeImage()
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // 2. Returns true and serves cached variant when one exists in DB
+  // -------------------------------------------------------------------------
+  it('serves cached variant from DB and returns true', async () => {
+    const cachedVariant = {
+      imageHash: 'abc123',
+      width: 72,
+      height: 72,
+      format: 'webp',
+      content: Buffer.from('cached'),
+      accessCount: 5,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+    }
+    vi.mocked(db.getVariant).mockResolvedValue(cachedVariant as any)
+
+    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage()
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(true)
+    expect(db.getVariant).toHaveBeenCalledWith('abc123', 72, 72, 'webp')
+    expect(db.bumpVariantAccess).toHaveBeenCalledWith('abc123', 72, 72, 'webp')
+    expect(sharp).not.toHaveBeenCalled()
+    expect(res.send).toHaveBeenCalledWith(cachedVariant.content)
+  })
+
+  // -------------------------------------------------------------------------
+  // 3. Returns true and resizes with sharp on cache miss
+  // -------------------------------------------------------------------------
+  it('resizes with sharp on cache miss and returns true', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(undefined as any)
+
+    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage()
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(true)
+    expect(sharp).toHaveBeenCalledWith(img.content)
+    expect(res.send).toHaveBeenCalledWith(Buffer.from('resized'))
+  })
+
+  // -------------------------------------------------------------------------
+  // 4. Returns false for SVG with viewBox and no explicit format conversion
+  // -------------------------------------------------------------------------
+  it('returns false for SVG with viewBox when no format is requested', async () => {
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      ext: '.svg',
+      content: Buffer.from('<svg viewBox="0 0 24 24"><path/></svg>'),
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // 5. Resizes SVG without viewBox (falls through to sharp)
+  // -------------------------------------------------------------------------
+  it('resizes SVG without viewBox', async () => {
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      ext: '.svg',
+      content: Buffer.from('<svg width="24" height="24"><path/></svg>'),
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(true)
+    expect(sharp).toHaveBeenCalled()
+    expect(res.send).toHaveBeenCalledWith(Buffer.from('resized'))
+  })
+
+  // -------------------------------------------------------------------------
+  // 6. Format-only conversion (no w/h) — uses 0x0 sentinel
+  // -------------------------------------------------------------------------
+  it('performs format-only conversion using 0x0 sentinel', async () => {
+    const req = mockReq({ format: 'webp' })
+    const res = mockRes()
+    const img = makeImage()
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(true)
+    expect(db.getVariant).toHaveBeenCalledWith('abc123', 0, 0, 'webp')
+
+    // sharp pipeline should NOT call resize for format-only
+    const pipeline = vi.mocked(sharp).mock.results[0].value
+    expect(pipeline.resize).not.toHaveBeenCalled()
+    expect(pipeline.toFormat).toHaveBeenCalledWith('webp')
+
+    // x-resize header should be 'transcoded'
+    expect(res.set).toHaveBeenCalledWith('x-resize', 'transcoded')
+  })
+
+  // -------------------------------------------------------------------------
+  // 7. Handles LINK-mode images (fetches remote content)
+  // -------------------------------------------------------------------------
+  it('fetches remote content for LINK-mode images', async () => {
+    const fakeContent = Buffer.from('remote-image-data')
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: vi.fn().mockResolvedValue(fakeContent.buffer),
+    }) as any
+
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      mode: 'link',
+      content: Buffer.from(''),
+      uri: 'https://cdn.example.com/token.png',
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(true)
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://cdn.example.com/token.png',
+      expect.objectContaining({ signal: expect.anything() }),
+    )
+    expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
+  })
+
+  // -------------------------------------------------------------------------
+  // 8. Returns false for LINK-mode with non-http URI
+  // -------------------------------------------------------------------------
+  it('returns false for LINK-mode with non-http URI', async () => {
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      mode: 'link',
+      content: Buffer.from(''),
+      uri: 'ipfs://QmSomeCid',
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // 9. Returns false for LINK-mode when fetch fails
+  // -------------------------------------------------------------------------
+  it('returns false when remote fetch fails', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+    }) as any
+
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      mode: 'link',
+      content: Buffer.from(''),
+      uri: 'https://cdn.example.com/bad.png',
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // 9b. Returns false when remote fetch throws
+  // -------------------------------------------------------------------------
+  it('returns false when remote fetch throws an exception', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network error')) as any
+
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      mode: 'link',
+      content: Buffer.from(''),
+      uri: 'https://cdn.example.com/timeout.png',
+    })
+
+    const result = await maybeResize(req, res, img)
+
+    expect(result).toBe(false)
+  })
+
+  // -------------------------------------------------------------------------
+  // 10. Calls insertVariant only when rate limit allows
+  // -------------------------------------------------------------------------
+  it('calls insertVariant when rate limit allows', async () => {
+    // Use a unique hash so rate limit is fresh
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'insert-allowed-' + Date.now() })
+
+    await maybeResize(req, res, img)
+
+    // Give microtasks a chance to settle
+    await vi.waitFor(() => expect(db.insertVariant).toHaveBeenCalled())
+  })
+
+  // -------------------------------------------------------------------------
+  // 11. Skips insertVariant when rate limit is exhausted
+  // -------------------------------------------------------------------------
+  it('skips insertVariant when rate limit is exhausted', async () => {
+    vi.useFakeTimers()
+    const hash = 'rate-limited-' + Date.now()
+    // Exhaust per-image limit (5 inserts)
+    for (let i = 0; i < 5; i++) {
+      checkRateLimit(hash)
+    }
+
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ imageHash: hash })
+
+    await maybeResize(req, res, img)
+
+    // insertVariant should NOT have been called (rate-limited)
+    expect(db.insertVariant).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // normalizeFormat: jpg → jpeg for sharp
+  // -------------------------------------------------------------------------
+  it('passes jpeg to sharp.toFormat when format=jpg is requested', async () => {
+    const req = mockReq({ format: 'jpg' })
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'normalize-jpg-' + Date.now() })
+
+    await maybeResize(req, res, img)
+
+    const pipeline = vi.mocked(sharp).mock.results[0].value
+    expect(pipeline.toFormat).toHaveBeenCalledWith('jpeg')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sendVariant (tested indirectly via maybeResize cache-hit path)
+// ---------------------------------------------------------------------------
+
+describe('sendVariant (via maybeResize)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    vi.mocked(db.bumpVariantAccess).mockResolvedValue(undefined as any)
+
+    const mockPipeline = {
+      resize: vi.fn().mockReturnThis(),
+      toFormat: vi.fn().mockReturnThis(),
+      toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized')),
+    }
+    vi.mocked(sharp).mockReturnValue(mockPipeline as any)
+  })
+
+  function makeVariant(overrides: Partial<{
+    imageHash: string
+    width: number
+    height: number
+    format: string
+    content: Buffer
+    accessCount: number
+    createdAt: Date
+    lastAccessedAt: Date
+  }> = {}): any {
+    return {
+      imageHash: 'abc123',
+      width: 72,
+      height: 72,
+      format: 'webp',
+      content: Buffer.from('cached'),
+      accessCount: 1,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+      ...overrides,
+    }
+  }
+
+  it('sets cache-control header with configured cacheSeconds', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+  })
+
+  it('sets x-resize header with WxH dimensions', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 72, height: 72 }))
+    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    expect(res.set).toHaveBeenCalledWith('x-resize', '72x72')
+  })
+
+  it('sets x-resize as "transcoded" for 0x0 format-only variants', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 0, height: 0 }))
+    const req = mockReq({ format: 'webp' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    expect(res.set).toHaveBeenCalledWith('x-resize', 'transcoded')
+  })
+
+  it('sets x-uri for http URIs', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ uri: 'https://cdn.example.com/img.png' })
+    await maybeResize(req, res, img)
+    expect(res.set).toHaveBeenCalledWith('x-uri', 'https://cdn.example.com/img.png')
+  })
+
+  it('sets x-uri for ipfs URIs', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ uri: 'ipfs://QmSomeCid' })
+    await maybeResize(req, res, img)
+    expect(res.set).toHaveBeenCalledWith('x-uri', 'ipfs://QmSomeCid')
+  })
+
+  it('omits x-uri for non-http/ipfs URIs', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ uri: 'data:image/png;base64,abc' })
+    await maybeResize(req, res, img)
+    const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
+    expect(setCalls).not.toContain('x-uri')
+  })
+
+  it('sets correct content type via contentType()', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ format: 'webp' }))
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    expect(res.contentType).toHaveBeenCalledWith('image/webp')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// cleanExpiredWindows — triggered when perImageWindows.size > 1000
+// ---------------------------------------------------------------------------
+
+describe('cleanExpiredWindows (triggered via checkRateLimit)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('removes expired windows when map exceeds 1000 entries', () => {
+    vi.useFakeTimers()
+    const base = 'cleanup-test-' + Date.now()
+
+    // Create 1001 distinct image hashes — all will be inserted into the map.
+    // The first 1000 are created at T=0 so they will expire after WINDOW_MS.
+    for (let i = 0; i < 1001; i++) {
+      checkRateLimit(`${base}-${i}`)
+    }
+
+    // Advance time past the 60-second window so those entries are expired.
+    vi.advanceTimersByTime(61_000)
+
+    // One more call on a new hash will trigger cleanExpiredWindows() since
+    // the map now has > 1000 entries. The cleanup should not throw.
+    expect(() => checkRateLimit(`${base}-trigger`)).not.toThrow()
   })
 })

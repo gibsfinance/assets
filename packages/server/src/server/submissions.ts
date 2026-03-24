@@ -161,6 +161,37 @@ router.patch('/submissions/:id', json(), nextOnError(async (req, res) => {
   res.json({ id: row.id, status: row.status, imageMode: row.image_mode })
 }))
 
+export interface SubmissionForAutoMode {
+  image_mode: string
+  subscriber_count: number
+  last_accessed_at?: string | null
+}
+
+/**
+ * Resolve the effective image mode for a submission.
+ * Returns the new mode string if a transition should occur, or null if no change is needed.
+ */
+export function resolveImageMode(row: SubmissionForAutoMode): string | null {
+  const AUTO_SAVE_THRESHOLD = 100
+  const AUTO_LINK_THRESHOLD = 10
+  const STALE_DAYS = 30
+
+  if (row.image_mode === 'auto') {
+    return row.subscriber_count >= AUTO_SAVE_THRESHOLD ? 'save' : 'link'
+  }
+
+  if (row.image_mode === 'save' && row.subscriber_count < AUTO_LINK_THRESHOLD) {
+    const daysSinceAccess = row.last_accessed_at
+      ? (Date.now() - new Date(row.last_accessed_at).getTime()) / (1000 * 60 * 60 * 24)
+      : Infinity
+    if (daysSinceAccess > STALE_DAYS) {
+      return 'link'
+    }
+  }
+
+  return null
+}
+
 /**
  * GET /api/lists/submissions/approved
  * Returns approved submissions for the collector to process.
@@ -173,29 +204,8 @@ router.get('/submissions/approved', nextOnError(async (_req, res) => {
     .where('status', 'approved')
     .orderBy('subscriber_count', 'desc') as SubmissionRow[]
 
-  // Auto-mode: promote to save if popular enough
-  const AUTO_SAVE_THRESHOLD = 100
-  const AUTO_LINK_THRESHOLD = 10
-  const STALE_DAYS = 30
-
   for (const row of rows) {
-    let newMode: string | null = null
-    if (row.image_mode === 'auto') {
-      if (row.subscriber_count >= AUTO_SAVE_THRESHOLD) {
-        newMode = 'save'
-      } else {
-        newMode = 'link'
-      }
-    }
-    // Demote if no longer accessed
-    if (row.image_mode === 'save' && row.subscriber_count < AUTO_LINK_THRESHOLD) {
-      const daysSinceAccess = row.last_accessed_at
-        ? (Date.now() - new Date(row.last_accessed_at).getTime()) / (1000 * 60 * 60 * 24)
-        : Infinity
-      if (daysSinceAccess > STALE_DAYS) {
-        newMode = 'link'
-      }
-    }
+    const newMode = resolveImageMode(row)
     if (newMode && newMode !== row.image_mode) {
       await db.getDB().update({ image_mode: newMode }).from('list_submission').where('id', row.id)
       row.image_mode = newMode

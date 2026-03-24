@@ -26,6 +26,35 @@ export function getTranslateY(state: DrawerState, viewportHeight: number): numbe
   return 0
 }
 
+/** Determine target state based on flick velocity */
+export function resolveFlickState(
+  velocity: number,
+  currentState: DrawerState,
+): DrawerState | null {
+  if (velocity < -0.3) {
+    return currentState === 'collapsed' ? 'half' : 'full'
+  }
+  if (velocity > 0.3) {
+    return currentState === 'full' ? 'half' : 'collapsed'
+  }
+  return null // not a flick
+}
+
+/** Snap to nearest state based on final Y position */
+export function snapToNearestState(finalY: number, viewportHeight: number): DrawerState {
+  const fullY = getTranslateY('full', viewportHeight)
+  const halfY = getTranslateY('half', viewportHeight)
+  const collapsedY = getTranslateY('collapsed', viewportHeight)
+
+  const distToFull = Math.abs(finalY - fullY)
+  const distToHalf = Math.abs(finalY - halfY)
+  const distToCollapsed = Math.abs(finalY - collapsedY)
+
+  if (distToFull <= distToHalf && distToFull <= distToCollapsed) return 'full'
+  if (distToHalf <= distToCollapsed) return 'half'
+  return 'collapsed'
+}
+
 export default function BottomDrawer({ children, handle, enabled = true }: BottomDrawerProps) {
   const [drawerState, setDrawerState] = useState<DrawerState>('collapsed')
   const [isDragging, setIsDragging] = useState(false)
@@ -120,30 +149,13 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     }
 
     const velocity = dragOffset / Math.max(elapsed, 1)
-    const isFlickDown = velocity > 0.3
-    const isFlickUp = velocity < -0.3
     const finalY = currentTranslateY.current + dragOffset
 
-    if (isFlickUp) {
-      setDrawerState(drawerState === 'collapsed' ? 'half' : 'full')
-    } else if (isFlickDown) {
-      setDrawerState(drawerState === 'full' ? 'half' : 'collapsed')
+    const flickTarget = resolveFlickState(velocity, drawerState)
+    if (flickTarget !== null) {
+      setDrawerState(flickTarget)
     } else {
-      const fullY = getTranslateY('full', viewportHeight)
-      const halfY = getTranslateY('half', viewportHeight)
-      const collapsedY = getTranslateY('collapsed', viewportHeight)
-
-      const distToFull = Math.abs(finalY - fullY)
-      const distToHalf = Math.abs(finalY - halfY)
-      const distToCollapsed = Math.abs(finalY - collapsedY)
-
-      if (distToFull <= distToHalf && distToFull <= distToCollapsed) {
-        setDrawerState('full')
-      } else if (distToHalf <= distToCollapsed) {
-        setDrawerState('half')
-      } else {
-        setDrawerState('collapsed')
-      }
+      setDrawerState(snapToNearestState(finalY, viewportHeight))
     }
 
     setDragOffset(0)

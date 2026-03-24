@@ -21,14 +21,14 @@ export function setCustomRpc(chainId: number, rpcUrl: string): void {
   localStorage.setItem(RPC_STORAGE_KEY, JSON.stringify(rpcs))
 }
 
-function getChainById(chainId: number) {
+export function getChainById(chainId: number) {
   const match = Object.values(viemChains).find(
     (c) => typeof c === 'object' && c !== null && 'id' in c && (c as Chain).id === chainId,
   )
   return match as Chain | undefined
 }
 
-function getClient(chainId: number) {
+export function getClient(chainId: number) {
   const customRpcs = getCustomRpcs()
   const customRpc = customRpcs[chainId]
   const chain = getChainById(chainId)
