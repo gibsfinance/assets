@@ -1,11 +1,35 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   toTokenListJson,
   createGitHubPublisher,
   createGitLabPublisher,
   createGiteaPublisher,
+  handleOAuthCallback,
 } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
+
+const TOKEN_STORAGE_KEY = 'gib-vcs-tokens'
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
+/** Seed a valid (non-expired) structured token entry directly into localStorage */
+function seedToken(provider: string, token: string, storedAt = Date.now()): void {
+  const existing = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
+  existing[provider] = { token, storedAt }
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(existing))
+}
+
+/** Seed an expired structured token entry (>30 days old) */
+function seedExpiredToken(provider: string, token: string): void {
+  const expiredAt = Date.now() - TOKEN_MAX_AGE_MS - 1
+  seedToken(provider, token, expiredAt)
+}
+
+/** Seed a legacy plain-string token entry (no timestamp) */
+function seedLegacyToken(provider: string, token: string): void {
+  const existing = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
+  existing[provider] = token
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(existing))
+}
 
 describe('toTokenListJson', () => {
   const makeList = (overrides?: Partial<LocalList>): LocalList => ({
@@ -138,5 +162,231 @@ describe('createGiteaPublisher', () => {
       serverUrl: 'https://gitea.example.com',
     })
     expect(publisher.isAuthorized()).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Token storage (tested indirectly through isAuthorized / publisher interfaces)
+// ---------------------------------------------------------------------------
+
+describe('token storage — isAuthorized via seeded localStorage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('GitHub: isAuthorized returns true when a valid token is stored', () => {
+    seedToken('github', 'ghp_valid')
+    const publisher = createGitHubPublisher('https://gib.show')
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+
+  it('GitHub: isAuthorized returns false when token is expired (>30 days)', () => {
+    seedExpiredToken('github', 'ghp_expired')
+    const publisher = createGitHubPublisher('https://gib.show')
+    expect(publisher.isAuthorized()).toBe(false)
+  })
+
+  it('GitHub: expired token is removed from localStorage', () => {
+    seedExpiredToken('github', 'ghp_expired')
+    const publisher = createGitHubPublisher('https://gib.show')
+    publisher.isAuthorized() // triggers cleanup
+    const stored = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
+    expect(stored.github).toBeUndefined()
+  })
+
+  it('GitHub: isAuthorized returns true for legacy plain-string token (no TTL)', () => {
+    seedLegacyToken('github', 'ghp_legacy')
+    const publisher = createGitHubPublisher('https://gib.show')
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+
+  it('GitLab: isAuthorized returns true when a valid token is stored', () => {
+    seedToken('gitlab', 'glpat_valid')
+    const publisher = createGitLabPublisher({ clientId: 'cid', serverBaseUrl: 'https://gib.show' })
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+
+  it('GitLab: isAuthorized returns false when token is expired', () => {
+    seedExpiredToken('gitlab', 'glpat_expired')
+    const publisher = createGitLabPublisher({ clientId: 'cid', serverBaseUrl: 'https://gib.show' })
+    expect(publisher.isAuthorized()).toBe(false)
+  })
+
+  it('GitLab: isAuthorized returns true for legacy plain-string token', () => {
+    seedLegacyToken('gitlab', 'glpat_legacy')
+    const publisher = createGitLabPublisher({ clientId: 'cid', serverBaseUrl: 'https://gib.show' })
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+
+  it('Gitea: isAuthorized returns true when a valid token is stored', () => {
+    seedToken('gitea', 'gt_valid')
+    const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+
+  it('Gitea: isAuthorized returns false when token is expired', () => {
+    seedExpiredToken('gitea', 'gt_expired')
+    const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
+    expect(publisher.isAuthorized()).toBe(false)
+  })
+
+  it('Gitea: isAuthorized returns true for legacy plain-string token', () => {
+    seedLegacyToken('gitea', 'gt_legacy')
+    const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
+    expect(publisher.isAuthorized()).toBe(true)
+  })
+})
+
+describe('Gitea storeToken via authorize() (personal access token path)', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.stubGlobal('prompt', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('stores token in localStorage after personal-access-token authorize', async () => {
+    vi.mocked(prompt).mockReturnValue('my-gitea-pat')
+    const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
+
+    await publisher.authorize()
+
+    const stored = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
+    expect(stored.gitea?.token).toBe('my-gitea-pat')
+    expect(typeof stored.gitea?.storedAt).toBe('number')
+  })
+
+  it('throws when personal-access-token prompt is cancelled', async () => {
+    vi.mocked(prompt).mockReturnValue(null)
+    const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
+
+    await expect(publisher.authorize()).rejects.toThrow('Authorization cancelled')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleOAuthCallback
+// ---------------------------------------------------------------------------
+
+describe('handleOAuthCallback', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    // Stub history.replaceState so the async fetch side-effect doesn't throw
+    vi.spyOn(window.history, 'replaceState').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('returns false when there are no query params', () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '' },
+      writable: true,
+    })
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(false)
+  })
+
+  it('returns false when code param is missing', () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?state=abc123' },
+      writable: true,
+    })
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(false)
+  })
+
+  it('returns false when state param is missing', () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?code=mycode' },
+      writable: true,
+    })
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(false)
+  })
+
+  it('returns false when state does not match any stored session state', () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?code=mycode&state=unknown-state' },
+      writable: true,
+    })
+    // No session storage entry — state mismatch
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(false)
+  })
+
+  it('returns true and clears session state when GitHub state matches', () => {
+    const state = 'github-test-state-xyz'
+    sessionStorage.setItem('github-oauth-state', state)
+
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        search: `?code=mycode&state=${state}`,
+        pathname: '/callback',
+        hash: '',
+      },
+      writable: true,
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ access_token: 'ghp_from_server' }),
+    }))
+
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(true)
+    // Session state must be cleaned up immediately (before async exchange completes)
+    expect(sessionStorage.getItem('github-oauth-state')).toBeNull()
+  })
+
+  it('returns true and clears session state when GitLab state matches', () => {
+    const state = 'gitlab-test-state-abc'
+    sessionStorage.setItem('gitlab-oauth-state', state)
+
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        search: `?code=mycode&state=${state}`,
+        pathname: '/callback',
+        hash: '',
+      },
+      writable: true,
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ access_token: 'glpat_from_server' }),
+    }))
+
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(true)
+    expect(sessionStorage.getItem('gitlab-oauth-state')).toBeNull()
+  })
+
+  it('returns true and clears session state when Gitea state matches', () => {
+    const state = 'gitea-test-state-def'
+    sessionStorage.setItem('gitea-oauth-state', state)
+
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        search: `?code=mycode&state=${state}`,
+        pathname: '/callback',
+        hash: '',
+      },
+      writable: true,
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ access_token: 'gt_from_server' }),
+    }))
+
+    const result = handleOAuthCallback('https://gib.show')
+    expect(result).toBe(true)
+    expect(sessionStorage.getItem('gitea-oauth-state')).toBeNull()
   })
 })

@@ -18,6 +18,7 @@ export const tableNames = {
   headerLink: 'header_link',
   cacheRequest: 'cache_request',
   imageVariant: 'image_variant',
+  listSubmission: 'list_submission',
 } as const
 
 const tn = Object.values(tableNames)

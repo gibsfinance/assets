@@ -169,6 +169,24 @@ declare module 'knex/types/tables.js' {
     lastAccessedAt: Date
   }
   interface InsertableImageVariant extends Omit<ImageVariant, 'accessCount' | 'createdAt' | 'lastAccessedAt'> {}
+  interface ListSubmission {
+    id: string
+    url: string
+    name: string
+    description: string
+    submitted_by: string
+    status: string
+    provider_key: string
+    list_key: string
+    image_mode: string
+    fail_count: number
+    subscriber_count: number
+    last_content_hash: string | null
+    last_fetched_at: Date | null
+    last_accessed_at: Date | null
+    created_at: Date
+    updated_at: Date
+  }
   interface Tables {
     [tableNames.provider]: Provider
     [tableNames.network]: Network
@@ -184,5 +202,6 @@ declare module 'knex/types/tables.js' {
     [tableNames.headerLink]: HeaderLink
     [tableNames.cacheRequest]: CacheRequest
     [tableNames.imageVariant]: ImageVariant
+    [tableNames.listSubmission]: ListSubmission
   }
 }

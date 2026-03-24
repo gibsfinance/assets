@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { responseToBuffer, urlToPossibleLocations, retry, cacheResult, limitByTime } from './fetch'
+import { responseToBuffer, urlToPossibleLocations, retry, cacheResult, limitByTime, limitBy, cancelAllRequests, getLimiter } from './fetch'
 
 describe('responseToBuffer', () => {
   it('returns buffer from successful response', async () => {
@@ -125,5 +125,87 @@ describe('limitByTime', () => {
     await limiter()
     const elapsed = Date.now() - start
     expect(elapsed).toBeLessThan(50)
+  })
+})
+
+describe('limitBy', () => {
+  it('returns a callable promise-limit function', () => {
+    const limiter = limitBy('test-key-a')
+    expect(typeof limiter).toBe('function')
+  })
+
+  it('returns the same limiter instance for the same key (memoized)', () => {
+    const first = limitBy('test-key-b')
+    const second = limitBy('test-key-b')
+    expect(first).toBe(second)
+  })
+
+  it('returns different limiter instances for different keys', () => {
+    const a = limitBy('test-key-c')
+    const b = limitBy('test-key-d')
+    expect(a).not.toBe(b)
+  })
+
+  it('executes a task through the limiter', async () => {
+    const limiter = limitBy<string>('test-key-e')
+    const result = await limiter(() => Promise.resolve('hello'))
+    expect(result).toBe('hello')
+  })
+
+  it('respects a custom concurrency count', async () => {
+    const limiter = limitBy<number>('test-key-f', 1)
+    let concurrent = 0
+    let maxConcurrent = 0
+    const task = () =>
+      new Promise<number>((resolve) => {
+        concurrent++
+        maxConcurrent = Math.max(maxConcurrent, concurrent)
+        setTimeout(() => {
+          concurrent--
+          resolve(concurrent)
+        }, 10)
+      })
+    await Promise.all([limiter(task), limiter(task)])
+    expect(maxConcurrent).toBe(1)
+  })
+})
+
+describe('cancelAllRequests', () => {
+  it('runs without throwing when no controllers are registered', () => {
+    expect(() => cancelAllRequests()).not.toThrow()
+  })
+
+  it('is idempotent — calling multiple times does not throw', () => {
+    expect(() => {
+      cancelAllRequests()
+      cancelAllRequests()
+    }).not.toThrow()
+  })
+})
+
+describe('getLimiter', () => {
+  it('returns a callable promise-limit function', () => {
+    const url = new URL('https://example.com/path')
+    const limiter = getLimiter(url)
+    expect(typeof limiter).toBe('function')
+  })
+
+  it('returns the same limiter for URLs with the same host', () => {
+    const a = getLimiter(new URL('https://example.com/foo'))
+    const b = getLimiter(new URL('https://example.com/bar'))
+    expect(a).toBe(b)
+  })
+
+  it('returns different limiters for different hosts', () => {
+    const a = getLimiter(new URL('https://alpha.example.com/'))
+    const b = getLimiter(new URL('https://beta.example.com/'))
+    expect(a).not.toBe(b)
+  })
+
+  it('executes a task through the host limiter', async () => {
+    const url = new URL('https://limiter-test.example.com/')
+    const limiter = getLimiter(url)
+    const result = await limiter(() => Promise.resolve('ok'))
+    expect(result).toBe('ok')
   })
 })
