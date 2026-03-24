@@ -62,6 +62,8 @@ export default function ListEditor() {
   const [error, setError] = useState<string | null>(null)
   const [addAddress, setAddAddress] = useState('')
   const [editingImageToken, setEditingImageToken] = useState<LocalToken | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
   const { publish, isPublishing, publishResult, error: publishError } = useVCSPublish()
@@ -244,6 +246,41 @@ export default function ListEditor() {
     },
     [activeList, editingImageToken, reorderTokens, setActiveList],
   )
+
+  const handleSubmitToGibShow = useCallback(async () => {
+    if (!publishResult?.repoUrl || !activeList) return
+    setIsSubmitting(true)
+    setSubmitResult(null)
+    try {
+      // Derive the raw GitHub content URL from the repo URL
+      // e.g. https://github.com/user/repo -> https://raw.githubusercontent.com/user/repo/main/tokenlist.json
+      const repoPath = new URL(publishResult.repoUrl).pathname.replace(/^\//, '')
+      const rawUrl = `https://raw.githubusercontent.com/${repoPath}/main/tokenlist.json`
+
+      const res = await fetch(getApiUrl('/api/lists/submit'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: rawUrl,
+          name: activeList.name,
+          submittedBy: repoPath.split('/')[0],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSubmitResult({ success: false, message: data.error || `Server error ${res.status}` })
+        return
+      }
+      setSubmitResult({
+        success: true,
+        message: `Submitted! Status: ${data.status} (${data.providerKey}/${data.listKey})`,
+      })
+    } catch (err) {
+      setSubmitResult({ success: false, message: (err as Error).message })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [publishResult, activeList])
 
   // ─── Creation Menu (no active list) ───────────────────────────
   if (!activeList) {
@@ -470,7 +507,26 @@ export default function ListEditor() {
                 View file
               </a>
             )}
+            <button
+              type="button"
+              onClick={handleSubmitToGibShow}
+              disabled={isSubmitting}
+              className="ml-auto rounded-md bg-accent-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Submitting...' : 'Submit to Gib.Show'}
+            </button>
           </div>
+          {submitResult && (
+            <div
+              className={`mt-1 text-[11px] ${
+                submitResult.success
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400'
+              }`}
+            >
+              {submitResult.message}
+            </div>
+          )}
         </div>
       )}
       {publishError && (

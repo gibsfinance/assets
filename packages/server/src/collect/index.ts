@@ -138,11 +138,17 @@ const rawTwoPhase = async (
       await collector.collect(utils.controller.signal)
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       console.log(`Collector ${provider} completed successfully in ${duration}s`)
+      if (provider.startsWith('user-')) {
+        await updateSubmissionStatus(provider, { success: true })
+      }
     } catch (err) {
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       console.error(`Collector ${provider} failed after ${duration}s:`, err)
       failureLog('error %o %o', provider, err)
       failureLog('failed to collect', provider, (err as Error).message)
+      if (provider.startsWith('user-')) {
+        await updateSubmissionStatus(provider, { success: false })
+      }
     }
     await checkOutstandingConnections(provider)
   }
@@ -207,10 +213,16 @@ const terminalTwoPhase = async (
       try {
         await collector.collect(utils.controller.signal)
         utils.terminalRow.increment('success', provider)
+        if (provider.startsWith('user-')) {
+          await updateSubmissionStatus(provider, { success: true })
+        }
       } catch (err) {
         failureLog('error %o %o', provider, err)
         utils.terminalRow.increment(terminalLogTypes.EROR, provider)
         failureLog('failed to collect', provider, (err as Error).message)
+        if (provider.startsWith('user-')) {
+          await updateSubmissionStatus(provider, { success: false })
+        }
       }
       if (concurrency === 1) {
         await checkOutstandingConnections(provider)

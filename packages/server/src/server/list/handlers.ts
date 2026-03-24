@@ -6,6 +6,7 @@ import { tableNames } from '../../db/tables'
 import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
 import config from '../../../config'
+import { bumpSubscriberCount } from '../../collect/user-submissions'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -63,16 +64,20 @@ export const versioned: RequestHandler = async (req, res, next) => {
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
-  const list = await db.getLists(req.params.providerKey, req.params.listKey).first()
+  const providerKey = req.params.providerKey
+  const list = await db.getLists(providerKey, req.params.listKey).first()
   if (!list) {
     return next(
       createError.NotFound(
         JSON.stringify({
-          providerKey: req.params.providerKey,
+          providerKey,
           listKey: req.params.listKey,
         }),
       ),
     )
+  }
+  if (providerKey.startsWith('user-')) {
+    bumpSubscriberCount(providerKey).catch(() => {})
   }
   const filters = utils.tokenFilters(req.query)
   await utils.respondWithList(res, list, filters, extensions)
