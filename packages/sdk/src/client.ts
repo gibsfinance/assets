@@ -1,5 +1,6 @@
 import { getImageUrl, getNetworkImageUrl, type ImageOptions } from './image'
 import { getTokenListUrl, getNetworksUrl, getListIndexUrl } from './list'
+import { fetchSprite, getSpriteUrl, type Sprite, type SpriteOptions } from './sprite'
 import type { TokenList, NetworkInfo, ListInfo } from './types'
 
 export interface GibClientOptions {
@@ -20,6 +21,10 @@ export interface GibClient {
   fetchNetworks(): Promise<NetworkInfo[]>
   /** Fetch all available lists */
   fetchLists(): Promise<ListInfo[]>
+  /** Get the sprite manifest URL for a list */
+  spriteUrl(provider: string, listKey: string, options?: SpriteOptions): string
+  /** Fetch a sprite manifest with lookup helpers */
+  fetchSprite(provider: string, listKey: string, options?: SpriteOptions): Promise<Sprite>
   /** The resolved base URL */
   baseUrl: string
 }
@@ -60,6 +65,14 @@ export function createClient(options: GibClientOptions = {}): GibClient {
       const res = await fetch(url)
       if (!res.ok) throw new Error(`Failed to fetch lists: ${res.status}`)
       return res.json()
+    },
+
+    spriteUrl(provider: string, listKey: string, options?: SpriteOptions): string {
+      return getSpriteUrl(baseUrl, provider, listKey, options)
+    },
+
+    async fetchSprite(provider: string, listKey: string, options?: SpriteOptions): Promise<Sprite> {
+      return fetchSprite(baseUrl, provider, listKey, options)
     },
   }
 }
