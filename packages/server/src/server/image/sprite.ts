@@ -175,6 +175,11 @@ export const sheet: RequestHandler = async (req, res, next) => {
     deduped.push(t)
   }
 
+  if (deduped.length === 0) {
+    res.status(204).end()
+    return
+  }
+
   const rows = Math.ceil(deduped.length / cols)
   const width = cols * size
   const height = Math.max(rows * size, 1)

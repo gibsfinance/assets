@@ -173,11 +173,34 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
         const data = await response.json()
         if (data?.tokens && Array.isArray(data.tokens)) {
-          const tokens: Token[] = data.tokens.map((token: Token) => ({
-            ...token,
-            hasIcon: !!token.logoURI,
-            sourceList: 'merged',
-          }))
+          interface ApiToken {
+            chainId: number
+            address: string
+            name: string
+            symbol: string
+            decimals: number
+            logoURI?: string
+            sources?: string[]
+          }
+          const tokens: Token[] = data.tokens.map((token: ApiToken) => {
+            const sources = token.sources ?? []
+            const primarySource = sources[0] ?? 'merged'
+            const listReferences = sources.map((src) => ({
+              sourceList: src,
+              imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
+              imageFormat: '',
+            }))
+            return {
+              chainId: token.chainId,
+              address: token.address,
+              name: token.name,
+              symbol: token.symbol,
+              decimals: token.decimals,
+              hasIcon: !!token.logoURI,
+              sourceList: primarySource,
+              listReferences: listReferences.length > 0 ? listReferences : undefined,
+            }
+          })
           setListTokens('merged', tokens)
         }
       } catch (error) {

@@ -22,6 +22,7 @@ export type SansMetadataTokenEntry = {
   address: Hex
   logoURI?: string
   extensions?: Extensions
+  sources?: string[]
 }
 
 export type TokenEntry = SansMetadataTokenEntry & {
@@ -74,4 +75,9 @@ export type HeaderUriInfo = {
   headerListTokenId: string
 }
 
-export type TokenInfo = Network & Token & Image & BridgeLinkInfo & HeaderUriInfo
+export type TokenSourceInfo = {
+  providerKey: string
+  listKey: string
+}
+
+export type TokenInfo = Network & Token & Image & BridgeLinkInfo & HeaderUriInfo & TokenSourceInfo

@@ -70,6 +70,15 @@ export const normalizeTokens = (
           b.symbol = tkn.symbol
           b.decimals = tkn.decimals
         }
+        // Collect unique source lists (providerKey/listKey) across duplicates
+        const sources = _.uniq(
+          tkns
+            .filter((t) => t.providerKey && t.listKey)
+            .map((t) => `${t.providerKey}/${t.listKey}`),
+        )
+        if (sources.length > 0) {
+          baseline.sources = sources
+        }
         if (showExtensions) {
           let everAddedExtension = false
           const extensions = _.reduce(

@@ -45,7 +45,15 @@ export function toTokenListJson(list: LocalList): string {
 
 const TOKEN_STORAGE_KEY = 'gib-vcs-tokens'
 
-function getStoredTokens(): Record<string, string> {
+/** 30 days in milliseconds */
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
+interface StoredToken {
+  token: string
+  storedAt: number
+}
+
+function getStoredTokens(): Record<string, StoredToken | string> {
   try {
     return JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
   } catch {
@@ -55,12 +63,25 @@ function getStoredTokens(): Record<string, string> {
 
 function storeToken(provider: string, token: string): void {
   const tokens = getStoredTokens()
-  tokens[provider] = token
+  tokens[provider] = { token, storedAt: Date.now() }
   localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens))
 }
 
 function getToken(provider: string): string | null {
-  return getStoredTokens()[provider] || null
+  const entry = getStoredTokens()[provider]
+  if (!entry) return null
+
+  // Handle legacy entries stored as plain strings (no expiry info)
+  if (typeof entry === 'string') return entry
+
+  if (Date.now() - entry.storedAt > TOKEN_MAX_AGE_MS) {
+    // Token expired — remove it
+    const tokens = getStoredTokens()
+    delete tokens[provider]
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens))
+    return null
+  }
+  return entry.token
 }
 
 /** GitHub publisher — uses server proxy for OAuth token exchange */

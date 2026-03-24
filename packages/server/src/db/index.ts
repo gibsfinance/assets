@@ -953,6 +953,8 @@ export const getTokensUnderListId = (t: Tx = db) => {
       t.raw(`${tableNames.image}.ext`),
       t.raw(`${tableNames.image}.mode`),
       t.raw(`${tableNames.image}.uri`),
+      t.raw(`${tableNames.provider}.key as provider_key`),
+      t.raw(`${tableNames.list}.key as list_key`),
     ])
     .from<types.TokenInfo>(tableNames.listToken)
     .fullOuterJoin(tableNames.image, {
@@ -963,6 +965,12 @@ export const getTokensUnderListId = (t: Tx = db) => {
     })
     .join(tableNames.network, {
       [`${tableNames.network}.networkId`]: `${tableNames.token}.networkId`,
+    })
+    .join(tableNames.list, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .join(tableNames.provider, {
+      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
     })
 }
 
