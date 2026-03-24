@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 
 interface NumberStepperProps {
   value: number
@@ -58,6 +58,9 @@ export default function NumberStepper({
     timeoutRef.current = null
     intervalRef.current = null
   }, [])
+
+  // Clean up intervals on unmount
+  useEffect(() => stopHold, [stopHold])
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

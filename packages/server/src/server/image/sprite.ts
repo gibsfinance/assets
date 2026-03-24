@@ -212,11 +212,17 @@ export const sheet: RequestHandler = async (req, res, next) => {
 
   res.set('content-type', 'image/webp')
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  // Grid metadata in headers (small, always fits)
   res.set('x-sprite-size', String(size))
   res.set('x-sprite-cols', String(cols))
   res.set('x-sprite-rows', String(rows))
   res.set('x-sprite-count', String(deduped.length))
-  res.set('x-sprite-tokens', JSON.stringify(tokenMap))
+  // Token map can exceed header size limits — use the manifest endpoint instead.
+  // Only include in header if small enough (<4KB to stay under proxy limits).
+  const tokenJson = JSON.stringify(tokenMap)
+  if (tokenJson.length < 4096) {
+    res.set('x-sprite-tokens', tokenJson)
+  }
   res.set('access-control-expose-headers', 'x-sprite-size, x-sprite-cols, x-sprite-rows, x-sprite-count, x-sprite-tokens')
   res.send(sprite)
 }

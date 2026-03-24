@@ -123,7 +123,7 @@ export const all: RequestHandler = async (req, res) => {
  */
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const chainId = req.params.chainId
-  if (!chainId) return next(createError.BadRequest('chainId required'))
+  if (!chainId || !/^\d+$/.test(chainId)) return next(createError.BadRequest('valid numeric chainId required'))
 
   const limit = Math.min(Number(req.query.limit) || 500, 5000)
   const extensions = getExtensions(req)

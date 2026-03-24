@@ -110,6 +110,26 @@ describe('sanitizeImage', () => {
       expect(output).not.toContain('alert')
       expect(output).toContain('<circle')
     })
+    it('strips CSS @import rules', async () => {
+      const svg = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg"><style>@import url("https://evil.com/styles.css");</style><circle r="5"/></svg>',
+      )
+      const result = await sanitizeImage(svg, '.svg')
+      const output = result.toString()
+      expect(output).not.toContain('@import')
+      expect(output).not.toContain('evil.com')
+      expect(output).toContain('<circle')
+    })
+
+    it('strips file:// protocol URIs', async () => {
+      const svg = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/passwd"/></svg>',
+      )
+      const result = await sanitizeImage(svg, '.svg')
+      const output = result.toString()
+      expect(output).not.toContain('file://')
+      expect(output).not.toContain('/etc/passwd')
+    })
   })
 
   describe('raster sanitization', () => {

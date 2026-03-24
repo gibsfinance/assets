@@ -93,6 +93,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   // availableLists retained for TokenSearch global search fallback
 
   /** Add token to active list, or auto-create a new list first */
+  const creatingListRef = useRef(false)
   const addTokenToEditor = useCallback(
     async (token: Token) => {
       const localToken = {
@@ -110,14 +111,18 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         return
       }
 
-      // No active list — create one with this token
-      const newList = await createList({
-        name: 'New List',
-        source: { type: 'scratch' },
-        tokens: [{ ...localToken, order: 0 }],
-      })
-      if (newList) {
-        setActiveList(newList)
+      // Prevent race: multiple rapid clicks creating duplicate lists
+      if (creatingListRef.current) return
+      creatingListRef.current = true
+      try {
+        const newList = await createList({
+          name: 'New List',
+          source: { type: 'scratch' },
+          tokens: [{ ...localToken, order: 0 }],
+        })
+        if (newList) setActiveList(newList)
+      } finally {
+        creatingListRef.current = false
       }
     },
     [activeList, addToken, createList, setActiveList],

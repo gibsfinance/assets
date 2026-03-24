@@ -91,6 +91,12 @@ const DANGEROUS_DATA_URI_REGEX =
 const DANGEROUS_ANIMATE_REGEX =
   /<(?:set|animate)\s[^>]*(?:attributeName\s*=\s*(?:"|')(?:href|xlink:href)(?:"|'))[^>]*>/gi
 
+/** Matches CSS @import rules that can load external stylesheets */
+const CSS_IMPORT_REGEX = /@import\s+(?:url\()?[^;)]+(?:\))?[^;]*;/gi
+
+/** Matches file:// protocol URIs */
+const FILE_PROTOCOL_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))file:\/\/[^"']*(?:"|')/gi
+
 function sanitizeSvg(image: Buffer): Buffer {
   let svg = image.toString('utf-8')
 
@@ -102,6 +108,12 @@ function sanitizeSvg(image: Buffer): Buffer {
 
   // Strip javascript: URIs
   svg = svg.replace(JAVASCRIPT_URI_REGEX, '$1#')
+
+  // Strip file:// URIs
+  svg = svg.replace(FILE_PROTOCOL_REGEX, '$1#')
+
+  // Strip CSS @import (can load external stylesheets)
+  svg = svg.replace(CSS_IMPORT_REGEX, '')
 
   // Strip <use> elements with external references
   svg = svg.replace(EXTERNAL_USE_REGEX, '')
