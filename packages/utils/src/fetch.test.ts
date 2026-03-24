@@ -80,6 +80,21 @@ describe('retry', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 
+  it('throws aborted when signal is aborted between attempts (line 49 guard)', async () => {
+    const controller = new AbortController()
+    const fn = vi.fn(async () => {
+      // Abort the signal during fn execution so the post-attempt guard fires
+      controller.abort()
+      throw new Error('fail')
+    })
+
+    await expect(retry(fn, { attempts: 3, delay: 10, signal: controller.signal }))
+      .rejects.toThrow('aborted')
+
+    // Only one attempt ran — the between-attempts abort check cut the loop short
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+
   it('abort during retry delay resolves the delay early and throws aborted', async () => {
     vi.useFakeTimers()
     try {

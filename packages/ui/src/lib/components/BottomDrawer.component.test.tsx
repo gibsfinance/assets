@@ -339,4 +339,212 @@ describe('BottomDrawer disabled prop effect', () => {
     )
     expect(container.innerHTML).toBe('')
   })
+
+  it('resets internal state to collapsed when re-enabled after being disabled', () => {
+    const { rerender } = render(
+      <BottomDrawer enabled>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
+
+    // Open to half
+    fireEvent.click(screen.getByRole('button'))
+    expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true')
+
+    // Disable — triggers the useEffect that calls setDrawerState('collapsed')
+    rerender(<BottomDrawer enabled={false}><div>Content</div></BottomDrawer>)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // Re-enable — state was reset so it starts collapsed again
+    rerender(<BottomDrawer enabled><div>Content</div></BottomDrawer>)
+    expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('false')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Handle content — default "Configure" vs custom handle prop
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer handle content', () => {
+  it('renders default "Configure" text when no handle prop is provided', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    expect(screen.getByText('Configure')).toBeTruthy()
+  })
+
+  it('renders custom handle content when handle prop is provided', () => {
+    render(
+      <BottomDrawer handle={<span>Custom Handle</span>}>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
+    expect(screen.getByText('Custom Handle')).toBeTruthy()
+    expect(screen.queryByText('Configure')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Escape key collapses the drawer
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer escape key', () => {
+  it('collapses from half state when Escape is pressed', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Open to half
+    fireEvent.click(handle)
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+
+    // Press Escape
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+  })
+
+  it('collapses from full state when Escape is pressed', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Open to full
+    fireEvent.click(handle)
+    fireEvent.click(handle)
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Press Escape
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('does not register Escape listener when already collapsed', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const dialog = screen.getByRole('dialog')
+
+    // Already collapsed — keydown should be a no-op
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+  })
+
+  it('ignores non-Escape keys', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    fireEvent.click(handle) // collapsed → half
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true') // still open
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Body scroll lock unlocks when leaving full state
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer body scroll lock', () => {
+  it('unlocks body scroll when drawer leaves full state via click', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+
+    // Reach full state
+    fireEvent.click(handle) // collapsed → half
+    fireEvent.click(handle) // half → full
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Cycle back: full → collapsed
+    fireEvent.click(handle)
+    expect(document.body.style.overflow).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Touch handler guards: touchMove / touchEnd when not dragging
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer touch guards', () => {
+  it('ignores touchMove events when not actively dragging', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Fire touchMove without a preceding touchStart — isDragging is false
+    fireEvent.touchMove(handle, { touches: [{ clientY: 100 }] })
+
+    // No state change, no crash
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+  })
+
+  it('ignores touchEnd events when not actively dragging', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Fire touchEnd without a preceding touchStart — isDragging is false
+    fireEvent.touchEnd(handle)
+
+    // No state change, no crash
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// wasTouched guard: click after touch is suppressed
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer wasTouched click suppression', () => {
+  it('suppresses click-cycling when a touch interaction just completed', () => {
+    vi.stubGlobal('Date', {
+      now: vi.fn()
+        .mockReturnValueOnce(0)   // touchStart
+        .mockReturnValueOnce(100) // touchEnd: elapsed=100ms, tap detected
+        .mockReturnValue(Date.now()),
+    })
+
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Simulate a touch tap: touchStart + small move + touchEnd
+    // wasTouched.current becomes true during touchStart
+    fireEvent.touchStart(handle, { touches: [{ clientY: 500 }] })
+    fireEvent.touchMove(handle, { touches: [{ clientY: 503 }] })
+    fireEvent.touchEnd(handle)
+
+    // At this point: wasTouched.current = true (requestAnimationFrame hasn't fired)
+    // collapsed → half from the tap
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+
+    // A synthetic click fires immediately after touchEnd on mobile.
+    // handleClick checks wasTouched.current and should bail out — no double-cycle.
+    fireEvent.click(handle)
+
+    // Should still be half, not full (click was suppressed)
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    const backdrop = document.querySelector('[aria-hidden="true"]')
+    expect(backdrop).toBeNull() // not full state
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Backdrop hidden during drag (showBackdrop = drawerState === 'full' && !isDragging)
+// ---------------------------------------------------------------------------
+
+describe('BottomDrawer backdrop hidden while dragging', () => {
+  it('hides backdrop during active drag even when state is full', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+
+    // Reach full state — backdrop should be visible
+    fireEvent.click(handle) // collapsed → half
+    fireEvent.click(handle) // half → full
+    expect(document.querySelector('[aria-hidden="true"]')).not.toBeNull()
+
+    // Begin a drag — isDragging becomes true, backdrop should disappear
+    fireEvent.touchStart(handle, { touches: [{ clientY: 50 }] })
+    expect(document.querySelector('[aria-hidden="true"]')).toBeNull()
+
+    // End the drag — backdrop returns if still full
+    fireEvent.touchMove(handle, { touches: [{ clientY: 53 }] }) // small move, stays full after tap
+    fireEvent.touchEnd(handle)
+  })
 })
