@@ -114,3 +114,38 @@ export const all: RequestHandler = async (req, res) => {
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json(await getLists(req.query))
 }
+
+/**
+ * GET /list/tokens/:chainId
+ * Returns all deduplicated tokens for a chain in a single response.
+ * Server-side merge eliminates the need for N individual list fetches.
+ * Supports ?limit=N (default 500, max 5000)
+ */
+export const tokensByChain: RequestHandler = async (req, res, next) => {
+  const chainId = req.params.chainId
+  if (!chainId) return next(createError.BadRequest('chainId required'))
+
+  const limit = Math.min(Number(req.query.limit) || 500, 5000)
+  const extensions = getExtensions(req)
+
+  // Query all tokens on this chain across all lists, with image priority ordering
+  const q = db
+    .getTokensUnderListId()
+    .where(`${tableNames.network}.chainId`, chainId)
+
+  const tokens = await q.orderBy([
+    { column: `${tableNames.image}.ext`, order: 'asc' }, // SVGs first
+    { column: `${tableNames.listToken}.listTokenOrderId`, order: 'asc' },
+  ])
+
+  const filters = utils.tokenFilters(req.query)
+  const entries = utils.normalizeTokens(tokens, filters, extensions)
+  const limited = entries.slice(0, limit)
+
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  res.json({
+    chainId: +chainId,
+    total: entries.length,
+    tokens: limited,
+  })
+}

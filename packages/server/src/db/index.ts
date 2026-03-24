@@ -1029,30 +1029,37 @@ export const addBridgeExtensions = (q: Knex.QueryBuilder) => {
 }
 
 export const getListOrderId = async (orderParam: string) => {
-  let listOrderId: viem.Hex | null = null
-  if (orderParam) {
-    if (viem.isHex(orderParam)) {
-      // presume that this is the list order id
-      orderParam = orderParam as viem.Hex
-    } else if (viem.isHex(`0x${orderParam}`)) {
-      orderParam = `0x${orderParam}` as viem.Hex
-      // presume that it is the list order key
-    }
-    if (orderParam && viem.toHex(viem.toBytes(orderParam), { size: 32 }).slice(2) !== orderParam) {
-      // assume only a fragment is being given
-      const listOrder = await getDB()
-        .select<ListOrder>('*')
-        .from(tableNames.listOrder)
-        .whereILike('listOrderId', `%${orderParam.slice(2)}%`)
-        .first()
-      if (listOrder) {
-        listOrderId = listOrder.listOrderId as viem.Hex
-      }
-    } else {
-      listOrderId = orderParam as viem.Hex
-    }
+  if (!orderParam) return null
+
+  // Try lookup by key first (e.g. "default")
+  const byKey = await getDB()
+    .select<ListOrder>('*')
+    .from(tableNames.listOrder)
+    .where('key', orderParam)
+    .first()
+  if (byKey) return byKey.listOrderId as viem.Hex
+
+  // Try as hex listOrderId
+  let hex = orderParam
+  if (viem.isHex(orderParam)) {
+    hex = orderParam
+  } else if (viem.isHex(`0x${orderParam}`)) {
+    hex = `0x${orderParam}`
   }
-  return listOrderId
+
+  if (hex && viem.toHex(viem.toBytes(hex), { size: 32 }).slice(2) !== hex) {
+    // Fragment search
+    const listOrder = await getDB()
+      .select<ListOrder>('*')
+      .from(tableNames.listOrder)
+      .whereILike('listOrderId', `%${hex.replace(/^0x/, '')}%`)
+      .first()
+    if (listOrder) return listOrder.listOrderId as viem.Hex
+  } else {
+    return hex as viem.Hex
+  }
+
+  return null
 }
 
 /**

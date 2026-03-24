@@ -90,8 +90,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     return Array.from(uniqueLists.values())
   }, [providers])
 
-  const availableListsRef = useRef<AvailableList[]>([])
-  availableListsRef.current = availableLists
+  // availableLists retained for TokenSearch global search fallback
 
   /** Add token to active list, or auto-create a new list first */
   const addTokenToEditor = useCallback(
@@ -155,81 +154,40 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     return filteredTokens.slice(start, start + TOKENS_PER_PAGE)
   }, [filteredTokens, currentPage])
 
-  /* ----- Fetch token lists when chain changes ---------------------------- */
-  const processListWithRetry = useCallback(
-    async (list: AvailableList, chainId: number) => {
-      try {
-        const url =
-          list.chainId === '0'
-            ? getApiUrl(`/list/${list.providerKey}/${list.key}`)
-            : getApiUrl(`/list/${list.providerKey}/${list.key}?chainId=${chainId}`)
-
-        const response = await fetch(url)
-
-        if (response.ok) {
-          const data = await response.json()
-          if (data?.tokens && Array.isArray(data.tokens)) {
-            const tokens: Token[] = data.tokens.map((token: Token) => ({
-              ...token,
-              hasIcon: true,
-              sourceList: `${list.providerKey}/${list.key}`,
-              isBridgeToken: list.providerKey.includes('bridge'),
-            }))
-            const listKey = `${list.providerKey}/${list.key}`
-            setListTokens(listKey, tokens)
-          }
-        } else if (response.status === 404) {
-          // list not available for this chain
-          toggleList(`${list.providerKey}/${list.key}`, false)
-        } else {
-          console.error(
-            `Failed to fetch list ${list.providerKey}/${list.key}: ${response.status} ${response.statusText}`,
-          )
-        }
-      } catch (error) {
-        console.error(`Network error fetching list ${list.name}:`, error)
-      }
-    },
-    [setListTokens, toggleList],
-  )
-
+  /* ----- Fetch all tokens for a chain in one request --------------------- */
   const tryFetchTokenLists = useCallback(
     async (chainId: number) => {
-      const lists = availableListsRef.current
-      const relevantLists = lists.filter(
-        (list) => list.chainId === chainId.toString() || list.chainId === '0',
-      )
-
       clearTokens()
       setIsLoadingLists(true)
       setCurrentPage(1)
       setFailedIcons(new Set())
 
-      // Chain-specific lists first (guaranteed to have data), then top global lists
-      const chainSpecific = relevantLists.filter((l) => l.chainId !== '0')
-      const global = relevantLists
-        .filter((l) => l.chainId === '0')
-        .sort((a, b) => (a.default === b.default ? 0 : a.default ? -1 : 1))
-        .slice(0, 5)
-      const prioritized = [...chainSpecific.slice(0, 20), ...global]
+      try {
+        const response = await fetch(getApiUrl(`/list/tokens/${chainId}?limit=2000`))
+        if (!response.ok) throw new Error(`${response.status}`)
 
-      const batchSize = 5
-      for (let i = 0; i < prioritized.length; i += batchSize) {
-        const batch = prioritized.slice(i, i + batchSize)
-        await Promise.all(batch.map((list) => processListWithRetry(list, chainId)))
+        const data = await response.json()
+        if (data?.tokens && Array.isArray(data.tokens)) {
+          const tokens: Token[] = data.tokens.map((token: Token) => ({
+            ...token,
+            hasIcon: !!token.logoURI,
+            sourceList: 'merged',
+          }))
+          setListTokens('merged', tokens)
+        }
+      } catch (error) {
+        console.error('Failed to fetch tokens for chain:', error)
       }
 
       setIsLoadingLists(false)
     },
-    [clearTokens, processListWithRetry],
+    [clearTokens, setListTokens],
   )
 
-  // Track whether lists have loaded (avoids re-triggering on every useMemo recompute)
-  const listsReady = availableLists.length > 0
   useEffect(() => {
-    if (!selectedChainId || !listsReady) return
+    if (!selectedChainId) return
     tryFetchTokenLists(Number(selectedChainId))
-  }, [selectedChainId, listsReady, tryFetchTokenLists])
+  }, [selectedChainId, tryFetchTokenLists])
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
