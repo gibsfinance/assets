@@ -1,6 +1,7 @@
 import promiseLimit from 'promise-limit'
 import * as utils from '../utils'
 import { type Collectable, collectables } from '../collect/collectables'
+import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submissions'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
@@ -51,6 +52,20 @@ export const main = async (
   concurrency = DEFAULT_PROVIDER_CONCURRENCY,
 ) => {
   const c = collectables()
+
+  // Merge in user-submitted list collectors
+  try {
+    const submissionCollectors = await loadSubmissionCollectors()
+    for (const [key, collector] of Object.entries(submissionCollectors)) {
+      if (!(key in c)) {
+        ;(c as Record<string, typeof collector>)[key] = collector
+        ;(providers as string[]).push(key)
+      }
+    }
+  } catch (err) {
+    failureLog('Failed to load submission collectors:', err)
+  }
+
   const manifests = new Map<string, DiscoveryManifest>()
 
   if (logger === 'raw') {
