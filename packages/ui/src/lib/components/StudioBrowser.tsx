@@ -68,10 +68,28 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const [isLoadingLists, setIsLoadingLists] = useState(false)
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
   const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set())
-  const [availableLists, setAvailableLists] = useState<AvailableList[]>([])
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(() => new Set())
 
-  /* Refs to avoid re-triggering effects when mutable state changes */
+  /* ----- Derive available lists from context providers -------------------- */
+  const availableLists = useMemo(() => {
+    if (!providers.length) return []
+    const uniqueLists = new Map<string, AvailableList>()
+    providers.forEach((info) => {
+      const key = `${info.providerKey}-${info.key}-${info.chainId}`
+      if (!uniqueLists.has(key)) {
+        uniqueLists.set(key, {
+          key: info.key as string,
+          name: (info.name as string) || (info.key as string),
+          providerKey: info.providerKey as string,
+          chainId: info.chainId?.toString() || '0',
+          type: (info.type as string) || 'hosted',
+          default: (info.default as boolean) || false,
+        })
+      }
+    })
+    return Array.from(uniqueLists.values())
+  }, [providers])
+
   const availableListsRef = useRef<AvailableList[]>([])
   availableListsRef.current = availableLists
 
@@ -136,26 +154,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     const start = (currentPage - 1) * TOKENS_PER_PAGE
     return filteredTokens.slice(start, start + TOKENS_PER_PAGE)
   }, [filteredTokens, currentPage])
-
-  /* ----- Derive available lists from context providers -------------------- */
-  useEffect(() => {
-    if (!providers.length) return
-    const uniqueLists = new Map<string, AvailableList>()
-    providers.forEach((info) => {
-      const key = `${info.providerKey}-${info.key}-${info.chainId}`
-      if (!uniqueLists.has(key)) {
-        uniqueLists.set(key, {
-          key: info.key as string,
-          name: (info.name as string) || (info.key as string),
-          providerKey: info.providerKey as string,
-          chainId: info.chainId?.toString() || '0',
-          type: (info.type as string) || 'hosted',
-          default: (info.default as boolean) || false,
-        })
-      }
-    })
-    setAvailableLists(Array.from(uniqueLists.values()))
-  }, [providers])
 
   /* ----- Fetch token lists when chain changes ---------------------------- */
   const processListWithRetry = useCallback(
