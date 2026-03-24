@@ -244,13 +244,19 @@ Zero-dependency client: `createClient()` → URL builders + fetch wrappers + spr
 ## Known Issues / Technical Debt
 
 1. **`lodash` undeclared** in `@gibs/utils` — relies on server's node_modules
-2. **`getThumbnailUrl` not exported** from SDK index
+2. **`getThumbnailUrl` not exported** from SDK index; `ListInfo` type also not exported
 3. **SDK client fetch methods untested** — need HTTP mocking
 4. **`utils/viem.ts` untested** — complex RPC logic with zero coverage
 5. **ESLint 8 EOL** — server uses deprecated ESLint, needs config migration for v9
 6. **45 Dependabot vulnerabilities** — mostly transitive, 1 critical
 7. **`PaginationControls` dead code** — defined but no longer imported (replaced by virtual list)
 8. **PhysicsCanvas unused** — defined but not mounted in any active route
+9. **Knex camelCase transformer is global** — raw SQL aliases must match expected camelCase output
+10. **`image` table is UPDATE-revoked** at DB level — only INSERT via upsert
+11. **`collectables()` memoized but mutated** — user-submission collectors injected at runtime
+12. **`pruneVariants()` resets ALL accessCount to 0** — broad reset after each prune cycle
+13. **SVG sanitization is regex-based** — susceptible to catastrophic backtracking on malformed SVGs
+14. **Bare `/image/:chainId/:address` route has no ordering** — non-deterministic first-row wins
 
 ## Navigation Guide
 
