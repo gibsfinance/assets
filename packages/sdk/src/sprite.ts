@@ -105,7 +105,14 @@ export async function fetchSprite(
   const url = getSpriteUrl(baseUrl, provider, listKey, options)
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to fetch sprite manifest: ${res.status}`)
-  const manifest: SpriteManifest = await res.json()
+  const raw: SpriteManifest = await res.json()
+
+  // Normalize all token keys to lowercase for consistent lookups
+  const normalizedTokens: Record<string, SpriteTokenEntry> = {}
+  for (const [key, value] of Object.entries(raw.tokens)) {
+    normalizedTokens[key.toLowerCase()] = value
+  }
+  const manifest: SpriteManifest = { ...raw, tokens: normalizedTokens }
 
   const sheetUrl = manifest.spriteUrl.startsWith('/')
     ? `${baseUrl}${manifest.spriteUrl}`
