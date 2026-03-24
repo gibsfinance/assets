@@ -205,10 +205,15 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       setCurrentPage(1)
       setFailedIcons(new Set())
 
-      // Process lists in batches of 2
-      const batchSize = 2
-      for (let i = 0; i < relevantLists.length; i += batchSize) {
-        const batch = relevantLists.slice(i, i + batchSize)
+      // Prioritize chain-specific lists, then default global lists
+      const chainSpecific = relevantLists.filter((l) => l.chainId !== '0')
+      const global = relevantLists.filter((l) => l.chainId === '0' && l.default)
+      const prioritized = [...chainSpecific, ...global].slice(0, 30)
+
+      // Process in batches of 5
+      const batchSize = 5
+      for (let i = 0; i < prioritized.length; i += batchSize) {
+        const batch = prioritized.slice(i, i + batchSize)
         await Promise.all(batch.map((list) => processListWithRetry(list, chainId)))
       }
 
@@ -217,10 +222,12 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     [clearTokens, processListWithRetry],
   )
 
+  // Track whether lists have loaded (avoids re-triggering on every useMemo recompute)
+  const listsReady = availableLists.length > 0
   useEffect(() => {
-    if (!selectedChainId || availableLists.length === 0) return
+    if (!selectedChainId || !listsReady) return
     tryFetchTokenLists(Number(selectedChainId))
-  }, [selectedChainId, availableLists, tryFetchTokenLists])
+  }, [selectedChainId, listsReady, tryFetchTokenLists])
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
