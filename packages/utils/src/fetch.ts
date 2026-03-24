@@ -83,14 +83,8 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
   })
 }
 
-const controllers: [NodeJS.Timeout, AbortController][] = []
-
-export const cancelAllRequests = () => {
-  for (const [id, controller] of controllers) {
-    controller.abort()
-    clearTimeout(id)
-  }
-}
+/** @deprecated No-op — controller registration was removed. Retained for API compatibility. */
+export const cancelAllRequests = () => {}
 
 export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> => {
   return utils.limitBy<Response>(url.host)

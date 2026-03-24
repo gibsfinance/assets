@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
+    coverage: {
+      exclude: ['src/lib/networks.json'],
+    },
   },
   resolve: {
     alias: {

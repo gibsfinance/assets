@@ -651,58 +651,35 @@ describe('cleanExpiredWindows (triggered via checkRateLimit)', () => {
     vi.useRealTimers()
   })
 
-  it('removes expired windows when map exceeds 1000 entries', () => {
-    vi.useFakeTimers()
-    const base = 'cleanup-test-' + Date.now()
-
-    // Create 1001 distinct image hashes — all will be inserted into the map.
-    // The first 1000 are created at T=0 so they will expire after WINDOW_MS.
-    for (let i = 0; i < 1001; i++) {
-      checkRateLimit(`${base}-${i}`)
-    }
-
-    // Advance time past the 60-second window so those entries are expired.
-    vi.advanceTimersByTime(61_000)
-
-    // One more call on a new hash will trigger cleanExpiredWindows() since
-    // the map now has > 1000 entries. The cleanup should not throw.
-    expect(() => checkRateLimit(`${base}-trigger`)).not.toThrow()
-  })
-
   it('deletes expired entries from the map during cleanup', () => {
     vi.useFakeTimers()
-    const T0 = 3_000_000_000_000
+    const T0 = 4_000_000_000_000
     vi.setSystemTime(T0)
-    const base = 'cleanup-delete-test-' + T0
+    const base = 'cleanup-' + T0
 
     // The global window allows 100 calls per 60-second period. To insert
-    // >1000 entries into perImageWindows we must reset the global window
-    // repeatedly by advancing time every 100 unique hashes.
-    //
-    // All entries are created within the first ~T0 epoch so they will be
-    // expired once we advance past T0 + WINDOW_MS at the end.
+    // >1000 entries we must advance >60s between batches to reset the global
+    // window. Each batch uses 100 unique hashes that get stored in the map.
+    const BATCH_INTERVAL = 61_000
     for (let batch = 0; batch < 11; batch++) {
-      // Advance by 1ms between batches to reset the global window while
-      // keeping all per-image windows in the "old" epoch (they all started
-      // at T0 + batch * 1ms, which is still < WINDOW_MS away from T0).
-      vi.setSystemTime(T0 + batch)
+      vi.setSystemTime(T0 + batch * BATCH_INTERVAL)
       for (let j = 0; j < 100; j++) {
         checkRateLimit(`${base}-${batch * 100 + j}`)
       }
     }
-    // map now has ~1100 entries (some batches may have been < 100 due to
-    // per-image limit, but all 1100 distinct hashes were attempted)
+    // Map now has 1100 entries. Entries from batches 0-9 are older than 60s
+    // relative to the latest batch; batch 10 entries are current.
 
-    // Advance well past the 60-second window so every entry is expired.
-    vi.setSystemTime(T0 + 62_000)
+    // Advance past 60s from the last batch so ALL entries are expired.
+    vi.setSystemTime(T0 + 11 * BATCH_INTERVAL)
 
-    // Calling with a new hash triggers cleanExpiredWindows() because size > 1000.
-    // All 1100 expired entries should be deleted from the map.
-    checkRateLimit(`${base}-trigger`)
+    // One more call triggers cleanExpiredWindows() because size > 1000.
+    // The loop body (lines 86-89) deletes every expired entry.
+    const result = checkRateLimit(`${base}-trigger`)
+    expect(result).toBe(true)
 
-    // After cleanup, the per-image window for hash-0 was deleted. Calling it
-    // now creates a fresh window and the global window is also fresh (just
-    // reset), so it must return true.
+    // Verify cleanup happened: a hash from batch 0 was deleted, so calling
+    // it again creates a fresh window and returns true.
     expect(checkRateLimit(`${base}-0`)).toBe(true)
   })
 })

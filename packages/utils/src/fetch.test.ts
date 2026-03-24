@@ -344,6 +344,33 @@ describe('fetch (iterativeIpfsCompatableFetch)', () => {
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
+  it('rejects with AbortError when signal is aborted mid-flight (addEventListener path)', async () => {
+    const controller = new AbortController()
+
+    // Mock fetch to hang until its signal aborts
+    vi.mocked(global.fetch).mockImplementation((_url, options) =>
+      new Promise((_, reject) => {
+        const sig = (options as RequestInit | undefined)?.signal
+        sig?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        )
+      }),
+    )
+
+    const promise = iterativeFetch('https://midflight-abort.example.com/data', {
+      signal: controller.signal,
+    })
+
+    // Signal is NOT aborted yet — addEventListener on line 133 has been called.
+    // Now abort to trigger the listener.
+    controller.abort()
+
+    await expect(promise).rejects.toMatchObject({
+      name: 'AbortError',
+      message: 'Aborted',
+    })
+  })
+
   it('uses per-host rate limiting (getLimiter) so concurrent calls to the same host are serialised', async () => {
     const responses = [makeOkResponse('first'), makeOkResponse('second')]
     let callIndex = 0
