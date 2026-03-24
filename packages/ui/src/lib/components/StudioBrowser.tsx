@@ -205,12 +205,14 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       setCurrentPage(1)
       setFailedIcons(new Set())
 
-      // Prioritize chain-specific lists, then default global lists
+      // Chain-specific lists first (guaranteed to have data), then top global lists
       const chainSpecific = relevantLists.filter((l) => l.chainId !== '0')
-      const global = relevantLists.filter((l) => l.chainId === '0' && l.default)
-      const prioritized = [...chainSpecific, ...global].slice(0, 30)
+      const global = relevantLists
+        .filter((l) => l.chainId === '0')
+        .sort((a, b) => (a.default === b.default ? 0 : a.default ? -1 : 1))
+        .slice(0, 5)
+      const prioritized = [...chainSpecific.slice(0, 20), ...global]
 
-      // Process in batches of 5
       const batchSize = 5
       for (let i = 0; i < prioritized.length; i += batchSize) {
         const batch = prioritized.slice(i, i + batchSize)
