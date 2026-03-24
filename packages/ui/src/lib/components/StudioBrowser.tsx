@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
@@ -9,13 +10,164 @@ import { getNetworkName } from '../utils/network-name'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import NetworkSelect from './NetworkSelect'
 import TokenSearch from './TokenSearch'
-import PaginationControls from './PaginationControls'
 import Image from './Image'
 import TokenSubRows from './TokenSubRows'
 import type { Token, SearchUpdate } from '../types'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
+}
+
+// ---------------------------------------------------------------------------
+// Virtualized token list — only renders visible rows
+// ---------------------------------------------------------------------------
+
+interface VirtualTokenListProps {
+  tokens: Token[]
+  selectedToken: Token | null
+  editorOpen: boolean
+  activeList: unknown
+  failedIcons: Set<string>
+  expandedTokens: Set<string>
+  onTokenClick: (token: Token) => void
+  onActionClick: (token: Token) => void
+  onToggleExpand: (key: string) => void
+  onNavigateToList: (sourceList: string) => void
+  onIconError: (token: Token) => void
+}
+
+function VirtualTokenList({
+  tokens,
+  selectedToken,
+  editorOpen,
+  activeList,
+  failedIcons,
+  expandedTokens,
+  onTokenClick,
+  onActionClick,
+  onToggleExpand,
+  onNavigateToList,
+  onIconError,
+}: VirtualTokenListProps) {
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: tokens.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  })
+
+  return (
+    <div ref={parentRef} className="flex-1 overflow-y-auto" style={{ contain: 'strict' }}>
+      <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const token = tokens[virtualRow.index]
+          const iconKey = `${token.chainId}-${token.address}`
+          const hasIcon = token.hasIcon && !failedIcons.has(iconKey)
+          const isSelected =
+            selectedToken?.address.toLowerCase() === token.address.toLowerCase() &&
+            selectedToken?.chainId.toString() === token.chainId.toString()
+
+          return (
+            <div
+              key={iconKey}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div
+                className={`group flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors border-l-2 ${
+                  isSelected
+                    ? 'border-accent-500 bg-accent-500/10'
+                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
+                }`}
+                onClick={() => onTokenClick(token)}
+              >
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
+                  {hasIcon ? (
+                    <Image
+                      src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
+                      alt={token.symbol}
+                      className="rounded-full object-contain"
+                      size={28}
+                      skeleton
+                      shape="circle"
+                      onError={() => onIconError(token)}
+                    />
+                  ) : (
+                    <span className="text-xs font-bold text-gray-300 dark:text-white/30">
+                      {token.symbol.slice(0, 2)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                      {token.name}
+                    </span>
+                    <span className="flex-shrink-0 font-mono text-[10px] text-gray-400 dark:text-white/30">
+                      {token.address.slice(0, 6)}...{token.address.slice(-4)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-400 dark:text-white/40">
+                      {token.symbol}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 truncate text-[10px] text-accent-500/70 hover:text-accent-500"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if ((token.listReferences?.length ?? 0) > 1) {
+                          onToggleExpand(iconKey)
+                        } else {
+                          onNavigateToList(token.sourceList)
+                        }
+                      }}
+                    >
+                      <span className="truncate hover:underline">{token.sourceList}</span>
+                      {(token.listReferences?.length ?? 0) > 1 && (
+                        <span className="flex-shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
+                          +{token.listReferences!.length - 1}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-all ${
+                    editorOpen
+                      ? 'text-accent-500/60 hover:bg-accent-500/10 hover:text-accent-500'
+                      : 'text-gray-300 opacity-0 hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onActionClick(token)
+                  }}
+                  title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
+                  aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
+                >
+                  <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
+                </button>
+              </div>
+
+              {expandedTokens.has(iconKey) && token.listReferences && (
+                <TokenSubRows references={token.listReferences} onNavigateToList={onNavigateToList} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 interface AvailableList {
@@ -27,9 +179,8 @@ interface AvailableList {
   default: boolean
 }
 
-const TOKENS_PER_PAGE = 25
-
 const POPULAR_CHAIN_COUNT = 8
+const ROW_HEIGHT = 44
 
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
@@ -64,7 +215,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   } = useTokenBrowser()
 
   /* ----- Local UI state -------------------------------------------------- */
-  const [currentPage, setCurrentPage] = useState(1)
   const [isLoadingLists, setIsLoadingLists] = useState(false)
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
   const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set())
@@ -133,38 +283,33 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   const networkName = selectedChainId ? getNetworkName(selectedChainId) : ''
 
-  /** Combined, deduped tokens for the selected chain across enabled lists */
+  /** Combined, deduped, sorted tokens for the selected chain */
   const filteredTokens = useMemo(() => {
-    // If we have active global search results, use those
+    let tokens: Token[]
     if (searchState?.isGlobalSearching && searchState.tokens.length > 0) {
-      return searchState.tokens
+      tokens = searchState.tokens
+    } else if (!selectedChainId) {
+      return []
+    } else {
+      tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
     }
-    if (!selectedChainId) return []
-    return deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
+    // Sort by popularity (most lists first) then alphabetical
+    return tokens.sort((a, b) => {
+      const popA = a.listReferences?.length ?? 1
+      const popB = b.listReferences?.length ?? 1
+      if (popA !== popB) return popB - popA
+      return a.name.localeCompare(b.name)
+    })
   }, [tokensByList, enabledLists, selectedChainId, searchState])
 
-  const tokenCount = useMemo(() => {
-    const list = Array.from(tokensByList.entries())
-    const underChain = list.filter(([, tokens]) =>
-      tokens.some((t) => t.chainId === selectedChainNumeric),
-    )
-    return _(underChain)
-      .flatMap(([, tkns]) => tkns)
-      .uniqBy((v) => v.address.toLowerCase())
-      .value().length
-  }, [tokensByList, selectedChainNumeric])
-
-  const paginatedTokens = useMemo(() => {
-    const start = (currentPage - 1) * TOKENS_PER_PAGE
-    return filteredTokens.slice(start, start + TOKENS_PER_PAGE)
-  }, [filteredTokens, currentPage])
+  const tokenCount = filteredTokens.length
 
   /* ----- Fetch all tokens for a chain in one request --------------------- */
   const tryFetchTokenLists = useCallback(
     async (chainId: number) => {
       clearTokens()
       setIsLoadingLists(true)
-      setCurrentPage(1)
+      
       setFailedIcons(new Set())
 
       try {
@@ -229,7 +374,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const handleToggleList = useCallback(
     (listKey: string, enabled: boolean) => {
       toggleList(listKey, enabled)
-      setCurrentPage(1)
+      
     },
     [toggleList],
   )
@@ -237,14 +382,14 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const handleToggleAll = useCallback(
     (enabled: boolean) => {
       toggleAll(enabled)
-      setCurrentPage(1)
+      
     },
     [toggleAll],
   )
 
   const handleSearchUpdate = useCallback((state: SearchUpdate) => {
     setSearchState(state)
-    setCurrentPage(1)
+    
   }, [])
 
   const handleIconError = useCallback((token: Token) => {
@@ -286,7 +431,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
 
       {/* Token list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {!selectedChainId && (
           <div className="flex flex-col items-center gap-4 px-4 py-8">
             <p className="text-sm text-gray-400 dark:text-white/30">Select a network to browse tokens</p>
@@ -343,138 +488,31 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
           </div>
         )}
 
-        {paginatedTokens.length > 0 && (
-          <div className="flex flex-col gap-px">
-            {paginatedTokens.map((token) => {
-              const iconKey = `${token.chainId}-${token.address}`
-              const hasIcon = token.hasIcon && !failedIcons.has(iconKey)
-              const isSelected =
-                selectedToken?.address.toLowerCase() === token.address.toLowerCase() &&
-                selectedToken?.chainId.toString() === token.chainId.toString()
+        {filteredTokens.length > 0 && (
+          <VirtualTokenList
+            tokens={filteredTokens}
+            selectedToken={selectedToken}
+            editorOpen={editorOpen}
+            activeList={activeList}
+            failedIcons={failedIcons}
+            expandedTokens={expandedTokens}
+            onTokenClick={(token) => editorOpen ? addTokenToEditor(token) : selectToken(token)}
+            onActionClick={(token) => editorOpen ? addTokenToEditor(token) : onInspectToken(token)}
+            onToggleExpand={toggleExpand}
+            onNavigateToList={openEditor}
+            onIconError={handleIconError}
+          />
+        )}
 
-              return (
-                <div key={iconKey}>
-                  <div
-                    className={`group flex cursor-pointer items-center gap-3 px-3 py-2 transition-all border-l-2 ${
-                      isSelected
-                        ? 'border-accent-500 bg-accent-500/10'
-                        : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
-                    }`}
-                    onClick={() => {
-                      if (editorOpen) {
-                        addTokenToEditor(token)
-                      } else {
-                        selectToken(token)
-                      }
-                    }}
-                  >
-                    {/* Icon */}
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
-                      {hasIcon ? (
-                        <Image
-                          src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
-                          alt={token.symbol}
-                          className="rounded-full object-contain"
-                          size={28}
-                          skeleton
-                          lazy
-                          shape="circle"
-                          onError={() => handleIconError(token)}
-                        />
-                      ) : (
-                        <span className="text-xs font-bold text-gray-300 dark:text-white/30">
-                          {token.symbol.slice(0, 2)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Name/Address (top) + Symbol/List (bottom) */}
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                          {token.name}
-                        </span>
-                        <span className="flex-shrink-0 font-mono text-[10px] text-gray-400 dark:text-white/30">
-                          {token.address.slice(0, 6)}...{token.address.slice(-4)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-gray-400 dark:text-white/40">
-                          {token.symbol}
-                        </span>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 truncate text-[10px] text-accent-500/70 hover:text-accent-500"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if ((token.listReferences?.length ?? 0) > 1) {
-                              toggleExpand(iconKey)
-                            } else {
-                              openEditor(token.sourceList)
-                            }
-                          }}
-                        >
-                          <span className="truncate hover:underline">{token.sourceList}</span>
-                          {(token.listReferences?.length ?? 0) > 1 && (
-                            <>
-                              <span className="flex-shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
-                                +{token.listReferences!.length - 1}
-                              </span>
-                              <i className={`fas fa-chevron-${expandedTokens.has(iconKey) ? 'up' : 'down'} flex-shrink-0 text-[7px] text-gray-400 dark:text-white/30`} />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Action button: + when editor open (always visible), info otherwise */}
-                    <button
-                      type="button"
-                      className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-all ${
-                        editorOpen
-                          ? 'text-accent-500/60 hover:bg-accent-500/10 hover:text-accent-500'
-                          : 'text-gray-300 opacity-0 hover:bg-accent-500/10 hover:text-accent-500 group-hover:opacity-100 dark:text-white/20'
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (editorOpen) {
-                          addTokenToEditor(token)
-                        } else {
-                          onInspectToken(token)
-                        }
-                      }}
-                      title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
-                      aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
-                    >
-                      <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
-                    </button>
-                  </div>
-
-                  {/* Expanded sub-rows */}
-                  {expandedTokens.has(iconKey) && token.listReferences && (
-                    <TokenSubRows references={token.listReferences} onNavigateToList={openEditor} />
-                  )}
-                </div>
-              )
-            })}
+        {/* Token count footer */}
+        {tokenCount > 0 && (
+          <div className="flex-shrink-0 border-t border-border-light px-3 py-2 dark:border-border-dark">
+            <span className="text-[10px] text-gray-400 dark:text-white/30">
+              {tokenCount.toLocaleString()} tokens
+            </span>
           </div>
         )}
       </div>
-
-      {/* Bottom pagination (visible when there are tokens) */}
-      {filteredTokens.length > TOKENS_PER_PAGE && (
-        <div className="flex items-center justify-between border-t border-border-light pt-3 dark:border-border-dark">
-          <span className="text-xs text-gray-400 dark:text-white/30">
-            {filteredTokens.length} tokens
-          </span>
-          <PaginationControls
-            currentPage={currentPage}
-            totalItems={filteredTokens.length}
-            tokensPerPage={TOKENS_PER_PAGE}
-            onPageChange={setCurrentPage}
-          />
-        </div>
-      )}
     </div>
   )
 }
