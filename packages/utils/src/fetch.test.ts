@@ -79,6 +79,43 @@ describe('retry', () => {
     await expect(retry(fn, { signal: controller.signal })).rejects.toThrow('aborted')
     expect(fn).not.toHaveBeenCalled()
   })
+
+  it('abort during retry delay resolves the delay early and throws aborted', async () => {
+    vi.useFakeTimers()
+    try {
+      const controller = new AbortController()
+      const fn = vi.fn().mockRejectedValue(new Error('fail'))
+
+      // attempts:3, delay:60_000 — first attempt fails, then we abort mid-delay.
+      // Attach a rejection handler immediately so the promise is never "unhandled"
+      // while fake-timer advancement flushes it.
+      const promise = retry(fn, { attempts: 3, delay: 60_000, signal: controller.signal })
+      const settled = promise.then(
+        (v) => ({ status: 'fulfilled', value: v }),
+        (e: unknown) => ({ status: 'rejected', reason: e }),
+      )
+
+      // Drain microtasks so the first fn() rejection is processed and the
+      // 60-second delay timer is registered
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Abort while the timer is still pending: the abort listener fires,
+      // clears the timer, and resolves the delay promise early
+      controller.abort()
+
+      // Flush remaining microtasks/timers so the loop re-enters, hits the
+      // signal.aborted guard, and rejects the outer promise
+      await vi.runAllTimersAsync()
+
+      const result = await settled
+      expect(result.status).toBe('rejected')
+      expect((result as { status: 'rejected'; reason: Error }).reason.message).toBe('aborted')
+      // Only the first attempt ran; the abort cut off the retry cycle
+      expect(fn).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('cacheResult', () => {
@@ -285,6 +322,25 @@ describe('fetch (iterativeIpfsCompatableFetch)', () => {
     ).rejects.toThrow()
 
     // fetch itself should not have been called — the abort check happens before the network call
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('rejects with AbortError when signal is already aborted at race construction (line 132)', async () => {
+    const controller = new AbortController()
+    controller.abort()
+
+    vi.mocked(global.fetch).mockResolvedValue(makeOkResponse())
+
+    // The synchronous `if (signal.aborted) return reject(...)` branch inside
+    // the Promise.race constructor must fire, producing an AbortError with
+    // name 'AbortError' and message 'Aborted'.
+    const rejection = iterativeFetch('https://example.com/abort-race', { signal: controller.signal })
+
+    await expect(rejection).rejects.toMatchObject({
+      name: 'AbortError',
+      message: 'Aborted',
+    })
+
     expect(global.fetch).not.toHaveBeenCalled()
   })
 

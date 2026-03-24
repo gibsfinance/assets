@@ -533,6 +533,166 @@ describe('PATCH /submissions/:id', () => {
   })
 })
 
+describe('POST /submit -- DB error path', () => {
+  let port: number
+  let close: () => void
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    // Re-establish the chain so the fetch probe passes
+    chain.insert.mockReturnValue(chain)
+    chain.into.mockReturnValue(chain)
+    chain.onConflict.mockReturnValue(chain)
+    chain.merge.mockReturnValue(chain)
+    const app = await startApp()
+    port = app.port
+    close = app.close
+  })
+
+  afterEach(() => close())
+
+  it('returns 500 when DB insert throws', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ tokens: [{ address: '0x1', name: 'Token' }] }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    // Make the DB insert chain reject to hit the catch at line 95
+    chain.returning.mockRejectedValueOnce(new Error('DB connection lost'))
+
+    const res = await httpRequest(port, 'POST', '/api/lists/submit', {
+      url: 'https://example.com/list.json',
+      name: 'My List',
+      submittedBy: 'alice',
+    })
+
+    expect(res.status).toBe(500)
+    expect(res.body.error).toBe('DB connection lost')
+  })
+})
+
+describe('GET /submissions/approved', () => {
+  let port: number
+  let close: () => void
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    chain.select.mockReturnValue(chain)
+    chain.from.mockReturnValue(chain)
+    chain.where.mockReturnValue(chain)
+    chain.update.mockReturnValue(chain)
+    // update chain also needs from/where
+    const app = await startApp()
+    port = app.port
+    close = app.close
+  })
+
+  afterEach(() => close())
+
+  it('returns mapped approved rows with the correct response shape', async () => {
+    const rows = [
+      {
+        id: 'uuid-approved-1',
+        url: 'https://example.com/list.json',
+        provider_key: 'user-alice',
+        list_key: 'my-list',
+        image_mode: 'save',
+        last_content_hash: 'abc123',
+        subscriber_count: 200,
+        status: 'approved',
+        name: 'My List',
+        description: '',
+        submitted_by: 'alice',
+        fail_count: 0,
+        last_fetched_at: null,
+        last_accessed_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]
+    chain.orderBy.mockResolvedValueOnce(rows)
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    const items = res.body as unknown as Record<string, unknown>[]
+    expect(items).toHaveLength(1)
+    const item = items[0]
+    expect(item.url).toBe('https://example.com/list.json')
+    expect(item.providerKey).toBe('user-alice')
+    expect(item.listKey).toBe('my-list')
+    expect(item.imageMode).toBe('save')
+    expect(item.lastContentHash).toBe('abc123')
+  })
+
+  it('coerces non-save image_mode to link in the response', async () => {
+    const rows = [
+      {
+        id: 'uuid-approved-2',
+        url: 'https://example.com/other.json',
+        provider_key: 'user-bob',
+        list_key: 'bob-list',
+        // image_mode='link' should come out as 'link' in the response
+        image_mode: 'link',
+        last_content_hash: null,
+        subscriber_count: 5,
+        status: 'approved',
+        name: 'Bob List',
+        description: '',
+        submitted_by: 'bob',
+        fail_count: 0,
+        last_fetched_at: null,
+        last_accessed_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]
+    chain.orderBy.mockResolvedValueOnce(rows)
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    const items = res.body as unknown as Record<string, unknown>[]
+    expect(items[0].imageMode).toBe('link')
+  })
+
+  it('applies auto-mode resolution and updates DB when mode changes', async () => {
+    // Row has image_mode='auto' and subscriber_count=150 → resolveImageMode returns 'save'
+    const rows = [
+      {
+        id: 'uuid-auto-1',
+        url: 'https://example.com/auto.json',
+        provider_key: 'user-carol',
+        list_key: 'carol-list',
+        image_mode: 'auto',
+        last_content_hash: null,
+        subscriber_count: 150,
+        status: 'approved',
+        name: 'Carol List',
+        description: '',
+        submitted_by: 'carol',
+        fail_count: 0,
+        last_fetched_at: null,
+        last_accessed_at: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]
+    chain.orderBy.mockResolvedValueOnce(rows)
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    // Verify the DB update was called with the resolved mode
+    expect(chain.update).toHaveBeenCalledWith({ image_mode: 'save' })
+    expect(chain.where).toHaveBeenCalledWith('id', 'uuid-auto-1')
+    // The response should reflect the updated mode
+    const items = res.body as unknown as Record<string, unknown>[]
+    expect(items[0].imageMode).toBe('save')
+  })
+})
+
 describe('slugify', () => {
   it('lowercases and replaces non-alphanumeric with hyphens', () => {
     expect(slugify('My Token List!')).toBe('my-token-list')

@@ -2,17 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // In-memory store backing the idb-keyval mock
 const store = new Map<string, unknown>()
-vi.mock('idb-keyval', () => ({
-  get: vi.fn((key: string) => Promise.resolve(store.get(key))),
-  set: vi.fn((key: string, val: unknown) => {
+
+// vi.hoisted ensures these are available when vi.mock factory runs (which is hoisted to top)
+const { mockGet, mockSet, mockDel, mockKeys } = vi.hoisted(() => ({
+  mockGet: vi.fn((key: string) => Promise.resolve(store.get(key))),
+  mockSet: vi.fn((key: string, val: unknown) => {
     store.set(key, val)
     return Promise.resolve()
   }),
-  del: vi.fn((key: string) => {
+  mockDel: vi.fn((key: string) => {
     store.delete(key)
     return Promise.resolve()
   }),
-  keys: vi.fn(() => Promise.resolve([...store.keys()])),
+  mockKeys: vi.fn(() => Promise.resolve([...store.keys()])),
+}))
+
+vi.mock('idb-keyval', () => ({
+  get: mockGet,
+  set: mockSet,
+  del: mockDel,
+  keys: mockKeys,
 }))
 
 import { renderHook, act } from '@testing-library/react'
@@ -21,6 +30,8 @@ import { useLocalLists } from './useLocalLists'
 describe('useLocalLists', () => {
   beforeEach(() => {
     store.clear()
+    mockGet.mockImplementation((key: string) => Promise.resolve(store.get(key)))
+    mockKeys.mockImplementation(() => Promise.resolve([...store.keys()]))
   })
 
   it('starts with empty list', async () => {
@@ -310,5 +321,54 @@ describe('useLocalLists', () => {
 
     expect(result.current.lists).toHaveLength(1)
     expect(result.current.lists[0].name).toBe('Pre-existing')
+  })
+
+  it('loadAll catch: logs error when idb-keyval keys() rejects', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const loadError = new Error('IDB unavailable')
+    mockKeys.mockRejectedValueOnce(loadError)
+
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to load local lists:', loadError)
+    expect(result.current.isLoading).toBe(false)
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('getList returns the list when it exists in IDB', async () => {
+    const listId = 'known-id'
+    const listData = {
+      id: listId,
+      name: 'Known List',
+      description: '',
+      tokens: [],
+      source: { type: 'scratch' as const },
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    }
+    store.set(`gib-list:${listId}`, listData)
+
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let fetched: Awaited<ReturnType<typeof result.current.getList>> | undefined
+    await act(async () => {
+      fetched = await result.current.getList(listId)
+    })
+
+    expect(fetched).toEqual(listData)
+  })
+
+  it('getList returns null when list does not exist in IDB', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let fetched: Awaited<ReturnType<typeof result.current.getList>> | undefined
+    await act(async () => {
+      fetched = await result.current.getList('nonexistent-id')
+    })
+
+    expect(fetched).toBeNull()
   })
 })

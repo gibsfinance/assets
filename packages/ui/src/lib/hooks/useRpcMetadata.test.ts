@@ -72,6 +72,17 @@ describe('setCustomRpc', () => {
     const stored = JSON.parse(localStorage.getItem('gib-custom-rpcs') || '{}')
     expect(stored[369]).toBe('https://new-rpc.example.com')
   })
+
+  it('handles corrupt localStorage JSON gracefully and still saves new RPC', async () => {
+    const { setCustomRpc } = await import('./useRpcMetadata')
+
+    // Seed corrupt JSON — getCustomRpcs catch block returns {} and setCustomRpc proceeds
+    localStorage.setItem('gib-custom-rpcs', '{not valid json!!!}')
+    setCustomRpc(99, 'https://rpc.example.com')
+
+    const stored = JSON.parse(localStorage.getItem('gib-custom-rpcs') || '{}')
+    expect(stored[99]).toBe('https://rpc.example.com')
+  })
 })
 
 // ---------------------------------------------------------------------------
