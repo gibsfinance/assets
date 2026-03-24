@@ -371,4 +371,291 @@ describe('useLocalLists', () => {
 
     expect(fetched).toBeNull()
   })
+
+  it('loadAll returns null for individual keys where get() returns undefined', async () => {
+    // Pre-populate two keys — second one will return undefined from the mock
+    const listId1 = 'real-list-id'
+    const listId2 = 'ghost-list-id'
+    store.set(`gib-list:${listId1}`, {
+      id: listId1,
+      name: 'Real',
+      description: '',
+      tokens: [],
+      source: { type: 'scratch' },
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    })
+    // listId2 key exists in keys() but get() returns undefined for it
+    store.set(`gib-list:${listId2}`, undefined as unknown as string)
+
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    // Only the real list should survive the `val ?? null` + filter(Boolean) pipeline
+    expect(result.current.lists).toHaveLength(1)
+    expect(result.current.lists[0].id).toBe(listId1)
+  })
+
+  it('updateList returns the updated list on the happy path', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let created: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      created = await result.current.createList({
+        name: 'Original',
+        source: { type: 'scratch' },
+      })
+    })
+
+    let updated: Awaited<ReturnType<typeof result.current.updateList>> | undefined
+    await act(async () => {
+      updated = await result.current.updateList(created!.id, { name: 'Renamed', description: 'New desc' })
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.name).toBe('Renamed')
+    expect(updated!.description).toBe('New desc')
+    expect(updated!.id).toBe(created!.id)
+  })
+
+  it('updateList returns null for a nonexistent list id', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let returned: Awaited<ReturnType<typeof result.current.updateList>> | undefined
+    await act(async () => {
+      returned = await result.current.updateList('does-not-exist', { name: 'X' })
+    })
+
+    expect(returned).toBeNull()
+  })
+
+  it('addToken returns the updated list with the new token', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let created: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      created = await result.current.createList({
+        name: 'Token List',
+        source: { type: 'scratch' },
+      })
+    })
+
+    let updated: Awaited<ReturnType<typeof result.current.addToken>> | undefined
+    await act(async () => {
+      updated = await result.current.addToken(created!.id, {
+        chainId: 1,
+        address: '0xabc',
+        name: 'Alpha',
+        symbol: 'ALP',
+        decimals: 18,
+      })
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.tokens).toHaveLength(1)
+    expect(updated!.tokens[0].address).toBe('0xabc')
+    expect(updated!.tokens[0].order).toBe(0)
+  })
+
+  it('removeToken returns the updated list after removal', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let created: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      created = await result.current.createList({
+        name: 'Remove Test',
+        source: { type: 'scratch' },
+        tokens: [
+          { chainId: 1, address: '0xaaa', name: 'A', symbol: 'A', decimals: 18, order: 0 },
+          { chainId: 1, address: '0xbbb', name: 'B', symbol: 'B', decimals: 18, order: 1 },
+        ],
+      })
+    })
+
+    let updated: Awaited<ReturnType<typeof result.current.removeToken>> | undefined
+    await act(async () => {
+      updated = await result.current.removeToken(created!.id, '0xaaa')
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.tokens).toHaveLength(1)
+    expect(updated!.tokens[0].address).toBe('0xbbb')
+  })
+
+  it('removeToken returns null for a nonexistent list id', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let returned: Awaited<ReturnType<typeof result.current.removeToken>> | undefined
+    await act(async () => {
+      returned = await result.current.removeToken('does-not-exist', '0xabc')
+    })
+
+    expect(returned).toBeNull()
+  })
+
+  it('reorderTokens returns the updated list with re-indexed order values', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let created: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      created = await result.current.createList({
+        name: 'Reorder Test',
+        source: { type: 'scratch' },
+        tokens: [
+          { chainId: 1, address: '0xa', name: 'A', symbol: 'A', decimals: 18, order: 0 },
+          { chainId: 1, address: '0xb', name: 'B', symbol: 'B', decimals: 18, order: 1 },
+        ],
+      })
+    })
+
+    // Swap the order
+    const swapped = [created!.tokens[1], created!.tokens[0]]
+    let updated: Awaited<ReturnType<typeof result.current.reorderTokens>> | undefined
+    await act(async () => {
+      updated = await result.current.reorderTokens(created!.id, swapped)
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated!.tokens[0].address).toBe('0xb')
+    expect(updated!.tokens[0].order).toBe(0)
+    expect(updated!.tokens[1].address).toBe('0xa')
+    expect(updated!.tokens[1].order).toBe(1)
+  })
+
+  it('reorderTokens returns null for a nonexistent list id', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let returned: Awaited<ReturnType<typeof result.current.reorderTokens>> | undefined
+    await act(async () => {
+      returned = await result.current.reorderTokens('does-not-exist', [])
+    })
+
+    expect(returned).toBeNull()
+  })
+
+  // -------------------------------------------------------------------------
+  // setLists ternary both-branch coverage (l.id === id ? updated : l)
+  // These tests ensure both arms of the ternary are hit by keeping a second
+  // list in state that does NOT match the mutation target id.
+  // -------------------------------------------------------------------------
+
+  it('updateList preserves non-targeted lists in state', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let listA: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    let listB: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      listA = await result.current.createList({ name: 'List A', source: { type: 'scratch' } })
+      listB = await result.current.createList({ name: 'List B', source: { type: 'scratch' } })
+    })
+
+    await act(async () => {
+      await result.current.updateList(listA!.id, { name: 'List A Updated' })
+    })
+
+    expect(result.current.lists).toHaveLength(2)
+    const names = result.current.lists.map((l) => l.name)
+    expect(names).toContain('List A Updated')
+    expect(names).toContain('List B')
+    void listB // suppress unused warning
+  })
+
+  it('addToken preserves non-targeted lists in state', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let listA: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    let listB: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      listA = await result.current.createList({ name: 'List A', source: { type: 'scratch' } })
+      listB = await result.current.createList({ name: 'List B', source: { type: 'scratch' } })
+    })
+
+    await act(async () => {
+      await result.current.addToken(listA!.id, {
+        chainId: 1,
+        address: '0xabc',
+        name: 'T',
+        symbol: 'T',
+        decimals: 18,
+      })
+    })
+
+    expect(result.current.lists).toHaveLength(2)
+    const targetList = result.current.lists.find((l) => l.id === listA!.id)
+    const otherList = result.current.lists.find((l) => l.id === listB!.id)
+    expect(targetList!.tokens).toHaveLength(1)
+    expect(otherList!.tokens).toHaveLength(0)
+  })
+
+  it('removeToken preserves non-targeted lists in state', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let listA: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    let listB: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      listA = await result.current.createList({
+        name: 'List A',
+        source: { type: 'scratch' },
+        tokens: [{ chainId: 1, address: '0xabc', name: 'T', symbol: 'T', decimals: 18, order: 0 }],
+      })
+      listB = await result.current.createList({
+        name: 'List B',
+        source: { type: 'scratch' },
+        tokens: [{ chainId: 1, address: '0xdef', name: 'U', symbol: 'U', decimals: 18, order: 0 }],
+      })
+    })
+
+    await act(async () => {
+      await result.current.removeToken(listA!.id, '0xabc')
+    })
+
+    expect(result.current.lists).toHaveLength(2)
+    const targetList = result.current.lists.find((l) => l.id === listA!.id)
+    const otherList = result.current.lists.find((l) => l.id === listB!.id)
+    expect(targetList!.tokens).toHaveLength(0)
+    expect(otherList!.tokens).toHaveLength(1)
+  })
+
+  it('reorderTokens preserves non-targeted lists in state', async () => {
+    const { result } = renderHook(() => useLocalLists())
+    await act(async () => {})
+
+    let listA: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    let listB: Awaited<ReturnType<typeof result.current.createList>> | undefined
+    await act(async () => {
+      listA = await result.current.createList({
+        name: 'List A',
+        source: { type: 'scratch' },
+        tokens: [
+          { chainId: 1, address: '0xa', name: 'A', symbol: 'A', decimals: 18, order: 0 },
+          { chainId: 1, address: '0xb', name: 'B', symbol: 'B', decimals: 18, order: 1 },
+        ],
+      })
+      listB = await result.current.createList({
+        name: 'List B',
+        source: { type: 'scratch' },
+        tokens: [{ chainId: 1, address: '0xc', name: 'C', symbol: 'C', decimals: 18, order: 0 }],
+      })
+    })
+
+    await act(async () => {
+      await result.current.reorderTokens(listA!.id, [listA!.tokens[1], listA!.tokens[0]])
+    })
+
+    expect(result.current.lists).toHaveLength(2)
+    const targetList = result.current.lists.find((l) => l.id === listA!.id)
+    const otherList = result.current.lists.find((l) => l.id === listB!.id)
+    expect(targetList!.tokens[0].address).toBe('0xb')
+    expect(otherList!.tokens).toHaveLength(1)
+  })
 })

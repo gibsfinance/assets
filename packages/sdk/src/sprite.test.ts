@@ -184,6 +184,25 @@ describe('fetchSprite', () => {
     expect(css!.backgroundRepeat).toBe('no-repeat')
   })
 
+  it('getBackgroundCSS uses negative px offsets for token in row 2 (y > 0)', async () => {
+    const multiRowManifest = {
+      ...mockManifest,
+      tokens: {
+        ...mockManifest.tokens,
+        '1-0xrow2': [3, 1] as [number, number],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(multiRowManifest),
+    }))
+    const sprite = await fetchSprite(BASE, 'coingecko', 'ethereum')
+    const css = sprite.getBackgroundCSS(1, '0xrow2')
+    expect(css).not.toBeNull()
+    // col=3, row=1, size=32 => x=96, y=32 — both use negative px form
+    expect(css!.backgroundPosition).toBe('-96px -32px')
+  })
+
   it('getIcon computes y offset for multi-row positions', async () => {
     const multiRowManifest = {
       ...mockManifest,

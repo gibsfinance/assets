@@ -539,6 +539,31 @@ describe('maybeResize', () => {
     const pipeline = vi.mocked(sharp).mock.results[0].value
     expect(pipeline.toFormat).toHaveBeenCalledWith('jpeg')
   })
+
+  // -------------------------------------------------------------------------
+  // Line 174: targetH falsy → resize receives (undefined, h, ...)
+  // -------------------------------------------------------------------------
+  it('passes undefined for missing width when only height is requested', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(null as any)
+    const req = mockReq({ h: '100' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    expect(sharp).toHaveBeenCalled()
+    const pipeline = (sharp as unknown as ReturnType<typeof vi.fn>).mock.results[0].value
+    expect(pipeline.resize).toHaveBeenCalledWith(undefined, 100, expect.any(Object))
+  })
+
+  // -------------------------------------------------------------------------
+  // Line 174: targetW falsy → resize receives (w, undefined, ...)
+  // -------------------------------------------------------------------------
+  it('passes undefined for missing height when only width is requested', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(null as any)
+    const req = mockReq({ w: '100' })
+    const res = mockRes()
+    await maybeResize(req, res, makeImage())
+    const pipeline = (sharp as unknown as ReturnType<typeof vi.fn>).mock.results[0].value
+    expect(pipeline.resize).toHaveBeenCalledWith(100, undefined, expect.any(Object))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -639,6 +664,19 @@ describe('sendVariant (via maybeResize)', () => {
     const res = mockRes()
     await maybeResize(req, res, makeImage())
     expect(res.contentType).toHaveBeenCalledWith('image/webp')
+  })
+
+  // -------------------------------------------------------------------------
+  // Line 212: uri falsy → x-uri header must not be set
+  // -------------------------------------------------------------------------
+  it('omits x-uri header entirely when uri is undefined', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', format: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ uri: undefined })
+    await maybeResize(req, res, img)
+    const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
+    expect(setCalls).not.toContain('x-uri')
   })
 })
 

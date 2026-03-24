@@ -125,4 +125,25 @@ describe('GibImage', () => {
     const { container } = render(<GibImage src={src} lazy={false} />)
     expect(() => fireEvent.error(getImg(container))).not.toThrow()
   })
+
+  it('does not show img when IntersectionObserver reports not intersecting', () => {
+    const mockDisconnect = vi.fn()
+    vi.stubGlobal('IntersectionObserver', class {
+      private cb: IntersectionObserverCallback
+      constructor(cb: IntersectionObserverCallback) {
+        this.cb = cb
+      }
+      observe() {
+        this.cb([{ isIntersecting: false } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+      }
+      unobserve() {}
+      disconnect = mockDisconnect
+    })
+
+    const { container } = render(<GibImage src={src} lazy />)
+    // img should not be rendered because the element is not in viewport
+    expect(container.querySelector('img')).toBeNull()
+    // observer should NOT have disconnected — still watching
+    expect(mockDisconnect).not.toHaveBeenCalled()
+  })
 })

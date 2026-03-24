@@ -30,6 +30,16 @@ describe('getImageUrl', () => {
   it('returns clean URL with no options', () => {
     expect(getImageUrl(base, 369, '0xdef')).toBe('https://gib.show/image/369/0xdef')
   })
+
+  it('adds listKey param', () => {
+    const url = getImageUrl(base, 1, '0xabc', { listKey: 'uniswap-default' })
+    expect(url).toContain('listKey=uniswap-default')
+  })
+
+  it('returns URL with no query string when options is empty object', () => {
+    const url = getImageUrl(base, 1, '0xabc', {})
+    expect(url).toBe('https://gib.show/image/1/0xabc')
+  })
 })
 
 describe('getNetworkImageUrl', () => {
