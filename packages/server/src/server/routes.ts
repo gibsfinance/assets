@@ -4,6 +4,7 @@ import { router as listRouter } from './list'
 import { router as networksRouter } from './networks'
 import { router as statsRouter } from './stats'
 import { router as githubRouter } from './github'
+import { router as submissionsRouter } from './submissions'
 import * as sprite from './image/sprite'
 import { nextOnError } from './utils'
 
@@ -30,3 +31,6 @@ router.use('/stats', statsRouter)
 
 // GitHub OAuth token exchange proxy
 router.use('/api/github', githubRouter)
+
+// List submission registry
+router.use('/api/lists', submissionsRouter)
