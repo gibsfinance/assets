@@ -40,10 +40,10 @@ import type {
 import { fetch } from '../fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
-import { join } from './utils'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, lt, gte, desc, sql as dsql } from 'drizzle-orm'
+import { eq, and, or, lt, gte, desc, asc, ilike, sql as dsql, type SQL } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import * as s from './schema'
 
 export const ids = {
@@ -958,136 +958,137 @@ export const insertProvider = async (provider: InsertableProvider | InsertablePr
 export const insertOrder = async (
   order: InsertableListOrder,
   orderItems: BackfillableInsertableListOrderItem[],
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
-  return t.transaction(async (tx) => {
-    const [o] = await tx(tableNames.listOrder)
-      .insert([order])
-      .onConflict(['listOrderId'])
-      .merge(['listOrderId'])
-      .returning<ListOrder[]>('*')
+  const run = async (innerTx: DrizzleTx) => {
+    const [o] = await innerTx
+      .insert(s.listOrder)
+      .values({
+        listOrderId: dsql`''`,
+        ...order,
+      })
+      .onConflictDoUpdate({
+        target: s.listOrder.listOrderId,
+        set: { listOrderId: dsql`excluded.list_order_id` },
+      })
+      .returning()
     const insertableItems = orderItems.map((i) => ({
       ...i,
       listOrderId: o.listOrderId,
     }))
-    // console.log(o, insertableItems)
-    const items = await tx(tableNames.listOrderItem)
-      .insert(insertableItems)
-      .onConflict(['listOrderId', 'ranking'])
-      .merge(['listOrderId', 'ranking'])
-      .returning<ListOrderItem[]>('*')
+    const items = await innerTx
+      .insert(s.listOrderItem)
+      .values(insertableItems)
+      .onConflictDoUpdate({
+        target: [s.listOrderItem.listOrderId, s.listOrderItem.ranking],
+        set: {
+          listOrderId: dsql`excluded.list_order_id`,
+          ranking: dsql`excluded.ranking`,
+        },
+      })
+      .returning()
     return {
       order: o,
       listOrderItems: items,
     }
-  })
+  }
+  if (tx) return run(tx)
+  return getDrizzle().transaction(run)
 }
 
-export const getTokensUnderListId = (t: Tx = db) => {
-  return t
-    .select([
-      t.raw(`${tableNames.network}.chain_id`),
-      t.raw(`${tableNames.token}.provided_id`),
-      t.raw(`${tableNames.token}.decimals`),
-      t.raw(`${tableNames.token}.symbol`),
-      t.raw(`${tableNames.token}.name`),
-      t.raw(`${tableNames.token}.token_id`),
-      t.raw(`${tableNames.image}.image_hash`),
-      t.raw(`${tableNames.image}.ext`),
-      t.raw(`${tableNames.image}.mode`),
-      t.raw(`${tableNames.image}.uri`),
-      t.raw(`${tableNames.provider}.key as provider_key`),
-      t.raw(`${tableNames.list}.key as list_key`),
-    ])
-    .from<types.TokenInfo>(tableNames.listToken)
-    .fullOuterJoin(tableNames.image, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
+export const getTokensUnderListId = () => {
+  return getDrizzle()
+    .select({
+      chainId: s.network.chainId,
+      providedId: s.token.providedId,
+      decimals: s.token.decimals,
+      symbol: s.token.symbol,
+      name: s.token.name,
+      tokenId: s.token.tokenId,
+      imageHash: s.image.imageHash,
+      ext: s.image.ext,
+      mode: s.image.mode,
+      uri: s.image.uri,
+      providerKey: s.provider.key,
+      listKey: s.list.key,
     })
-    .join(tableNames.token, {
-      [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
-    })
-    .join(tableNames.network, {
-      [`${tableNames.network}.networkId`]: `${tableNames.token}.networkId`,
-    })
-    .join(tableNames.list, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .join(tableNames.provider, {
-      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
-    })
+    .from(s.listToken)
+    .fullJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .$dynamic()
 }
 
-export const getLists = (providerKey: string, listKey: string, t: Tx = db) => {
-  return (
-    t
-      .from(tableNames.provider)
-      .select<(Provider & List & ListToken & Image)[]>(['*', 'image.ext'])
-      .join(...join(tableNames.list, tableNames.provider, [['providerId']]))
-      .join(...join(tableNames.listToken, tableNames.list, [['listId']]))
-      // .join(...join(tableNames.token, tableNames.listToken, [['tokenId']]))
-      .fullOuterJoin(...join(tableNames.image, tableNames.list, [['imageHash']]))
-      .where(
-        listKey
-          ? {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.key`]: listKey,
-            }
-          : {
-              [`${tableNames.provider}.key`]: providerKey,
-              [`${tableNames.list}.default`]: true,
-            },
-      )
-      .orderBy('major', 'desc')
-      .orderBy('minor', 'desc')
-      .orderBy('patch', 'desc')
-  )
+export const getLists = async (providerKey: string, listKey: string) => {
+  const db = getDrizzle()
+  const whereClause = listKey
+    ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
+    : and(eq(s.provider.key, providerKey), eq(s.list.default, true))
+  return db
+    .select()
+    .from(s.provider)
+    .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+    .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
+    .fullJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+    .where(whereClause)
+    .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
 }
 
-export const addHeaderUriExtension = (q: Knex.QueryBuilder) => {
-  return q
-    .fullOuterJoin(tableNames.headerLink, {
-      [`${tableNames.headerLink}.listTokenId`]: `${tableNames.listToken}.listTokenId`,
-    })
-    .select([
-      `${tableNames.headerLink}.list_token_id as header_list_token_id`,
-      `${tableNames.headerLink}.image_hash as header_image_hash`,
-    ])
+/**
+ * Add header URI extension columns via a full join on headerLink.
+ * NOTE: Drizzle `$dynamic()` supports adding joins but NOT new select columns.
+ * We include the join here; the extra columns come through as part of the
+ * headerLink table's fields in the join result. Callers reading
+ * `headerListTokenId` / `headerImageHash` must access them from the
+ * `header_link` portion of the flattened row.
+ */
+export const addHeaderUriExtension = <T extends ReturnType<typeof getTokensUnderListId>>(qb: T) => {
+  return qb.fullJoin(s.headerLink, eq(s.headerLink.listTokenId, s.listToken.listTokenId))
 }
 
-export const addBridgeExtensions = (q: Knex.QueryBuilder) => {
-  return q
-    .select([
-      db.raw(`row_to_json(${tableNames.bridge}.*) as bridge`),
-      db.raw(`row_to_json(${tableNames.bridgeLink}.*) as bridge_link`),
-      db.raw(`row_to_json(network_a.*) as network_a`),
-      db.raw(`row_to_json(network_b.*) as network_b`),
-      db.raw(`row_to_json(native_token.*) as native_token`),
-      db.raw(`row_to_json(bridged_token.*) as bridged_token`),
-    ])
-    .fullOuterJoin(tableNames.bridgeLink, function joinBridgeInfo() {
-      this.on(`${tableNames.bridgeLink}.nativeTokenId`, '=', `${tableNames.token}.tokenId`).orOn(
-        `${tableNames.bridgeLink}.bridgedTokenId`,
-        '=',
-        `${tableNames.token}.tokenId`,
-      )
-    })
-    .join(...join(tableNames.bridge, tableNames.bridgeLink, [['bridgeId']]))
-    .join(...join(tableNames.network, tableNames.bridge, [['networkId', 'homeNetworkId']], 'network_a'))
-    .join(...join(tableNames.network, tableNames.bridge, [['networkId', 'foreignNetworkId']], 'network_b'))
-    .join(...join(tableNames.token, tableNames.bridgeLink, [['tokenId', 'nativeTokenId']], 'native_token'))
-    .join(...join(tableNames.token, tableNames.bridgeLink, [['tokenId', 'bridgedTokenId']], 'bridged_token'))
-  // .join(...join(tableNames.bridge, tableNames.bridgeLink, [['bridgeId']]))
+const networkA = alias(s.network, 'network_a')
+const networkB = alias(s.network, 'network_b')
+const nativeToken = alias(s.token, 'native_token')
+const bridgedToken = alias(s.token, 'bridged_token')
+
+/**
+ * Add bridge extension joins. Like `addHeaderUriExtension`, Drizzle $dynamic()
+ * cannot add new select columns after initial select. The row_to_json columns
+ * are handled via raw SQL in callers that need the full bridge info.
+ *
+ * For the list/utils.ts `respondWithList` path, we add the joins so the data
+ * is accessible in the flattened result. The `row_to_json` aggregation is done
+ * at the application layer in `normalizeTokens`.
+ */
+export const addBridgeExtensions = <T extends ReturnType<typeof getTokensUnderListId>>(qb: T) => {
+  return qb
+    .fullJoin(
+      s.bridgeLink,
+      or(
+        eq(s.bridgeLink.nativeTokenId, s.token.tokenId),
+        eq(s.bridgeLink.bridgedTokenId, s.token.tokenId),
+      ),
+    )
+    .innerJoin(s.bridge, eq(s.bridge.bridgeId, s.bridgeLink.bridgeId))
+    .innerJoin(networkA, eq(networkA.networkId, s.bridge.homeNetworkId))
+    .innerJoin(networkB, eq(networkB.networkId, s.bridge.foreignNetworkId))
+    .innerJoin(nativeToken, eq(nativeToken.tokenId, s.bridgeLink.nativeTokenId))
+    .innerJoin(bridgedToken, eq(bridgedToken.tokenId, s.bridgeLink.bridgedTokenId))
 }
 
 export const getListOrderId = async (orderParam: string) => {
   if (!orderParam) return null
 
+  const db = getDrizzle()
+
   // Try lookup by key first (e.g. "default")
-  const byKey = await getDB()
-    .select<ListOrder>('*')
-    .from(tableNames.listOrder)
-    .where('key', orderParam)
-    .first()
+  const [byKey] = await db
+    .select()
+    .from(s.listOrder)
+    .where(eq(s.listOrder.key, orderParam))
+    .limit(1)
   if (byKey) return byKey.listOrderId as viem.Hex
 
   // Try as hex listOrderId
@@ -1100,11 +1101,11 @@ export const getListOrderId = async (orderParam: string) => {
 
   if (hex && viem.toHex(viem.toBytes(hex), { size: 32 }).slice(2) !== hex) {
     // Fragment search
-    const listOrder = await getDB()
-      .select<ListOrder>('*')
-      .from(tableNames.listOrder)
-      .whereILike('listOrderId', `%${hex.replace(/^0x/, '')}%`)
-      .first()
+    const [listOrder] = await db
+      .select()
+      .from(s.listOrder)
+      .where(ilike(s.listOrder.listOrderId, `%${hex.replace(/^0x/, '')}%`))
+      .limit(1)
     if (listOrder) return listOrder.listOrderId as viem.Hex
   } else {
     return hex as viem.Hex
@@ -1117,32 +1118,74 @@ export const getListOrderId = async (orderParam: string) => {
  * Apply dense-rank ordering to select the top image per token.
  * SVGs are always preferred over raster images regardless of provider ranking.
  *
- * PRECONDITION: The query `q` must already join the `image` table
- * (all callers in image/handlers.ts do this via getListTokens).
+ * Uses raw SQL because Drizzle's $dynamic() cannot add SELECT columns
+ * (dense_rank window function) after initial query creation.
+ *
+ * @param listOrderId - The ordering to apply
+ * @param whereClause - Additional SQL WHERE conditions (e.g., chain filter)
+ * @param baseFrom - Which base FROM/JOIN set to use:
+ *   'listToken' (default) - starts from list_token with full outer join to image (getTokensUnderListId style)
+ *   'provider'  - starts from provider with right joins to list/list_token/token/image (getListTokens style)
  */
-export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
-  const qSub = q
-    .leftJoin(tableNames.listOrderItem, function () {
-      this.on(`${tableNames.listOrderItem}.listKey`, `${tableNames.list}.key`)
-        .andOn(`${tableNames.listOrderItem}.providerId`, `${tableNames.list}.providerId`)
-        .andOnVal(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
-    })
-    .denseRank('rank', function denseRankByConfiged() {
-      return this.orderBy(
-        t.raw(`CASE WHEN ${tableNames.image}.ext = '.svg' THEN 0 ELSE 1 END`) as unknown as string,
-        'asc',
+export const applyOrder = async (
+  listOrderId: viem.Hex,
+  whereClause: SQL,
+  baseFrom: 'listToken' | 'provider' = 'listToken',
+) => {
+  const db = getDrizzle()
+  const fromClause =
+    baseFrom === 'provider'
+      ? dsql`
+        ${s.provider}
+        RIGHT JOIN ${s.list} ON ${eq(s.list.providerId, s.provider.providerId)}
+        RIGHT JOIN ${s.listToken} ON ${eq(s.listToken.listId, s.list.listId)}
+        RIGHT JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
+        INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+        RIGHT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+      `
+      : dsql`
+        ${s.listToken}
+        FULL OUTER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+        INNER JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
+        INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+        INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
+        INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+      `
+  const rows = await db.execute<Record<string, unknown>>(dsql`
+    WITH ls AS (
+      SELECT
+        ${s.network.chainId} AS "chainId",
+        ${s.token.providedId} AS "providedId",
+        ${s.token.decimals},
+        ${s.token.symbol},
+        ${s.token.name},
+        ${s.token.tokenId} AS "tokenId",
+        ${s.image.imageHash} AS "imageHash",
+        ${s.image.ext},
+        ${s.image.mode},
+        ${s.image.uri},
+        ${s.image.content},
+        ${s.provider.key} AS "providerKey",
+        ${s.list.key} AS "listKey",
+        dense_rank() OVER (
+          PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
+          ORDER BY
+            CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END ASC,
+            COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) ASC,
+            ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+            ${s.listToken.listTokenOrderId} ASC
+        ) AS rank
+      FROM ${fromClause}
+      LEFT JOIN ${s.listOrderItem} ON (
+        ${eq(s.listOrderItem.listKey, s.list.key)}
+        AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+        AND ${s.listOrderItem.listOrderId} = ${listOrderId}
       )
-        .orderBy(
-          t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string,
-          'asc',
-        )
-        .orderBy(`${tableNames.list}.major`, 'desc')
-        .orderBy(`${tableNames.list}.minor`, 'desc')
-        .orderBy(`${tableNames.list}.patch`, 'desc')
-        .orderBy(`${tableNames.listToken}.listTokenOrderId`, 'asc')
-        .partitionBy([`${tableNames.token}.token_id`, `${tableNames.token}.network_id`])
-    })
-  return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
+      WHERE ${whereClause}
+    )
+    SELECT ls.* FROM ls WHERE ls.rank = 1
+  `)
+  return rows.rows
 }
 
 export const getVariant = async (

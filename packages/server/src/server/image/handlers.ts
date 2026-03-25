@@ -1,7 +1,7 @@
 import * as viem from 'viem'
 import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
-import { imageMode, tableNames } from '../../db/tables'
+import { imageMode } from '../../db/tables'
 import type { ChainId } from '@gibs/utils'
 import * as utils from '../../utils'
 import * as db from '../../db'
@@ -14,6 +14,9 @@ import { submodules } from '../../paths'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 import { maybeResize } from './resize'
+import { getDrizzle } from '../../db/drizzle'
+import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 export const getListTokens = async ({
   chainId,
@@ -30,72 +33,75 @@ export const getListTokens = async ({
   providerKey?: string[]
   listKey?: string[]
 }) => {
-  const filter = {
-    [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
-    [`${tableNames.token}.providedId`]: address,
-  }
-  let q = db
-    .getDB()
-    .select([
-      '*',
-      db.getDB().raw(`${tableNames.provider}.key as provider_key`),
-      db.getDB().raw(`${tableNames.list}.key as list_key`),
-    ])
-    .from(tableNames.provider)
-    .rightJoin(`${config.database.schema}.${tableNames.list}`, {
-      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.listToken}`, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.token}`, {
-      [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.image}`, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
-    })
-    .where(filter)
+  const networkId = utils.chainIdToNetworkId(chainId)
+  const drizzle = getDrizzle()
+
+  // Build WHERE conditions
+  const conditions: SQL[] = [
+    eq(s.token.networkId, networkId),
+    eq(s.token.providedId, address),
+  ]
   if (exts?.length) {
-    q = q.whereIn('ext', exts)
+    conditions.push(inArray(s.image.ext, exts))
   }
   if (providerKey?.length) {
-    q = q.whereIn(`${tableNames.provider}.key`, providerKey)
+    conditions.push(inArray(s.provider.key, providerKey))
   }
   if (listKey?.length) {
-    q = q.whereIn(`${tableNames.list}.key`, listKey)
+    conditions.push(inArray(s.list.key, listKey))
   }
+  const whereClause = and(...conditions)!
+
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const orderedQuery = db.applyOrder(q, effectiveOrderId)
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
     return {
-      filter,
-      img: await orderedQuery.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
+      filter: { networkId, providedId: address },
+      img: rows[0] as (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
     }
   }
+
+  // No ordering — simple query
+  const [row] = await drizzle
+    .select()
+    .from(s.provider)
+    .rightJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+    .rightJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
+    .rightJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .rightJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .where(whereClause)
+    .limit(1)
+
+  // Flatten the joined row into a single object
+  const img = row
+    ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image }
+    : undefined
+
   return {
-    filter,
-    img: await q.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
+    filter: { networkId, providedId: address },
+    img: img as (Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
   }
 }
 
 export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
-  const filter = {
-    networkId: utils.chainIdToNetworkId(chainId),
-  }
-  let q = db
-    .getDB()
-    .select<Image>('*')
-    .from(tableNames.image)
-    .leftJoin(`${config.database.schema}.${tableNames.network}`, {
-      [`${tableNames.network}.imageHash`]: `${tableNames.image}.imageHash`,
-    })
-    .where(filter)
+  const networkId = utils.chainIdToNetworkId(chainId)
+  const drizzle = getDrizzle()
+
+  const conditions: SQL[] = [eq(s.network.networkId, networkId)]
   if (exts?.length) {
-    q = q.whereIn('ext', exts)
+    conditions.push(inArray(s.image.ext, exts))
   }
+
+  const [row] = await drizzle
+    .select()
+    .from(s.image)
+    .leftJoin(s.network, eq(s.network.imageHash, s.image.imageHash))
+    .where(and(...conditions))
+    .limit(1)
+
   return {
-    filter,
-    img: await q.first(),
+    filter: { networkId },
+    img: row ? { ...row.image, ...row.network } as any : undefined,
   }
 }
 
@@ -216,18 +222,17 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   const { filename, exts } = splitExt(req.params.imageHash)
-  const img = await db
-    .getDB()
-    .select('*')
-    .from(tableNames.image)
-    .where('imageHash', filename)
-    .whereIn('ext', exts as string[])
-    .first()
+  const drizzle = getDrizzle()
+  const [img] = await drizzle
+    .select()
+    .from(s.image)
+    .where(and(eq(s.image.imageHash, filename), inArray(s.image.ext, exts as string[])))
+    .limit(1)
   if (!img) {
     return next(httpErrors.NotFound('image not found'))
   }
-  if (await maybeResize(req, res, img)) return
-  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  if (await maybeResize(req, res, img as any)) return
+  sendImage(res, img as any, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {

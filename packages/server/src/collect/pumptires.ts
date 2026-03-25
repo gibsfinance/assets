@@ -11,6 +11,8 @@ import { Token } from 'knex/types/tables.js'
 import type * as types from '../types'
 import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy, terminalCounterTypes } from '../log/types'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { eq, desc } from 'drizzle-orm'
+import * as s from '../db/schema'
 
 const providerKey = 'pumptires'
 const listKey = 'tokens'
@@ -231,14 +233,14 @@ export const collectAttempt = async (signal: AbortSignal) => {
       networkId: network.networkId,
       default: false,
     })
-    const knownPumptiresList: types.TokenInfo[] = await db
+    const knownPumptiresList = (await db
       .getTokensUnderListId()
-      .where(`${tableNames.listToken}.listId`, pumptiresList.listId)
-      .orderBy(`${tableNames.listToken}.created_at`, 'desc')
-    const knownLaunchedList: types.TokenInfo[] = await db
+      .where(eq(s.listToken.listId, pumptiresList.listId))
+      .orderBy(desc(s.listToken.createdAt))) as unknown as types.TokenInfo[]
+    const knownLaunchedList = (await db
       .getTokensUnderListId()
-      .where(`${tableNames.listToken}.listId`, pumptiresLaunchedList.listId)
-      .orderBy(`${tableNames.listToken}.created_at`, 'desc')
+      .where(eq(s.listToken.listId, pumptiresLaunchedList.listId))
+      .orderBy(desc(s.listToken.createdAt))) as unknown as types.TokenInfo[]
     const tasks = row.issue(providerKey)
     row.createCounter(terminalCounterTypes.NETWORK)
     row.incrementTotal(terminalCounterTypes.NETWORK, `${369}`)
@@ -330,9 +332,9 @@ export const collectAttempt = async (signal: AbortSignal) => {
         })
     })
     // check all LAUNCHED tokens for pairing with 1b pls
-    const updatedKnownLaunchedList: types.TokenInfo[] = await db
+    const updatedKnownLaunchedList = (await db
       .getTokensUnderListId()
-      .where(`${tableNames.listToken}.listId`, pumptiresLaunchedList.listId)
+      .where(eq(s.listToken.listId, pumptiresLaunchedList.listId))) as unknown as types.TokenInfo[]
     // .orderBy(`${tableNames.listToken}.created_at`, 'desc')
     row.createCounter('filter', true)
     row.incrementTotal(

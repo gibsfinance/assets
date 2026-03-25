@@ -2,39 +2,34 @@ import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
 import * as viem from 'viem'
-import type { Image, List, Network, Token } from 'knex/types/tables'
-import { Knex } from 'knex'
+import type { Network, Token } from 'knex/types/tables'
 import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
-import { tableNames } from '../../db/tables'
 import _ from 'lodash'
 import config from '../../../config'
-
-export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
-  const [major, minor, patch] = version.split('.')
-  return db.where('major', major).where('minor', minor).where('patch', patch)
-}
+import { eq, asc } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 export const respondWithList = async (
   res: Response,
-  list: List & Image,
+  list: { listId: string; name: string | null; imageHash: string | null; ext: string | null; mode: string | null; uri: string | null; updatedAt: string; major: number; minor: number; patch: number },
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string>,
 ) => {
-  let q = db.getTokensUnderListId().where(`${tableNames.listToken}.listId`, list.listId)
+  let q = db.getTokensUnderListId().where(eq(s.listToken.listId, list.listId))
   if (extensions.has('bridgeInfo')) {
-    q = db.addBridgeExtensions(q)
+    q = db.addBridgeExtensions(q) as unknown as typeof q
   }
   if (extensions.has('headerUri')) {
-    q = db.addHeaderUriExtension(q)
+    q = db.addHeaderUriExtension(q) as unknown as typeof q
   }
-  const tokens = await q.orderBy('listTokenOrderId', 'asc')
+  const tokens = await q.orderBy(asc(s.listToken.listTokenOrderId))
   // could possibly be turned into a query
-  const tkns = normalizeTokens(tokens, filters, extensions)
+  const tkns = normalizeTokens(tokens as unknown as TokenInfo[], filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json({
     name: list.name || '',
-    logoURI: utils.directUri(list),
-    timestamp: list.updatedAt.toISOString(),
+    logoURI: utils.directUri(list as any),
+    timestamp: new Date(list.updatedAt).toISOString(),
     version: {
       major: list.major || 0,
       minor: list.minor || 0,

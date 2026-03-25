@@ -2,11 +2,12 @@ import createError from 'http-errors'
 import * as db from '../../db'
 import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
-import { tableNames } from '../../db/tables'
-import type { Image, List, ListToken, Provider } from 'knex/types/tables'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
+import { getDrizzle } from '../../db/drizzle'
+import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -14,32 +15,10 @@ export const merged: RequestHandler = async (req, res, next) => {
   if (!orderId) {
     return next(createError.NotFound('order id missing'))
   }
-  const listTokens = db
-    .getDB()
-    .select<ListToken & Image>([
-      `${tableNames.token}.provided_id`,
-      `${tableNames.token}.name`,
-      `${tableNames.token}.symbol`,
-      `${tableNames.token}.decimals`,
-      `${tableNames.network}.chain_id`,
-      `${tableNames.image}.image_hash`,
-      `${tableNames.image}.ext`,
-      `${tableNames.image}.mode`,
-      `${tableNames.image}.uri`,
-    ])
-    .from(tableNames.listToken)
-    .join(tableNames.token, {
-      [`${tableNames.token}.token_id`]: `${tableNames.listToken}.token_id`,
-    })
-    .join(tableNames.network, {
-      [`${tableNames.network}.network_id`]: `${tableNames.token}.network_id`,
-    })
-    .join(tableNames.image, {
-      [`${tableNames.image}.image_hash`]: `${tableNames.listToken}.image_hash`,
-    })
-  const tokens = await db.applyOrder(listTokens, orderId).where(`chain_id`, '!=', 0)
+  const whereClause = dsql`${s.network.chainId} != '0'`
+  const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens, filters, extensions)
+  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json(utils.minimalList(entries))
 }
@@ -53,20 +32,28 @@ const getExtensions = (req: Request) => {
 
 export const versioned: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
-  const unversionedList = db.getLists(req.params.providerKey, req.params.listKey)
-  const list = await utils.applyVersion(req.params.version, unversionedList).first()
-  if (!list) {
+  const [major, minor, patch] = (req.params.version || '').split('.')
+  const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
+  const match = allLists.find(
+    (row) =>
+      String(row.list?.major) === major &&
+      String(row.list?.minor) === minor &&
+      String(row.list?.patch) === patch,
+  )
+  if (!match) {
     return next(createError.NotFound('versioned list missing'))
   }
+  const list = { ...match.list, ...match.image, ...match.provider, ...match.list_token }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters, extensions)
+  await utils.respondWithList(res, list as any, filters, extensions)
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const providerKey = req.params.providerKey
-  const list = await db.getLists(providerKey, req.params.listKey).first()
-  if (!list) {
+  const rows = await db.getLists(providerKey, req.params.listKey)
+  const first = rows[0]
+  if (!first) {
     return next(
       createError.NotFound(
         JSON.stringify({
@@ -79,45 +66,63 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   if (providerKey.startsWith('user-')) {
     bumpSubscriberCount(providerKey).catch(() => {})
   }
+  const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list, filters, extensions)
+  await utils.respondWithList(res, list as any, filters, extensions)
 }
 
-const getLists = async (filter: object) => {
-  let q = db
-    .getDB()
-    .select<List & Provider>([
-      `${tableNames.list}.key`,
-      `${tableNames.list}.name`,
-      `${tableNames.list}.description`,
-      `${tableNames.list}.default`,
-      `${tableNames.provider}.key as provider_key`,
-      `${tableNames.network}.chain_id`,
-      `${tableNames.network}.type as chain_type`,
-      `${tableNames.list}.major`,
-      `${tableNames.list}.minor`,
-      `${tableNames.list}.patch`,
-    ])
-    .from(tableNames.list)
-    .leftJoin(tableNames.provider, {
-      [`${tableNames.provider}.provider_id`]: `${tableNames.list}.provider_id`,
+const getFilteredLists = async (filter: Record<string, unknown>) => {
+  const drizzle = getDrizzle()
+  let q = drizzle
+    .select({
+      key: s.list.key,
+      name: s.list.name,
+      description: s.list.description,
+      default: s.list.default,
+      providerKey: s.provider.key,
+      chainId: s.network.chainId,
+      chainType: s.network.type,
+      major: s.list.major,
+      minor: s.list.minor,
+      patch: s.list.patch,
     })
-    .leftJoin(tableNames.network, {
-      [`${tableNames.network}.network_id`]: `${tableNames.list}.network_id`,
-    })
+    .from(s.list)
+    .leftJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .leftJoin(s.network, eq(s.network.networkId, s.list.networkId))
+    .$dynamic()
+
+  // Build WHERE conditions from the filter object
+  const conditions: ReturnType<typeof eq>[] = []
+  // Map of known filter keys to their Drizzle column references
+  const columnMap: Record<string, any> = {
+    key: s.list.key,
+    name: s.list.name,
+    default: s.list.default,
+    provider_key: s.provider.key,
+    chain_id: s.network.chainId,
+    chain_type: s.network.type,
+    major: s.list.major,
+    minor: s.list.minor,
+    patch: s.list.patch,
+  }
   for (const [k, v] of Object.entries(filter)) {
+    const col = columnMap[k]
+    if (!col) continue
     if (_.isArray(v)) {
-      q = q.whereIn(k, v)
+      conditions.push(inArray(col, v as string[]))
     } else {
-      q = q.where(k, v)
+      conditions.push(eq(col, v as string))
     }
+  }
+  if (conditions.length) {
+    q = q.where(and(...conditions))
   }
   return q
 }
 
 export const all: RequestHandler = async (req, res) => {
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json(await getLists(req.query))
+  res.json(await getFilteredLists(req.query as Record<string, unknown>))
 }
 
 /**
@@ -134,17 +139,13 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
 
   // Query all tokens on this chain across all lists, with image priority ordering
-  const q = db
+  const tokens = await db
     .getTokensUnderListId()
-    .where(`${tableNames.network}.chainId`, chainId)
-
-  const tokens = await q.orderBy([
-    { column: `${tableNames.image}.ext`, order: 'asc' }, // SVGs first
-    { column: `${tableNames.listToken}.listTokenOrderId`, order: 'asc' },
-  ])
+    .where(eq(s.network.chainId, chainId))
+    .orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
 
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens, filters, extensions)
+  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
   const limited = entries.slice(0, limit)
 
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
