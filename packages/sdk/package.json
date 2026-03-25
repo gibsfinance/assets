@@ -11,12 +11,21 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run"
   },
-  "keywords": ["tokens", "images", "web3", "erc20", "token-list"],
+  "keywords": [
+    "tokens",
+    "images",
+    "web3",
+    "erc20",
+    "token-list"
+  ],
   "author": "gibs",
   "license": "ISC",
   "devDependencies": {

@@ -16,7 +16,7 @@ import levinswapCollector from './levinswap'
 import honeyswapCollector from './honeyswap'
 import pancakeCollector from './pancake'
 import quickswapCollector from './quickswap'
-import rollCollector from './roll'
+// import rollCollector from './roll' // app.tryroll.com DNS dead — domain no longer resolves
 import scrollCollector from './scroll'
 import setCollector from './set'
 import klerosCollector from './kleros'
@@ -68,7 +68,7 @@ type CollectableKey =
   | 'honeyswap'
   | 'pancake'
   | 'quickswap'
-  | 'roll'
+  // | 'roll' // DNS dead
   | 'scroll'
   | 'set'
   | 'omnibridge'
@@ -119,7 +119,7 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     honeyswap: honeyswapCollector,
     pancake: pancakeCollector,
     quickswap: quickswapCollector,
-    roll: rollCollector,
+    // roll: rollCollector, // DNS dead
     scroll: scrollCollector,
     set: setCollector,
     omnibridge: new OmnibridgeCollector([
