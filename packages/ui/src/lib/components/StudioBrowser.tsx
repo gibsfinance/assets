@@ -313,7 +313,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       setFailedIcons(new Set())
 
       try {
-        const response = await fetch(getApiUrl(`/list/tokens/${chainId}?limit=2000`))
+        const response = await fetch(getApiUrl(`/list/tokens/${chainId}`))
         if (!response.ok) throw new Error(`${response.status}`)
 
         const data = await response.json()
