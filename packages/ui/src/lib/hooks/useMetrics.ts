@@ -360,16 +360,25 @@ export function useMetrics(): MetricsHookResult {
           }
         }
 
-        // Count tokens by chain
-        const byChain: Record<string, number> = {}
-        for (const [chainId, tokens] of Object.entries(tokensByChain)) {
-          const count = tokens?.size || 0
-          byChain[chainId] = count
-          
+        // Fetch exact counts from server (database-authoritative)
+        let byChain: Record<string, number> = {}
+        let total = 0
+        try {
+          const statsRes = await fetch(getApiUrl('/stats'))
+          if (statsRes.ok) {
+            const stats: { chainId: string; count: number }[] = await statsRes.json()
+            for (const { chainId, count } of stats) {
+              byChain[chainId] = count
+            }
+            total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
+          }
+        } catch {
+          // Fall back to client-side count if stats endpoint fails
+          for (const [chainId, tokens] of Object.entries(tokensByChain)) {
+            byChain[chainId] = tokens?.size || 0
+          }
+          total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
         }
-
-        // Calculate total
-        const total = Object.values(byChain).reduce((sum, count) => sum + count, 0)
 
         const computedMetrics: PlatformMetrics = {
           tokenList: {

@@ -219,6 +219,8 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
   const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set())
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(() => new Set())
+  /** Server-authoritative total token count for the selected chain */
+  const [serverTotal, setServerTotal] = useState<number | null>(null)
 
   /* ----- Derive available lists from context providers -------------------- */
   const availableLists = useMemo(() => {
@@ -302,14 +304,14 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     })
   }, [tokensByList, enabledLists, selectedChainId, searchState])
 
-  const tokenCount = filteredTokens.length
+  const tokenCount = serverTotal ?? filteredTokens.length
 
   /* ----- Fetch all tokens for a chain in one request --------------------- */
   const tryFetchTokenLists = useCallback(
     async (chainId: number) => {
       clearTokens()
       setIsLoadingLists(true)
-      
+      setServerTotal(null)
       setFailedIcons(new Set())
 
       try {
@@ -317,6 +319,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         if (!response.ok) throw new Error(`${response.status}`)
 
         const data = await response.json()
+        if (typeof data?.total === 'number') {
+          setServerTotal(data.total)
+        }
         if (data?.tokens && Array.isArray(data.tokens)) {
           interface ApiToken {
             chainId: number
