@@ -164,7 +164,7 @@ router.patch('/submissions/:id', json(), nextOnError(async (req, res) => {
 export interface SubmissionForAutoMode {
   image_mode: string
   subscriber_count: number
-  last_accessed_at?: string | null
+  last_accessed_at?: string | Date | null
 }
 
 /**

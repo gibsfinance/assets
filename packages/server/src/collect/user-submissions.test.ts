@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
  * Mock the db module with a chainable knex-style query builder.
  * Each method returns the chain for fluent API support.
  */
-const chain: Record<string, Mock> = {}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const chain: any = {}
 chain.select = vi.fn().mockReturnValue(chain)
 chain.from = vi.fn().mockReturnValue(chain)
 chain.where = vi.fn().mockReturnValue(chain)
@@ -205,7 +206,7 @@ describe('updateSubmissionStatus', () => {
 
     await updateSubmissionStatus('user-alice', { success: true })
 
-    const updateArg = (chain.update as Mock).mock.calls[0][0]
+    const updateArg = vi.mocked(chain.update).mock.calls[0][0]
     expect(updateArg).not.toHaveProperty('last_content_hash')
   })
 
@@ -272,7 +273,7 @@ describe('updateSubmissionStatus', () => {
 
     await updateSubmissionStatus('user-alice', { success: false })
 
-    const updateArg = (chain.update as Mock).mock.calls[0][0]
+    const updateArg = vi.mocked(chain.update).mock.calls[0][0]
     expect(updateArg.fail_count).toBe(4)
     expect(updateArg).not.toHaveProperty('status')
   })
@@ -291,7 +292,7 @@ describe('updateSubmissionStatus', () => {
 
     await updateSubmissionStatus('user-alice', { success: false })
 
-    const updateArg = (chain.update as Mock).mock.calls[0][0]
+    const updateArg = vi.mocked(chain.update).mock.calls[0][0]
     expect(updateArg.fail_count).toBe(10)
     expect(updateArg.status).toBe('stale')
   })
