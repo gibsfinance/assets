@@ -74,11 +74,11 @@ export default function ListTokenRow({
 
       {/* Info */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between">
-          <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+        <div className="flex items-baseline gap-2">
+          <span className="min-w-0 truncate text-sm font-medium text-gray-800 dark:text-white/90">
             {token.name || 'Unknown'}
           </span>
-          <span className="flex-shrink-0 text-xs text-gray-400 dark:text-white/40">
+          <span className="ml-auto flex-shrink-0 text-xs text-gray-400 dark:text-white/40">
             {token.symbol || '???'}
           </span>
         </div>
