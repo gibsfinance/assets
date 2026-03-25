@@ -190,6 +190,7 @@ const terminalTwoPhase = async (
       const manifest = await collector.discover(utils.controller.signal)
       manifests.set(provider, manifest)
     } catch (err) {
+      console.error(`[${provider}] discover failed:`, (err as Error).message)
       failureLog('discover error %o %o', provider, err)
     }
   })
@@ -217,6 +218,7 @@ const terminalTwoPhase = async (
           await updateSubmissionStatus(provider, { success: true })
         }
       } catch (err) {
+        console.error(`[${provider}] collection failed:`, (err as Error).message)
         failureLog('error %o %o', provider, err)
         utils.terminalRow.increment(terminalLogTypes.EROR, provider)
         failureLog('failed to collect', provider, (err as Error).message)

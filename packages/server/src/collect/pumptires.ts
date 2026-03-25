@@ -233,11 +233,11 @@ export const collectAttempt = async (signal: AbortSignal) => {
     })
     const knownPumptiresList: types.TokenInfo[] = await db
       .getTokensUnderListId()
-      .where('listId', pumptiresList.listId)
+      .where(`${tableNames.listToken}.listId`, pumptiresList.listId)
       .orderBy(`${tableNames.listToken}.created_at`, 'desc')
     const knownLaunchedList: types.TokenInfo[] = await db
       .getTokensUnderListId()
-      .where('listId', pumptiresLaunchedList.listId)
+      .where(`${tableNames.listToken}.listId`, pumptiresLaunchedList.listId)
       .orderBy(`${tableNames.listToken}.created_at`, 'desc')
     const tasks = row.issue(providerKey)
     row.createCounter(terminalCounterTypes.NETWORK)
@@ -332,7 +332,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
     // check all LAUNCHED tokens for pairing with 1b pls
     const updatedKnownLaunchedList: types.TokenInfo[] = await db
       .getTokensUnderListId()
-      .where('listId', pumptiresLaunchedList.listId)
+      .where(`${tableNames.listToken}.listId`, pumptiresLaunchedList.listId)
     // .orderBy(`${tableNames.listToken}.created_at`, 'desc')
     row.createCounter('filter', true)
     row.incrementTotal(
