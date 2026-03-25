@@ -92,6 +92,15 @@ export default function Image({
     onLoad?.()
   }
 
+  // Timeout: if the image hasn't loaded or errored within 10s, treat as failed
+  useEffect(() => {
+    if (loaded || shouldFallback || !visible) return
+    const timer = setTimeout(() => {
+      if (!loaded) handleError()
+    }, 10_000)
+    return () => clearTimeout(timer)
+  }, [loaded, shouldFallback, visible])
+
   if (shouldFallback && fallback) {
     return (
       <>
