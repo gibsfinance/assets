@@ -11,7 +11,7 @@ export async function seed(knex: Knex): Promise<void> {
       key: 'gibs',
       description: 'a memetic company',
     },
-    knex,
+    knex as any, // Knex seed runner — will be removed with Knex migration infrastructure
   )
   // network
   // await knex.transaction(async (t) => {

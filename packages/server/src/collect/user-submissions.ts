@@ -1,18 +1,10 @@
 import * as viem from 'viem'
-import * as db from '../db'
 import { RemoteTokenListCollector } from './remote-tokenlist'
 import type { BaseCollector } from './base-collector'
 import { failureLog } from '@gibs/utils'
-
-interface ApprovedSubmission {
-  id: string
-  url: string
-  provider_key: string
-  list_key: string
-  image_mode: string
-  last_content_hash: string | null
-  fail_count: number
-}
+import { getDrizzle } from '../db/drizzle'
+import { eq, sql as dsql } from 'drizzle-orm'
+import * as s from '../db/schema'
 
 /**
  * Loads all approved list submissions from the DB and creates
@@ -21,23 +13,22 @@ interface ApprovedSubmission {
  * Called during collection startup to dynamically register
  * user-submitted lists alongside hardcoded collectors.
  *
- * Returns a map of providerKey → collector, ready to merge
+ * Returns a map of providerKey -> collector, ready to merge
  * into the collectables map.
  */
 export async function loadSubmissionCollectors(): Promise<Record<string, BaseCollector>> {
-  const submissions = await db.getDB()
-    .select('*')
-    .from('list_submission')
-    .where('status', 'approved') as ApprovedSubmission[]
+  const db = getDrizzle()
+  const submissions = await db
+    .select()
+    .from(s.listSubmission)
+    .where(eq(s.listSubmission.status, 'approved'))
 
   const collectors: Record<string, BaseCollector> = {}
 
   for (const sub of submissions) {
-    const shouldSave = sub.image_mode === 'save'
-
-    collectors[sub.provider_key] = new RemoteTokenListCollector(sub.provider_key, {
-      providerKey: sub.provider_key,
-      listKey: sub.list_key,
+    collectors[sub.providerKey] = new RemoteTokenListCollector(sub.providerKey, {
+      providerKey: sub.providerKey,
+      listKey: sub.listKey,
       tokenList: sub.url,
     })
   }
@@ -60,38 +51,38 @@ export async function updateSubmissionStatus(
   providerKey: string,
   options: { success: boolean; contentHash?: string },
 ): Promise<void> {
-  const sub = await db.getDB()
-    .select('*')
-    .from('list_submission')
-    .where('provider_key', providerKey)
-    .where('status', 'approved')
-    .first() as ApprovedSubmission | undefined
+  const db = getDrizzle()
+  const [sub] = await db
+    .select()
+    .from(s.listSubmission)
+    .where(eq(s.listSubmission.providerKey, providerKey))
+    .limit(1)
 
-  if (!sub) return
+  if (!sub || sub.status !== 'approved') return
 
   if (options.success) {
-    await db.getDB()
-      .update({
-        fail_count: 0,
-        last_fetched_at: new Date(),
-        ...(options.contentHash ? { last_content_hash: options.contentHash } : {}),
+    await db
+      .update(s.listSubmission)
+      .set({
+        failCount: 0,
+        lastFetchedAt: new Date().toISOString(),
+        ...(options.contentHash ? { lastContentHash: options.contentHash } : {}),
       })
-      .from('list_submission')
-      .where('id', sub.id)
+      .where(eq(s.listSubmission.id, sub.id))
   } else {
-    const newFailCount = sub.fail_count + 1
+    const newFailCount = sub.failCount + 1
     const updates: Record<string, unknown> = {
-      fail_count: newFailCount,
-      last_fetched_at: new Date(),
+      failCount: newFailCount,
+      lastFetchedAt: new Date().toISOString(),
     }
     if (newFailCount >= 5) {
       updates.status = 'stale'
       failureLog('Submission %s marked stale after %d failures', providerKey, newFailCount)
     }
-    await db.getDB()
-      .update(updates)
-      .from('list_submission')
-      .where('id', sub.id)
+    await db
+      .update(s.listSubmission)
+      .set(updates)
+      .where(eq(s.listSubmission.id, sub.id))
   }
 }
 
@@ -100,9 +91,12 @@ export async function updateSubmissionStatus(
  * Called from the list serving endpoints.
  */
 export async function bumpSubscriberCount(providerKey: string): Promise<void> {
-  await db.getDB()
-    .increment('subscriber_count', 1)
-    .update({ last_accessed_at: new Date() })
-    .from('list_submission')
-    .where('provider_key', providerKey)
+  const db = getDrizzle()
+  await db
+    .update(s.listSubmission)
+    .set({
+      subscriberCount: dsql`${s.listSubmission.subscriberCount} + 1`,
+      lastAccessedAt: new Date().toISOString(),
+    })
+    .where(eq(s.listSubmission.providerKey, providerKey))
 }

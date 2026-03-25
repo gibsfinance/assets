@@ -1,5 +1,67 @@
 # Gib.Show — Progress
 
+## Session: Knex → Drizzle Phase 5 (2026-03-25)
+
+### Phase 5: Replace knex/types/tables imports with Drizzle schema (completed)
+
+Decoupled the type system from Knex entirely:
+
+1. **Created `db/schema-types.ts`** — All table types inferred from Drizzle schema via `InferSelectModel`/`InferInsertModel`. DB-generated ID fields (providerId, listId, tokenId, etc.) made optional in insert types with `OptionalKeys<>`. Includes `BackfillableInsertableListOrderItem` migrated from global.d.ts.
+
+2. **Replaced all `knex/types/tables` imports** across 18 files (src + test):
+   - db/index.ts, types.ts, db/sync-order.ts, utils/index.ts
+   - server/image/handlers.ts, server/image/resize.ts, server/list/utils.ts, server/networks/index.ts
+   - collect/pumptires.ts, dexscreener.ts, smoldapp.ts, internetmoney.ts, inmemory-tokenlist.ts
+   - bin/export.ts, test/list.test.ts, test/db-batch.test.ts, test/utils.ts
+
+3. **Converted remaining Knex raw queries to Drizzle**:
+   - server/networks/index.ts — `getDB().select().from()` → `getDrizzle().select().from(s.network)`
+   - server/stats/index.ts — complex Knex raw count → Drizzle `dsql` template
+   - server/image/sprite.ts — `db.getDB()` queries → Drizzle with `$dynamic()`
+   - server/submissions.ts — full CRUD → Drizzle `insert/select/update` with `s.listSubmission`
+   - collect/user-submissions.ts — all `db.getDB()` → Drizzle
+   - collect/index.ts — `db.raw()` pg_stat_activity → Drizzle `db.execute(dsql)`
+   - collect/smoldapp.ts — existing token lookup → Drizzle
+   - collect/internetmoney.ts — existing token lookup → Drizzle
+   - collect/dexscreener.ts — network lookup → Drizzle
+   - bin/export.ts — complex joins → Drizzle
+   - cleanup.ts — try/catch around lazy Knex destroy
+
+4. **Removed `Tx` type** from `db/tables.ts` (was `Knex | Knex.Transaction`). Replaced with `DrizzleTx` in all consumers.
+
+5. **Removed `Knex` import** from `db/tables.ts`. Kept `Knex` in `db/utils.ts` (migration infrastructure only).
+
+6. **Gutted `global.d.ts`** — removed entire `declare module 'knex/types/tables.js'` block.
+
+7. **Converted `db/index.ts`**:
+   - Removed `import knex from 'knex'` and `let db = knex(config)` singleton
+   - Replaced with lazy `getDB()` that only initializes Knex when called (migration runner only)
+   - Removed `setDB()` export
+   - Added `transaction()` export that delegates to `getDrizzle().transaction()`
+   - Converted `getImageByAddress` from Knex to Drizzle
+
+8. **Updated test mocks**:
+   - test/utils.ts — rewrote to use DrizzleTx + Drizzle transactions
+   - submissions.test.ts — mocks getDrizzle instead of getDB
+   - user-submissions.test.ts — mocks getDrizzle instead of getDB
+
+Results: 0 TypeScript errors, 121/121 vitest tests passing. 5 pre-existing test failures in test/ (JSX parsing issue with log/App.tsx, unrelated).
+
+### Remaining Knex Usage
+- `db/index.ts getDB()` — lazy Knex init for migration runner only
+- `db/config.ts` — Knex connection config (used by getDB + knexfile)
+- `db/utils.ts` — migration helper functions (Knex types retained)
+- `db/seeds/` — Knex seed files
+- `db/migrations/` — Knex migration files
+- `knexfile.ts` — Knex migration config
+- `bin/migrate.ts`, `bin/seed.ts`, `bin/collect.ts`, `bin/server.ts`, `bin/harvest.ts`, `bin/create-orders.ts` — call `getDB().migrate.latest()` for migration runner
+
+### Next Steps (Phase 6)
+- Replace Knex migration runner with Drizzle migrations (`drizzle-kit`)
+- Remove knexfile.ts, db/config.ts, migrations/, seeds/ directories
+- Remove `knex` from package.json dependencies
+- Remove the lazy `getDB()` shim from db/index.ts
+
 ## Session: Knex → Drizzle Phase 4 (2026-03-25)
 
 ### Phase 4: Complex Query-Composition Functions (completed)

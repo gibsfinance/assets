@@ -1,6 +1,6 @@
 import sharp from 'sharp'
 import type { Request, Response } from 'express'
-import type { Image, ImageVariant, InsertableImageVariant } from 'knex/types/tables'
+import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'
 import * as db from '../../db'
 import config from '../../../config'
 import { imageMode } from '../../db/tables'
@@ -197,8 +197,8 @@ export async function maybeResize(
   sendVariant(res, {
     ...variantRecord,
     accessCount: 1,
-    createdAt: new Date(),
-    lastAccessedAt: new Date(),
+    createdAt: new Date().toISOString(),
+    lastAccessedAt: new Date().toISOString(),
   }, img.uri)
 
   return true

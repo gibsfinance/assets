@@ -1,30 +1,13 @@
 import { Router, json } from 'express'
-import * as db from '../db'
 import { nextOnError } from './utils'
+import { getDrizzle } from '../db/drizzle'
+import { eq, desc, sql as dsql } from 'drizzle-orm'
+import * as s from '../db/schema'
 
 export const router = Router() as Router
 
-const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
-
-interface SubmissionRow {
-  id: string
-  url: string
-  name: string
-  description: string
-  submitted_by: string
-  status: string
-  provider_key: string
-  list_key: string
-  image_mode: string
-  fail_count: number
-  subscriber_count: number
-  last_content_hash: string | null
-  last_fetched_at: Date | null
-  last_accessed_at: Date | null
-  created_at: Date
-  updated_at: Date
-}
+const slugify = (str: string) =>
+  str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
 
 /**
  * POST /api/lists/submit
@@ -67,29 +50,37 @@ router.post('/submit', json(), nextOnError(async (req, res) => {
   const listKey = slugify(name)
 
   try {
-    const [row] = await db.getDB()
-      .insert({
+    const db = getDrizzle()
+    const [row] = await db
+      .insert(s.listSubmission)
+      .values({
         url,
         name,
         description: description || '',
-        submitted_by: submittedBy,
+        submittedBy,
         status: 'pending',
-        provider_key: providerKey,
-        list_key: listKey,
-        image_mode: 'auto',
-        fail_count: 0,
-        subscriber_count: 0,
+        providerKey,
+        listKey,
+        imageMode: 'auto',
+        failCount: 0,
+        subscriberCount: 0,
       })
-      .into('list_submission')
-      .onConflict('url')
-      .merge(['name', 'description', 'submitted_by', 'updated_at'])
-      .returning<SubmissionRow[]>('*')
+      .onConflictDoUpdate({
+        target: s.listSubmission.url,
+        set: {
+          name: dsql`excluded.name`,
+          description: dsql`excluded.description`,
+          submittedBy: dsql`excluded.submitted_by`,
+          updatedAt: dsql`NOW()`,
+        },
+      })
+      .returning()
 
     res.status(201).json({
       id: row.id,
       status: row.status,
-      providerKey: row.provider_key,
-      listKey: row.list_key,
+      providerKey: row.providerKey,
+      listKey: row.listKey,
     })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
@@ -101,28 +92,34 @@ router.post('/submit', json(), nextOnError(async (req, res) => {
  * List all submissions. Optional ?status=pending filter.
  */
 router.get('/submissions', nextOnError(async (req, res) => {
-  let q = db.getDB().select('*').from('list_submission').orderBy('created_at', 'desc')
-
+  const db = getDrizzle()
   const query = req.query as Record<string, string>
+
+  let q = db
+    .select()
+    .from(s.listSubmission)
+    .orderBy(desc(s.listSubmission.createdAt))
+    .$dynamic()
+
   if (query.status) {
-    q = q.where('status', query.status)
+    q = q.where(eq(s.listSubmission.status, query.status))
   }
 
-  const rows = await q as SubmissionRow[]
+  const rows = await q
   res.json(rows.map((r) => ({
     id: r.id,
     url: r.url,
     name: r.name,
     description: r.description,
-    submittedBy: r.submitted_by,
+    submittedBy: r.submittedBy,
     status: r.status,
-    providerKey: r.provider_key,
-    listKey: r.list_key,
-    imageMode: r.image_mode,
-    failCount: r.fail_count,
-    subscriberCount: r.subscriber_count,
-    lastFetchedAt: r.last_fetched_at,
-    createdAt: r.created_at,
+    providerKey: r.providerKey,
+    listKey: r.listKey,
+    imageMode: r.imageMode,
+    failCount: r.failCount,
+    subscriberCount: r.subscriberCount,
+    lastFetchedAt: r.lastFetchedAt,
+    createdAt: r.createdAt,
   })))
 }))
 
@@ -139,7 +136,7 @@ router.patch('/submissions/:id', json(), nextOnError(async (req, res) => {
     updates.status = status
   }
   if (imageMode && ['link', 'save', 'auto'].includes(imageMode)) {
-    updates.image_mode = imageMode
+    updates.imageMode = imageMode
   }
 
   if (Object.keys(updates).length === 0) {
@@ -147,18 +144,19 @@ router.patch('/submissions/:id', json(), nextOnError(async (req, res) => {
     return
   }
 
-  const [row] = await db.getDB()
-    .update(updates)
-    .from('list_submission')
-    .where('id', id)
-    .returning<SubmissionRow[]>('*')
+  const db = getDrizzle()
+  const [row] = await db
+    .update(s.listSubmission)
+    .set(updates)
+    .where(eq(s.listSubmission.id, id))
+    .returning()
 
   if (!row) {
     res.status(404).json({ error: 'Submission not found' })
     return
   }
 
-  res.json({ id: row.id, status: row.status, imageMode: row.image_mode })
+  res.json({ id: row.id, status: row.status, imageMode: row.imageMode })
 }))
 
 export interface SubmissionForAutoMode {
@@ -198,25 +196,33 @@ export function resolveImageMode(row: SubmissionForAutoMode): string | null {
  * Internal endpoint used by the collection pipeline.
  */
 router.get('/submissions/approved', nextOnError(async (_req, res) => {
-  const rows = await db.getDB()
-    .select('*')
-    .from('list_submission')
-    .where('status', 'approved')
-    .orderBy('subscriber_count', 'desc') as SubmissionRow[]
+  const db = getDrizzle()
+  const rows = await db
+    .select()
+    .from(s.listSubmission)
+    .where(eq(s.listSubmission.status, 'approved'))
+    .orderBy(desc(s.listSubmission.subscriberCount))
 
   for (const row of rows) {
-    const newMode = resolveImageMode(row)
-    if (newMode && newMode !== row.image_mode) {
-      await db.getDB().update({ image_mode: newMode }).from('list_submission').where('id', row.id)
-      row.image_mode = newMode
+    const newMode = resolveImageMode({
+      image_mode: row.imageMode,
+      subscriber_count: row.subscriberCount,
+      last_accessed_at: row.lastAccessedAt,
+    })
+    if (newMode && newMode !== row.imageMode) {
+      await db
+        .update(s.listSubmission)
+        .set({ imageMode: newMode })
+        .where(eq(s.listSubmission.id, row.id))
+      row.imageMode = newMode
     }
   }
 
   res.json(rows.map((r) => ({
     url: r.url,
-    providerKey: r.provider_key,
-    listKey: r.list_key,
-    imageMode: r.image_mode === 'save' ? 'save' : 'link',
-    lastContentHash: r.last_content_hash,
+    providerKey: r.providerKey,
+    listKey: r.listKey,
+    imageMode: r.imageMode === 'save' ? 'save' : 'link',
+    lastContentHash: r.lastContentHash,
   })))
 }))

@@ -707,8 +707,8 @@ describe('sendVariant (direct)', () => {
       format: 'webp',
       content: Buffer.from('test'),
       accessCount: 1,
-      createdAt: new Date(),
-      lastAccessedAt: new Date(),
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
     }, 'https://example.com/img.png')
 
     expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age='))

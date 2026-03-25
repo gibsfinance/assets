@@ -1,15 +1,13 @@
-import knex, { type Knex } from 'knex'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as viem from 'viem'
 import { failureLog, responseToBuffer, timeout, type Timeout, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as types from '../types'
-import { config } from './config'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
 import * as utils from '../utils'
-import { Tx, imageMode, tableNames } from './tables'
+import { imageMode, tableNames } from './tables'
 import type {
   Image,
   InsertableList,
@@ -36,7 +34,7 @@ import type {
   InsertableCacheRequest,
   ImageVariant,
   InsertableImageVariant,
-} from 'knex/types/tables'
+} from './schema-types'
 import { fetch } from '../fetch'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
@@ -73,33 +71,28 @@ export const ids = {
       .slice(2),
 }
 
-let db = knex(config)
+// ---------------------------------------------------------------------------
+// Lazy Knex instance — retained ONLY for migration runner and legacy raw SQL
+// ---------------------------------------------------------------------------
+let knexInstance: ReturnType<typeof import('knex').default> | null = null
 
-// setInterval(() => {
-//   db.raw('SELECT * FROM pg_stat_activity').then((res) => {
-//     const grouped = _(res.rows)
-//       .map(({ query }) => query)
-//       .reduce((accum, row) => {
-//         if (!row) return accum
-//         const id = viem.keccak256(viem.stringToBytes(row))
-//         let existing = accum.get(id)
-//         if (existing) accum.set(id, [existing[0] + 1, row])
-//         else accum.set(id, [1, row])
-//         return accum
-//       }, new Map<string, [number, string]>())
-//     console.log(grouped)
-//   })
-// }, 5000)
-
-export const getDB = () => db
-
-export const setDB = (k: Knex) => {
-  db = k
+/** @deprecated Use getDrizzle() instead. Retained for Knex migration runner only. */
+export const getDB = () => {
+  if (!knexInstance) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const knexLib = require('knex') as typeof import('knex').default
+    const { config } = require('./config') as { config: import('knex').Knex.Config }
+    knexInstance = knexLib(config)
+  }
+  return knexInstance
 }
 
-type Transact<T> = typeof db.transaction<T>
-
-export const transaction = async <T>(...a: Parameters<Transact<T>>) => db.transaction(...a)
+/** Run a Drizzle transaction. Drop-in replacement for the old Knex db.transaction(). */
+export const transaction = async <T>(
+  fn: (tx: DrizzleTx) => Promise<T>,
+): Promise<T> => {
+  return getDrizzle().transaction(fn)
+}
 
 const getExt = async (image: Buffer, providedExt: string) => {
   const e = await fileType.fileTypeFromBuffer(Uint8Array.from(image))
@@ -537,24 +530,36 @@ export const batchFetchImagesForTokens = async (
 
 export const getImageByAddress = async (
   { chainId, address, providerId }: { chainId: number; address: string; providerId?: string },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
-  const network = await t.from(tableNames.network).select('*').where('chainId', chainId).first<Network>()
+  const db = tx ?? getDrizzle()
+  const [network] = await db
+    .select()
+    .from(s.network)
+    .where(eq(s.network.chainId, String(chainId)))
+    .limit(1)
   if (!network) return null
-  const token = await t
-    .from(tableNames.token)
-    .select('*')
-    .where('providedId', address)
-    .where('networkId', network.networkId)
-    .first<Token>()
-  const listTokens = await t(tableNames.listToken)
-    .select('*')
-    .join(tableNames.list, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .where('tokenId', token.tokenId)
-    .where(`${tableNames.list}.providerId`, providerId)
-    .first<ListToken & List>()
+  const [token] = await db
+    .select()
+    .from(s.token)
+    .where(and(eq(s.token.providedId, address), eq(s.token.networkId, network.networkId)))
+    .limit(1)
+  if (!token) return null
+  const conditions = [
+    eq(s.listToken.tokenId, token.tokenId),
+  ]
+  if (providerId) {
+    conditions.push(eq(s.list.providerId, providerId))
+  }
+  const [listTokenRow] = await db
+    .select()
+    .from(s.listToken)
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .where(and(...conditions))
+    .limit(1)
+  const listTokens = listTokenRow
+    ? { ...listTokenRow.list_token, ...listTokenRow.list }
+    : undefined
   return { token, listTokens }
 }
 
@@ -1381,7 +1386,7 @@ export const cachedJSON = async <T extends object>(
   await insertCacheRequest({
     key,
     value: JSON.stringify(result),
-    expiresAt: new Date(Date.now() + ttl),
+    expiresAt: new Date(Date.now() + ttl).toISOString(),
   })
   return result
 }

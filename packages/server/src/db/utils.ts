@@ -1,7 +1,7 @@
 import _ from 'lodash'
 import type * as pg from 'pg'
 import type { Knex } from 'knex'
-import type { TableNames, Tx } from './tables'
+import type { TableNames } from './tables'
 
 import userConfig from '../../config'
 
@@ -194,7 +194,7 @@ export const addCheckIn = (knex: Knex, schema: string, tableName: TableNames, na
   knex.raw(`alter table "${schema}"."${tableName}" add constraint ${name} check(status in ('${list.join("','")}'))`)
 
 export const insertIntoTable = async (
-  t: Tx,
+  t: Knex | Knex.Transaction,
   table: TableNames,
   rows: any[],
   conflictColumns = ['id'],

@@ -1,5 +1,5 @@
 import type { DiscoveryManifest } from '../collect/base-collector'
-import type { BackfillableInsertableListOrderItem } from 'knex/types/tables'
+import type { BackfillableInsertableListOrderItem } from './schema-types'
 import * as db from '.'
 import * as viem from 'viem'
 import { getDrizzle } from './drizzle'

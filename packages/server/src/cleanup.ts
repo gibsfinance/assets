@@ -4,7 +4,11 @@ import * as utils from './utils'
 import { destroyTerminal } from './log/App'
 
 export const cleanup = async () => {
-  await db.getDB().destroy()
+  try {
+    await db.getDB().destroy()
+  } catch {
+    // Knex instance may not have been initialized — safe to ignore
+  }
   utils.printFailures()
   cancelAllRequests()
   destroyTerminal()

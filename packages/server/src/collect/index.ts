@@ -5,33 +5,32 @@ import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submiss
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
-import { getDB } from '../db'
 import type { DiscoveryManifest } from './base-collector'
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
+import { getDrizzle } from '../db/drizzle'
+import { sql as dsql } from 'drizzle-orm'
 
 const DEFAULT_PROVIDER_CONCURRENCY = 4
 
 const checkOutstandingConnections = async (provider: string) => {
-  const db = getDB()
-  const pool = db.client.pool
-  const used = pool.numUsed()
-  const pending = pool.numPendingAcquires()
-  const free = pool.numFree()
-  const active = await db.raw(
-    `SELECT pid, state, left(query, 80) as query, now() - xact_start as xact_duration
-     FROM pg_stat_activity
-     WHERE datname = current_database()
-       AND pid != pg_backend_pid()
-       AND state != 'idle'`,
-  )
-  const activeRows = active.rows as { pid: number; state: string; query: string; xact_duration: string }[]
-  if (used > 0 || pending > 0 || activeRows.length > 0) {
+  const db = getDrizzle()
+  const result = await db.execute<{
+    pid: number
+    state: string
+    query: string
+    xact_duration: string
+  }>(dsql`
+    SELECT pid, state, left(query, 80) as query, now() - xact_start as xact_duration
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND pid != pg_backend_pid()
+      AND state != 'idle'
+  `)
+  const activeRows = result.rows
+  if (activeRows.length > 0) {
     failureLog(
-      'outstanding after %s: pool(used=%d free=%d pending=%d) pg_active=%d',
+      'outstanding after %s: pg_active=%d',
       provider,
-      used,
-      free,
-      pending,
       activeRows.length,
     )
     for (const row of activeRows) {

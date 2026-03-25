@@ -1,8 +1,9 @@
 import sharp from 'sharp'
-import * as db from '../../db'
-import { tableNames } from '../../db/tables'
 import config from '../../../config'
 import { RequestHandler } from 'express'
+import { getDrizzle } from '../../db/drizzle'
+import { eq, and, ne, sql as dsql } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 const DEFAULT_SIZE = 32
 const DEFAULT_COLS = 25
@@ -39,27 +40,41 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
 
 /** Resolve a list to its DB listId from provider/key path params */
 async function resolveListId(providerKey: string, listKey: string): Promise<string | null> {
-  const list = await db.getDB()
-    .select('list.listId')
-    .from(tableNames.list)
-    .join(tableNames.provider, { [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId` })
-    .where(`${tableNames.provider}.key`, providerKey)
-    .where(`${tableNames.list}.key`, listKey || providerKey)
-    .first()
-  return list?.listId ?? null
+  const drizzle = getDrizzle()
+  const [row] = await drizzle
+    .select({ listId: s.list.listId })
+    .from(s.list)
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .where(and(
+      eq(s.provider.key, providerKey),
+      eq(s.list.key, listKey || providerKey),
+    ))
+    .limit(1)
+  return row?.listId ?? null
 }
 
 /** Query tokens under a list with their images */
-function queryListTokens(listId: string, fields: string[]) {
-  return db.getDB()
-    .select(fields)
-    .from(tableNames.listToken)
-    .join(tableNames.token, { [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId` })
-    .join(tableNames.network, { [`${tableNames.network}.networkId`]: `${tableNames.token}.networkId` })
-    .join(tableNames.image, { [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash` })
-    .where(`${tableNames.listToken}.listId`, listId)
-    .whereNot(`${tableNames.image}.imageHash`, '')
-    .orderByRaw(`CASE WHEN ${tableNames.image}.ext = '.svg' THEN 0 ELSE 1 END ASC`)
+function queryListTokens(listId: string) {
+  return getDrizzle()
+    .select({
+      address: s.token.providedId,
+      chainId: s.network.chainId,
+      imageHash: s.image.imageHash,
+      ext: s.image.ext,
+      content: s.image.content,
+      mode: s.image.mode,
+      uri: s.image.uri,
+    })
+    .from(s.listToken)
+    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .where(and(
+      eq(s.listToken.listId, listId),
+      ne(s.image.imageHash, ''),
+    ))
+    .orderBy(dsql`CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END ASC`)
+    .$dynamic()
 }
 
 // ---------------------------------------------------------------------------
@@ -84,27 +99,17 @@ export const manifest: RequestHandler = async (req, res, next) => {
   const mixed = req.query.content === 'mixed'
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
-  const fields = [
-    `${tableNames.token}.provided_id as address`,
-    `${tableNames.network}.chain_id as chainId`,
-    `${tableNames.image}.image_hash`,
-    `${tableNames.image}.ext`,
-  ]
-  if (mixed) fields.push(`${tableNames.image}.content`)
+  let q = queryListTokens(listId)
+  if (chainFilter) q = q.where(eq(s.network.chainId, chainFilter))
 
-  let q = queryListTokens(listId, fields)
-  if (chainFilter) q = q.where(`${tableNames.network}.chainId`, chainFilter)
-
-  const tokens = await q.limit(limit) as Array<{
-    address: string; chainId: string; image_hash: string; ext: string; content?: Buffer
-  }>
+  const tokens = await q.limit(limit)
 
   const seen = new Set<string>()
   const tokenMap: Record<string, [number, number] | string> = {}
   let rasterIdx = 0
 
   for (const t of tokens) {
-    const key = `${t.chainId}-${t.address.toLowerCase()}`
+    const key = `${t.chainId}-${(t.address as string).toLowerCase()}`
     if (seen.has(key)) continue
     seen.add(key)
 
@@ -151,19 +156,10 @@ export const sheet: RequestHandler = async (req, res, next) => {
   const mixed = req.query.content === 'mixed'
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
-  const fields = [
-    `${tableNames.token}.provided_id as address`,
-    `${tableNames.image}.content`,
-    `${tableNames.image}.ext`,
-    `${tableNames.image}.mode`,
-    `${tableNames.image}.uri`,
-    `${tableNames.image}.image_hash`,
-  ]
+  let q = queryListTokens(listId)
+  if (chainFilter) q = q.where(eq(s.network.chainId, chainFilter))
 
-  let q = queryListTokens(listId, fields)
-  if (chainFilter) q = q.where(`${tableNames.network}.chainId`, chainFilter)
-
-  const tokens = await q.limit(limit) as SpriteToken[]
+  const tokens = await q.limit(limit) as unknown as SpriteToken[]
 
   const seen = new Set<string>()
   const deduped: SpriteToken[] = []

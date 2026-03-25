@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as db from '../db'
 import * as utils from '../utils'
-import type { List } from 'knex/types/tables'
+import type { List } from '../db/schema-types'
 import * as paths from '../paths'
 import { zeroAddress, getAddress, type Hex, stringToHex } from 'viem'
 import promiseLimit from 'promise-limit'
@@ -371,13 +371,23 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
       return
     }
     const networkId = utils.chainIdToNetworkId(chain.id)
-    const existingToken = await db
-      .getDB()
-      .from('token')
-      .where({ providedId: address, networkId })
-      .whereNot('name', '')
-      .whereNot('symbol', '')
-      .first<{ name: string; symbol: string; decimals: number }>()
+    const { getDrizzle } = await import('../db/drizzle')
+    const { eq, and, ne } = await import('drizzle-orm')
+    const schemaMod = await import('../db/schema')
+    const [existingToken] = await getDrizzle()
+      .select({
+        name: schemaMod.token.name,
+        symbol: schemaMod.token.symbol,
+        decimals: schemaMod.token.decimals,
+      })
+      .from(schemaMod.token)
+      .where(and(
+        eq(schemaMod.token.providedId, address),
+        eq(schemaMod.token.networkId, networkId),
+        ne(schemaMod.token.name, ''),
+        ne(schemaMod.token.symbol, ''),
+      ))
+      .limit(1)
     if (existingToken) {
       metadata = [existingToken.name, existingToken.symbol, existingToken.decimals]
     } else {
