@@ -26,7 +26,7 @@ import umaCollector from './uma'
 import baofinanceCollector from './baofinance'
 import compoundCollector from './compound'
 import optimismCollector from './optimism'
-// import pumpiresCollector from './pumptires' // API down — disabled until pump.tires comes back
+import pumpiresCollector from './pumptires'
 import dexscreenerCollector from './dexscreener'
 import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
@@ -53,7 +53,7 @@ type CollectableKey =
   | 'pulsechain'
   | 'internetmoney'
   | 'midgard'
-  // | 'pumptires' // disabled — API down
+  | 'pumptires'
   | 'etherscan'
   | 'routescan'
   | 'trustwallet'
@@ -95,7 +95,7 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
       tokenList:
         'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
     }),
-    // pumptires: pumpiresCollector, // disabled — API down
+    pumptires: pumpiresCollector,
     etherscan: etherscanCollector,
     routescan: routescanCollector,
     trustwallet: new TrustWalletCollector(),

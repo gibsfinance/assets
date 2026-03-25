@@ -24,24 +24,6 @@ type InsertHighCapToken = Omit<Parameters<typeof db.fetchImageAndStoreForToken>[
 }
 const insertHighCapTokens = limitBy<[InsertHighCapToken, number]>(`${providerKey}-highcap-inserts`, 16)
 
-type Creator = {
-  address: Hex
-  username: string
-  bio: string
-  avatar_cid: string
-  twitter_id: string
-  twitter_name: string
-  twitter_username: string
-  pending_token_create: string | null
-  created_at: string
-  updated_at: string
-}
-type TradeBatch = {
-  total_buys: number
-  total_sells: number
-  total_amount_sold: string
-  total_amount_bought: string
-}
 type TokenInfo = {
   address: Hex
   name: string
@@ -49,61 +31,65 @@ type TokenInfo = {
   image_cid: string
   description: string
   price: string
-  prev_price: string
+  price_5m_ago: string
+  price_ath: string
+  price_atl: string
   tokens_sold: string
-  prev_tokens_sold: string
-  total_burned: string
-  last_burned_batch: string
+  total_supply: string
   market_value: string
-  prev_market_value: string
-  latest_trade_batch: TradeBatch
-  web: string
-  telegram: string
-  twitter: string
-  created_timestamp: string
-  latest_timestamp: string
-  latest_burn_timestamp: string | null
+  total_volume_usd: string
+  reserve_token: string | null
+  reserve_wpls: string | null
+  locked_lp: string | null
+  lp_total_supply: string | null
+  created_timestamp: number
+  latest_activity_timestamp: number
   is_launched: boolean
-  launch_timestamp: string | null
-  creator: Creator
+  launch_timestamp: number
+  pair_address: string | null
+  creator_address: string
+  creator_username: string
+  creator_avatar_cid: string
 }
 
-type Response = {
-  totalPages: number
+const API_BASE = 'https://api2.pump.tires/api/tokens'
+
+type ApiResponse = {
+  hasMore: boolean
+  limit: number
+  nextCursor: string | null
+  prevCursor: string | null
   tokens: TokenInfo[]
-  message?: string
 }
 
+/** Fetch a single page from the pump.tires v2 cursor-based API. */
 const retrieveData = async ({
   filter,
-  page,
-  pageCount,
+  cursor,
   row,
   section,
   signal,
 }: {
   filter: string
-  page: number
-  pageCount: number | null
+  cursor: string | null
   row: TerminalRowProxy
   section: TerminalSectionProxy
   signal: AbortSignal
-}) => {
-  const url = new URL('https://api.pump.tires/api/tokens')
-  url.searchParams.set('page', `${page}`)
+}): Promise<ApiResponse> => {
+  const url = new URL(API_BASE)
   url.searchParams.set('filter', filter)
-  const task = section.task(`${providerKey}-${filter}-${page}`, {
+  url.searchParams.set('direction', 'next')
+  if (cursor) url.searchParams.set('cursor', cursor)
+
+  const label = cursor ? cursor.slice(0, 20) : 'first'
+  const task = section.task(`${providerKey}-${filter}-${label}`, {
     type: terminalRowTypes.STORAGE,
     id: providerKey,
-    kv: {
-      filter,
-      total: pageCount,
-      page,
-    },
+    kv: { filter, cursor: label },
   })
-  const cacheKey = `${providerKey}-${filter}-${page}`
+  const cacheKey = `${providerKey}-${filter}-${cursor ?? 'first'}`
   return await db
-    .cachedJSON<Response>(cacheKey, signal, async () => {
+    .cachedJSON<ApiResponse>(cacheKey, signal, async () => {
       return await retry(
         async () => {
           const res = await fetch(url, { signal }).catch((err: Error) => {
@@ -113,14 +99,10 @@ const retrieveData = async ({
           const result = (await res.json().catch((err: Error) => {
             failureLog('json error %o', err.message)
             throw err
-          })) as Response
-          // check that the list is not empty
-          if (result.message === 'Too many read requests, please try again later.') {
-            await timeout(10_000).promise
-            throw new Error(result.message)
+          })) as ApiResponse
+          if (!result.tokens) {
+            throw new Error('unexpected response: missing tokens array')
           }
-          // if accessing fails, throw
-          result.tokens[0]
           return result
         },
         { signal },
@@ -131,11 +113,12 @@ const retrieveData = async ({
       throw err
     })
     .finally(() => {
-      row.increment('pages', `${filter}-${page}`)
+      row.increment('pages', `${filter}-${label}`)
       task.complete()
     })
 }
 
+/** Walk the cursor-based API until we hit known tokens or run out of pages. */
 const collectTokens = async (
   knownList: Token[],
   filter: string,
@@ -143,51 +126,29 @@ const collectTokens = async (
   section: TerminalSectionProxy,
   signal: AbortSignal,
 ) => {
+  const knownAddresses = new Set(knownList.map((t) => getAddress(t.providedId)))
   const relevantData: TokenInfo[] = []
-  let discontinue = false
-  const first = await retrieveData({
-    filter,
-    pageCount: null,
-    page: 1,
-    row,
-    section,
-    signal,
-  })
-  if (signal.aborted) {
-    return
+  let cursor: string | null = null
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (signal.aborted) return
+    const response = await retrieveData({ filter, cursor, row, section, signal })
+    if (signal.aborted) return
+
+    let hitKnown = false
+    for (const token of response.tokens) {
+      if (knownAddresses.has(getAddress(token.address))) {
+        hitKnown = true
+        break
+      }
+      relevantData.push(token)
+    }
+
+    if (hitKnown || !response.hasMore || !response.nextCursor) break
+    cursor = response.nextCursor
   }
-  const pageCount = first.totalPages
-  const emptyArray = _.range(1, pageCount + 1)
-  await limiter.map(emptyArray, async (index) => {
-    if (signal.aborted) {
-      return
-    }
-    if (discontinue) {
-      return
-    }
-    const page = index + 1
-    const response = await retrieveData({
-      filter,
-      pageCount,
-      page,
-      row,
-      section,
-      signal,
-    })
-    if (signal.aborted) {
-      return
-    }
-    relevantData.push(...response.tokens)
-    const last = response.tokens[response.tokens.length - 1]
-    if (!last) {
-      discontinue = true
-      return
-    }
-    const lastAddress = getAddress((last as TokenInfo).address)
-    if (knownList.find((t) => getAddress(t.providedId) === lastAddress)) {
-      discontinue = true
-    }
-  })
+
   return _.uniqBy(relevantData, (t) => getAddress(t.address))
 }
 
