@@ -43,7 +43,7 @@ import promiseLimit from 'promise-limit'
 import { join } from './utils'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, lt, gte, sql as dsql } from 'drizzle-orm'
+import { eq, and, lt, gte, desc, sql as dsql } from 'drizzle-orm'
 import * as s from './schema'
 
 export const ids = {
@@ -201,8 +201,9 @@ export const insertImage = async (
     listId: string | null
     image: Buffer
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
+  const db = tx ?? getDrizzle()
   const ext = await getExt(image, path.extname(originalUri))
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
@@ -233,12 +234,14 @@ export const insertImage = async (
       providerKey,
       listId,
     }),
-    t
-      .from(tableNames.image)
-      .insert(insertable)
-      .onConflict(['imageHash'])
-      .merge(['content', 'mode', 'uri']) // Don't update uri, ext, or imageHash
-      .returning<Image[]>(['ext', 'imageHash', 'uri', 'content']),
+    db
+      .insert(s.image)
+      .values(insertable)
+      .onConflictDoUpdate({
+        target: s.image.imageHash,
+        set: { content: dsql`excluded.content`, mode: dsql`excluded.mode`, uri: dsql`excluded.uri` },
+      })
+      .returning(),
   ])
   // this fails for some reason when the db creates the image hash
   // figure out why
@@ -248,17 +251,17 @@ export const insertImage = async (
   // } else {
   //   log('image hash match %o', imageHash)
   // }
-  const [link] = await t
-    .from(tableNames.link)
-    .insert([
-      {
-        uri: originalUri,
-        imageHash: inserted.imageHash,
-      },
-    ])
-    .onConflict(['uri'])
-    .merge(['uri'])
-    .returning<Link[]>('*')
+  const [link] = await db
+    .insert(s.link)
+    .values({
+      uri: originalUri,
+      imageHash: inserted.imageHash,
+    })
+    .onConflictDoUpdate({
+      target: s.link.uri,
+      set: { uri: dsql`excluded.uri` },
+    })
+    .returning()
   return {
     image: inserted,
     link,
@@ -329,24 +332,30 @@ export const getNetworks = (tx?: DrizzleTx) => {
   return db.select().from(s.network)
 }
 
-export const insertToken = async (token: InsertableToken, t: Tx = db) => {
-  const [inserted] = await t
-    .from(tableNames.token)
-    .insert({
+export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const [inserted] = await db
+    .insert(s.token)
+    .values({
+      tokenId: dsql`''`,
+      type: 'erc20',
       ...token,
       name: token.name.split('\x00').join(''),
       symbol: token.symbol.split('\x00').join(''),
     })
-    .onConflict(['tokenId'])
-    .merge(['tokenId'])
-    .returning<Token[]>('*')
+    .onConflictDoUpdate({
+      target: s.token.tokenId,
+      set: { tokenId: dsql`excluded.token_id` },
+    })
+    .returning()
   return inserted
 }
 
-export const getImageFromLink = async (uri: string, t: Tx = db) => {
-  const link = await t.from(tableNames.link).select('*').where('uri', uri).first<Link>()
+export const getImageFromLink = async (uri: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const [link] = await db.select().from(s.link).where(eq(s.link.uri, uri)).limit(1)
   if (!link) return null
-  const image = await t.from(tableNames.image).select('*').where('imageHash', link.imageHash).first<Image>()
+  const [image] = await db.select().from(s.image).where(eq(s.image.imageHash, link.imageHash)).limit(1)
   if (!image) return null
   return {
     link,
@@ -358,16 +367,16 @@ export const getImageFromLink = async (uri: string, t: Tx = db) => {
  * Check whether a cached image link is still fresh based on link.updated_at.
  * Returns the existing {link, image} if fresh, null if stale or missing.
  */
-export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, t: Tx = db) => {
-  const cutoff = new Date(Date.now() - maxAgeMs)
-  const link = await t
-    .from(tableNames.link)
-    .select('*')
-    .where('uri', uri)
-    .where('updated_at', '>=', cutoff)
-    .first<Link>()
+export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const cutoff = new Date(Date.now() - maxAgeMs).toISOString()
+  const [link] = await db
+    .select()
+    .from(s.link)
+    .where(and(eq(s.link.uri, uri), gte(s.link.updatedAt, cutoff)))
+    .limit(1)
   if (!link) return null
-  const image = await t.from(tableNames.image).select('*').where('imageHash', link.imageHash).first<Image>()
+  const [image] = await db.select().from(s.image).where(eq(s.image.imageHash, link.imageHash)).limit(1)
   if (!image) return null
   return { link, image }
 }
@@ -393,14 +402,16 @@ export const resolveImage = async (
 /**
  * Batch insert tokens. Returns all upserted token records.
  */
-export const insertTokenBatch = async (tokens: InsertableToken[], t: Tx = db) => {
+export const insertTokenBatch = async (tokens: InsertableToken[], tx?: DrizzleTx) => {
   if (!tokens.length) return []
+  const db = tx ?? getDrizzle()
   const cleaned = tokens.map((token) => {
     let providedId = token.providedId
     if (viem.isAddress(providedId)) {
       providedId = viem.getAddress(providedId)
     }
     return {
+      tokenId: dsql`''` as unknown as string,
       type: 'erc20' as const,
       ...token,
       providedId,
@@ -410,15 +421,17 @@ export const insertTokenBatch = async (tokens: InsertableToken[], t: Tx = db) =>
   })
   // PG has a ~65535 parameter limit; 7 columns per row → max ~500 rows per batch
   const chunkSize = 500
-  const results: Token[] = []
+  const results: (typeof s.token.$inferSelect)[] = []
   for (let i = 0; i < cleaned.length; i += chunkSize) {
     const chunk = cleaned.slice(i, i + chunkSize)
-    const rows = await t
-      .from(tableNames.token)
-      .insert(chunk)
-      .onConflict(['tokenId'])
-      .merge(['tokenId'])
-      .returning<Token[]>('*')
+    const rows = await db
+      .insert(s.token)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: s.token.tokenId,
+        set: { tokenId: dsql`excluded.token_id` },
+      })
+      .returning()
     results.push(...rows)
   }
   return results
@@ -440,9 +453,9 @@ export const storeToken = async (
     imageHash?: string
     listTokenOrderId: number
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
-  const insertedToken = await insertToken({ type: 'erc20', ...token }, t)
+  const insertedToken = await insertToken({ type: 'erc20', ...token }, tx)
   const [listToken] = await insertListToken(
     {
       tokenId: insertedToken.tokenId,
@@ -450,7 +463,7 @@ export const storeToken = async (
       imageHash,
       listTokenOrderId,
     },
-    t,
+    tx,
   )
   return { token: insertedToken, listToken }
 }
@@ -467,9 +480,10 @@ export const batchFetchImagesForTokens = async (
     providerKey: string
     signal?: AbortSignal
   }[],
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
   if (!tokenImages.length) return []
+  const db = tx ?? getDrizzle()
 
   // Use promiseLimit to control concurrency
   const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
@@ -483,8 +497,6 @@ export const batchFetchImagesForTokens = async (
           const resolved = await resolveImage(item.uri, item.signal, item.providerKey)
           if (!resolved) return null
 
-          const imageHash = ids.imageHash(resolved.buffer, resolved.originalUri, resolved.ext)
-
           // Store the image
           const imageResult = await insertImage(
             {
@@ -493,7 +505,7 @@ export const batchFetchImagesForTokens = async (
               image: resolved.buffer,
               listId: null, // We'll update the listToken separately
             },
-            t,
+            tx,
           )
 
           if (!imageResult) {
@@ -503,7 +515,10 @@ export const batchFetchImagesForTokens = async (
           const { image } = imageResult
 
           // Update the list token with the image hash
-          await t(tableNames.listToken).where('listTokenId', item.listTokenId).update({ imageHash })
+          await db
+            .update(s.listToken)
+            .set({ imageHash: image.imageHash })
+            .where(eq(s.listToken.listTokenId, item.listTokenId))
 
           return { listTokenId: item.listTokenId, success: true, image }
         } catch (error) {
@@ -559,15 +574,16 @@ export const fetchImageAndStoreForList = async (
     signal?: AbortSignal
     maxImageAge?: number
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
+  const db = tx ?? getDrizzle()
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
+    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
     if (existing) {
-      const list = await getListFromId(listId, t)
+      const list = await getListFromId(listId, tx)
       if (list && list.imageHash && list.imageHash === existing.image.imageHash) {
         return {
           ...existing,
@@ -577,7 +593,7 @@ export const fetchImageAndStoreForList = async (
     }
   }
   if (!uri || !originalUri) {
-    const list = await getListFromId(listId, t)
+    const list = await getListFromId(listId, tx)
     return {
       list,
     }
@@ -599,25 +615,24 @@ export const fetchImageAndStoreForList = async (
       providerKey,
       listId,
     },
-    t,
+    tx,
   )
   if (!img) {
     return
   }
-  const [list] = await t
-    .from(tableNames.list)
-    .update('imageHash', img.image.imageHash)
-    .where('listId', listId)
-    .returning<List[]>('*')
+  const [list] = await db
+    .update(s.list)
+    .set({ imageHash: img.image.imageHash })
+    .where(eq(s.list.listId, listId))
+    .returning()
   return {
     list,
     ...img,
   }
 }
 
-export const getListFromId = async (listId: string, tx?: DrizzleTx | Tx) => {
-  // During Knex→Drizzle transition: ignore Knex Tx, use Drizzle directly. Callers still pass Knex Tx.
-  const db = (tx && 'select' in tx && '$with' in tx ? tx : null) ?? getDrizzle()
+export const getListFromId = async (listId: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
   const [row] = await db.select().from(s.list).where(eq(s.list.listId, listId)).limit(1)
   return row
 }
@@ -638,13 +653,14 @@ export const fetchImageAndStoreForNetwork = async (
     signal?: AbortSignal
     maxImageAge?: number
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
+  const db = tx ?? getDrizzle()
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
+    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
     if (existing) return { network, ...existing }
   }
   const image = await fetchImage(uri, signal, providerKey, `chain-id:${network.chainId}`)
@@ -657,7 +673,7 @@ export const fetchImageAndStoreForNetwork = async (
     })
     return
   }
-  return t.transaction(async (tx) => {
+  return db.transaction(async (innerTx) => {
     const img = await insertImage(
       {
         originalUri,
@@ -665,16 +681,16 @@ export const fetchImageAndStoreForNetwork = async (
         providerKey,
         listId: `${network.chainId}`,
       },
-      tx,
+      innerTx,
     )
     if (!img) {
       return
     }
-    const [ntwrk] = await tx
-      .from(tableNames.network)
-      .update('imageHash', img.image.imageHash)
-      .where('networkId', network.networkId)
-      .returning<Network[]>('*')
+    const [ntwrk] = await innerTx
+      .update(s.network)
+      .set({ imageHash: img.image.imageHash })
+      .where(eq(s.network.networkId, network.networkId))
+      .returning()
     return {
       network: ntwrk,
       ...img,
@@ -691,18 +707,19 @@ export const fetchAndInsertHeader = async (
     signal?: AbortSignal
     maxImageAge?: number
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ) => {
+  const db = tx ?? getDrizzle()
   const maxImageAge = header.maxImageAge ?? sixHours
   if (_.isString(header.uri)) {
-    const existing = await getFreshImageFromLink(header.uri, maxImageAge, t)
+    const existing = await getFreshImageFromLink(header.uri, maxImageAge, tx)
     if (existing) return
   }
   const image = await fetchImage(header.uri, header.signal, header.providerKey, header.listTokenId)
   if (!image) {
     return
   }
-  await t.transaction(async (tx) => {
+  await db.transaction(async (innerTx) => {
     const result = await insertImage(
       {
         providerKey: header.providerKey,
@@ -710,7 +727,7 @@ export const fetchAndInsertHeader = async (
         image,
         listId: header.listTokenId,
       },
-      t,
+      innerTx,
     )
     if (!result) {
       return
@@ -721,19 +738,22 @@ export const fetchAndInsertHeader = async (
         listTokenId: header.listTokenId,
         imageHash: img.imageHash,
       },
-      tx,
+      innerTx,
     )
     return inserted
   })
 }
 
-export const insertHeaderLink = async (header: InsertableHeaderLink, t: Tx = db) => {
-  return await t
-    .from(tableNames.headerLink)
-    .insert(header)
-    .onConflict(['listTokenId'])
-    .merge(['listTokenId'])
-    .returning<HeaderLink[]>('*')
+export const insertHeaderLink = async (header: InsertableHeaderLink, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return await db
+    .insert(s.headerLink)
+    .values(header)
+    .onConflictDoUpdate({
+      target: s.headerLink.listTokenId,
+      set: { listTokenId: dsql`excluded.list_token_id` },
+    })
+    .returning()
 }
 
 const sixHours = 1000 * 60 * 60 * 6
@@ -749,13 +769,14 @@ export const fetchImageAndStoreForToken = async (
     signal?: AbortSignal
     maxImageAge?: number
   },
-  t: Tx = db,
+  tx?: DrizzleTx,
 ): Promise<{
-  token: Token
-  listToken: ListToken
-  link?: Link
-  image?: Image
+  token: typeof s.token.$inferSelect
+  listToken: typeof s.listToken.$inferSelect
+  link?: typeof s.link.$inferSelect
+  image?: typeof s.image.$inferSelect
 }> => {
+  const db = tx ?? getDrizzle()
   const { listId, uri, token, providerKey, signal, listTokenOrderId, maxImageAge = sixHours } = inputs
   if (!listId) {
     throw new Error('listId is required')
@@ -768,33 +789,42 @@ export const fetchImageAndStoreForToken = async (
   if (viem.isAddress(providedId)) {
     providedId = viem.getAddress(token.providedId)
   }
-  const getListToken = async (tokenId: string, imageHash: string) =>
-    await t(tableNames.listToken)
-      .select<ListToken>(`${tableNames.listToken}.*`)
-      .join(tableNames.token, {
-        [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
+  const getListToken = async (tokenId: string, imageHash: string) => {
+    const [row] = await db
+      .select({
+        tokenId: s.listToken.tokenId,
+        listId: s.listToken.listId,
+        imageHash: s.listToken.imageHash,
+        listTokenId: s.listToken.listTokenId,
+        listTokenOrderId: s.listToken.listTokenOrderId,
+        createdAt: s.listToken.createdAt,
+        updatedAt: s.listToken.updatedAt,
       })
-      .where({
-        [`${tableNames.token}.networkId`]: token.networkId,
-        [`${tableNames.token}.providedId`]: token.providedId,
-      })
-      .where({
-        listId,
-        imageHash,
-        [`${tableNames.listToken}.tokenId`]: tokenId,
-      })
-      .first<ListToken>()
+      .from(s.listToken)
+      .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+      .where(
+        and(
+          eq(s.token.networkId, token.networkId),
+          eq(s.token.providedId, token.providedId),
+          eq(s.listToken.listId, listId),
+          eq(s.listToken.imageHash, imageHash),
+          eq(s.listToken.tokenId, tokenId),
+        ),
+      )
+      .limit(1)
+    return row
+  }
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, t)
+    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
     if (existing) {
-      const insertedToken = (await insertToken(
+      const insertedToken = await insertToken(
         {
           type: 'erc20',
           ...token,
           providedId,
         },
-        t,
-      )) as Token
+        tx,
+      )
       if (listId) {
         if (
           insertedToken.name === token.name &&
@@ -832,7 +862,7 @@ export const fetchImageAndStoreForToken = async (
           image,
           listId,
         },
-        t,
+        tx,
       )
     }
   }
@@ -842,7 +872,7 @@ export const fetchImageAndStoreForToken = async (
       ...token,
       providedId,
     },
-    t,
+    tx,
   )
   const [listToken] = await insertListToken(
     {
@@ -851,7 +881,7 @@ export const fetchImageAndStoreForToken = async (
       imageHash: img?.image.imageHash,
       listTokenOrderId,
     },
-    t,
+    tx,
   )
   return {
     token: insertedToken,
@@ -860,13 +890,21 @@ export const fetchImageAndStoreForToken = async (
   }
 }
 
-export const insertListToken = async (listToken: InsertableListToken | InsertableListToken[], t: Tx = db) => {
-  return await t
-    .from(tableNames.listToken)
-    .insert(listToken)
-    .onConflict(['listTokenId'])
-    .merge(['listTokenId'])
-    .returning<ListToken[]>('*')
+export const insertListToken = async (listToken: InsertableListToken | InsertableListToken[], tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const items = Array.isArray(listToken) ? listToken : [listToken]
+  const values = items.map((lt) => ({
+    listTokenId: dsql`''` as unknown as string,
+    ...lt,
+  }))
+  return await db
+    .insert(s.listToken)
+    .values(values)
+    .onConflictDoUpdate({
+      target: s.listToken.listTokenId,
+      set: { listTokenId: dsql`excluded.list_token_id` },
+    })
+    .returning()
 }
 
 export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
@@ -1187,41 +1225,60 @@ export const pruneVariants = async (
   return deleted.length
 }
 
-export const insertBridge = async (bridge: InsertableBridge, t: Tx = getDB()) => {
-  const [b] = await t
-    .insert(bridge)
-    .into(tableNames.bridge)
-    .onConflict(['bridgeId'])
-    .merge(['bridgeId'])
-    .returning<Bridge[]>('*')
+export const insertBridge = async (bridge: InsertableBridge, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  // Knex InsertableBridge has block numbers as string; Drizzle schema uses bigint mode: 'number'.
+  // The pg driver handles both at runtime — cast to satisfy Drizzle's type system during transition.
+  const values = { bridgeId: dsql`''`, ...bridge } as unknown as typeof s.bridge.$inferInsert
+  const [b] = await db
+    .insert(s.bridge)
+    .values(values)
+    .onConflictDoUpdate({
+      target: s.bridge.bridgeId,
+      set: { bridgeId: dsql`excluded.bridge_id` },
+    })
+    .returning()
   return b
 }
 
-export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, t: Tx = getDB()) => {
-  const [bl] = await t
-    .insert(bridgeLink)
-    .into(tableNames.bridgeLink)
-    .onConflict(['bridgeLinkId'])
-    .merge(['bridgeLinkId'])
-    .returning<BridgeLink[]>('*')
+export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const [bl] = await db
+    .insert(s.bridgeLink)
+    .values({
+      bridgeLinkId: dsql`''` as unknown as string,
+      ...bridgeLink,
+    })
+    .onConflictDoUpdate({
+      target: s.bridgeLink.bridgeLinkId,
+      set: { bridgeLinkId: dsql`excluded.bridge_link_id` },
+    })
+    .returning()
   return bl
 }
 
-export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx: Tx = getDB()) =>
-  tx(tableNames.bridge).update(updates).where('bridgeId', bridgeId)
+export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return db.update(s.bridge).set(updates as Record<string, unknown>).where(eq(s.bridge.bridgeId, bridgeId))
+}
 
-export const getBridge = (bridgeId: string, tx: Tx = getDB()) =>
-  tx(tableNames.bridge).where('bridgeId', bridgeId).first<Bridge>()
+export const getBridge = async (bridgeId: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const [row] = await db.select().from(s.bridge).where(eq(s.bridge.bridgeId, bridgeId)).limit(1)
+  return row
+}
 
-export const getLatestBridgeToken = (bridgeId: string, tx: Tx = getDB()) =>
-  tx(tableNames.bridgeLink)
-    .join(tableNames.token, {
-      [`${tableNames.token}.tokenId`]: `${tableNames.bridgeLink}.bridgedTokenId`,
-    })
-    .count('*')
-    .where('bridgeId', bridgeId)
-    .orderBy('bridgeLinkId', 'desc')
-    .first()
+export const getLatestBridgeToken = async (bridgeId: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const [row] = await db
+    .select({ count: dsql<number>`count(*)` })
+    .from(s.bridgeLink)
+    .innerJoin(s.token, eq(s.token.tokenId, s.bridgeLink.bridgedTokenId))
+    .where(eq(s.bridgeLink.bridgeId, bridgeId))
+    .orderBy(desc(s.bridgeLink.bridgeLinkId))
+    .limit(1)
+  return row
+}
 
 export const getCachedRequest = async (key: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
