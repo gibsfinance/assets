@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import type React from 'react'
 import {
   nextState,
   getTranslateY,
+  getFirstTouchY,
   resolveFlickState,
   snapToNearestState,
   resolveTouchEndState,
@@ -261,5 +263,22 @@ describe('resolveTouchEndState', () => {
     // currentState='full' → flick down → 'half'
     const result = resolveTouchEndState(200, 0, 'full', 0, vh)
     expect(result).toEqual({ type: 'resolved', state: 'half' })
+  })
+})
+
+describe('getFirstTouchY', () => {
+  it('returns clientY from the first touch', () => {
+    const touches = [{ clientY: 250 }] as unknown as React.TouchList
+    expect(getFirstTouchY(touches)).toBe(250)
+  })
+
+  it('returns null when touches list is empty', () => {
+    const touches = [] as unknown as React.TouchList
+    expect(getFirstTouchY(touches)).toBeNull()
+  })
+
+  it('returns null when first touch is undefined', () => {
+    const touches = { 0: undefined, length: 0 } as unknown as React.TouchList
+    expect(getFirstTouchY(touches)).toBeNull()
   })
 })

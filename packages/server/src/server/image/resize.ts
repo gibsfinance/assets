@@ -62,7 +62,7 @@ export function extToFormat(ext: string): string {
 }
 
 /** Map user-facing format param to sharp format name. Sharp uses 'jpeg' not 'jpg'. */
-function normalizeFormat(format: string): string {
+export function normalizeFormat(format: string): string {
   return format === 'jpg' ? 'jpeg' : format
 }
 
@@ -204,7 +204,7 @@ export async function maybeResize(
   return true
 }
 
-function sendVariant(res: Response, variant: ImageVariant, uri?: string): void {
+export function sendVariant(res: Response, variant: ImageVariant, uri?: string): void {
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   r = r.set('x-resize', variant.width && variant.height
     ? `${variant.width}x${variant.height}`

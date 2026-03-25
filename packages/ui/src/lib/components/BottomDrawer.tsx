@@ -78,6 +78,12 @@ export function resolveTouchEndState(
   return { type: 'resolved', state: snapToNearestState(finalY, viewportHeight) }
 }
 
+/** Extract the Y coordinate from the first touch, or null if no touches. */
+export function getFirstTouchY(touches: React.TouchList): number | null {
+  const touch = touches[0]
+  return touch ? touch.clientY : null
+}
+
 export default function BottomDrawer({ children, handle, enabled = true }: BottomDrawerProps) {
   const [drawerState, setDrawerState] = useState<DrawerState>('collapsed')
   const [isDragging, setIsDragging] = useState(false)
@@ -131,10 +137,10 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      const touch = e.touches[0]
-      if (!touch) return
+      const y = getFirstTouchY(e.touches)
+      if (y === null) return
       wasTouched.current = true
-      touchStartY.current = touch.clientY
+      touchStartY.current = y
       touchStartTime.current = Date.now()
       currentTranslateY.current = baseTranslateY
       setIsDragging(true)
@@ -146,9 +152,9 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
   const handleTouchMove = useCallback(
     (e: React.TouchEvent) => {
       if (!isDragging) return
-      const touch = e.touches[0]
-      if (!touch) return
-      const deltaY = touch.clientY - touchStartY.current
+      const y = getFirstTouchY(e.touches)
+      if (y === null) return
+      const deltaY = y - touchStartY.current
       const newOffset = Math.max(deltaY, -currentTranslateY.current)
       setDragOffset(newOffset)
     },

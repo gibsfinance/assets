@@ -133,7 +133,8 @@ export const urlToPossibleLocations = (url: string | URL, ipfsDomains: string[])
   const urls: URL[] = []
   url = new URL(url as string | URL)
   if (url.protocol === 'ipfs:') {
-    const cid = url.origin && url.origin !== 'null' ? url.pathname.split('/')[1] : `${url.host}${url.pathname}`
+    // Non-standard protocols (ipfs:) always have opaque origin ('null' per URL spec)
+    const cid = `${url.host}${url.pathname}`
     // load balance across ipfs domains
     for (const domain of ipfsDomains) {
       urls.push(new URL(`${domain}${cid}`))

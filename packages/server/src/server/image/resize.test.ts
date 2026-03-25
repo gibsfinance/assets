@@ -22,7 +22,7 @@ vi.mock('../../../config', () => ({
   default: { cacheSeconds: 86400 },
 }))
 
-import { parseResizeParams, svgHasViewBox, checkRateLimit, extToFormat, formatToContentType, maybeResize } from './resize'
+import { parseResizeParams, svgHasViewBox, checkRateLimit, extToFormat, formatToContentType, maybeResize, normalizeFormat, sendVariant } from './resize'
 import * as db from '../../db'
 import sharp from 'sharp'
 
@@ -683,6 +683,41 @@ describe('sendVariant (via maybeResize)', () => {
 // ---------------------------------------------------------------------------
 // cleanExpiredWindows — triggered when perImageWindows.size > 1000
 // ---------------------------------------------------------------------------
+
+describe('normalizeFormat', () => {
+  it('converts jpg to jpeg', () => {
+    expect(normalizeFormat('jpg')).toBe('jpeg')
+  })
+
+  it('passes through non-jpg formats unchanged', () => {
+    expect(normalizeFormat('webp')).toBe('webp')
+    expect(normalizeFormat('png')).toBe('png')
+    expect(normalizeFormat('avif')).toBe('avif')
+    expect(normalizeFormat('jpeg')).toBe('jpeg')
+  })
+})
+
+describe('sendVariant (direct)', () => {
+  it('sets headers and sends content', () => {
+    const res = mockRes()
+    sendVariant(res, {
+      imageHash: 'abc',
+      width: 72,
+      height: 72,
+      format: 'webp',
+      content: Buffer.from('test'),
+      accessCount: 1,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+    }, 'https://example.com/img.png')
+
+    expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age='))
+    expect(res.set).toHaveBeenCalledWith('x-resize', '72x72')
+    expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/img.png')
+    expect(res.contentType).toHaveBeenCalledWith('image/webp')
+    expect(res.send).toHaveBeenCalled()
+  })
+})
 
 describe('cleanExpiredWindows (triggered via checkRateLimit)', () => {
   afterEach(() => {
