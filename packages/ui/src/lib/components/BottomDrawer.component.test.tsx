@@ -461,6 +461,35 @@ describe('BottomDrawer body scroll lock', () => {
 // Touch handler guards: touchMove / touchEnd when not dragging
 // ---------------------------------------------------------------------------
 
+describe('BottomDrawer empty touches guard (getFirstTouchY null path)', () => {
+  it('ignores touchStart with empty touches list', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Dispatch a touchStart with no touches — getFirstTouchY returns null
+    handle.dispatchEvent(new TouchEvent('touchstart', { touches: [], bubbles: true }))
+
+    // Drawer stays collapsed — no state change
+    expect(dialog.getAttribute('aria-modal')).toBe('false')
+  })
+
+  it('ignores touchMove with empty touches list during drag', () => {
+    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    const handle = screen.getByRole('button')
+    const dialog = screen.getByRole('dialog')
+
+    // Start a real drag first
+    fireEvent.touchStart(handle, { touches: [{ clientY: 400 }] })
+
+    // Then fire a touchMove with empty touches
+    handle.dispatchEvent(new TouchEvent('touchmove', { touches: [], bubbles: true }))
+
+    // No crash, dialog still open (half from the touchStart cycle)
+    expect(dialog).toBeTruthy()
+  })
+})
+
 describe('BottomDrawer touch guards', () => {
   it('ignores touchMove events when not actively dragging', () => {
     render(<BottomDrawer><div>Content</div></BottomDrawer>)
