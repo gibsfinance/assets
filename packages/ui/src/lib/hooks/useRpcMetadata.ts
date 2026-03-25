@@ -53,12 +53,44 @@ export function getClient(chainId: number) {
   })
 }
 
-interface MetadataResult {
+export interface MetadataResult {
   address: string
   name: string | null
   symbol: string | null
   decimals: number | null
   error?: string
+}
+
+interface ReadContractClient {
+  readContract(args: { address: `0x${string}`; abi: typeof erc20Abi; functionName: string }): Promise<unknown>
+}
+
+/** Fetch ERC-20 metadata for a single token. Exported for direct testing. */
+export async function fetchTokenMetadata(
+  client: ReadContractClient,
+  address: string,
+): Promise<MetadataResult> {
+  try {
+    const [name, symbol, decimals] = await Promise.all([
+      client
+        .readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'name' })
+        .catch(() => null),
+      client
+        .readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'symbol' })
+        .catch(() => null),
+      client
+        .readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'decimals' })
+        .catch(() => null),
+    ])
+    return {
+      address,
+      name: name as string | null,
+      symbol: symbol as string | null,
+      decimals: decimals !== null ? Number(decimals) : null,
+    }
+  } catch (err) {
+    return { address, name: null, symbol: null, decimals: null, error: (err as Error).message }
+  }
 }
 
 export function useRpcMetadata() {
@@ -86,47 +118,7 @@ export function useRpcMetadata() {
       for (let i = 0; i < tokens.length; i += batchSize) {
         const batch = tokens.slice(i, i + batchSize)
         const batchResults = await Promise.all(
-          batch.map(async (token): Promise<MetadataResult> => {
-            try {
-              const [name, symbol, decimals] = await Promise.all([
-                client
-                  .readContract({
-                    address: token.address as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: 'name',
-                  })
-                  .catch(() => null),
-                client
-                  .readContract({
-                    address: token.address as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: 'symbol',
-                  })
-                  .catch(() => null),
-                client
-                  .readContract({
-                    address: token.address as `0x${string}`,
-                    abi: erc20Abi,
-                    functionName: 'decimals',
-                  })
-                  .catch(() => null),
-              ])
-              return {
-                address: token.address,
-                name: name as string | null,
-                symbol: symbol as string | null,
-                decimals: decimals !== null ? Number(decimals) : null,
-              }
-            } catch (err) {
-              return {
-                address: token.address,
-                name: null,
-                symbol: null,
-                decimals: null,
-                error: (err as Error).message,
-              }
-            }
-          }),
+          batch.map((token) => fetchTokenMetadata(client, token.address)),
         )
         results.push(...batchResults)
         setProgress({ done: Math.min(i + batchSize, tokens.length), total: tokens.length })

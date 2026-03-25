@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import GibImage from './gib-image'
+import GibImage, { setupLazyObserver } from './gib-image'
 
 function getImg(container: HTMLElement) {
   const img = container.querySelector('img')
@@ -145,5 +145,89 @@ describe('GibImage', () => {
     expect(container.querySelector('img')).toBeNull()
     // observer should NOT have disconnected — still watching
     expect(mockDisconnect).not.toHaveBeenCalled()
+  })
+})
+
+describe('setupLazyObserver', () => {
+  it('returns undefined when el is null — defensive guard', () => {
+    const result = setupLazyObserver(null, vi.fn(), '200px')
+    expect(result).toBeUndefined()
+  })
+
+  it('returns a cleanup function when el is a valid element', () => {
+    const mockDisconnect = vi.fn()
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      disconnect = mockDisconnect
+    })
+
+    const el = document.createElement('span')
+    const cleanup = setupLazyObserver(el, vi.fn(), '200px')
+    expect(typeof cleanup).toBe('function')
+  })
+
+  it('calls onVisible and disconnects when entry is intersecting', () => {
+    const mockDisconnect = vi.fn()
+    let capturedCallback!: IntersectionObserverCallback
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(cb: IntersectionObserverCallback) {
+        capturedCallback = cb
+      }
+      observe() {}
+      disconnect = mockDisconnect
+    })
+
+    const el = document.createElement('span')
+    const onVisible = vi.fn()
+    setupLazyObserver(el, onVisible, '200px')
+
+    // Simulate the observer firing with isIntersecting=true
+    capturedCallback(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+
+    expect(onVisible).toHaveBeenCalledTimes(1)
+    expect(mockDisconnect).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT call onVisible and does NOT disconnect when entry is not intersecting', () => {
+    const mockDisconnect = vi.fn()
+    let capturedCallback!: IntersectionObserverCallback
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(cb: IntersectionObserverCallback) {
+        capturedCallback = cb
+      }
+      observe() {}
+      disconnect = mockDisconnect
+    })
+
+    const el = document.createElement('span')
+    const onVisible = vi.fn()
+    setupLazyObserver(el, onVisible, '200px')
+
+    // Simulate the observer firing with isIntersecting=false
+    capturedCallback(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    )
+
+    expect(onVisible).not.toHaveBeenCalled()
+    expect(mockDisconnect).not.toHaveBeenCalled()
+  })
+
+  it('cleanup function disconnects the observer', () => {
+    const mockDisconnect = vi.fn()
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      disconnect = mockDisconnect
+    })
+
+    const el = document.createElement('span')
+    const cleanup = setupLazyObserver(el, vi.fn(), '200px')
+
+    expect(mockDisconnect).not.toHaveBeenCalled()
+    cleanup!()
+    expect(mockDisconnect).toHaveBeenCalledTimes(1)
   })
 })

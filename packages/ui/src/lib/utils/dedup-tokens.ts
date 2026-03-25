@@ -4,8 +4,38 @@ import type { Token, TokenListReference } from '../types'
  * Build an image URI for a token. Accepts an optional prefix so callers
  * can prepend the API base URL (or omit it in tests).
  */
-function tokenImageUri(token: Token, prefix = ''): string {
+export function tokenImageUri(token: Token, prefix = ''): string {
   return `${prefix}/image/${token.chainId}/${token.address}`
+}
+
+/**
+ * Merge a token into the dedup map, initializing or appending listReferences.
+ * Exported for direct testing of the defensive `!existing.listReferences` guard.
+ */
+export function mergeTokenIntoMap(
+  tokenMap: Map<string, Token>,
+  token: Token,
+  ref: TokenListReference,
+  imageUriPrefix = '',
+): void {
+  const key = `${token.chainId}-${token.address.toLowerCase()}`
+  const existing = tokenMap.get(key)
+  if (existing) {
+    if (!existing.listReferences) {
+      existing.listReferences = [
+        {
+          sourceList: existing.sourceList,
+          imageUri: tokenImageUri(existing, imageUriPrefix),
+          imageFormat: '',
+        },
+      ]
+    }
+    if (!existing.listReferences.some((r) => r.sourceList === ref.sourceList)) {
+      existing.listReferences.push(ref)
+    }
+  } else {
+    tokenMap.set(key, { ...token, listReferences: [ref] })
+  }
 }
 
 /**
@@ -30,29 +60,12 @@ export function deduplicateTokens(
   const addToken = (token: Token) => {
     if (token.chainId.toString() !== selectedChainId) return
     if (!token.hasIcon) return
-    const key = `${token.chainId}-${token.address.toLowerCase()}`
     const ref: TokenListReference = {
       sourceList: token.sourceList,
       imageUri: tokenImageUri(token, imageUriPrefix),
       imageFormat: '',
     }
-    const existing = tokenMap.get(key)
-    if (existing) {
-      if (!existing.listReferences) {
-        existing.listReferences = [
-          {
-            sourceList: existing.sourceList,
-            imageUri: tokenImageUri(existing, imageUriPrefix),
-            imageFormat: '',
-          },
-        ]
-      }
-      if (!existing.listReferences.some((r) => r.sourceList === ref.sourceList)) {
-        existing.listReferences.push(ref)
-      }
-    } else {
-      tokenMap.set(key, { ...token, listReferences: [ref] })
-    }
+    mergeTokenIntoMap(tokenMap, token, ref, imageUriPrefix)
   }
 
   // Non-bridge lists first

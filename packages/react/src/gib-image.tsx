@@ -27,6 +27,26 @@ export interface GibImageProps {
   onLoad?: () => void
 }
 
+/** Set up an IntersectionObserver for lazy loading. Returns a cleanup function or undefined. */
+export function setupLazyObserver(
+  el: HTMLElement | null,
+  onVisible: () => void,
+  margin: string,
+): (() => void) | undefined {
+  if (!el) return undefined
+  const observer = new IntersectionObserver(
+    ([entry]) => {
+      if (entry.isIntersecting) {
+        onVisible()
+        observer.disconnect()
+      }
+    },
+    { rootMargin: margin },
+  )
+  observer.observe(el)
+  return () => observer.disconnect()
+}
+
 /**
  * Low-level image component with skeleton loading and IntersectionObserver.
  * Used internally by TokenImage and NetworkImage.
@@ -66,19 +86,7 @@ export default function GibImage({
 
   useEffect(() => {
     if (!lazy) return
-    const el = ref.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: lazyMargin },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
+    return setupLazyObserver(ref.current, () => setVisible(true), lazyMargin)
   }, [lazy, lazyMargin])
 
   const borderRadius = shape === 'circle' ? '50%' : '4px'

@@ -4,6 +4,7 @@ import {
   getTranslateY,
   resolveFlickState,
   snapToNearestState,
+  resolveTouchEndState,
   COLLAPSED_HEIGHT,
   HALF_HEIGHT_RATIO,
   type DrawerState,
@@ -180,5 +181,85 @@ describe('snapToNearestState', () => {
     expect(snapToNearestState(100, largeVh)).toBe('full')
     expect(snapToNearestState(720, largeVh)).toBe('half')
     expect(snapToNearestState(1100, largeVh)).toBe('collapsed')
+  })
+})
+
+describe('resolveTouchEndState', () => {
+  const vh = 800
+  // With vh=800: fullY=0, halfY=480, collapsedY=752
+
+  it('returns tap when dragOffset is small and elapsed is short', () => {
+    // |5| < 8 && 100 < 300 → tap
+    const result = resolveTouchEndState(5, 100, 'collapsed', 752, vh)
+    expect(result).toEqual({ type: 'tap' })
+  })
+
+  it('returns tap for negative small dragOffset', () => {
+    // |-5| < 8 && 100 < 300 → tap
+    const result = resolveTouchEndState(-5, 100, 'half', 480, vh)
+    expect(result).toEqual({ type: 'tap' })
+  })
+
+  it('is NOT a tap when dragOffset is exactly 8 (boundary)', () => {
+    // |8| < 8 is false → resolved
+    const result = resolveTouchEndState(8, 100, 'collapsed', 752, vh)
+    expect(result.type).toBe('resolved')
+  })
+
+  it('is NOT a tap when elapsed is exactly 300 (boundary)', () => {
+    // elapsed < 300 is false → resolved
+    const result = resolveTouchEndState(5, 300, 'collapsed', 752, vh)
+    expect(result.type).toBe('resolved')
+  })
+
+  it('flick up: large negative offset in short time → resolved with flick target', () => {
+    // dragOffset=-100, elapsed=50 → velocity = -100/50 = -2.0 (< -0.3)
+    // currentState='collapsed' → resolveFlickState returns 'half'
+    const result = resolveTouchEndState(-100, 50, 'collapsed', 752, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'half' })
+  })
+
+  it('flick up from half → full', () => {
+    // dragOffset=-100, elapsed=50 → velocity=-2.0 (< -0.3)
+    // currentState='half' → resolveFlickState returns 'full'
+    const result = resolveTouchEndState(-100, 50, 'half', 480, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'full' })
+  })
+
+  it('flick down: large positive offset in short time → resolved with flick target', () => {
+    // dragOffset=100, elapsed=50 → velocity=2.0 (> 0.3)
+    // currentState='full' → resolveFlickState returns 'half'
+    const result = resolveTouchEndState(100, 50, 'full', 0, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'half' })
+  })
+
+  it('flick down from half → collapsed', () => {
+    // dragOffset=100, elapsed=50 → velocity=2.0 (> 0.3)
+    // currentState='half' → resolveFlickState returns 'collapsed'
+    const result = resolveTouchEndState(100, 50, 'half', 480, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'collapsed' })
+  })
+
+  it('slow drag uses snapToNearestState → resolved with snapped state', () => {
+    // dragOffset=10, elapsed=500 → velocity=0.02 (not a flick)
+    // currentTranslateY=480, finalY=490 → closest to halfY(480) → 'half'
+    const result = resolveTouchEndState(10, 500, 'half', 480, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'half' })
+  })
+
+  it('from full state, slow drag near collapsed position → resolved collapsed', () => {
+    // Drag from full (translateY=0) by 720px over 2000ms → velocity=0.36 which IS a flick
+    // Use a very slow drag: dragOffset=720, elapsed=5000 → velocity=0.144 (not a flick)
+    // finalY = 0 + 720 = 720 → closest to halfY(480)? dist=240; collapsedY(752)? dist=32 → collapsed
+    // Actually 720 is closer to halfY=480 (dist 240) or collapsedY=752 (dist 32)? collapsedY wins
+    const result = resolveTouchEndState(720, 5000, 'full', 0, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'collapsed' })
+  })
+
+  it('elapsed of 0 uses max(elapsed,1) to avoid division by zero', () => {
+    // elapsed=0, dragOffset=200 → velocity = 200/1 = 200 (large positive flick)
+    // currentState='full' → flick down → 'half'
+    const result = resolveTouchEndState(200, 0, 'full', 0, vh)
+    expect(result).toEqual({ type: 'resolved', state: 'half' })
   })
 })

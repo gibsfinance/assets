@@ -335,3 +335,76 @@ describe('useRpcMetadata hook', () => {
     expect(result.current.progress.total).toBe(5)
   })
 })
+
+// ---------------------------------------------------------------------------
+// fetchTokenMetadata (pure function)
+// ---------------------------------------------------------------------------
+describe('fetchTokenMetadata', () => {
+  it('returns name, symbol, and decimals when all calls resolve', async () => {
+    const { fetchTokenMetadata } = await import('./useRpcMetadata')
+    const client = {
+      readContract: vi.fn(({ functionName }: { functionName: string }) => {
+        if (functionName === 'name') return Promise.resolve('Wrapped Ether')
+        if (functionName === 'symbol') return Promise.resolve('WETH')
+        if (functionName === 'decimals') return Promise.resolve(18)
+        return Promise.resolve(null)
+      }),
+    }
+
+    const result = await fetchTokenMetadata(client, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
+
+    expect(result.address).toBe('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2')
+    expect(result.name).toBe('Wrapped Ether')
+    expect(result.symbol).toBe('WETH')
+    expect(result.decimals).toBe(18)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('returns null for name when the name call rejects, but resolves symbol', async () => {
+    const { fetchTokenMetadata } = await import('./useRpcMetadata')
+    const client = {
+      readContract: vi.fn(({ functionName }: { functionName: string }) => {
+        if (functionName === 'name') return Promise.reject(new Error('reverted'))
+        if (functionName === 'symbol') return Promise.resolve('WETH')
+        if (functionName === 'decimals') return Promise.resolve(18)
+        return Promise.resolve(null)
+      }),
+    }
+
+    const result = await fetchTokenMetadata(client, '0xabc')
+
+    expect(result.name).toBeNull()
+    expect(result.symbol).toBe('WETH')
+    expect(result.decimals).toBe(18)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('returns all null fields (no error) when all three calls reject', async () => {
+    const { fetchTokenMetadata } = await import('./useRpcMetadata')
+    const client = {
+      readContract: vi.fn(() => Promise.reject(new Error('contract call failed'))),
+    }
+
+    const result = await fetchTokenMetadata(client, '0xdead')
+
+    expect(result.name).toBeNull()
+    expect(result.symbol).toBeNull()
+    expect(result.decimals).toBeNull()
+    // Individual .catch handlers absorb the errors — outer try/catch is not triggered
+    expect(result.error).toBeUndefined()
+  })
+
+  it('outer catch: returns error result when readContract does not return a thenable', async () => {
+    const { fetchTokenMetadata } = await import('./useRpcMetadata')
+    // readContract returns undefined — calling .catch() on undefined throws a TypeError,
+    // which is caught by the outer try/catch
+    const client = { readContract: vi.fn(() => undefined as unknown as Promise<unknown>) }
+
+    const result = await fetchTokenMetadata(client, '0xabc')
+
+    expect(result.error).toBeDefined()
+    expect(result.name).toBeNull()
+    expect(result.symbol).toBeNull()
+    expect(result.decimals).toBeNull()
+  })
+})

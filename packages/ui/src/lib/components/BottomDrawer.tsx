@@ -55,6 +55,29 @@ export function snapToNearestState(finalY: number, viewportHeight: number): Draw
   return 'collapsed'
 }
 
+export type TouchEndResult =
+  | { type: 'tap' }
+  | { type: 'resolved'; state: DrawerState }
+
+/** Determine the drawer state after a touch ends — tap, flick, or snap. */
+export function resolveTouchEndState(
+  dragOffset: number,
+  elapsed: number,
+  currentState: DrawerState,
+  currentTranslateY: number,
+  viewportHeight: number,
+): TouchEndResult {
+  const wasTap = Math.abs(dragOffset) < 8 && elapsed < 300
+  if (wasTap) return { type: 'tap' }
+
+  const velocity = dragOffset / Math.max(elapsed, 1)
+  const finalY = currentTranslateY + dragOffset
+
+  const flickTarget = resolveFlickState(velocity, currentState)
+  if (flickTarget !== null) return { type: 'resolved', state: flickTarget }
+  return { type: 'resolved', state: snapToNearestState(finalY, viewportHeight) }
+}
+
 export default function BottomDrawer({ children, handle, enabled = true }: BottomDrawerProps) {
   const [drawerState, setDrawerState] = useState<DrawerState>('collapsed')
   const [isDragging, setIsDragging] = useState(false)
@@ -140,24 +163,18 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     requestAnimationFrame(() => { wasTouched.current = false })
 
     const elapsed = Date.now() - touchStartTime.current
-    const wasTap = Math.abs(dragOffset) < 8 && elapsed < 300
+    const result = resolveTouchEndState(
+      dragOffset, elapsed, drawerState,
+      currentTranslateY.current, viewportHeight,
+    )
 
-    if (wasTap) {
+    if (result.type === 'tap') {
       setDrawerState(nextState)
       setDragOffset(0)
       return
     }
 
-    const velocity = dragOffset / Math.max(elapsed, 1)
-    const finalY = currentTranslateY.current + dragOffset
-
-    const flickTarget = resolveFlickState(velocity, drawerState)
-    if (flickTarget !== null) {
-      setDrawerState(flickTarget)
-    } else {
-      setDrawerState(snapToNearestState(finalY, viewportHeight))
-    }
-
+    setDrawerState(result.state)
     setDragOffset(0)
   }, [isDragging, dragOffset, drawerState, viewportHeight])
 
