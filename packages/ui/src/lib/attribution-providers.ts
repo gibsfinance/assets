@@ -40,11 +40,7 @@ export const attributionProviders: AttributionProvider[] = [
     link: 'https://internetmoney.io',
     imageUrl: 'https://im-wallet.herokuapp.com/icons/time.png',
   },
-  {
-    name: 'PumpTires',
-    link: 'https://pump.tires',
-    imageUrl: 'pumptires.svg',
-  },
+  // PumpTires disabled — API down
   {
     name: 'Trust Wallet',
     link: 'https://trustwallet.com',
