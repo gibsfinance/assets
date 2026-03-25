@@ -1,5 +1,36 @@
 # Gib.Show — Progress
 
+## Session: Knex → Drizzle Phase 4 (2026-03-25)
+
+### Phase 4: Complex Query-Composition Functions (completed)
+Converted the 7 remaining Knex query-builder pattern functions to Drizzle ORM:
+- `insertOrder` — Knex transaction → Drizzle transaction with DrizzleTx passthrough
+- `getTokensUnderListId` — Knex chainable → Drizzle `$dynamic()` with typed select
+- `getLists` — Knex chainable with string-based where → async Drizzle with `eq()`/`and()`
+- `addHeaderUriExtension` — Knex.QueryBuilder param → generic `<T extends $dynamic()>`
+- `addBridgeExtensions` — Knex joins with aliased tables → Drizzle `alias()` from pg-core
+- `getListOrderId` — Knex `.where().first()` → Drizzle `eq()`/`ilike()`/`limit(1)`
+- `applyOrder` — The hardest: Knex `denseRank()/partitionBy()/CTE` → raw `dsql`` template with window function
+
+Updated all server-side callers:
+- `db/sync-order.ts` — Drizzle transaction + `isNotNull()`/`eq()` queries
+- `server/list/utils.ts` — `respondWithList` uses `eq()`/`asc()` on `$dynamic()` query
+- `server/list/handlers.ts` — All 5 handlers (merged, versioned, providerKeyed, all, tokensByChain) converted
+- `server/image/handlers.ts` — `getListTokens`, `getNetworkIcon`, `getImageByHash` all use Drizzle
+- `collect/pumptires.ts` — `getTokensUnderListId()` callers use `eq()`/`desc()`
+
+Key decisions:
+- `applyOrder` uses raw SQL (`dsql` template) because Drizzle `$dynamic()` cannot add SELECT columns after creation (needed for dense_rank window function)
+- Two FROM clause variants in `applyOrder`: 'listToken' (for merged handler) and 'provider' (for image handler) to match the original Knex query patterns
+- `addBridgeExtensions`/`addHeaderUriExtension` return type cast through `unknown` since adding joins changes Drizzle's type signature
+
+Results: 8 fewer TS errors (52 → 44), zero new errors. All 142 server tests passing.
+
+### Remaining Knex Usage
+- `db/index.ts` still imports `knex` for: the `db` singleton, `getDB()`, `setDB()`, `transaction()`, and several mid-file functions (insertImage, fetchImageAndStore*, getTokenAndLatestListToken, etc.)
+- Collector files (dexscreener, inmemory-tokenlist, internetmoney, omnibridge) still pass Knex transactions where DrizzleTx is expected — 44 pre-existing TS errors
+- Complete Knex removal requires converting the remaining ~15 functions in db/index.ts and all collector transaction patterns
+
 ## Session 3 continued (2026-03-20)
 
 ### Token Row Layout + SVG Ranking (completed, merged to staging)
