@@ -1,10 +1,9 @@
-import { getDB } from '../db'
+import { migrate } from '../db/drizzle'
 import { syncDefaultOrder, buildManifestsFromDB } from '../db/sync-order'
 import { allCollectables } from '../collect/collectables'
 import { cleanup } from '../cleanup'
 
-getDB()
-  .migrate.latest()
+migrate()
   .then(async () => {
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)

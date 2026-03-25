@@ -1,4 +1,6 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { migrate as drizzleMigrate } from 'drizzle-orm/node-postgres/migrator'
+import * as path from 'path'
 import configuration from '../../config'
 import * as schema from './schema'
 
@@ -16,6 +18,13 @@ const db: DrizzleDB = drizzle({
 
 export function getDrizzle(): DrizzleDB {
   return db
+}
+
+/** Run pending Drizzle migrations from the drizzle/ directory. */
+export async function migrate(): Promise<void> {
+  await drizzleMigrate(db, {
+    migrationsFolder: path.join(__dirname, '..', '..', 'drizzle'),
+  })
 }
 
 export { schema }

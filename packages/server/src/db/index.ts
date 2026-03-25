@@ -71,23 +71,10 @@ export const ids = {
       .slice(2),
 }
 
-// ---------------------------------------------------------------------------
-// Lazy Knex instance — retained ONLY for migration runner and legacy raw SQL
-// ---------------------------------------------------------------------------
-let knexInstance: ReturnType<typeof import('knex').default> | null = null
+/** Run pending database migrations. */
+export { migrate } from './drizzle'
 
-/** @deprecated Use getDrizzle() instead. Retained for Knex migration runner only. */
-export const getDB = () => {
-  if (!knexInstance) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const knexLib = require('knex') as typeof import('knex').default
-    const { config } = require('./config') as { config: import('knex').Knex.Config }
-    knexInstance = knexLib(config)
-  }
-  return knexInstance
-}
-
-/** Run a Drizzle transaction. Drop-in replacement for the old Knex db.transaction(). */
+/** Run a Drizzle transaction. */
 export const transaction = async <T>(
   fn: (tx: DrizzleTx) => Promise<T>,
 ): Promise<T> => {

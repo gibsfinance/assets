@@ -5,8 +5,7 @@ import { syncDefaultOrder, buildManifestsFromDB, startPeriodicRefresh } from '..
 import { allCollectables } from '../collect/collectables'
 import { log } from '../logger'
 
-db.getDB()
-  .migrate.latest()
+db.migrate()
   .then(async () => {
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
