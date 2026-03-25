@@ -322,11 +322,19 @@ export const resolveImageMode = (mode: ImageModeParam | null | undefined): Image
 }
 
 export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
-  // Redirect to original URI for LINK-mode images, or when content is empty
   const hasContent = img.content && img.content.length > 0
-  if ((mode === imageMode.LINK || !hasContent) && img.uri && img.uri.startsWith('https')) {
+  const hasRedirectUri = img.uri && img.uri.startsWith('http')
+
+  // Redirect when explicitly LINK mode, or when content is empty but we have a URI
+  if ((mode === imageMode.LINK || !hasContent) && hasRedirectUri) {
     return res.redirect(img.uri)
   }
+
+  // No content and no valid redirect — nothing to serve
+  if (!hasContent) {
+    return res.status(404).json({ error: 'image content unavailable' })
+  }
+
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   r = r.set('x-resize', 'original')
   if (img.uri) {
