@@ -86,7 +86,7 @@ function getToken(provider: string): string | null {
 
 /** GitHub publisher — uses server proxy for OAuth token exchange */
 export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {
-  const GITHUB_CLIENT_ID = (typeof process !== 'undefined' && process.env?.VITE_GITHUB_CLIENT_ID) || ''
+  const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
 
   return {
     name: 'GitHub',
@@ -499,4 +499,37 @@ export function useVCSPublish() {
   }, [])
 
   return { publish, isPublishing, publishResult, error }
+}
+
+/**
+ * Build the list of available VCS publishers based on configured env vars.
+ * GitHub/GitLab require OAuth client IDs; Gitea always available via personal access token.
+ */
+export function buildPublishers(serverBaseUrl: string): VCSPublisher[] {
+  const publishers: VCSPublisher[] = []
+
+  const githubClientId = import.meta.env.VITE_GITHUB_CLIENT_ID
+  if (githubClientId) {
+    publishers.push(createGitHubPublisher(serverBaseUrl))
+  }
+
+  const gitlabClientId = import.meta.env.VITE_GITLAB_CLIENT_ID
+  if (gitlabClientId) {
+    publishers.push(createGitLabPublisher({
+      clientId: gitlabClientId,
+      serverBaseUrl,
+      serverUrl: import.meta.env.VITE_GITLAB_URL || undefined,
+    }))
+  }
+
+  const giteaUrl = import.meta.env.VITE_GITEA_URL
+  if (giteaUrl) {
+    publishers.push(createGiteaPublisher({
+      serverUrl: giteaUrl,
+      clientId: import.meta.env.VITE_GITEA_CLIENT_ID || undefined,
+      serverBaseUrl,
+    }))
+  }
+
+  return publishers
 }

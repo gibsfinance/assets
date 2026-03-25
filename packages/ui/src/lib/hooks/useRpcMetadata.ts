@@ -61,13 +61,9 @@ export interface MetadataResult {
   error?: string
 }
 
-interface ReadContractClient {
-  readContract(args: { address: `0x${string}`; abi: typeof erc20Abi; functionName: string }): Promise<unknown>
-}
-
 /** Fetch ERC-20 metadata for a single token. Exported for direct testing. */
 export async function fetchTokenMetadata(
-  client: ReadContractClient,
+  client: { readContract(args: Record<string, unknown>): Promise<unknown> },
   address: string,
 ): Promise<MetadataResult> {
   try {

@@ -22,10 +22,7 @@ import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
 import {
   useVCSPublish,
-  createGitHubPublisher,
-  createGitLabPublisher,
-  createGiteaPublisher,
-  type VCSPublisher,
+  buildPublishers,
 } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
 
@@ -68,9 +65,7 @@ export default function ListEditor() {
   const { loadMetadata, isLoading: isLoadingMetadata, progress: metadataProgress } = useRpcMetadata()
   const { publish, isPublishing, publishResult, error: publishError } = useVCSPublish()
 
-  const publishers: VCSPublisher[] = [
-    createGitHubPublisher(getApiUrl('')),
-  ]
+  const publishers = buildPublishers(getApiUrl(''))
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -464,7 +459,11 @@ export default function ListEditor() {
               anchor="bottom end"
               className="z-50 mt-1 w-56 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2"
             >
-              {publishers.map((pub) => (
+              {publishers.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-400 dark:text-white/40">
+                  No providers configured. Set VITE_GITHUB_CLIENT_ID, VITE_GITLAB_CLIENT_ID, or VITE_GITEA_URL in .env
+                </div>
+              ) : publishers.map((pub) => (
                 <MenuItem key={pub.name}>
                   <button
                     type="button"
