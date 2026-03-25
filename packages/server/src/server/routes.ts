@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { router as imageRouter } from './image'
+import { router as imageSubmitRouter } from './image-submit'
 import { router as listRouter } from './list'
 import { router as networksRouter } from './networks'
 import { router as statsRouter } from './stats'
@@ -34,3 +35,6 @@ router.use('/api/github', githubRouter)
 
 // List submission registry
 router.use('/api/lists', submissionsRouter)
+
+// Image submission endpoint
+router.use('/api/images', imageSubmitRouter)

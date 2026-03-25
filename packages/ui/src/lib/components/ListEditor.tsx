@@ -16,6 +16,7 @@ import {
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
+import { submitImage } from '../utils/image-upload'
 import Image from './Image'
 import ListTokenRow from './ListTokenRow'
 import TokenImageManager from './TokenImageManager'
@@ -240,6 +241,25 @@ export default function ListEditor() {
       if (updated) setActiveList(updated)
     },
     [activeList, editingImageToken, reorderTokens, setActiveList],
+  )
+
+  const handleImageUpload = useCallback(
+    async (token: LocalToken, dataUri: string) => {
+      if (!activeList) return
+      try {
+        const { imageUrl } = await submitImage(token.chainId, token.address, dataUri)
+        const updatedTokens = activeList.tokens.map((t) =>
+          t.address.toLowerCase() === token.address.toLowerCase() && t.chainId === token.chainId
+            ? { ...t, imageUri: imageUrl }
+            : t,
+        )
+        const updated = await reorderTokens(activeList.id, updatedTokens)
+        if (updated) setActiveList(updated)
+      } catch (err) {
+        setError((err as Error).message)
+      }
+    },
+    [activeList, reorderTokens, setActiveList],
   )
 
   const handleSubmitToGibShow = useCallback(async () => {
@@ -610,6 +630,7 @@ export default function ListEditor() {
                   token={token}
                   onRemove={handleRemoveToken}
                   onImageClick={setEditingImageToken}
+                  onImageUpload={handleImageUpload}
                 />
               ))}
             </SortableContext>
