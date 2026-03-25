@@ -28,3 +28,4 @@ docs/superpowers/
 .screenshots/
 .playwright-mcp/
 packages/ui/e2e/test-results/
+coverage/
