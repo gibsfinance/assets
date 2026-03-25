@@ -27,13 +27,15 @@ export default function ListTokenRow({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 0,
+    position: 'relative' as const,
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 dark:border-surface-3"
+      className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 dark:border-surface-3 bg-white dark:bg-surface-base"
     >
       {/* Drag handle */}
       <button
