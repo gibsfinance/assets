@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
 
 type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -33,27 +33,28 @@ function resolveIsDark(mode: ThemeMode): boolean {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(loadStoredMode)
-  const [isDark, setIsDark] = useState(() => resolveIsDark(loadStoredMode()))
+  const [systemPreference, setSystemPreference] = useState(resolveSystemPreference)
 
   const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode)
     localStorage.setItem('theme-mode', newMode)
-    setIsDark(resolveIsDark(newMode))
   }, [])
 
-  // Listen for system preference changes when in system mode
+  // Subscribe to OS dark mode changes (real side effect: event listener)
   useEffect(() => {
-    if (mode !== 'system') return
-
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (event: MediaQueryListEvent) => {
-      setIsDark(event.matches)
-    }
+    const handler = (e: MediaQueryListEvent) => setSystemPreference(e.matches)
     mediaQuery.addEventListener('change', handler)
     return () => mediaQuery.removeEventListener('change', handler)
-  }, [mode])
+  }, [])
 
-  // Apply dark class to document
+  // Derived: isDark is purely computed from mode + systemPreference
+  const isDark = useMemo(() => {
+    if (mode === 'system') return systemPreference
+    return mode === 'dark'
+  }, [mode, systemPreference])
+
+  // Apply dark class to document (real side effect: DOM mutation)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark)
   }, [isDark])

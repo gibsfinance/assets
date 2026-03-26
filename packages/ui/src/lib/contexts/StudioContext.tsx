@@ -96,9 +96,12 @@ const StudioCtx = createContext<StudioContextValue | null>(null)
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StudioState>(() => {
     const prefs = loadPersistedPrefs()
+    // Cross-page chain pre-selection: Home page writes selectedChainId to localStorage
+    const crossPageChainId = localStorage.getItem('selectedChainId')
+    if (crossPageChainId) localStorage.removeItem('selectedChainId')
     return {
       selectedToken: null,
-      selectedChainId: null,
+      selectedChainId: crossPageChainId,
       appearance: { ...DEFAULT_APPEARANCE, ...prefs.appearance },
       badge: { ...DEFAULT_BADGE, ...prefs.badge },
       codeFormat: prefs.codeFormat ?? 'sdk',
@@ -115,15 +118,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     saveTimeout.current = setTimeout(() => savePersistedPrefs(state), 300)
     return () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }
   }, [state])
-
-  // Cross-page chain pre-selection from Home page network grid
-  useEffect(() => {
-    const storedChainId = localStorage.getItem('selectedChainId')
-    if (storedChainId) {
-      setState((s) => ({ ...s, selectedChainId: storedChainId }))
-      localStorage.removeItem('selectedChainId')
-    }
-  }, [])
 
   const selectToken = useCallback((token: Token) => {
     setState((s) => ({
