@@ -1,14 +1,14 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { useLocalLists, type LocalList } from '../hooks/useLocalLists'
 
 interface ListEditorState {
   isOpen: boolean
   editingListId: string | null
   editingSourceKey: string | null
-  activeList: LocalList | null
 }
 
 interface ListEditorContextValue extends ListEditorState {
+  activeList: LocalList | null
   openEditor: (sourceList: string) => void
   openNewEditor: () => void
   closeEditor: () => void
@@ -31,23 +31,15 @@ export function ListEditorProvider({ children }: { children: ReactNode }) {
     isOpen: false,
     editingListId: null,
     editingSourceKey: null,
-    activeList: null,
   })
 
-  // Restore activeList from IndexedDB when editingListId is set (e.g. from URL)
-  const restoredRef = useRef(false)
-  useEffect(() => {
-    if (restoredRef.current || localLists.isLoading || !state.editingListId) return
-    const list = localLists.lists.find((l) => l.id === state.editingListId)
-    if (list) {
-      setState((s) => ({ ...s, activeList: list }))
-      restoredRef.current = true
-    }
-  }, [localLists.isLoading, localLists.lists, state.editingListId])
+  // Derived: activeList is computed from editingListId + loaded lists
+  const activeList = useMemo(() => {
+    if (!state.editingListId) return null
+    return localLists.lists.find((l) => l.id === state.editingListId) ?? null
+  }, [state.editingListId, localLists.lists])
 
   const openEditor = useCallback((sourceOrId: string) => {
-    restoredRef.current = false
-
     // If it contains a slash, treat as remote source key (provider/key)
     if (sourceOrId.includes('/')) {
       const localFork = localLists.lists.find(
@@ -58,53 +50,43 @@ export function ListEditorProvider({ children }: { children: ReactNode }) {
         isOpen: true,
         editingListId: localFork?.id ?? null,
         editingSourceKey: sourceOrId,
-        activeList: localFork ?? null,
       })
       return
     }
 
     // Otherwise treat as a local list ID
-    const localList = localLists.lists.find((l) => l.id === sourceOrId)
     setState({
       isOpen: true,
       editingListId: sourceOrId,
       editingSourceKey: null,
-      activeList: localList ?? null,
     })
   }, [localLists.lists])
 
   const openNewEditor = useCallback(() => {
-    restoredRef.current = false
     setState({
       isOpen: true,
       editingListId: null,
       editingSourceKey: null,
-      activeList: null,
     })
   }, [])
 
   const closeEditor = useCallback(() => {
-    restoredRef.current = false
     setState({
       isOpen: false,
       editingListId: null,
       editingSourceKey: null,
-      activeList: null,
     })
   }, [])
 
   const setActiveList = useCallback((list: LocalList) => {
-    setState((s) => ({
-      ...s,
-      editingListId: list.id,
-      activeList: list,
-    }))
+    setState((s) => ({ ...s, editingListId: list.id }))
   }, [])
 
   return (
     <ListEditorCtx.Provider
       value={{
         ...state,
+        activeList,
         openEditor,
         openNewEditor,
         closeEditor,
