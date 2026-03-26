@@ -312,8 +312,9 @@ export function useMetrics(): MetricsHookResult {
           clearCacheEntries()
         }
 
-        // Fetch available networks and providers
-        const [_networks, providers] = await Promise.all([fetchNetworks(), fetchProviders()])
+        // Fetch stats (authoritative counts) alongside networks and providers
+        const statsPromise = fetch(getApiUrl('/stats')).then((r) => r.ok ? r.json() as Promise<{ chainId: string; count: number }[]> : []).catch(() => [] as { chainId: string; count: number }[])
+        const [_networks, providers, stats] = await Promise.all([fetchNetworks(), fetchProviders(), statsPromise])
         void _networks // consumed for side-effect caching
 
         // Get unique provider keys, prioritizing certain providers
@@ -360,25 +361,19 @@ export function useMetrics(): MetricsHookResult {
           }
         }
 
-        // Fetch exact counts from server (database-authoritative)
-        let byChain: Record<string, number> = {}
-        let total = 0
-        try {
-          const statsRes = await fetch(getApiUrl('/stats'))
-          if (statsRes.ok) {
-            const stats: { chainId: string; count: number }[] = await statsRes.json()
-            for (const { chainId, count } of stats) {
-              byChain[chainId] = count
-            }
-            total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
+        // Use server-authoritative counts from /stats (fetched in parallel above)
+        const byChain: Record<string, number> = {}
+        if (stats.length > 0) {
+          for (const { chainId, count } of stats) {
+            byChain[chainId] = count
           }
-        } catch {
-          // Fall back to client-side count if stats endpoint fails
+        } else {
+          // Fall back to client-side count if /stats returned empty
           for (const [chainId, tokens] of Object.entries(tokensByChain)) {
             byChain[chainId] = tokens?.size || 0
           }
-          total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
         }
+        const total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
 
         const computedMetrics: PlatformMetrics = {
           tokenList: {
