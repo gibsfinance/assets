@@ -197,6 +197,14 @@ export const insertImage = async (
     })
     return null
   }
+  // Reject raster images that are too small to be real logos (e.g. CoinGecko thumb placeholders)
+  const MIN_RASTER_SIZE = 200
+  const isSvg = ext === '.svg' || ext === '.svg+xml'
+  if (!isSvg && image.length < MIN_RASTER_SIZE) {
+    failureLog('image too small (%d bytes) %o -> %o', image.length, providerKey, originalUri)
+    return null
+  }
+
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
   const sanitized = await sanitizeImage(image, ext)
   const shouldSave = args.checkShouldSave(providerKey)

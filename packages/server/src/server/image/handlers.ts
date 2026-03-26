@@ -326,17 +326,21 @@ export const resolveImageMode = (mode: ImageModeParam | null | undefined): Image
   return imageMode.SAVE
 }
 
+const MIN_SERVABLE_RASTER_SIZE = 200
+
 export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+  const isSvg = img.ext === '.svg' || img.ext === '.svg+xml'
   const hasContent = img.content && img.content.length > 0
+  const isTooSmall = hasContent && !isSvg && img.content.length < MIN_SERVABLE_RASTER_SIZE
   const hasRedirectUri = img.uri && img.uri.startsWith('http')
 
-  // Redirect when explicitly LINK mode, or when content is empty but we have a URI
-  if ((mode === imageMode.LINK || !hasContent) && hasRedirectUri) {
+  // Redirect when LINK mode, content empty, or content is a tiny placeholder
+  if ((mode === imageMode.LINK || !hasContent || isTooSmall) && hasRedirectUri) {
     return res.redirect(img.uri)
   }
 
-  // No content and no valid redirect — nothing to serve
-  if (!hasContent) {
+  // No usable content and no valid redirect
+  if (!hasContent || isTooSmall) {
     return res.status(404).json({ error: 'image content unavailable' })
   }
 
