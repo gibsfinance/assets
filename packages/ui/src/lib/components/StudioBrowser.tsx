@@ -293,7 +293,14 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     } else if (!selectedChainId) {
       return []
     } else {
-      tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
+      // When data came from /list/tokens/:chainId, tokens are already deduped
+      // server-side with listReferences pre-populated from sources — use directly
+      const merged = tokensByList.get('merged')
+      if (merged) {
+        tokens = merged
+      } else {
+        tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
+      }
     }
     // Sort by popularity (most lists first) then alphabetical
     return tokens.sort((a, b) => {
