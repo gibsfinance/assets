@@ -972,10 +972,15 @@ export const insertOrder = async (
         set: { listOrderId: dsql`excluded.list_order_id` },
       })
       .returning()
-    const insertableItems = orderItems.map((i) => ({
+    const deduped = new Map(orderItems.map((i) => [i.ranking, i]))
+    const insertableItems = [...deduped.values()].map((i) => ({
       ...i,
       listOrderId: o.listOrderId,
+      listId: i.listId ?? null,
     }))
+    if (!insertableItems.length) {
+      return { order: o, listOrderItems: [] }
+    }
     const items = await innerTx
       .insert(s.listOrderItem)
       .values(insertableItems)
