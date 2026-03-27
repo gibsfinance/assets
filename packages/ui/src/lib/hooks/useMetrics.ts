@@ -313,7 +313,7 @@ export function useMetrics(): MetricsHookResult {
         }
 
         // Fetch stats (authoritative counts) alongside networks and providers
-        const statsPromise = fetch(getApiUrl('/stats')).then((r) => r.ok ? r.json() as Promise<{ chainId: string; count: number }[]> : []).catch(() => [] as { chainId: string; count: number }[])
+        const statsPromise = fetch(getApiUrl('/stats')).then((r) => r.ok ? r.json() as Promise<{ chainId: string; count: number; topList?: string }[]> : []).catch(() => [] as { chainId: string; count: number; topList?: string }[])
         const [_networks, providers, stats] = await Promise.all([fetchNetworks(), fetchProviders(), statsPromise])
         void _networks // consumed for side-effect caching
 
@@ -363,9 +363,11 @@ export function useMetrics(): MetricsHookResult {
 
         // Use server-authoritative counts from /stats (fetched in parallel above)
         const byChain: Record<string, number> = {}
+        const topListByChain: Record<string, string> = {}
         if (stats.length > 0) {
-          for (const { chainId, count } of stats) {
+          for (const { chainId, count, topList } of stats) {
             byChain[chainId] = count
+            if (topList) topListByChain[chainId] = topList
           }
         } else {
           // Fall back to client-side count if /stats returned empty
@@ -379,6 +381,7 @@ export function useMetrics(): MetricsHookResult {
           tokenList: {
             total,
             byChain,
+            topListByChain,
           },
           networks: {
             supported: Object.keys(byChain).map((chainId: string) => ({
@@ -400,6 +403,7 @@ export function useMetrics(): MetricsHookResult {
           tokenList: {
             total: 0,
             byChain: {},
+            topListByChain: {},
           },
           networks: {
             supported: [],

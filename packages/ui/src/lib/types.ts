@@ -48,6 +48,7 @@ export interface PlatformMetrics {
   tokenList: {
     total: number
     byChain: Record<number, number>
+    topListByChain: Record<number, string>
   }
   networks: {
     supported: NetworkInfo[]

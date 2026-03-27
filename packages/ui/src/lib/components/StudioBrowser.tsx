@@ -201,10 +201,11 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         chainId: String(n.chainId),
         name: getNetworkName(n.chainId),
         tokenCount: metrics.tokenList.byChain[n.chainId] || 0,
+        topList: metrics.tokenList.topListByChain?.[n.chainId] || '',
       }))
-      .filter((n: { tokenCount: number }) => n.tokenCount >= 10)
-      .filter((n: { name: string }) => !n.name.toLowerCase().includes('testnet'))
-      .sort((a: { tokenCount: number }, b: { tokenCount: number }) => b.tokenCount - a.tokenCount)
+      .filter((n) => n.tokenCount >= 10)
+      .filter((n) => !n.name.toLowerCase().includes('testnet'))
+      .sort((a, b) => b.tokenCount - a.tokenCount)
       .slice(0, POPULAR_CHAIN_COUNT)
   }, [metrics])
 
@@ -476,7 +477,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{chain.name}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-white/30">{chain.tokenCount.toLocaleString()} tokens</div>
+                        <div className="truncate text-[10px] text-gray-400 dark:text-white/30">
+                          {chain.tokenCount.toLocaleString()} tokens{chain.topList ? ` · ${chain.topList}` : ''}
+                        </div>
                       </div>
                     </button>
                   ))}
