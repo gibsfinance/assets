@@ -286,8 +286,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   /* ----- Derived --------------------------------------------------------- */
   const selectedChainNumeric = selectedChainId ? Number(selectedChainId) : null
 
-  const networkName = selectedChainId ? getNetworkName(selectedChainId) : ''
-
   /** Combined, deduped, sorted tokens for the selected chain */
   const filteredTokens = useMemo(() => {
     let tokens: Token[]
@@ -426,7 +424,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   /* ----- Render ---------------------------------------------------------- */
   return (
-    <div className="flex h-full flex-col gap-4 p-3">
+    <div className="flex h-full flex-col">
       {/* Network selector */}
       <NetworkSelect selectedChainId={selectedChainId} onSelect={handleChainSelect} />
 
@@ -434,7 +432,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {selectedChainId && (
         <TokenSearch
           count={tokenCount}
-          networkName={networkName}
           onSearchUpdate={handleSearchUpdate}
           selectedChain={selectedChainNumeric}
           enabledLists={enabledLists}

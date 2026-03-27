@@ -31,7 +31,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
     <div className="relative w-full">
       <button
         type="button"
-        className="flex w-full items-center justify-between rounded-lg border border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
+        className="flex w-full items-center justify-between border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
         onClick={() => setIsOpen(true)}
       >
         {selectedNetwork ? (

@@ -9,7 +9,6 @@ import TokenListFilter from './TokenListFilter'
 interface TokenSearchProps {
   onSearchUpdate: (state: SearchUpdate) => void
   count: number
-  networkName: string
   selectedChain: number | null
   enabledLists: Set<string>
   tokensByList: Map<string, Token[]>
@@ -20,7 +19,6 @@ interface TokenSearchProps {
 export default function TokenSearch({
   onSearchUpdate,
   count,
-  networkName,
   selectedChain,
   enabledLists,
   tokensByList,
@@ -245,12 +243,12 @@ export default function TokenSearch({
   useEffect(() => () => debouncedSearch.cancel(), [debouncedSearch])
 
   return (
-    <div className="flex flex-col gap-2 sm:flex-row">
-      <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-surface-3 dark:bg-surface-2">
+    <div className="flex flex-col sm:flex-row">
+      <div className="flex flex-1 items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-surface-3 dark:bg-surface-2">
         <i className="fas fa-search text-xs text-gray-400 dark:text-white/30" />
         <input
           type="search"
-          placeholder={`Search ${count} tokens on ${networkName}...`}
+          placeholder={`Search ${count} tokens...`}
           className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white/80 dark:placeholder:text-white/30"
           value={query}
           onChange={handleChange}
