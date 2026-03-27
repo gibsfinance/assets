@@ -1124,7 +1124,7 @@ export const getListOrderId = async (orderParam: string) => {
  */
 const buildFormatOrderSql = (formatPreference?: string[][]): SQL => {
   if (!formatPreference?.length) {
-    return dsql`CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END`
+    return dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 ELSE 2 END`
   }
   const chunks: SQL[] = [dsql`CASE`]
   for (let i = 0; i < formatPreference.length; i++) {

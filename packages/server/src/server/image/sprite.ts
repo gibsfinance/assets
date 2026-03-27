@@ -73,7 +73,7 @@ function queryListTokens(listId: string) {
       eq(s.listToken.listId, listId),
       ne(s.image.imageHash, ''),
     ))
-    .orderBy(dsql`CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END ASC`)
+    .orderBy(dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 ELSE 2 END ASC`)
     .$dynamic()
 }
 
