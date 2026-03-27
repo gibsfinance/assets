@@ -8,6 +8,7 @@ import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, asc, inArray, isNotNull, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
+import { getDefaultListOrderId } from '../../db/sync-order'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -138,12 +139,16 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)
 
-  // Query all tokens on this chain across all lists, with image priority ordering
-  // Filter to tokens with images to match /stats counts
-  const tokens = await db
-    .getTokensUnderListId()
-    .where(and(eq(s.network.chainId, chainId), isNotNull(s.listToken.imageHash)))
-    .orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
+  const whereClause = and(eq(s.network.chainId, chainId), isNotNull(s.listToken.imageHash))!
+  const defaultOrderId = getDefaultListOrderId()
+
+  // Use applyOrder when available so tokens from higher-ranked lists appear first
+  const tokens = defaultOrderId
+    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken')
+    : await db
+        .getTokensUnderListId()
+        .where(whereClause)
+        .orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
 
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
