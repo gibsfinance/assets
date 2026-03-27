@@ -3,8 +3,9 @@ import { test } from 'node:test'
 import { app } from '../src/server/app'
 import * as testUtils from './utils'
 import { tableNames } from '../src/db/tables'
+import { isDbAvailable } from './db-available'
 
-test('middleware', async (t) => {
+test('middleware', { skip: !await isDbAvailable() && 'no database connection' }, async (t) => {
   t.beforeEach(async () => testUtils.setup())
   t.afterEach(async () => testUtils.teardown())
   await t.test('it responds with a response time', async () => {

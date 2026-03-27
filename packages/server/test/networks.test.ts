@@ -4,8 +4,9 @@ import { app } from '../src/server/app'
 import * as testUtils from './utils'
 import _ from 'lodash'
 import assert from 'assert'
+import { isDbAvailable } from './db-available'
 
-test('networks', async (t) => {
+test('networks', { skip: !await isDbAvailable() && 'no database connection' }, async (t) => {
   t.beforeEach(async () => testUtils.setup())
   t.afterEach(async () => testUtils.teardown())
   await t.test('it responds with a list of network ids', async () => {
