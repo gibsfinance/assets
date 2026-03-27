@@ -56,6 +56,7 @@ function VirtualTokenList({
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
+    measureElement: (el) => el.getBoundingClientRect().height,
   })
 
   return (
@@ -72,6 +73,8 @@ function VirtualTokenList({
           return (
             <div
               key={iconKey}
+              ref={virtualizer.measureElement}
+              data-index={virtualRow.index}
               style={{
                 position: 'absolute',
                 top: 0,
