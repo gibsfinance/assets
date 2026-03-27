@@ -143,8 +143,9 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const defaultOrderId = getDefaultListOrderId()
 
   // Use applyOrder when available so tokens from higher-ranked lists appear first
+  // dedupe: false returns all rows so normalizeTokens can collect all sources per token
   const tokens = defaultOrderId
-    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken')
+    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { dedupe: false })
     : await db
         .getTokensUnderListId()
         .where(whereClause)
