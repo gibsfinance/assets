@@ -6,7 +6,7 @@ import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, asc, inArray, isNotNull, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 
 export const merged: RequestHandler = async (req, res, next) => {
@@ -139,9 +139,10 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
 
   // Query all tokens on this chain across all lists, with image priority ordering
+  // Filter to tokens with images to match /stats counts
   const tokens = await db
     .getTokensUnderListId()
-    .where(eq(s.network.chainId, chainId))
+    .where(and(eq(s.network.chainId, chainId), isNotNull(s.listToken.imageHash)))
     .orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
 
   const filters = utils.tokenFilters(req.query)
