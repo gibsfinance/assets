@@ -142,10 +142,9 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const whereClause = eq(s.network.chainId, chainId)
   const defaultOrderId = getDefaultListOrderId()
 
-  // Use applyOrder when available so tokens from higher-ranked lists appear first
-  // dedupe: false returns all rows so normalizeTokens can collect all sources per token
+  // Use applyOrder (dedupe: true) for ranked, one-row-per-token results
   const tokens = defaultOrderId
-    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { dedupe: false })
+    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken')
     : await db
         .getTokensUnderListId()
         .where(whereClause)
@@ -153,6 +152,38 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
 
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
+
+  // Lightweight query for sources — just providerKey/listKey per address
+  const drizzle = getDrizzle()
+  const sourceRows = await drizzle
+    .select({
+      providedId: s.token.providedId,
+      providerKey: s.provider.key,
+      listKey: s.list.key,
+    })
+    .from(s.listToken)
+    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .where(eq(s.network.chainId, chainId))
+
+  const sourcesByAddress = new Map<string, Set<string>>()
+  for (const row of sourceRows) {
+    const key = row.providedId.toLowerCase()
+    let set = sourcesByAddress.get(key)
+    if (!set) {
+      set = new Set()
+      sourcesByAddress.set(key, set)
+    }
+    set.add(`${row.providerKey}/${row.listKey}`)
+  }
+
+  for (const entry of entries) {
+    const sources = sourcesByAddress.get(entry.address.toLowerCase())
+    if (sources) entry.sources = [...sources]
+  }
+
   const limited = entries.slice(0, limit)
 
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
