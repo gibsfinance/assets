@@ -446,7 +446,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {!selectedChainId && (
           <div className="flex flex-col items-center gap-4 px-4 py-8">
-            <p className="text-sm text-gray-400 dark:text-white/30">Select a network to browse tokens</p>
             {!metrics && (
               <div className="w-full space-y-2">
                 <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-surface-3" />
@@ -516,14 +515,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
           />
         )}
 
-        {/* Token count footer */}
-        {tokenCount > 0 && (
-          <div className="flex-shrink-0 border-t border-border-light px-3 py-2 dark:border-border-dark">
-            <span className="text-[10px] text-gray-400 dark:text-white/30">
-              {tokenCount.toLocaleString()} tokens
-            </span>
-          </div>
-        )}
       </div>
     </div>
   )
