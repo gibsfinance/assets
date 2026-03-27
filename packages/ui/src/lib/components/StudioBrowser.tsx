@@ -445,7 +445,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {/* Token list */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {!selectedChainId && (
-          <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-4 p-3">
             {!metrics && (
               <div className="w-full space-y-2">
                 <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-surface-3" />
