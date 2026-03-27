@@ -1196,6 +1196,7 @@ export const applyOrder = async (
         ${s.image.content},
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
+        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking",
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
           ORDER BY
@@ -1213,6 +1214,7 @@ export const applyOrder = async (
       WHERE ${whereClause}
     )
     SELECT ls.* FROM ls WHERE ls.rank = 1
+    ORDER BY ls."listRanking" ASC, ls.name ASC
   `)
   return rows.rows
 }
