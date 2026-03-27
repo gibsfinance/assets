@@ -139,7 +139,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)
 
-  const whereClause = and(eq(s.network.chainId, chainId), isNotNull(s.listToken.imageHash))!
+  const whereClause = eq(s.network.chainId, chainId)
   const defaultOrderId = getDefaultListOrderId()
 
   // Use applyOrder when available so tokens from higher-ranked lists appear first
