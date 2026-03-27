@@ -244,7 +244,7 @@ export default function TokenSearch({
 
   return (
     <div className="flex flex-col sm:flex-row">
-      <div className="flex flex-1 items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-surface-3 dark:bg-surface-2">
+      <div className="flex flex-1 items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 dark:border-surface-3 dark:bg-surface-2">
         <i className="fas fa-search text-xs text-gray-400 dark:text-white/30" />
         <input
           type="search"

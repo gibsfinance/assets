@@ -84,7 +84,7 @@ function VirtualTokenList({
               }}
             >
               <div
-                className={`group flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors border-l-2 ${
+                className={`group flex cursor-pointer items-center gap-3 px-4 py-2 transition-colors border-l-2 ${
                   isSelected
                     ? 'border-accent-500 bg-accent-500/10'
                     : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
@@ -445,7 +445,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
       {/* Token list */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {!selectedChainId && (
-          <div className="flex flex-col items-center gap-4 p-3">
+          <div className="flex flex-col items-center gap-4 px-4 py-3">
             {!metrics && (
               <div className="w-full space-y-2">
                 <div className="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-surface-3" />
