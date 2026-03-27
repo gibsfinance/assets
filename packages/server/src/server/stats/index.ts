@@ -16,14 +16,14 @@ const getStats = cacheResult<Result[]>(async () => {
   const rows = await getDrizzle()
     .select({
       chainId: s.network.chainId,
-      count: dsql<number>`count(distinct(${s.network.networkId}, lower(${s.token.tokenId})))`,
+      count: dsql<number>`count(distinct lower(${s.token.providedId}))`,
     })
     .from(s.network)
     .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
     .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
     .where(isNotNull(s.listToken.imageHash))
     .groupBy(s.network.chainId)
-    .orderBy(dsql`count(distinct(${s.network.networkId}, lower(${s.token.tokenId}))) DESC`)
+    .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
   return rows as unknown as Result[]
 })
 
