@@ -314,8 +314,11 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const tokenCount = serverTotal ?? filteredTokens.length
 
   /* ----- Fetch all tokens for a chain in one request --------------------- */
+  const fetchingChainRef = useRef<number | null>(null)
   const tryFetchTokenLists = useCallback(
     async (chainId: number) => {
+      if (fetchingChainRef.current === chainId) return
+      fetchingChainRef.current = chainId
       clearTokens()
       setIsLoadingLists(true)
       setServerTotal(null)
@@ -362,6 +365,8 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
         }
       } catch (error) {
         console.error('Failed to fetch tokens for chain:', error)
+      } finally {
+        fetchingChainRef.current = null
       }
 
       setIsLoadingLists(false)
