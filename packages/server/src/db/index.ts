@@ -40,7 +40,7 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, or, lt, gte, desc, asc, ilike, sql as dsql, type SQL } from 'drizzle-orm'
+import { eq, and, or, lt, gte, desc, asc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import * as s from './schema'
 
@@ -1115,8 +1115,29 @@ export const getListOrderId = async (orderParam: string) => {
 }
 
 /**
+ * Build a SQL CASE expression that ranks image extensions by preference.
+ * Each group in the preference list gets a lower (better) rank.
+ * Extensions not in any group get a fallback rank at the end.
+ *
+ * @param formatPreference - Ordered groups of extensions, e.g. [['.svg','.svg+xml'], ['.webp'], ['.png']]
+ *   Empty array → default SVG-first ordering.
+ */
+const buildFormatOrderSql = (formatPreference?: string[][]): SQL => {
+  if (!formatPreference?.length) {
+    return dsql`CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END`
+  }
+  const chunks: SQL[] = [dsql`CASE`]
+  for (let i = 0; i < formatPreference.length; i++) {
+    const group = formatPreference[i]
+    chunks.push(dsql` WHEN ${inArray(s.image.ext, group)} THEN ${i}`)
+  }
+  chunks.push(dsql` ELSE ${formatPreference.length} END`)
+  return dsql.join(chunks, dsql``)
+}
+
+/**
  * Apply dense-rank ordering to select the top image per token.
- * SVGs are always preferred over raster images regardless of provider ranking.
+ * When no format preference is given, SVGs are preferred over raster images.
  *
  * Uses raw SQL because Drizzle's $dynamic() cannot add SELECT columns
  * (dense_rank window function) after initial query creation.
@@ -1126,13 +1147,16 @@ export const getListOrderId = async (orderParam: string) => {
  * @param baseFrom - Which base FROM/JOIN set to use:
  *   'listToken' (default) - starts from list_token with full outer join to image (getTokensUnderListId style)
  *   'provider'  - starts from provider with right joins to list/list_token/token/image (getListTokens style)
+ * @param formatPreference - Ordered groups of extensions for format sorting
  */
 export const applyOrder = async (
   listOrderId: viem.Hex,
   whereClause: SQL,
   baseFrom: 'listToken' | 'provider' = 'listToken',
+  formatPreference?: string[][],
 ) => {
   const db = getDrizzle()
+  const formatOrder = buildFormatOrderSql(formatPreference)
   const fromClause =
     baseFrom === 'provider'
       ? dsql`
@@ -1170,7 +1194,7 @@ export const applyOrder = async (
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
           ORDER BY
-            CASE WHEN ${s.image.ext} = '.svg' THEN 0 ELSE 1 END ASC,
+            ${formatOrder} ASC,
             COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) ASC,
             ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
             ${s.listToken.listTokenOrderId} ASC

@@ -23,6 +23,7 @@ export const getListTokens = async ({
   address,
   listOrderId,
   exts,
+  formatPreference,
   providerKey,
   listKey,
 }: {
@@ -30,6 +31,7 @@ export const getListTokens = async ({
   address: viem.Hex
   listOrderId?: viem.Hex | null
   exts?: string[]
+  formatPreference?: string[][]
   providerKey?: string[]
   listKey?: string[]
 }) => {
@@ -54,7 +56,7 @@ export const getListTokens = async ({
 
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider', formatPreference)
     return {
       filter: { networkId, providedId: address },
       img: rows[0] as (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
@@ -116,6 +118,38 @@ export const extFilter = new Map<string, string[]>([
   ['.vector', ['.svg', '.xml']],
 ])
 
+/** Maps user-facing format names to concrete file extensions */
+export const formatToExts = new Map<string, string[]>([
+  ['vector', ['.svg', '.svg+xml', '.xml']],
+  ['svg', ['.svg', '.svg+xml']],
+  ['webp', ['.webp']],
+  ['png', ['.png']],
+  ['jpg', ['.jpg', '.jpeg']],
+  ['jpeg', ['.jpg', '.jpeg']],
+  ['gif', ['.gif']],
+  ['raster', ['.png', '.jpg', '.jpeg', '.webp', '.gif']],
+])
+
+/**
+ * Parse the `format` query param into an ordered list of extension groups.
+ * e.g. "vector,webp,png,jpg" → [['.svg','.svg+xml','.xml'], ['.webp'], ['.png'], ['.jpg','.jpeg']]
+ */
+export const parseFormatPreference = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[][] => {
+  if (!query) return []
+  const raw = _.isString(query) ? query : Array.isArray(query) ? query.join(',') : ''
+  if (!raw) return []
+  const seen = new Set<string>()
+  const result: string[][] = []
+  for (const name of raw.split(',')) {
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    const exts = formatToExts.get(trimmed)
+    if (exts) result.push(exts)
+  }
+  return result
+}
+
 export const splitExt = (filename: string): FilenameParts => {
   const ext = path.extname(filename)
   if (!ext) {
@@ -137,12 +171,14 @@ const getListImage =
     chainId,
     address: addressParam,
     order: orderParam,
+    formatPreference,
     providerKey,
     listKey,
   }: {
     chainId: number
     address: string
     order?: string
+    formatPreference?: string[][]
     providerKey?: string[]
     listKey?: string[]
   }) => {
@@ -159,6 +195,7 @@ const getListImage =
       address,
       listOrderId,
       exts,
+      formatPreference,
       providerKey,
       listKey,
     })
@@ -187,10 +224,12 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
   async (req, res, next) => {
+    const formatPreference = parseFormatPreference(req.query.format)
     const img = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
+      formatPreference,
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
@@ -201,10 +240,12 @@ export const getImage =
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
+  const formatPreference = parseFormatPreference(req.query.format)
   let img = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
     order: req.params.order,
+    formatPreference,
     providerKey,
     listKey,
   }).catch(ignoreNotFound)
@@ -212,6 +253,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
     img = await getListImage(false)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
+      formatPreference,
       providerKey,
       listKey,
     })
@@ -269,7 +311,7 @@ export const tryMultiple: RequestHandler<
   any,
   any,
   any,
-  { i: string | string[]; mode: ImageModeParam } & KeyFilterQuery
+  { i: string | string[]; mode: ImageModeParam; format?: string } & KeyFilterQuery
 > = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
@@ -293,10 +335,12 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
+    const formatPreference = parseFormatPreference(req.query.format)
     let img = await getListImage(true)({
       chainId: Number(chainId),
       address,
       order,
+      formatPreference,
       providerKey,
       listKey,
     }).catch(ignoreNotFound)
@@ -304,6 +348,7 @@ export const tryMultiple: RequestHandler<
       img = await getListImage(false)({
         chainId: Number(chainId),
         address,
+        formatPreference,
         providerKey,
         listKey,
       }).catch(ignoreNotFound)
