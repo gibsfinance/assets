@@ -164,7 +164,7 @@ function ResponsePanel({ url }: { url: string }) {
 
   return (
     <div className="flex gap-4">
-      <div className="w-44 shrink-0 border-r border-border-light dark:border-border-dark pr-4">
+      <div className="w-48 shrink-0 border-r border-border-light dark:border-border-dark pr-4">
         <StatsPanel stats={stats} loading={loading} error={error} />
       </div>
       <div className="min-w-0 flex-1">
@@ -179,11 +179,7 @@ function ResponsePanel({ url }: { url: string }) {
         ) : error ? (
           <div className="text-xs text-red-400">{error}</div>
         ) : json ? (
-          (() => {
-            const formatted = JSON.stringify(json, null, 2)
-            const truncated = formatted.length > 2000 ? formatted.slice(0, 2000) + '\n  ...' : formatted
-            return <CodeBlock code={truncated} lang="js" classes="text-xs max-h-64 overflow-auto" />
-          })()
+          <CodeBlock code={JSON.stringify(json, null, 2)} lang="js" classes="text-xs max-h-96 overflow-auto" />
         ) : null}
       </div>
     </div>
@@ -199,43 +195,51 @@ export default function EndpointCard({ method, path, description, example }: End
     }
   }, [])
 
-  return (
-    <div className="glass-card overflow-hidden">
-      <div className="flex items-start gap-3 p-4">
-        <span className="mt-0.5 shrink-0 rounded-full bg-accent-500/15 px-2.5 py-0.5 text-xs font-semibold text-accent-500 ring-1 ring-accent-500/30">
-          {method}
-        </span>
-        <div className="min-w-0 flex-1 space-y-1">
-          <PathDisplay path={path} />
-          <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+  if (!example) {
+    return (
+      <div className="border-b border-border-light dark:border-border-dark px-4 py-3">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+            {method}
+          </span>
+          <div className="min-w-0 flex-1 space-y-1">
+            <PathDisplay path={path} />
+            <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+          </div>
         </div>
       </div>
+    )
+  }
 
-      {example && (
-        <Disclosure>
-          {({ open }) => (
-            <>
-              <DisclosureButton className="flex w-full items-center justify-between border-t border-border-light dark:border-border-dark px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 transition-colors hover:bg-white/[0.02] hover:text-gray-700 dark:hover:text-gray-300">
-                <span>Try it</span>
-                <i className={`fas fa-chevron-down text-[10px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-              </DisclosureButton>
-              <DisclosurePanel className="border-t border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">GET</span>
-                  <input
-                    type="text"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    className="flex-1 rounded border border-border-light dark:border-border-dark bg-white dark:bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-gray-900 dark:text-white/80 outline-none focus:ring-1 focus:ring-accent-500/50"
-                  />
-                </div>
-                <ResponsePanel url={url} />
-              </DisclosurePanel>
-            </>
-          )}
-        </Disclosure>
+  return (
+    <Disclosure>
+      {({ open }) => (
+        <div className="border-b border-border-light dark:border-border-dark overflow-hidden">
+          <DisclosureButton className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.02]">
+            <span className="mt-0.5 shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+              {method}
+            </span>
+            <div className="min-w-0 flex-1 space-y-1">
+              <PathDisplay path={path} />
+              <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+            </div>
+            <i className={`fas fa-chevron-down mt-1 text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+          </DisclosureButton>
+          <DisclosurePanel className="border-t border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">{method}</span>
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="flex-1 rounded border border-border-light dark:border-border-dark bg-white dark:bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-gray-900 dark:text-white/80 outline-none focus:ring-1 focus:ring-accent-500/50"
+              />
+            </div>
+            <ResponsePanel url={url} />
+          </DisclosurePanel>
+        </div>
       )}
-    </div>
+    </Disclosure>
   )
 }

@@ -418,7 +418,7 @@ export default function Docs() {
                 Token Information Endpoints
               </h2>
               {filteredTokenEndpoints.length > 0 ? (
-                <div className="space-y-3">
+                <div className="glass-card overflow-hidden">
                   {filteredTokenEndpoints.map((endpoint) => (
                     <EndpointCard key={endpoint.path} {...endpoint} />
                   ))}
@@ -436,7 +436,7 @@ export default function Docs() {
                 Image Endpoints
               </h2>
               {filteredImageEndpoints.length > 0 ? (
-                <div className="space-y-3">
+                <div className="glass-card overflow-hidden">
                   {filteredImageEndpoints.map((endpoint) => (
                     <EndpointCard key={endpoint.path} {...endpoint} />
                   ))}
