@@ -22,12 +22,14 @@ export const getListTokens = async ({
   chainId,
   address,
   listOrderId,
+  exts,
   providerKey,
   listKey,
 }: {
   chainId: ChainId
   address: viem.Hex
   listOrderId?: viem.Hex | null
+  exts?: string[]
   providerKey?: string[]
   listKey?: string[]
 }) => {
@@ -39,6 +41,9 @@ export const getListTokens = async ({
     eq(s.token.networkId, networkId),
     eq(s.token.providedId, address),
   ]
+  if (exts?.length) {
+    conditions.push(inArray(s.image.ext, exts))
+  }
   if (providerKey?.length) {
     conditions.push(inArray(s.provider.key, providerKey))
   }
@@ -176,17 +181,20 @@ const getListImage =
     if (!+chainId) {
       throw httpErrors.BadRequest('chainId')
     }
-    const { filename: address, ext: requestedExt } = splitExt(addressParam)
+    const { filename: address, ext: requestedExt, exts } = splitExt(addressParam)
     if (!viem.isAddress(address)) {
       throw httpErrors.BadRequest('address')
     }
-    // Path extension = requested output format, NOT a source filter
-    const outputExt = requestedExt && requestedExt !== '.raster' && requestedExt !== '.vector' ? requestedExt : null
+    // .vector / .raster = source category filter
+    // .webp / .png / .svg etc = output format conversion
+    const isCategoryFilter = requestedExt === '.vector' || requestedExt === '.raster'
+    const outputExt = requestedExt && !isCategoryFilter ? requestedExt : null
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens({
       chainId: +chainId,
       address,
       listOrderId,
+      exts: isCategoryFilter ? exts : undefined,
       providerKey,
       listKey,
     })
