@@ -1206,8 +1206,8 @@ export const applyOrder = async (
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
           ORDER BY
-            ${formatOrder} ASC,
             (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
+            ${formatOrder} ASC,
             ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
             ${s.list.default} ASC,
             ${s.list.key} ASC,
