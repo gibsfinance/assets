@@ -163,43 +163,66 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
+/** Parse ?type= query param into source extension filter */
+const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] | undefined => {
+  if (!query) return undefined
+  const raw = _.isString(query) ? query.toLowerCase() : ''
+  if (!raw) return undefined
+  const exts = formatToExts.get(raw)
+  return exts ?? undefined
+}
+
+const CONVERTIBLE_RASTER = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.avif'])
+const SVG_EXTS = new Set(['.svg', '.svg+xml'])
+
 const getListImage =
   (parseOrder: boolean) =>
   async ({
     chainId,
     address: addressParam,
     order: orderParam,
+    typeFilter,
     providerKey,
     listKey,
   }: {
     chainId: number
     address: string
     order?: string
+    typeFilter?: string[]
     providerKey?: string[]
     listKey?: string[]
   }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
     if (!+chainId) {
       throw httpErrors.BadRequest('chainId')
     }
-    const { filename: address, ext: requestedExt, exts } = splitExt(addressParam)
+    const { filename: address, ext: requestedExt } = splitExt(addressParam)
     if (!viem.isAddress(address)) {
       throw httpErrors.BadRequest('address')
     }
-    // .vector / .raster = source category filter
-    // .webp / .png / .svg etc = output format conversion
-    const isCategoryFilter = requestedExt === '.vector' || requestedExt === '.raster'
-    const outputExt = requestedExt && !isCategoryFilter ? requestedExt : null
+    const outputExt = requestedExt ?? null
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens({
       chainId: +chainId,
       address,
       listOrderId,
-      exts: isCategoryFilter ? exts : undefined,
+      exts: typeFilter,
       providerKey,
       listKey,
     })
     if (!img) {
       throw httpErrors.NotFound('list image missing')
+    }
+    // Validate format compatibility
+    if (outputExt) {
+      const isSvgSource = SVG_EXTS.has(img.ext)
+      const wantsSvg = outputExt === '.svg' || outputExt === '.svg+xml'
+      if (wantsSvg && !isSvgSource) {
+        throw httpErrors.NotAcceptable(`cannot convert ${img.ext} to SVG`)
+      }
+      const wantsRaster = CONVERTIBLE_RASTER.has(outputExt)
+      if (!wantsRaster && !wantsSvg) {
+        throw httpErrors.NotAcceptable(`unsupported output format ${outputExt}`)
+      }
     }
     return { img, outputExt }
   }
@@ -227,6 +250,7 @@ export const getImage =
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
+      typeFilter: parseTypeFilter(req.query.type),
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
@@ -241,10 +265,12 @@ export const getImage =
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
+  const typeFilter = parseTypeFilter(req.query.type)
   let result = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
     order: req.params.order,
+    typeFilter,
     providerKey,
     listKey,
   }).catch(ignoreNotFound)
@@ -252,6 +278,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
     result = await getListImage(false)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
+      typeFilter,
       providerKey,
       listKey,
     })
@@ -314,7 +341,7 @@ export const tryMultiple: RequestHandler<
   any,
   any,
   any,
-  { i: string | string[]; mode: ImageModeParam; format?: string } & KeyFilterQuery
+  { i: string | string[]; mode: ImageModeParam; format?: string; type?: string } & KeyFilterQuery
 > = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
@@ -338,10 +365,12 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
+    const typeFilter = parseTypeFilter(req.query.type)
     let result = await getListImage(true)({
       chainId: Number(chainId),
       address,
       order,
+      typeFilter,
       providerKey,
       listKey,
     }).catch(ignoreNotFound)
@@ -349,6 +378,7 @@ export const tryMultiple: RequestHandler<
       result = await getListImage(false)({
         chainId: Number(chainId),
         address,
+        typeFilter,
         providerKey,
         listKey,
       }).catch(ignoreNotFound)

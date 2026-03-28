@@ -86,7 +86,7 @@ const IMAGE_ENDPOINTS = [
   {
     method: 'GET',
     path: '/image/{chainId}',
-    description: 'Network/chain icon. Append .vector or .raster to filter format',
+    description: 'Network/chain icon. Supports ?type=vector|raster to filter source format',
     example: getApiUrl('/image/369'),
   },
   {
@@ -98,8 +98,14 @@ const IMAGE_ENDPOINTS = [
   {
     method: 'GET',
     path: '/image/{chainId}/{address}.{ext}',
-    description: 'Filter to a specific format: .png, .webp, .svg, .vector, .raster',
+    description: 'Convert to a specific output format: .png, .webp, .jpg, .avif. SVG source required for .svg output',
     example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp'),
+  },
+  {
+    method: 'GET',
+    path: '/image/{chainId}/{address}?type={type}',
+    description: 'Filter source by type: vector (SVG/XML only) or raster (PNG/JPG/WebP/GIF only)',
+    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?type=vector'),
   },
   {
     method: 'GET',
