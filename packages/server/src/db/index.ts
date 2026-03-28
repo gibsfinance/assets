@@ -1210,6 +1210,7 @@ export const applyOrder = async (
             (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
             ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
             ${s.list.default} ASC,
+            ${s.list.key} ASC,
             ${s.listToken.listTokenOrderId} ASC
         ) AS rank
       FROM ${fromClause}
@@ -1221,7 +1222,7 @@ export const applyOrder = async (
       WHERE ${whereClause}
     )
     SELECT ls.* FROM ls ${dedupe ? dsql`WHERE ls.rank = 1` : dsql``}
-    ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listTokenOrderId" ASC
+    ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listKey" ASC, ls."listTokenOrderId" ASC
   `)
   return rows.rows
 }
