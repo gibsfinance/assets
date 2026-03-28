@@ -217,7 +217,7 @@ const getListImage =
       const isSvgSource = SVG_EXTS.has(img.ext)
       const wantsSvg = outputExt === '.svg' || outputExt === '.svg+xml'
       if (wantsSvg && !isSvgSource) {
-        throw httpErrors.NotAcceptable(`cannot convert ${img.ext} to SVG`)
+        throw httpErrors.NotFound(`no SVG available for this token`)
       }
       const wantsRaster = CONVERTIBLE_RASTER.has(outputExt)
       if (!wantsRaster && !wantsSvg) {
