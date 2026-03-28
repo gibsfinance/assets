@@ -86,7 +86,7 @@ const IMAGE_ENDPOINTS = [
   {
     method: 'GET',
     path: '/image/{chainId}',
-    description: 'Network/chain icon. Supports ?type=vector|raster to filter source format',
+    description: 'Network/chain icon. Supports ?only=vector|raster to filter source format',
     example: getApiUrl('/image/369'),
   },
   {
@@ -201,93 +201,78 @@ const CODE_LANGUAGES = [
 const CODE_EXAMPLES: Record<string, { code: string; lang: 'html' | 'js' | 'console' }> = {
   html: {
     lang: 'html',
-    code: `<!-- Token image — WBTC on Ethereum -->
-<img src="${apiBase}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" alt="WBTC" />
+    code: `<!-- Token image — WPLS on PulseChain (original format) -->
+<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27" alt="WPLS" />
 
-<!-- Network image — Ethereum -->
-<img src="${apiBase}/image/1" alt="Ethereum" />`,
+<!-- Same image converted to WebP (smaller file) -->
+<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp" alt="WPLS" />
+
+<!-- Resized to 64x64 as WebP -->
+<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp" alt="WPLS" />
+
+<!-- Network icon — PulseChain -->
+<img src="${apiBase}/image/369" alt="PulseChain" />`,
   },
   javascript: {
     lang: 'js',
-    code: `// Get a token image (e.g. WBTC on Ethereum)
-fetch(\`${apiBase}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599\`)
-    .then(response => response.blob())
-    .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
-        // Use the image URL in an <img> tag
-        // <img src={imageUrl} alt="Token logo" />
-    });
+    code: `// Get all tokens for PulseChain, ranked by list priority
+const res = await fetch('${apiBase}/list/tokens/369?limit=100')
+const { tokens, total } = await res.json()
+// tokens[0] = highest priority token (from PulseX list)
+// each token has .sources[] showing which lists include it
 
-// Example 2: Get all available token lists
-fetch('${apiBase}/list')
-    .then(res => res.json())
-    .then(lists => {
-        // Lists contain information about available token lists:
-        // - key: List identifier
-        // - name: Display name
-        // - providerKey: Provider identifier
-        // - chainId: Chain specific lists (0 for global lists)
-        // - default: Whether it's a default list
-        console.log(lists);
-    });
+// Get a token image as WebP
+const img = await fetch('${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp')
+const blob = await img.blob()
+const url = URL.createObjectURL(blob)
 
-// Example 3: Get tokens from a specific list
-fetch('${apiBase}/list/pulsex/extended')
-    .then(res => res.json())
-    .then(data => {
-        // Use the token list data
-        console.log(data.tokens);
-    });
+// Filter to only vector (SVG) sources
+const svg = await fetch('${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector')
+// 404 if no SVG exists, 200 with SVG content if it does
 
-// Get a specific network icon (e.g. Ethereum)
-fetch(\`${apiBase}/image/1\`)
-    .then(response => response.blob())
-    .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
-        // Use the network logo
-        // <img src={imageUrl} alt="Network logo" />
-    });`,
+// Get tokens from a specific provider list
+const list = await fetch('${apiBase}/list/pulsex/extended?chainId=369')
+const data = await list.json()
+console.log(data.tokens.length, 'tokens')`,
   },
   react: {
     lang: 'js',
     code: `import { useState, useEffect } from 'react'
 
-const API_BASE = '${apiBase}'
+const API = '${apiBase}'
 
-function TokenImage({ chainId, address, alt }) {
+// Token image with optional format conversion
+function TokenImage({ chainId, address, alt, as }) {
+  const ext = as ? \`.\${as}\` : ''
   return (
     <img
-      src={\`\${API_BASE}/image/\${chainId}/\${address}\`}
+      src={\`\${API}/image/\${chainId}/\${address}\${ext}\`}
       alt={alt}
-      onError={(e) => {
-        e.currentTarget.src = '/fallback-token.png'
-      }}
+      onError={(e) => { e.currentTarget.style.display = 'none' }}
     />
   )
 }
 
-function useTokenList(providerKey, listKey, chainId) {
+// Fetch ranked tokens for a chain
+function useChainTokens(chainId) {
   const [tokens, setTokens] = useState([])
-
   useEffect(() => {
-    const params = chainId ? \`?chainId=\${chainId}\` : ''
-    fetch(\`\${API_BASE}/list/\${providerKey}/\${listKey}\${params}\`)
-      .then(res => res.json())
-      .then(data => setTokens(data.tokens ?? []))
-  }, [providerKey, listKey, chainId])
-
+    if (!chainId) return
+    fetch(\`\${API}/list/tokens/\${chainId}?limit=100\`)
+      .then(r => r.json())
+      .then(d => setTokens(d.tokens ?? []))
+  }, [chainId])
   return tokens
 }
 
-// Usage
 function App() {
-  const tokens = useTokenList('pulsex', 'extended', 369)
+  const tokens = useChainTokens(369)
   return (
     <ul>
-      {tokens.map(token => (
-        <li key={token.address}>
-          <TokenImage chainId={token.chainId} address={token.address} alt={token.name} />
-          {token.symbol}
+      {tokens.map(t => (
+        <li key={t.address}>
+          <TokenImage chainId={t.chainId} address={t.address} alt={t.name} as="webp" />
+          {t.symbol} — {t.sources?.length ?? 0} lists
         </li>
       ))}
     </ul>
@@ -296,20 +281,29 @@ function App() {
   },
   curl: {
     lang: 'console',
-    code: `# Get a token image (WBTC on Ethereum)
-curl -o wbtc.png "${apiBase}/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+    code: `# Token image — original format
+curl -o wpls.png "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27"
 
-# Get all token lists
-curl "${apiBase}/list" | jq .
+# Same image converted to WebP
+curl -o wpls.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp"
 
-# Get a specific list
-curl "${apiBase}/list/pulsex/extended" | jq .tokens[0]
+# Convert via query param
+curl -o wpls.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp"
 
-# Get tokens for a specific chain
-curl "${apiBase}/list/pulsex/extended?chainId=369" | jq .
+# Resize to 64x64 as WebP
+curl -o wpls-64.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp"
 
-# Get network icon (Ethereum)
-curl -o ethereum.png "${apiBase}/image/1"`,
+# Only vector sources (returns 404 if no SVG exists)
+curl "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector"
+
+# Redirect to original source URL
+curl -L "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?mode=link"
+
+# Ranked tokens for PulseChain
+curl "${apiBase}/list/tokens/369?limit=20" | jq '.tokens[:5][] | {symbol, sources}'
+
+# Per-chain token counts
+curl "${apiBase}/stats" | jq '.[:5]'`,
   },
 }
 
