@@ -22,20 +22,26 @@ const SECTIONS: DocsSidebarSection[] = [
 const TOKEN_ENDPOINTS = [
   {
     method: 'GET',
-    path: '/token/{chainId}/{tokenAddress}',
-    description: 'Get specific token information',
-    example: getApiUrl('/token/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-  },
-  {
-    method: 'GET',
     path: '/list/',
     description: 'Get all available token lists across providers and chains',
     example: getApiUrl('/list/'),
   },
   {
     method: 'GET',
+    path: '/list/tokens/{chainId}',
+    description: 'Get all deduplicated tokens for a chain, ranked by list priority',
+    example: getApiUrl('/list/tokens/369'),
+  },
+  {
+    method: 'GET',
+    path: '/list/merged/{order}',
+    description: 'Get merged token list using a named ordering',
+    example: getApiUrl('/list/merged/default'),
+  },
+  {
+    method: 'GET',
     path: '/list/{providerKey}/{listKey}',
-    description: 'Get a specific token list (e.g. uniswap/hosted, pulsex/extended)',
+    description: 'Get a specific token list (e.g. pulsex/extended, coingecko/ethereum)',
     example: getApiUrl('/list/pulsex/extended'),
   },
   {
@@ -44,31 +50,55 @@ const TOKEN_ENDPOINTS = [
     description: 'Get a filtered token list for a specific chain',
     example: getApiUrl('/list/pulsex/extended?chainId=369'),
   },
+  {
+    method: 'GET',
+    path: '/networks',
+    description: 'Get all supported networks',
+    example: getApiUrl('/networks'),
+  },
+  {
+    method: 'GET',
+    path: '/stats',
+    description: 'Get per-chain token counts',
+    example: getApiUrl('/stats'),
+  },
 ]
 
 const IMAGE_ENDPOINTS = [
   {
     method: 'GET',
     path: '/image/{chainId}',
-    description: 'Get network/chain images',
-    example: getApiUrl('/image/1'),
+    description: 'Get network/chain icon',
+    example: getApiUrl('/image/369'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{tokenAddress}',
-    description: 'Get token images — priority-ordered fallback chain',
-    example: getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
+    description: 'Get token image — priority-ordered by list ranking',
+    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+  },
+  {
+    method: 'GET',
+    path: '/image/{order}/{chainId}/{tokenAddress}',
+    description: 'Get token image with explicit provider ordering',
+    example: getApiUrl('/image/default/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
     path: '/image/fallback/{order}/{chainId}/{tokenAddress}',
-    description: 'Get token icon with explicit fallback order',
-    example: getApiUrl('/image/fallback/default/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
+    description: 'Get token image with fallback — tries ordered then unordered',
+    example: getApiUrl('/image/fallback/default/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
-    path: '/image/direct/{hash}',
+    path: '/image/direct/{hash}.{ext}',
     description: 'Get image by content hash — direct content-addressed access',
+  },
+  {
+    method: 'GET',
+    path: '/image/?i={chainId}/{address}',
+    description: 'Batch image lookup — try multiple tokens, return first match',
+    example: getApiUrl('/image/?i=369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
 ]
 
