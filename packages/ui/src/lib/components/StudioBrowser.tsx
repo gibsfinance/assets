@@ -289,29 +289,41 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   /** Combined, deduped, sorted tokens for the selected chain */
   const filteredTokens = useMemo(() => {
     let tokens: Token[]
-    if (searchState?.isGlobalSearching && searchState.tokens.length > 0) {
-      tokens = searchState.tokens
-    } else if (!selectedChainId) {
+    if (!selectedChainId) {
       return []
-    } else {
-      // When data came from /list/tokens/:chainId, tokens are already deduped
-      // and ordered server-side via applyOrder (list ranking → format → version)
-      const merged = tokensByList.get('merged')
-      if (merged) {
-        return merged
-      }
-      tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
     }
-    // Client-only path: sort by popularity then alphabetical
-    return tokens.sort((a, b) => {
-      const popA = a.listReferences?.length ?? 1
-      const popB = b.listReferences?.length ?? 1
-      if (popA !== popB) return popB - popA
-      return a.name.localeCompare(b.name)
-    })
+
+    // When data came from /list/tokens/:chainId, tokens are already deduped
+    // and ordered server-side via applyOrder (list ranking → format → version)
+    const merged = tokensByList.get('merged')
+    if (merged) {
+      tokens = merged
+    } else {
+      tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
+      // Client-only path: sort by popularity then alphabetical
+      tokens.sort((a, b) => {
+        const popA = a.listReferences?.length ?? 1
+        const popB = b.listReferences?.length ?? 1
+        if (popA !== popB) return popB - popA
+        return a.name.localeCompare(b.name)
+      })
+    }
+
+    // Filter by search query
+    const query = searchState?.query?.trim().toLowerCase()
+    if (query) {
+      tokens = tokens.filter((t) =>
+        t.name.toLowerCase().includes(query) ||
+        t.symbol.toLowerCase().includes(query) ||
+        t.address.toLowerCase().includes(query),
+      )
+    }
+
+    return tokens
   }, [tokensByList, enabledLists, selectedChainId, searchState])
 
-  const tokenCount = serverTotal ?? filteredTokens.length
+  const hasSearchQuery = !!searchState?.query?.trim()
+  const tokenCount = hasSearchQuery ? filteredTokens.length : (serverTotal ?? filteredTokens.length)
 
   /* ----- Fetch all tokens for a chain in one request --------------------- */
   const fetchingChainRef = useRef<number | null>(null)
