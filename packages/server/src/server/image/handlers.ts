@@ -22,16 +22,12 @@ export const getListTokens = async ({
   chainId,
   address,
   listOrderId,
-  exts,
-  formatPreference,
   providerKey,
   listKey,
 }: {
   chainId: ChainId
   address: viem.Hex
   listOrderId?: viem.Hex | null
-  exts?: string[]
-  formatPreference?: string[][]
   providerKey?: string[]
   listKey?: string[]
 }) => {
@@ -43,9 +39,6 @@ export const getListTokens = async ({
     eq(s.token.networkId, networkId),
     eq(s.token.providedId, address),
   ]
-  if (exts?.length) {
-    conditions.push(inArray(s.image.ext, exts))
-  }
   if (providerKey?.length) {
     conditions.push(inArray(s.provider.key, providerKey))
   }
@@ -56,7 +49,7 @@ export const getListTokens = async ({
 
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider', formatPreference)
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
     return {
       filter: { networkId, providedId: address },
       img: rows[0] as (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
@@ -171,38 +164,36 @@ const getListImage =
     chainId,
     address: addressParam,
     order: orderParam,
-    formatPreference,
     providerKey,
     listKey,
   }: {
     chainId: number
     address: string
     order?: string
-    formatPreference?: string[][]
     providerKey?: string[]
     listKey?: string[]
-  }) => {
+  }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
     if (!+chainId) {
       throw httpErrors.BadRequest('chainId')
     }
-    const { filename: address, exts } = splitExt(addressParam)
+    const { filename: address, ext: requestedExt } = splitExt(addressParam)
     if (!viem.isAddress(address)) {
       throw httpErrors.BadRequest('address')
     }
+    // Path extension = requested output format, NOT a source filter
+    const outputExt = requestedExt && requestedExt !== '.raster' && requestedExt !== '.vector' ? requestedExt : null
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens({
       chainId: +chainId,
       address,
       listOrderId,
-      exts,
-      formatPreference,
       providerKey,
       listKey,
     })
     if (!img) {
       throw httpErrors.NotFound('list image missing')
     }
-    return img
+    return { img, outputExt }
   }
 
 const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined) => {
@@ -224,15 +215,17 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
   async (req, res, next) => {
-    const formatPreference = parseFormatPreference(req.query.format)
-    const img = await getListImage(parseOrder)({
+    const { img, outputExt } = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
-      formatPreference,
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
+    // Path extension (.webp, .png) = output format conversion
+    if (outputExt && !req.query.format) {
+      ;(req.query as Record<string, string>).format = outputExt.replace('.', '')
+    }
     if (await maybeResize(req, res, img)) return
     sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
   }
@@ -240,23 +233,25 @@ export const getImage =
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
-  const formatPreference = parseFormatPreference(req.query.format)
-  let img = await getListImage(true)({
+  let result = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
     order: req.params.order,
-    formatPreference,
     providerKey,
     listKey,
   }).catch(ignoreNotFound)
-  if (!img) {
-    img = await getListImage(false)({
+  if (!result) {
+    result = await getListImage(false)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
-      formatPreference,
       providerKey,
       listKey,
     })
+  }
+  if (!result) return next(httpErrors.NotFound('image not found'))
+  const { img, outputExt } = result
+  if (outputExt && !req.query.format) {
+    ;(req.query as Record<string, string>).format = outputExt.replace('.', '')
   }
   if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
@@ -335,27 +330,24 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
-    const formatPreference = parseFormatPreference(req.query.format)
-    let img = await getListImage(true)({
+    let result = await getListImage(true)({
       chainId: Number(chainId),
       address,
       order,
-      formatPreference,
       providerKey,
       listKey,
     }).catch(ignoreNotFound)
-    if (!img) {
-      img = await getListImage(false)({
+    if (!result) {
+      result = await getListImage(false)({
         chainId: Number(chainId),
         address,
-        formatPreference,
         providerKey,
         listKey,
       }).catch(ignoreNotFound)
     }
-    if (img) {
-      if (await maybeResize(req, res, img)) return
-      return sendImage(res, img, resolveImageMode(req.query.mode))
+    if (result) {
+      if (await maybeResize(req, res, result.img)) return
+      return sendImage(res, result.img, resolveImageMode(req.query.mode))
     }
   }
   return next(httpErrors.NotFound('image not found from list'))
