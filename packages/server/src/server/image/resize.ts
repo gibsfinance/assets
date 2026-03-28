@@ -21,11 +21,11 @@ export interface ResizeParams {
   format: string | null
 }
 
-/** Parse and validate w/h/format from Express query string */
+/** Parse and validate w/h/as from Express query string */
 export function parseResizeParams(query: Request['query']): ResizeParams | null {
   const wRaw = typeof query.w === 'string' ? parseInt(query.w, 10) : NaN
   const hRaw = typeof query.h === 'string' ? parseInt(query.h, 10) : NaN
-  const fRaw = typeof query.format === 'string' ? query.format.toLowerCase() : null
+  const fRaw = typeof query.as === 'string' ? query.as.toLowerCase() : null
 
   const w = !isNaN(wRaw) && wRaw >= 1 && wRaw <= MAX_DIM ? wRaw : null
   const h = !isNaN(hRaw) && hRaw >= 1 && hRaw <= MAX_DIM ? hRaw : null

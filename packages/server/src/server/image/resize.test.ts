@@ -76,11 +76,11 @@ describe('parseResizeParams', () => {
   })
 
   it('parses w + h + format', () => {
-    expect(parseResizeParams({ w: '72', h: '72', format: 'webp' })).toEqual({ w: 72, h: 72, format: 'webp' })
+    expect(parseResizeParams({ w: '72', h: '72', as: 'webp' })).toEqual({ w: 72, h: 72, format: 'webp' })
   })
 
   it('normalizes jpeg to jpg', () => {
-    expect(parseResizeParams({ format: 'jpeg' })).toEqual({ w: null, h: null, format: 'jpg' })
+    expect(parseResizeParams({ as: 'jpeg' })).toEqual({ w: null, h: null, format: 'jpg' })
   })
 
   it('rejects invalid dimensions', () => {
@@ -91,12 +91,12 @@ describe('parseResizeParams', () => {
   })
 
   it('rejects invalid formats', () => {
-    expect(parseResizeParams({ format: 'bmp' })).toBeNull()
-    expect(parseResizeParams({ format: 'tiff' })).toBeNull()
+    expect(parseResizeParams({ as: 'bmp' })).toBeNull()
+    expect(parseResizeParams({ as: 'tiff' })).toBeNull()
   })
 
   it('parses format only', () => {
-    expect(parseResizeParams({ format: 'webp' })).toEqual({ w: null, h: null, format: 'webp' })
+    expect(parseResizeParams({ as: 'webp' })).toEqual({ w: null, h: null, format: 'webp' })
   })
 
   it('accepts boundary dimensions', () => {
@@ -316,7 +316,7 @@ describe('maybeResize', () => {
     }
     vi.mocked(db.getVariant).mockResolvedValue(cachedVariant as any)
 
-    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage()
 
@@ -335,7 +335,7 @@ describe('maybeResize', () => {
   it('resizes with sharp on cache miss and returns true', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(undefined as any)
 
-    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage()
 
@@ -385,7 +385,7 @@ describe('maybeResize', () => {
   // 6. Format-only conversion (no w/h) — uses 0x0 sentinel
   // -------------------------------------------------------------------------
   it('performs format-only conversion using 0x0 sentinel', async () => {
-    const req = mockReq({ format: 'webp' })
+    const req = mockReq({ as: 'webp' })
     const res = mockRes()
     const img = makeImage()
 
@@ -495,7 +495,7 @@ describe('maybeResize', () => {
   // -------------------------------------------------------------------------
   it('calls insertVariant when rate limit allows', async () => {
     // Use a unique hash so rate limit is fresh
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ imageHash: 'insert-allowed-' + Date.now() })
 
@@ -516,7 +516,7 @@ describe('maybeResize', () => {
       checkRateLimit(hash)
     }
 
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ imageHash: hash })
 
@@ -530,7 +530,7 @@ describe('maybeResize', () => {
   // normalizeFormat: jpg → jpeg for sharp
   // -------------------------------------------------------------------------
   it('passes jpeg to sharp.toFormat when format=jpg is requested', async () => {
-    const req = mockReq({ format: 'jpg' })
+    const req = mockReq({ as: 'jpg' })
     const res = mockRes()
     const img = makeImage({ imageHash: 'normalize-jpg-' + Date.now() })
 
@@ -608,7 +608,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets cache-control header with configured cacheSeconds', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
-    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     await maybeResize(req, res, makeImage())
     expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
@@ -616,7 +616,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets x-resize header with WxH dimensions', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 72, height: 72 }))
-    const req = mockReq({ w: '72', h: '72', format: 'webp' })
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     await maybeResize(req, res, makeImage())
     expect(res.set).toHaveBeenCalledWith('x-resize', '72x72')
@@ -624,7 +624,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets x-resize as "transcoded" for 0x0 format-only variants', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 0, height: 0 }))
-    const req = mockReq({ format: 'webp' })
+    const req = mockReq({ as: 'webp' })
     const res = mockRes()
     await maybeResize(req, res, makeImage())
     expect(res.set).toHaveBeenCalledWith('x-resize', 'transcoded')
@@ -632,7 +632,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets x-uri for http URIs', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'https://cdn.example.com/img.png' })
     await maybeResize(req, res, img)
@@ -641,7 +641,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets x-uri for ipfs URIs', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'ipfs://QmSomeCid' })
     await maybeResize(req, res, img)
@@ -650,7 +650,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('omits x-uri for non-http/ipfs URIs', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'data:image/png;base64,abc' })
     await maybeResize(req, res, img)
@@ -660,7 +660,7 @@ describe('sendVariant (via maybeResize)', () => {
 
   it('sets correct content type via contentType()', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ format: 'webp' }))
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     await maybeResize(req, res, makeImage())
     expect(res.contentType).toHaveBeenCalledWith('image/webp')
@@ -671,7 +671,7 @@ describe('sendVariant (via maybeResize)', () => {
   // -------------------------------------------------------------------------
   it('omits x-uri header entirely when uri is undefined', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
-    const req = mockReq({ w: '72', format: 'webp' })
+    const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: undefined })
     await maybeResize(req, res, img)

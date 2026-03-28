@@ -163,7 +163,7 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
-/** Parse ?type= query param into source extension filter */
+/** Parse ?only= query param into source extension filter */
 const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] | undefined => {
   if (!query) return undefined
   const raw = _.isString(query) ? query.toLowerCase() : ''
@@ -250,13 +250,13 @@ export const getImage =
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
-      typeFilter: parseTypeFilter(req.query.type),
+      typeFilter: parseTypeFilter(req.query.only),
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
     // Path extension (.webp, .png) = output format conversion
-    if (outputExt && !req.query.format) {
-      ;(req.query as Record<string, string>).format = outputExt.replace('.', '')
+    if (outputExt && !req.query.as) {
+      ;(req.query as Record<string, string>).as = outputExt.replace('.', '')
     }
     if (await maybeResize(req, res, img)) return
     sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
@@ -265,7 +265,7 @@ export const getImage =
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
-  const typeFilter = parseTypeFilter(req.query.type)
+  const typeFilter = parseTypeFilter(req.query.only)
   let result = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
@@ -341,7 +341,7 @@ export const tryMultiple: RequestHandler<
   any,
   any,
   any,
-  { i: string | string[]; mode: ImageModeParam; format?: string; type?: string } & KeyFilterQuery
+  { i: string | string[]; mode: ImageModeParam; as?: string; only?: string } & KeyFilterQuery
 > = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
@@ -365,7 +365,7 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
-    const typeFilter = parseTypeFilter(req.query.type)
+    const typeFilter = parseTypeFilter(req.query.only)
     let result = await getListImage(true)({
       chainId: Number(chainId),
       address,

@@ -92,7 +92,7 @@ const IMAGE_ENDPOINTS = [
   {
     method: 'GET',
     path: '/image/{chainId}/{address}',
-    description: 'Token image — priority-ordered by list ranking. Supports ?format=, ?mode=, ?providerKey=, ?listKey=, ?w=, ?h=',
+    description: 'Token image — priority-ordered by list ranking. Supports ?as=, ?only=, ?mode=, ?providerKey=, ?listKey=, ?w=, ?h=',
     example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
@@ -103,20 +103,20 @@ const IMAGE_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/image/{chainId}/{address}?type={type}',
+    path: '/image/{chainId}/{address}?only={type}',
     description: 'Filter source by type: vector (SVG/XML only) or raster (PNG/JPG/WebP/GIF only)',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?type=vector'),
+    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector'),
   },
   {
     method: 'GET',
-    path: '/image/{chainId}/{address}?format={formats}',
-    description: 'Prefer formats in order: vector, svg, webp, png, jpg, gif, raster. Single = filter, multiple = sort preference',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?format=webp,png'),
+    path: '/image/{chainId}/{address}?as={format}',
+    description: 'Convert output to a specific format: webp, png, jpg, avif',
+    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?w={width}&h={height}',
-    description: 'Resize image on the fly (1-2048px). Supports ?format= output conversion (webp, png, jpg, avif)',
+    description: 'Resize image on the fly (1-2048px). Combine with ?as= for output conversion',
     example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64'),
   },
   {
