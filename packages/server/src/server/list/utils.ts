@@ -65,16 +65,6 @@ export const normalizeTokens = (
           b.symbol = tkn.symbol
           b.decimals = tkn.decimals
         }
-        // Debug: expose ranking info
-        const d = tkn as any
-        ;(baseline as any)._debug = {
-          listKey: d.listKey,
-          listTokenOrderId: d.listTokenOrderId,
-          listRanking: d.listRanking,
-          listDefault: d.listDefault,
-          listMajor: d.listMajor,
-          listPatch: d.listPatch,
-        }
         // Collect unique source lists (providerKey/listKey) across duplicates
         const sources = _.uniq(
           tkns
