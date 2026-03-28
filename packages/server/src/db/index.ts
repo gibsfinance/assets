@@ -1201,6 +1201,7 @@ export const applyOrder = async (
         ${s.list.major} AS "listMajor",
         ${s.list.minor} AS "listMinor",
         ${s.list.patch} AS "listPatch",
+        ${s.list.default} AS "listDefault",
         COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking",
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
@@ -1208,6 +1209,7 @@ export const applyOrder = async (
             ${formatOrder} ASC,
             (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
             ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+            ${s.list.default} ASC,
             ${s.listToken.listTokenOrderId} ASC
         ) AS rank
       FROM ${fromClause}
@@ -1219,7 +1221,7 @@ export const applyOrder = async (
       WHERE ${whereClause}
     )
     SELECT ls.* FROM ls ${dedupe ? dsql`WHERE ls.rank = 1` : dsql``}
-    ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listTokenOrderId" ASC
+    ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listTokenOrderId" ASC
   `)
   return rows.rows
 }
