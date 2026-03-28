@@ -1159,7 +1159,7 @@ export const applyOrder = async (
   whereClause: SQL,
   baseFrom: 'listToken' | 'provider' = 'listToken',
   formatPreference?: string[][],
-  { dedupe = true }: { dedupe?: boolean } = {},
+  { dedupe = true, sorted = false }: { dedupe?: boolean; sorted?: boolean } = {},
 ) => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql(formatPreference)
@@ -1222,7 +1222,7 @@ export const applyOrder = async (
       WHERE ${whereClause}
     )
     SELECT ls.* FROM ls ${dedupe ? dsql`WHERE ls.rank = 1` : dsql``}
-    ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listKey" ASC, ls."listTokenOrderId" ASC
+    ${sorted ? dsql`ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listKey" ASC, ls."listTokenOrderId" ASC` : dsql``}
   `)
   return rows.rows
 }

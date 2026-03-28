@@ -144,7 +144,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
 
   // Use applyOrder (dedupe: true) for ranked, one-row-per-token results
   const tokens = defaultOrderId
-    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken')
+    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
     : await db
         .getTokensUnderListId()
         .where(whereClause)
