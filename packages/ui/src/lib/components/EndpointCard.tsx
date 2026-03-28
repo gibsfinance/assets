@@ -164,7 +164,7 @@ function ResponsePanel({ url }: { url: string }) {
 
   return (
     <div className="flex gap-4">
-      <div className="w-32 shrink-0 border-r border-border-light dark:border-border-dark pr-4">
+      <div className="w-44 shrink-0 border-r border-border-light dark:border-border-dark pr-4">
         <StatsPanel stats={stats} loading={loading} error={error} />
       </div>
       <div className="min-w-0 flex-1">
