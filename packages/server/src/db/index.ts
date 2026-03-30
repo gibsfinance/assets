@@ -1113,7 +1113,13 @@ export const getListOrderId = async (orderParam: string) => {
       .limit(1)
     if (listOrder) return listOrder.listOrderId as viem.Hex
   } else {
-    return hex as viem.Hex
+    // Verify the hex order ID exists in the DB
+    const [exact] = await db
+      .select({ listOrderId: s.listOrder.listOrderId })
+      .from(s.listOrder)
+      .where(eq(s.listOrder.listOrderId, hex))
+      .limit(1)
+    if (exact) return exact.listOrderId as viem.Hex
   }
 
   return null

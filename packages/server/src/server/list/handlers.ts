@@ -16,7 +16,10 @@ export const merged: RequestHandler = async (req, res, next) => {
   if (!orderId) {
     return next(createError.NotFound('order id missing'))
   }
-  const whereClause = dsql`${s.network.chainId} != '0'`
+  const chainId = req.query.chainId as string | undefined
+  const whereClause = chainId
+    ? and(dsql`${s.network.chainId} != '0'`, eq(s.network.chainId, chainId))!
+    : dsql`${s.network.chainId} != '0'`
   const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
