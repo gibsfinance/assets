@@ -1052,6 +1052,12 @@ export const getListOrderId = async (orderParam: string) => {
 
 export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = getDB()) => {
   const qSub = q
+    .join(tableNames.list, {
+      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
+    })
+    .join(tableNames.provider, {
+      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
+    })
     .leftJoin(tableNames.listOrderItem, function () {
       this.on(`${tableNames.listOrderItem}.listKey`, `${tableNames.list}.key`)
         .andOn(`${tableNames.listOrderItem}.providerId`, `${tableNames.list}.providerId`)
