@@ -96,7 +96,7 @@ const parseSidebarChainInfo = () => {
 class DexscreenerCollector extends BaseCollector {
   readonly key = 'dexscreener'
 
-  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal?: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
       name: 'DexScreener',
@@ -244,7 +244,7 @@ class DexscreenerCollector extends BaseCollector {
           }))
 
           // Batch insert all tokens
-          const insertedTokens = await db.insertTokenBatch(tokenInserts)
+          await db.insertTokenBatch(tokenInserts)
 
           // Create list associations and handle headers
           for (const [batchIndex, token] of all.entries()) {
