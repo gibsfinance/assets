@@ -1,202 +1,33 @@
 # Gib.Show — Progress
 
-## Session: Knex → Drizzle Phase 5 (2026-03-25)
+## Session: March 25-30, 2026
 
-### Phase 5: Replace knex/types/tables imports with Drizzle schema (completed)
+### Completed
+- Knex → Drizzle ORM migration (all 5 phases + cleanup)
+- Token list ordering: provider ranking → version → format preference
+- Image serving: ?as= for conversion, ?only= for source filtering
+- Pumptires collector migrated to api2.pump.tires v2 API
+- Server coverage: 56% → 98% lines (247 server tests + 46 UI tests)
+- Production hotfixes: applyOrder raw SQL + missing joins
+- Docs page: live editable endpoints with stats panel
+- Lint: 0 errors (54 warnings in collectors — unused vars)
+- Fixed tokenFilters decimals bug (_.toArray split '18' → ['1','8'])
+- Fixed CI: typecheck (Hex types), prettier formatting, tsconfig excludes
+- Extracted pure functions from UI components → utils/ with tests
+- UI type fixes: CodeOutput shape literal, StudioBrowser ListDescription
 
-Decoupled the type system from Knex entirely:
+### Production State
+- Two hotfixes pushed (applyOrder syntax + missing joins)
+- Still on old Knex codebase — Drizzle migration not merged yet
+- Merge staging → production needed for full deployment
 
-1. **Created `db/schema-types.ts`** — All table types inferred from Drizzle schema via `InferSelectModel`/`InferInsertModel`. DB-generated ID fields (providerId, listId, tokenId, etc.) made optional in insert types with `OptionalKeys<>`. Includes `BackfillableInsertableListOrderItem` migrated from global.d.ts.
+### Test Coverage
+- Server: 97.96% lines, 94.33% branches, 97.1% functions (247 tests)
+- UI utils: 46 pure function tests (code-output, formatting, list-order)
+- Coverage files: handlers.ts 94%, submissions.ts 100%, resize.ts 100%
 
-2. **Replaced all `knex/types/tables` imports** across 18 files (src + test):
-   - db/index.ts, types.ts, db/sync-order.ts, utils/index.ts
-   - server/image/handlers.ts, server/image/resize.ts, server/list/utils.ts, server/networks/index.ts
-   - collect/pumptires.ts, dexscreener.ts, smoldapp.ts, internetmoney.ts, inmemory-tokenlist.ts
-   - bin/export.ts, test/list.test.ts, test/db-batch.test.ts, test/utils.ts
-
-3. **Converted remaining Knex raw queries to Drizzle**:
-   - server/networks/index.ts — `getDB().select().from()` → `getDrizzle().select().from(s.network)`
-   - server/stats/index.ts — complex Knex raw count → Drizzle `dsql` template
-   - server/image/sprite.ts — `db.getDB()` queries → Drizzle with `$dynamic()`
-   - server/submissions.ts — full CRUD → Drizzle `insert/select/update` with `s.listSubmission`
-   - collect/user-submissions.ts — all `db.getDB()` → Drizzle
-   - collect/index.ts — `db.raw()` pg_stat_activity → Drizzle `db.execute(dsql)`
-   - collect/smoldapp.ts — existing token lookup → Drizzle
-   - collect/internetmoney.ts — existing token lookup → Drizzle
-   - collect/dexscreener.ts — network lookup → Drizzle
-   - bin/export.ts — complex joins → Drizzle
-   - cleanup.ts — try/catch around lazy Knex destroy
-
-4. **Removed `Tx` type** from `db/tables.ts` (was `Knex | Knex.Transaction`). Replaced with `DrizzleTx` in all consumers.
-
-5. **Removed `Knex` import** from `db/tables.ts`. Kept `Knex` in `db/utils.ts` (migration infrastructure only).
-
-6. **Gutted `global.d.ts`** — removed entire `declare module 'knex/types/tables.js'` block.
-
-7. **Converted `db/index.ts`**:
-   - Removed `import knex from 'knex'` and `let db = knex(config)` singleton
-   - Replaced with lazy `getDB()` that only initializes Knex when called (migration runner only)
-   - Removed `setDB()` export
-   - Added `transaction()` export that delegates to `getDrizzle().transaction()`
-   - Converted `getImageByAddress` from Knex to Drizzle
-
-8. **Updated test mocks**:
-   - test/utils.ts — rewrote to use DrizzleTx + Drizzle transactions
-   - submissions.test.ts — mocks getDrizzle instead of getDB
-   - user-submissions.test.ts — mocks getDrizzle instead of getDB
-
-Results: 0 TypeScript errors, 121/121 vitest tests passing. 5 pre-existing test failures in test/ (JSX parsing issue with log/App.tsx, unrelated).
-
-### Remaining Knex Usage
-- `db/index.ts getDB()` — lazy Knex init for migration runner only
-- `db/config.ts` — Knex connection config (used by getDB + knexfile)
-- `db/utils.ts` — migration helper functions (Knex types retained)
-- `db/seeds/` — Knex seed files
-- `db/migrations/` — Knex migration files
-- `knexfile.ts` — Knex migration config
-- `bin/migrate.ts`, `bin/seed.ts`, `bin/collect.ts`, `bin/server.ts`, `bin/harvest.ts`, `bin/create-orders.ts` — call `getDB().migrate.latest()` for migration runner
-
-### Next Steps (Phase 6)
-- Replace Knex migration runner with Drizzle migrations (`drizzle-kit`)
-- Remove knexfile.ts, db/config.ts, migrations/, seeds/ directories
-- Remove `knex` from package.json dependencies
-- Remove the lazy `getDB()` shim from db/index.ts
-
-## Session: Knex → Drizzle Phase 4 (2026-03-25)
-
-### Phase 4: Complex Query-Composition Functions (completed)
-Converted the 7 remaining Knex query-builder pattern functions to Drizzle ORM:
-- `insertOrder` — Knex transaction → Drizzle transaction with DrizzleTx passthrough
-- `getTokensUnderListId` — Knex chainable → Drizzle `$dynamic()` with typed select
-- `getLists` — Knex chainable with string-based where → async Drizzle with `eq()`/`and()`
-- `addHeaderUriExtension` — Knex.QueryBuilder param → generic `<T extends $dynamic()>`
-- `addBridgeExtensions` — Knex joins with aliased tables → Drizzle `alias()` from pg-core
-- `getListOrderId` — Knex `.where().first()` → Drizzle `eq()`/`ilike()`/`limit(1)`
-- `applyOrder` — The hardest: Knex `denseRank()/partitionBy()/CTE` → raw `dsql`` template with window function
-
-Updated all server-side callers:
-- `db/sync-order.ts` — Drizzle transaction + `isNotNull()`/`eq()` queries
-- `server/list/utils.ts` — `respondWithList` uses `eq()`/`asc()` on `$dynamic()` query
-- `server/list/handlers.ts` — All 5 handlers (merged, versioned, providerKeyed, all, tokensByChain) converted
-- `server/image/handlers.ts` — `getListTokens`, `getNetworkIcon`, `getImageByHash` all use Drizzle
-- `collect/pumptires.ts` — `getTokensUnderListId()` callers use `eq()`/`desc()`
-
-Key decisions:
-- `applyOrder` uses raw SQL (`dsql` template) because Drizzle `$dynamic()` cannot add SELECT columns after creation (needed for dense_rank window function)
-- Two FROM clause variants in `applyOrder`: 'listToken' (for merged handler) and 'provider' (for image handler) to match the original Knex query patterns
-- `addBridgeExtensions`/`addHeaderUriExtension` return type cast through `unknown` since adding joins changes Drizzle's type signature
-
-Results: 8 fewer TS errors (52 → 44), zero new errors. All 142 server tests passing.
-
-### Remaining Knex Usage
-- `db/index.ts` still imports `knex` for: the `db` singleton, `getDB()`, `setDB()`, `transaction()`, and several mid-file functions (insertImage, fetchImageAndStore*, getTokenAndLatestListToken, etc.)
-- Collector files (dexscreener, inmemory-tokenlist, internetmoney, omnibridge) still pass Knex transactions where DrizzleTx is expected — 44 pre-existing TS errors
-- Complete Knex removal requires converting the remaining ~15 functions in db/index.ts and all collector transaction patterns
-
-## Session 3 continued (2026-03-20)
-
-### Token Row Layout + SVG Ranking (completed, merged to staging)
-- Two-line token rows: name+address top, symbol+list bottom, info button right
-- Token deduplication with expandable multi-list sub-rows (TokenSubRows component)
-- SVG ranking boost in applyOrder — SVGs always preferred over rasters
-- Pagination dark mode fix
-- Popular chain quick-picks in Studio empty state (top 8 by token count)
-
-### CoinGecko Dual Lists (completed, merged to staging)
-- Separate thumb and large lists per platform (e.g., coingecko/ethereum + coingecko/ethereum-large)
-- rewriteLogoURI callback on remote-tokenlist (not blanket rewrite)
-- Original lists preserved as fallback
-
-### List Editor Phase 1 (completed, merged to staging)
-- ListEditorContext for editor state (open/close, active list)
-- ListEditor shell component with creation menu
-- Three-panel sliding layout: [Editor] [Browser 380px] [Configurator]
-- CSS translateX transition between studio mode and edit mode
-- Mobile: third "Editor" tab when editing
-- Token sub-rows and list name wired to openEditor
-
-### List Editor Phase 2 (completed, merged to staging)
-- useLocalLists hook with IndexedDB CRUD (idb-keyval)
-- List creation: new, fork remote, import URL, paste JSON
-- Active list view with editable name, token list, source badge
-- ListEditorContext wired to useLocalLists with full CRUD
-- Removed duplicate top pagination
-
-### In Progress: List Editor Phase 3
-- Token table with @dnd-kit drag-and-drop reordering
-- Add/remove tokens
-- RPC metadata loading via viem
-
-### Remaining
-- Phase 4: GitHub/GitLab/VCS publish (pluggable VCSPublisher interface)
-- Phase 5: Image management (upload, resize, preview at multiple sizes)
-- Badge controls, radial snap buttons, dark mode cleanup
-
-## Session 3 (2026-03-20)
-
-### Server-Side Image Resize (completed, merged to staging)
-- `sharp` for on-the-fly resize: `?w=N&h=N&format=webp` on all `/image/` endpoints
-- `image_variant` table: DB-persisted variants, rate-limited creation (5/image/min, 100/min global)
-- Daily prune job: deletes variants with < 3 hits in 24h, resets counters
-- SVG passthrough when viewBox present; rasterize when not
-- LINK-mode images (pumptires, dexscreener) fetched and resized on demand
-- `x-resize` header on all responses (original/WxH/transcoded)
-- 18 unit tests passing
-- Spec: `docs/superpowers/specs/2026-03-20-server-image-resize-design.md`
-- Plan: `docs/superpowers/plans/2026-03-20-server-image-resize.md`
-
-### CoinGecko Image Quality Fix (completed, merged to staging)
-- Collector rewrites `/thumb/` → `/large/` in logoURI (25x25 → 250x250)
-- All 3 tiers (thumb/small/large) 403 together — no behavior change on removed images
-- Existing images update on next collection cycle
-
-### Conveyor Belt Overhaul (completed, merged to staging)
-- Curated 443 high-quality icons (≥64x64 or SVG), removed 9 placeholder icons
-- Each row independently shuffles all 443 icons for maximum variety
-- Full viewport coverage — 886 icons per row (doubled for seamless CSS loop)
-- Per-row speed: 18/22/26 px/s (slow→fast top→bottom, parallax feel)
-- Serves 72x72 WebP via resize endpoint (~73% bandwidth reduction)
-- Reusable `<Image>` component with skeleton + lazy loading (IntersectionObserver)
-
-### Home Page Network Grid (completed, merged to staging)
-- Even row truncation with "and N more networks" overflow text
-- Failed image chains replaced with next available (grid stays full)
-- Skeleton loaders on network icons via shared `<Image>` component
-
-### Merged to Staging
-- 98 commits merged and pushed to origin/staging
-- Migration runs automatically on server startup (`db.getDB().migrate.latest()`)
-- Cloudflare cache rule for `/image/*` added by user
-
-## Session History (2026-03-18 → 2026-03-19)
-
-### 1. Image Priority Ordering (completed, merged to staging)
-- Two-phase collection pipeline: discover() → order sync → collect()
-- BaseCollector abstract class, 33 collectors converted
-- Rankings from collectables.ts key order (1000-spacing, bigint)
-- Spec: `docs/superpowers/specs/2026-03-18-image-priority-ordering-design.md`
-
-### 2. Infrastructure Fixes (completed, merged to staging)
-- Dependency security, CI pipeline, Docker layer caching, production guards
-
-### 3. Svelte → React Conversion (completed, merged to staging)
-- React 19 + React Router 7 + Headless UI 2 + Tailwind CSS 4 + Shiki + Vite 6
-- 15 components, 3 pages, 5 hooks, 3 contexts ported
-
-### 4. Visual Refresh + WYSIWYG Studio (completed, merged to staging)
-- Vibrant Web3/DeFi design system, Studio page with split-panel layout
-- Token browser, configurator toolbar + infinite canvas, code output
-- Spec: `docs/superpowers/specs/2026-03-19-visual-refresh-wysiwyg-design.md`
-
-## Remaining TODOs
-- Badge bg/shape/padding controls (same options as token image)
-- Snap buttons on radial picker (TL, TR, BL, BR presets)
-- Dark mode cleanup in remaining components
-- Knex → Drizzle migration (future)
-- API key gating for resize tiers (future)
-
-## Key Architecture Notes
-- Provider ordering: CoinGecko at position 26 (low priority) — ordering is correct
-- Image resize: DB-persisted variants > in-memory LRU for horizontal scaling
-- Cloudflare caches `/image/*` at edge after first hit (86400s max-age)
-- `PUBLIC_BASE_URL` env var controls API base in UI (empty = same origin)
+### Next Steps
+- Merge staging → production
+- Clean up 54 unused import lint warnings in collectors
+- Remove old Knex migration files from staging (still in src/db/migrations/)
+- Consider extracting more UI logic (TokenSearch dedup/sort, useTokenBrowser)

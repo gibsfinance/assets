@@ -15,7 +15,7 @@ import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 import { maybeResize } from './resize'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
+import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 
 export const getListTokens = async ({
@@ -242,7 +242,7 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-  async (req, res, next) => {
+  async (req, res, _next) => {
     const { img, outputExt } = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
@@ -316,7 +316,7 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   return img
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, next) => {
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
   const img = await bestGuessNeworkImage(req.params.chainId)
   if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))

@@ -123,9 +123,7 @@ describe('normalizeTokens', () => {
   })
 
   it('omits name, symbol, decimals when sansMetadata extension is set', () => {
-    const tokens = [
-      makeToken({ providedId: '0xaaa', name: 'TokenA', symbol: 'TKA', decimals: 18 }),
-    ]
+    const tokens = [makeToken({ providedId: '0xaaa', name: 'TokenA', symbol: 'TKA', decimals: 18 })]
 
     const result = normalizeTokens(tokens as any, [], new Set(['sansMetadata']))
 
@@ -138,9 +136,7 @@ describe('normalizeTokens', () => {
   })
 
   it('includes name, symbol, decimals when sansMetadata is NOT set', () => {
-    const tokens = [
-      makeToken({ providedId: '0xaaa', name: 'TokenA', symbol: 'TKA', decimals: 8 }),
-    ]
+    const tokens = [makeToken({ providedId: '0xaaa', name: 'TokenA', symbol: 'TKA', decimals: 8 })]
 
     const result = normalizeTokens(tokens as any, [], new Set())
 
@@ -181,9 +177,7 @@ describe('normalizeTokens', () => {
   })
 
   it('omits sources when providerKey or listKey are missing', () => {
-    const tokens = [
-      makeToken({ providedId: '0xaaa', providerKey: '', listKey: '' }),
-    ]
+    const tokens = [makeToken({ providedId: '0xaaa', providerKey: '', listKey: '' })]
 
     const result = normalizeTokens(tokens as any)
 
@@ -192,9 +186,7 @@ describe('normalizeTokens', () => {
   })
 
   it('omits sources when providerKey is null', () => {
-    const tokens = [
-      makeToken({ providedId: '0xaaa', providerKey: null, listKey: 'list-a' }),
-    ]
+    const tokens = [makeToken({ providedId: '0xaaa', providerKey: null, listKey: 'list-a' })]
 
     const result = normalizeTokens(tokens as any)
 
@@ -434,19 +426,16 @@ describe('tokenFilters', () => {
   })
 
   it('creates a decimals filter for a single string value', () => {
-    // _.toArray('18') splits into ['1', '8'], so the set becomes {1, 8}
-    // This means a single-string decimals value matches individual digit values
     const filters = tokenFilters({ decimals: '18' })
     expect(filters).toHaveLength(1)
 
     const filter = filters[0]
-    expect(filter({ chainId: '369', decimals: 1 } as any)).toBe(true)
-    expect(filter({ chainId: '369', decimals: 8 } as any)).toBe(true)
-    expect(filter({ chainId: '369', decimals: 18 } as any)).toBe(false)
+    expect(filter({ chainId: '369', decimals: 18 } as any)).toBe(true)
+    expect(filter({ chainId: '369', decimals: 1 } as any)).toBe(false)
+    expect(filter({ chainId: '369', decimals: 8 } as any)).toBe(false)
   })
 
   it('creates a decimals filter for a single-digit string', () => {
-    // _.toArray('8') splits into ['8'], so the set becomes {8}
     const filters = tokenFilters({ decimals: '8' })
     expect(filters).toHaveLength(1)
 
@@ -455,13 +444,12 @@ describe('tokenFilters', () => {
     expect(filter({ chainId: '369', decimals: 18 } as any)).toBe(false)
   })
 
-  it('creates a decimals filter for a numeric value (empty set)', () => {
-    // _.toArray(18) returns [] for numbers, so the set is empty — nothing matches
+  it('creates a decimals filter for a numeric value', () => {
     const filters = tokenFilters({ decimals: 18 })
     expect(filters).toHaveLength(1)
 
     const filter = filters[0]
-    expect(filter({ chainId: '369', decimals: 18 } as any)).toBe(false)
+    expect(filter({ chainId: '369', decimals: 18 } as any)).toBe(true)
     expect(filter({ chainId: '369', decimals: 6 } as any)).toBe(false)
   })
 
@@ -483,7 +471,7 @@ describe('tokenFilters', () => {
     expect(filters[0]({ chainId: '369', decimals: 8 } as any)).toBe(true)
     expect(filters[0]({ chainId: '1', decimals: 18 } as any)).toBe(false)
 
-    // Second filter is decimals (array input works correctly with _.toArray)
+    // Second filter is decimals
     expect(filters[1]({ chainId: '1', decimals: 18 } as any)).toBe(true)
     expect(filters[1]({ chainId: '369', decimals: 8 } as any)).toBe(true)
     expect(filters[1]({ chainId: '369', decimals: 6 } as any)).toBe(false)
@@ -492,9 +480,7 @@ describe('tokenFilters', () => {
 
 describe('minimalList', () => {
   it('returns a TokenList with empty name and zero version', () => {
-    const tokens = [
-      { chainId: 369, address: '0xaaa', name: 'Token', symbol: 'TKN', decimals: 18 },
-    ] as any
+    const tokens = [{ chainId: 369, address: '0xaaa', name: 'Token', symbol: 'TKN', decimals: 18 }] as any
 
     const result = minimalList(tokens)
 
@@ -563,9 +549,7 @@ describe('respondWithList', () => {
   }
 
   it('queries db, normalizes tokens, and responds with JSON', async () => {
-    const tokens = [
-      makeToken({ providedId: '0xaaa', name: 'TokenA', providerKey: 'px', listKey: 'ext' }),
-    ]
+    const tokens = [makeToken({ providedId: '0xaaa', name: 'TokenA', providerKey: 'px', listKey: 'ext' })]
     createMockQuery(tokens)
     const res = createMockResponse()
 
@@ -597,12 +581,7 @@ describe('respondWithList', () => {
     createMockQuery([])
     const res = createMockResponse()
 
-    await respondWithList(
-      res as any,
-      { ...baseList, major: 0, minor: 0, patch: 0 },
-      [],
-      new Set(),
-    )
+    await respondWithList(res as any, { ...baseList, major: 0, minor: 0, patch: 0 }, [], new Set())
 
     const body = res.json.mock.calls[0][0]
     expect(body.version).toEqual({ major: 0, minor: 0, patch: 0 })

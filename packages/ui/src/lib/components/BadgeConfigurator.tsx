@@ -1,16 +1,7 @@
 import { useCallback } from 'react'
 import { useStudio } from '../contexts/StudioContext'
 import RadialPositionPicker from './RadialPositionPicker'
-
-function formatPercent(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`
-}
-
-function overlapLabel(overlap: number): string {
-  if (overlap <= -0.4) return 'Float'
-  if (overlap >= 0.4) return 'Inset'
-  return 'Edge'
-}
+import { formatPercent, overlapLabel } from '../utils/formatting'
 
 function CompactSlider({
   label,

@@ -53,7 +53,13 @@ import * as db from '../../db'
 import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { maybeResize } from './resize'
-import type { Response, Request, NextFunction } from 'express'
+import type { Response, Request } from 'express'
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const TEST_ADDRESS = '0x0000000000000000000000000000000000000001' as const
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -373,12 +379,12 @@ describe('image handlers', () => {
   describe('getListTokens', () => {
     it('uses applyOrder when a list order is available', async () => {
       const fakeRow = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault')
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
       vi.mocked(db.applyOrder).mockResolvedValue([fakeRow])
 
       const result = await getListTokens({
         chainId: 1,
-        address: '0x0000000000000000000000000000000000000001',
+        address: TEST_ADDRESS,
       })
 
       expect(db.applyOrder).toHaveBeenCalledWith('0xdefault', expect.anything(), 'provider')
@@ -387,7 +393,7 @@ describe('image handlers', () => {
     })
 
     it('falls back to simple drizzle query when no order id', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
       const fakeRow = {
         provider: { key: 'test' },
@@ -401,7 +407,7 @@ describe('image handlers', () => {
 
       const result = await getListTokens({
         chainId: 1,
-        address: '0x0000000000000000000000000000000000000001',
+        address: TEST_ADDRESS,
       })
 
       expect(getDrizzle).toHaveBeenCalled()
@@ -409,26 +415,26 @@ describe('image handlers', () => {
     })
 
     it('returns undefined img when no rows match', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
 
       const result = await getListTokens({
         chainId: 1,
-        address: '0x0000000000000000000000000000000000000001',
+        address: TEST_ADDRESS,
       })
 
       expect(result.img).toBeUndefined()
     })
 
     it('passes ext filter when provided', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault')
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
       vi.mocked(db.applyOrder).mockResolvedValue([makeImage()])
 
       await getListTokens({
         chainId: 1,
-        address: '0x0000000000000000000000000000000000000001',
+        address: TEST_ADDRESS,
         exts: ['.svg'],
       })
 
@@ -440,7 +446,7 @@ describe('image handlers', () => {
 
       await getListTokens({
         chainId: 1,
-        address: '0x0000000000000000000000000000000000000001',
+        address: TEST_ADDRESS,
         listOrderId: '0xcustom',
       })
 
@@ -482,7 +488,7 @@ describe('image handlers', () => {
   describe('getImage', () => {
     it('calls sendImage on success', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -497,7 +503,7 @@ describe('image handlers', () => {
 
       const handler = getImage(false)
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001' },
+        params: { chainId: '1', address: TEST_ADDRESS },
         query: {},
       })
       const res = mockResponse()
@@ -511,7 +517,7 @@ describe('image handlers', () => {
 
     it('sets query.as from path extension', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -526,7 +532,7 @@ describe('image handlers', () => {
 
       const handler = getImage(false)
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001.webp' },
+        params: { chainId: '1', address: `${TEST_ADDRESS}.webp` },
         query: {},
       })
       const res = mockResponse()
@@ -538,7 +544,7 @@ describe('image handlers', () => {
 
     it('does not override existing query.as', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -553,7 +559,7 @@ describe('image handlers', () => {
 
       const handler = getImage(false)
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001.webp' },
+        params: { chainId: '1', address: `${TEST_ADDRESS}.webp` },
         query: { as: 'png' },
       })
       const res = mockResponse()
@@ -565,7 +571,7 @@ describe('image handlers', () => {
 
     it('returns early when maybeResize handles the response', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -580,7 +586,7 @@ describe('image handlers', () => {
 
       const handler = getImage(false)
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001' },
+        params: { chainId: '1', address: TEST_ADDRESS },
         query: {},
       })
       const res = mockResponse()
@@ -589,6 +595,61 @@ describe('image handlers', () => {
 
       // sendImage should not be called if maybeResize handled the response
       expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('passes providerKey and listKey array query params', async () => {
+      const img = makeImage()
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      const chain = makeDrizzleChain([
+        {
+          provider: { key: 'test' },
+          list: { listId: '1' },
+          list_token: { tokenId: '1' },
+          token: { networkId: 'eip155:1' },
+          image: img,
+        },
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: TEST_ADDRESS },
+        query: { providerKey: ['pulsex', 'uniswap'], listKey: 'default' },
+      })
+      const res = mockResponse()
+
+      await handler(req, res, vi.fn())
+
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('passes object-style query params through toString fallback', async () => {
+      const img = makeImage()
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      const chain = makeDrizzleChain([
+        {
+          provider: { key: 'test' },
+          list: { listId: '1' },
+          list_token: { tokenId: '1' },
+          token: { networkId: 'eip155:1' },
+          image: img,
+        },
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const handler = getImage(false)
+      // ParsedQs can have nested object values — triggers toString fallback
+      const req = mockRequest({
+        params: { chainId: '1', address: TEST_ADDRESS },
+        query: { providerKey: { nested: 'value' } },
+      })
+      const res = mockResponse()
+
+      await handler(req, res, vi.fn())
+
+      expect(res.send).toHaveBeenCalled()
     })
   })
 
@@ -627,9 +688,7 @@ describe('image handlers', () => {
 
       await getImageByHash(req, res, next)
 
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 404 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
     })
   })
 
@@ -669,9 +728,9 @@ describe('image handlers', () => {
       const res = mockResponse()
       const next = vi.fn()
 
-      await expect(
-        bestGuessNetworkImageFromOnOnChainInfo(req, res, next),
-      ).rejects.toThrow(/best guess network image not found/)
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, next)).rejects.toThrow(
+        /best guess network image not found/,
+      )
     })
 
     it('throws BadRequest for invalid chainId', async () => {
@@ -682,9 +741,7 @@ describe('image handlers', () => {
       const res = mockResponse()
       const next = vi.fn()
 
-      await expect(
-        bestGuessNetworkImageFromOnOnChainInfo(req, res, next),
-      ).rejects.toThrow(/chainId/)
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, next)).rejects.toThrow(/chainId/)
     })
   })
 
@@ -694,7 +751,7 @@ describe('image handlers', () => {
   describe('getImageAndFallback', () => {
     it('sets req.query.format from outputExt when present', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
       // Return data with a .webp extension on the address param
       const chainSuccess = makeDrizzleChain([
@@ -710,7 +767,7 @@ describe('image handlers', () => {
       vi.mocked(maybeResize).mockResolvedValue(false as any)
 
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001.webp', order: 'someorder' },
+        params: { chainId: '1', address: `${TEST_ADDRESS}.webp`, order: 'someorder' },
         query: {},
       })
       const res = mockResponse()
@@ -723,7 +780,7 @@ describe('image handlers', () => {
 
     it('does not override existing req.query.format', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
       const chainSuccess = makeDrizzleChain([
         {
@@ -738,7 +795,7 @@ describe('image handlers', () => {
       vi.mocked(maybeResize).mockResolvedValue(false as any)
 
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001.webp', order: 'someorder' },
+        params: { chainId: '1', address: `${TEST_ADDRESS}.webp`, order: 'someorder' },
         query: { format: 'png' },
       })
       const res = mockResponse()
@@ -750,27 +807,25 @@ describe('image handlers', () => {
     })
 
     it('throws when both ordered and unordered queries find nothing', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
 
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001', order: 'someorder' },
+        params: { chainId: '1', address: TEST_ADDRESS, order: 'someorder' },
         query: {},
       })
       const res = mockResponse()
       const next = vi.fn()
 
       // The second getListImage(false) call throws NotFound (no .catch)
-      await expect(
-        getImageAndFallback(req, res, next),
-      ).rejects.toThrow(/list image missing/)
+      await expect(getImageAndFallback(req, res, next)).rejects.toThrow(/list image missing/)
     })
 
     it('falls back to unordered query when ordered fails', async () => {
       const img = makeImage()
       // First call (ordered) rejects with 404, second (unordered) succeeds
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
       let callCount = 0
       const chainSuccess = makeDrizzleChain([
@@ -792,7 +847,7 @@ describe('image handlers', () => {
       vi.mocked(maybeResize).mockResolvedValue(false as any)
 
       const req = mockRequest({
-        params: { chainId: '1', address: '0x0000000000000000000000000000000000000001', order: 'someorder' },
+        params: { chainId: '1', address: TEST_ADDRESS, order: 'someorder' },
         query: {},
       })
       const res = mockResponse()
@@ -810,21 +865,19 @@ describe('image handlers', () => {
   // -----------------------------------------------------------------------
   describe('tryMultiple', () => {
     it('returns 404 when no images found', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
 
       const req = mockRequest({
-        query: { i: ['1/0x0000000000000000000000000000000000000001'] },
+        query: { i: [`1/${TEST_ADDRESS}`] },
       })
       const res = mockResponse()
       const next = vi.fn()
 
       await tryMultiple(req as any, res, next)
 
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 404 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
     })
 
     it('tries network icon when address is missing', async () => {
@@ -848,12 +901,12 @@ describe('image handlers', () => {
     })
 
     it('handles single string i query param', async () => {
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
 
       const req = mockRequest({
-        query: { i: '1/0x0000000000000000000000000000000000000001' },
+        query: { i: `1/${TEST_ADDRESS}` },
       })
       const res = mockResponse()
       const next = vi.fn()
@@ -861,29 +914,25 @@ describe('image handlers', () => {
       await tryMultiple(req as any, res, next)
 
       // Single string i is wrapped into array internally, falls through to 404
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 404 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
     })
 
     it('rejects invalid order hex in tryMultiple', async () => {
       const req = mockRequest({
         // order part is present but not 64 chars
-        query: { i: ['1/0x0000000000000000000000000000000000000001/short'] },
+        query: { i: [`1/${TEST_ADDRESS}/short`] },
       })
       const res = mockResponse()
       const next = vi.fn()
 
       await tryMultiple(req as any, res, next)
 
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 406 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 406 }))
     })
 
     it('serves image when address lookup succeeds', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -897,7 +946,7 @@ describe('image handlers', () => {
       vi.mocked(maybeResize).mockResolvedValue(false as any)
 
       const req = mockRequest({
-        query: { i: ['1/0x0000000000000000000000000000000000000001'] },
+        query: { i: [`1/${TEST_ADDRESS}`] },
       })
       const res = mockResponse()
       const next = vi.fn()
@@ -910,7 +959,7 @@ describe('image handlers', () => {
 
     it('returns early when maybeResize handles response for address lookup', async () => {
       const img = makeImage()
-      vi.mocked(getDefaultListOrderId).mockReturnValue(null as unknown as string)
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
         {
           provider: { key: 'test' },
@@ -924,7 +973,7 @@ describe('image handlers', () => {
       vi.mocked(maybeResize).mockResolvedValue(true as any)
 
       const req = mockRequest({
-        query: { i: ['1/0x0000000000000000000000000000000000000001'] },
+        query: { i: [`1/${TEST_ADDRESS}`] },
       })
       const res = mockResponse()
       const next = vi.fn()
@@ -969,9 +1018,7 @@ describe('image handlers', () => {
 
       await tryMultiple(req as any, res, next)
 
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 404 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
     })
 
     it('handles empty i query param', async () => {
@@ -981,9 +1028,7 @@ describe('image handlers', () => {
 
       await tryMultiple(req as any, res, next)
 
-      expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 404 }),
-      )
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
     })
   })
 })

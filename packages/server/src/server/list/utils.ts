@@ -143,7 +143,7 @@ export const tokenFilters = (q: { chainId?: number | string | string[]; decimals
     filters.push((a) => chainIds.has(`${a.chainId}`))
   }
   if (q.decimals) {
-    const decimalsQs = _.toArray(q.decimals as string | string[])
+    const decimalsQs = (Array.isArray(q.decimals) ? q.decimals : [q.decimals]).map((d) => `${d}`)
     const decimals = new Set<number>(decimalsQs.map((d) => Number(d)))
     filters.push((a) => decimals.has(a.decimals))
   }

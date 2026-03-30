@@ -1,25 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import { useStudio } from '../contexts/StudioContext'
-
-const DEFAULT_PROVIDERS = [
-  'coingecko',
-  'uniswap',
-  'trustwallet',
-  'smoldapp',
-  'pulsechain',
-  'pulsex',
-  'balancer',
-  'internetmoney',
-] as const
-
-/** Returns true if the given order matches the default provider order. */
-function isDefaultOrder(order: string[]): boolean {
-  return (
-    order.length === DEFAULT_PROVIDERS.length &&
-    order.every((p, i) => p === DEFAULT_PROVIDERS[i])
-  )
-}
+import { isDefaultOrder, reorderArray, DEFAULT_PROVIDERS } from '../utils/list-order'
 
 interface ProviderRowProps {
   provider: string
@@ -131,10 +113,7 @@ export default function ListResolutionOrder() {
         return
       }
 
-      const reordered = [...providers]
-      const [moved] = reordered.splice(sourceIndex, 1)
-      reordered.splice(targetIndex, 0, moved)
-
+      const reordered = reorderArray(providers, sourceIndex, targetIndex)
       setProviders(reordered)
       setResolutionOrder(isDefaultOrder(reordered) ? null : reordered)
       setDragOverIndex(null)
@@ -171,10 +150,7 @@ export default function ListResolutionOrder() {
         if (to < 0 || to >= providers.length) return
 
         event.preventDefault()
-        const reordered = [...providers]
-        const [moved] = reordered.splice(from, 1)
-        reordered.splice(to, 0, moved)
-
+        const reordered = reorderArray(providers, from, to)
         setProviders(reordered)
         setSelectedIndex(to)
         setResolutionOrder(isDefaultOrder(reordered) ? null : reordered)

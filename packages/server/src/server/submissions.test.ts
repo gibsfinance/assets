@@ -396,6 +396,15 @@ describe('GET /submissions', () => {
     const items = res.body as unknown as unknown[]
     expect(items).toHaveLength(0)
   })
+
+  it('applies status filter when query param is provided', async () => {
+    chain.then = vi.fn((resolve: (v: unknown) => void) => resolve([]))
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions?status=pending')
+
+    expect(res.status).toBe(200)
+    expect(chain.where).toHaveBeenCalled()
+  })
 })
 
 describe('PATCH /submissions/:id', () => {
@@ -442,6 +451,39 @@ describe('PATCH /submissions/:id', () => {
     expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved' }))
   })
 
+  it('accepts imageMode=save', async () => {
+    chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'pending', imageMode: 'save' }])
+
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
+      imageMode: 'save',
+    })
+
+    expect(res.status).toBe(200)
+    expect(res.body.imageMode).toBe('save')
+    expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'save' }))
+  })
+
+  it('accepts both status and imageMode together', async () => {
+    chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'approved', imageMode: 'link' }])
+
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
+      status: 'approved',
+      imageMode: 'link',
+    })
+
+    expect(res.status).toBe(200)
+    expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', imageMode: 'link' }))
+  })
+
+  it('ignores invalid imageMode values', async () => {
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
+      imageMode: 'invalid',
+    })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Nothing to update')
+  })
+
   it('returns 404 when submission not found', async () => {
     chain.returning.mockResolvedValueOnce([])
 
@@ -451,6 +493,93 @@ describe('PATCH /submissions/:id', () => {
 
     expect(res.status).toBe(404)
     expect(res.body.error).toBe('Submission not found')
+  })
+})
+
+describe('GET /submissions/approved', () => {
+  let port: number
+  let close: () => void
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    chain.select.mockReturnValue(chain)
+    chain.from.mockReturnValue(chain)
+    chain.where.mockReturnValue(chain)
+    chain.orderBy.mockReturnValue(chain)
+    chain.update.mockReturnValue(chain)
+    chain.set.mockReturnValue(chain)
+    chain.returning.mockResolvedValue([])
+    const app = await startApp()
+    port = app.port
+    close = app.close
+  })
+
+  afterEach(() => close())
+
+  it('returns approved submissions mapped for collector', async () => {
+    const rows = [
+      {
+        id: 'uuid-1',
+        url: 'https://example.com/list.json',
+        providerKey: 'user-alice',
+        listKey: 'my-list',
+        imageMode: 'save',
+        subscriberCount: 50,
+        lastAccessedAt: new Date().toISOString(),
+        lastContentHash: 'abc123',
+        status: 'approved',
+      },
+    ]
+    chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(rows))
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    const items = res.body as unknown as unknown[]
+    expect(items).toHaveLength(1)
+    const item = items[0] as Record<string, unknown>
+    expect(item.url).toBe('https://example.com/list.json')
+    expect(item.providerKey).toBe('user-alice')
+    expect(item.listKey).toBe('my-list')
+    expect(item.imageMode).toBe('save')
+    expect(item.lastContentHash).toBe('abc123')
+  })
+
+  it('auto-upgrades imageMode when resolveImageMode returns a new mode', async () => {
+    const rows = [
+      {
+        id: 'uuid-auto',
+        url: 'https://example.com/list.json',
+        providerKey: 'user-bob',
+        listKey: 'bobs-list',
+        imageMode: 'auto',
+        subscriberCount: 200,
+        lastAccessedAt: new Date().toISOString(),
+        lastContentHash: null,
+        status: 'approved',
+      },
+    ]
+    chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(rows))
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    const items = res.body as unknown as unknown[]
+    expect(items).toHaveLength(1)
+    // auto + 200 subscribers → save
+    expect((items[0] as Record<string, unknown>).imageMode).toBe('save')
+    // Should have updated the DB
+    expect(chain.update).toHaveBeenCalled()
+    expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'save' }))
+  })
+
+  it('returns empty array when no approved submissions', async () => {
+    chain.then = vi.fn((resolve: (v: unknown) => void) => resolve([]))
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual([])
   })
 })
 

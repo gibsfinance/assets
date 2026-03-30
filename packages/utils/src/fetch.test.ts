@@ -257,8 +257,9 @@ describe('getLimiter', () => {
   it('executes a task through the host limiter', async () => {
     const url = new URL('https://limiter-test.example.com/')
     const limiter = getLimiter(url)
-    const result = await limiter(() => Promise.resolve('ok'))
-    expect(result).toBe('ok')
+    const okResponse = new Response('ok', { status: 200 })
+    const result = await limiter(() => Promise.resolve(okResponse))
+    expect(result).toBe(okResponse)
   })
 })
 

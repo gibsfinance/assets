@@ -29,9 +29,7 @@ import type { Request, Response, NextFunction } from 'express'
  * router.stack. We find the POST /submit layer and call its handler chain.
  */
 function getSubmitHandler(): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-  const layer = (router as any).stack.find(
-    (l: any) => l.route && l.route.path === '/submit' && l.route.methods.post,
-  )
+  const layer = (router as any).stack.find((l: any) => l.route && l.route.path === '/submit' && l.route.methods.post)
   if (!layer) throw new Error('POST /submit route not found on router')
   // The route has two handlers: json() middleware and our nextOnError wrapper.
   // We want the second one (the actual handler wrapped by nextOnError).
@@ -157,22 +155,14 @@ describe('POST /submit handler', () => {
       vi.fn(),
     )
     expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('data URI') }),
-    )
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('data URI') }))
   })
 
   it('returns 400 when image is not a string', async () => {
     const res = mockResponse()
-    await handler(
-      mockRequest({ chainId: 1, address: '0xabc', image: 12345, submittedBy: 'anon' }),
-      res,
-      vi.fn(),
-    )
+    await handler(mockRequest({ chainId: 1, address: '0xabc', image: 12345, submittedBy: 'anon' }), res, vi.fn())
     expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('data URI') }),
-    )
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('data URI') }))
   })
 
   it('returns 400 for invalid data URI format', async () => {
@@ -198,15 +188,9 @@ describe('POST /submit handler', () => {
     const dataUri = `data:image/png;base64,${largeBuffer.toString('base64')}`
 
     const res = mockResponse()
-    await handler(
-      mockRequest({ chainId: 1, address: '0xabc', image: dataUri, submittedBy: 'anon' }),
-      res,
-      vi.fn(),
-    )
+    await handler(mockRequest({ chainId: 1, address: '0xabc', image: dataUri, submittedBy: 'anon' }), res, vi.fn())
     expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('512KB') }),
-    )
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('512KB') }))
   })
 
   it('returns 400 for unrecognized image format', async () => {
@@ -217,11 +201,7 @@ describe('POST /submit handler', () => {
     const dataUri = `data:application/octet-stream;base64,${Buffer.from(textContent).toString('base64')}`
 
     const res = mockResponse()
-    await handler(
-      mockRequest({ chainId: 1, address: '0xabc', image: dataUri, submittedBy: 'anon' }),
-      res,
-      vi.fn(),
-    )
+    await handler(mockRequest({ chainId: 1, address: '0xabc', image: dataUri, submittedBy: 'anon' }), res, vi.fn())
     expect(res.status).toHaveBeenCalledWith(400)
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ error: expect.stringContaining('Unrecognized image format') }),

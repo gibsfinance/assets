@@ -1,38 +1,26 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as viem from 'viem'
-import { failureLog, responseToBuffer, timeout, type Timeout, type ChainId } from '@gibs/utils'
+import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
-import * as types from '../types'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
 import * as utils from '../utils'
-import { imageMode, tableNames } from './tables'
+import { imageMode } from './tables'
 import type {
-  Image,
   InsertableList,
   InsertableListToken,
   InsertableProvider,
   InsertableToken,
-  Link,
   List,
-  ListToken,
   Network,
-  Provider,
-  ListOrder,
-  ListOrderItem,
   InsertableListOrder,
   BackfillableInsertableListOrderItem,
-  Token,
   InsertableBridge,
   Bridge,
   InsertableBridgeLink,
-  BridgeLink,
   InsertableHeaderLink,
-  HeaderLink,
-  CacheRequest,
   InsertableCacheRequest,
-  ImageVariant,
   InsertableImageVariant,
 } from './schema-types'
 import { fetch } from '../fetch'
@@ -40,7 +28,7 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, or, lt, gte, desc, asc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
+import { eq, and, or, lt, gte, desc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import * as s from './schema'
 

@@ -5,7 +5,7 @@ import { renderHook, act } from '@testing-library/react'
 // Viem mock — must be declared before any import that transitively uses viem
 // ---------------------------------------------------------------------------
 const mockReadContract = vi.fn()
-const mockCreatePublicClient = vi.fn(() => ({ readContract: mockReadContract }))
+const mockCreatePublicClient = vi.fn((_opts: Record<string, unknown>) => ({ readContract: mockReadContract }))
 
 vi.mock('viem', async () => {
   const actual = await vi.importActual<typeof import('viem')>('viem')
@@ -163,7 +163,7 @@ describe('getClient', () => {
     // createPublicClient is called with the custom chain config containing the URL
     const callArg = mockCreatePublicClient.mock.calls[0][0]
     // The chain's rpcUrls or the transport should include the custom URL
-    const chainRpcHttp = callArg.chain?.rpcUrls?.default?.http
+    const chainRpcHttp = (callArg as any).chain?.rpcUrls?.default?.http
     const hasCustomUrl =
       (Array.isArray(chainRpcHttp) && chainRpcHttp.includes('https://my-eth-node.example.com')) ||
       // when a known chain is given a custom RPC, getClient still passes chain: chain (known),

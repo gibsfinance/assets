@@ -4,50 +4,7 @@ import { root } from '../config'
 import { badgePositionToCSS } from '../utils/badge-position'
 import CodeBlock from './CodeBlock'
 import type { CodeFormat, CodeMode, StudioAppearance, BadgeConfig } from '../types'
-
-// ---------------------------------------------------------------------------
-// Shadow helpers
-// ---------------------------------------------------------------------------
-
-function shadowToCSS(shadow: StudioAppearance['shadow']): string {
-  switch (shadow) {
-    case 'subtle': return '0 1px 3px rgba(0,0,0,0.12)'
-    case 'medium': return '0 4px 12px rgba(0,0,0,0.15)'
-    case 'strong': return '0 8px 24px rgba(0,0,0,0.2)'
-    default: return ''
-  }
-}
-
-function shapeToCSS(
-  shape: StudioAppearance['shape'],
-  borderRadius: number,
-): string {
-  switch (shape) {
-    case 'circle': return '50%'
-    case 'rounded': return `${borderRadius}px`
-    case 'square': return '0'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// URL builder
-// ---------------------------------------------------------------------------
-
-function buildImageUrl(
-  chainId: string,
-  address: string,
-  resolutionOrder: string[] | null,
-  apiBase: string,
-): string {
-  if (resolutionOrder && resolutionOrder.length > 0) {
-    return `${apiBase}/image/fallback/${resolutionOrder.join(',')}/${chainId}/${address}`
-  }
-  return `${apiBase}/image/${chainId}/${address}`
-}
-
-function buildNetworkUrl(chainId: string, apiBase: string): string {
-  return `${apiBase}/image/${chainId}`
-}
+import { shadowToCSS, shapeToCSS, buildImageUrl, buildNetworkUrl } from '../utils/code-output'
 
 // ---------------------------------------------------------------------------
 // Code generators
@@ -59,7 +16,7 @@ function generateSdkSnippet(
   appearance: StudioAppearance,
 ): string {
   const { width, shape } = appearance
-  const shapeAttr = shape === 'rect' ? ' shape="rect"' : ''
+  const shapeAttr = shape === 'square' ? ' shape="square"' : ''
   return [
     `import { GibProvider, TokenImage } from '@gibs/react'`,
     ``,

@@ -178,7 +178,7 @@ interface AvailableList {
   name: string
   providerKey: string
   chainId: string
-  type: string
+  type?: string
   default: boolean
 }
 
@@ -237,7 +237,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
           name: (info.name as string) || (info.key as string),
           providerKey: info.providerKey as string,
           chainId: info.chainId?.toString() || '0',
-          type: (info.type as string) || 'hosted',
+          type: (info.chainType as string) || 'hosted',
           default: (info.default as boolean) || false,
         })
       }
