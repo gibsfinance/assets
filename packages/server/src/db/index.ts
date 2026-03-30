@@ -1057,17 +1057,16 @@ export const applyOrder = (q: Knex.QueryBuilder, listOrderId: viem.Hex, t: Tx = 
         .andOn(`${tableNames.listOrderItem}.providerId`, `${tableNames.list}.providerId`)
         .andOnVal(`${tableNames.listOrderItem}.listOrderId`, listOrderId)
     })
-    .denseRank('rank', function denseRankByConfiged() {
-      return this.orderBy(
-        t.raw(`COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807)`) as unknown as string,
-        'asc',
-      )
-        .orderBy(`${tableNames.list}.major`, 'desc')
-        .orderBy(`${tableNames.list}.minor`, 'desc')
-        .orderBy(`${tableNames.list}.patch`, 'desc')
-        .orderBy(`${tableNames.listToken}.listTokenOrderId`, 'asc')
-        .partitionBy([`${tableNames.token}.token_id`, `${tableNames.token}.network_id`])
-    })
+    .select(
+      t.raw(`dense_rank() OVER (
+        PARTITION BY ${tableNames.token}.token_id, ${tableNames.token}.network_id
+        ORDER BY
+          CASE WHEN ${tableNames.image}.ext = '.svg' THEN 0 ELSE 1 END ASC,
+          COALESCE(${tableNames.listOrderItem}.ranking, 9223372036854775807) ASC,
+          ${tableNames.list}.major DESC, ${tableNames.list}.minor DESC, ${tableNames.list}.patch DESC,
+          ${tableNames.listToken}.list_token_order_id ASC
+      ) as rank`),
+    )
   return t('ls').with('ls', qSub).select('ls.*').where('ls.rank', 1)
 }
 
