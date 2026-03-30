@@ -4,6 +4,7 @@ import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schem
 import * as db from '../../db'
 import config from '../../../config'
 import { imageMode } from '../../db/tables'
+import { failureLog } from '@gibs/utils'
 
 // ---------------------------------------------------------------------------
 // Section 1: Query param parsing, SVG detection, format helpers
@@ -163,7 +164,9 @@ export async function maybeResize(req: Request, res: Response, img: Image): Prom
   // Check for cached variant
   const existing = await db.getVariant(img.imageHash, targetW || 0, targetH || 0, targetFormat)
   if (existing) {
-    db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch(() => {})
+    db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch((e: Error) =>
+      failureLog('variant op failed: %s', e.message),
+    )
     sendVariant(res, existing, img.uri)
     return true
   }
@@ -192,7 +195,7 @@ export async function maybeResize(req: Request, res: Response, img: Image): Prom
 
   // Persist if under rate limit
   if (checkRateLimit(img.imageHash)) {
-    db.insertVariant(variantRecord).catch(() => {})
+    db.insertVariant(variantRecord).catch((e: Error) => failureLog('variant op failed: %s', e.message))
   }
 
   sendVariant(

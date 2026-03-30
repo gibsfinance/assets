@@ -1275,11 +1275,7 @@ export const bumpVariantAccess = async (
     )
 }
 
-export const pruneVariants = async (
-  minAccessCount = 3,
-  maxAgeHours = 24,
-  tx?: DrizzleTx,
-): Promise<number> => {
+export const pruneVariants = async (minAccessCount = 3, maxAgeHours = 24, tx?: DrizzleTx): Promise<number> => {
   const db = tx ?? getDrizzle()
   const deleted = await db
     .delete(s.imageVariant)

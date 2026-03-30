@@ -5,8 +5,9 @@ import * as utils from './utils'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
+import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, asc, inArray, isNotNull, sql as dsql } from 'drizzle-orm'
+import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
 
@@ -66,7 +67,7 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
     )
   }
   if (providerKey.startsWith('user-')) {
-    bumpSubscriberCount(providerKey).catch(() => {})
+    bumpSubscriberCount(providerKey).catch((e: Error) => failureLog('bump failed: %s', e.message))
   }
   const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
   const filters = utils.tokenFilters(req.query)
