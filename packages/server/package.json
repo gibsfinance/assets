@@ -16,6 +16,7 @@
     "db:migrate-generate": "drizzle-kit generate",
     "db:migrate-push": "drizzle-kit push",
     "db:migrate-pull": "drizzle-kit pull",
+    "db:seed": "tsx src/bin/seed",
     "build": "tsc",
     "collect": "tsx src/bin/collect",
     "collect:dev": "tsx --watch src/bin/collect",

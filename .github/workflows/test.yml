@@ -73,9 +73,9 @@ jobs:
             *.cache-to=type=gha,mode=max
       - name: Start services and wait for health
         run: |
-          docker compose up -d postgres
-          docker compose up postgres-migrate
-          docker compose up -d server
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up postgres-migrate
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d server
           for i in $(seq 1 30); do
             if [ "$(docker inspect --format='{{.State.Health.Status}}' gibassets-server 2>/dev/null)" = "healthy" ]; then
               echo "Server is healthy"
