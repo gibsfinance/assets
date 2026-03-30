@@ -146,7 +146,6 @@ class InternetMoneyCollector extends BaseCollector {
             chainId: network.chainId,
           },
         })
-        const chain = networkToChain(network)
         const networkList = this.networkListByNetwork.get(network)!
 
         // Store network icon

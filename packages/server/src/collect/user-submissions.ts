@@ -1,4 +1,3 @@
-import * as viem from 'viem'
 import { RemoteTokenListCollector } from './remote-tokenlist'
 import type { BaseCollector } from './base-collector'
 import { failureLog } from '@gibs/utils'

@@ -1,12 +1,11 @@
 import _ from 'lodash'
 import { concatHex, parseAbi, getAddress, Hex, keccak256 } from 'viem'
-import { failureLog, limitBy, retry, timeout } from '@gibs/utils'
+import { failureLog, limitBy, retry } from '@gibs/utils'
 import * as db from '../db'
 import * as utils from '../utils'
 import { pulsechain } from 'viem/chains'
 import { fetch } from '../fetch'
 import * as chains from 'viem/chains'
-import { tableNames } from '../db/tables'
 import type { Token } from '../db/schema-types'
 import type * as types from '../types'
 import { terminalRowTypes, TerminalSectionProxy, TerminalRowProxy, terminalCounterTypes } from '../log/types'
@@ -17,7 +16,6 @@ import * as s from '../db/schema'
 const providerKey = 'pumptires'
 const listKey = 'tokens'
 
-const limiter = limitBy<number>(providerKey, 1)
 const limitTokens = limitBy<[TokenInfo, number]>(`${providerKey}-tokens`, 16)
 const limitHighCapSorting = limitBy<types.TokenInfo>(`${providerKey}-highcap`, 16)
 type InsertHighCapToken = Omit<Parameters<typeof db.fetchImageAndStoreForToken>[0], 'listTokenOrderId'> & {

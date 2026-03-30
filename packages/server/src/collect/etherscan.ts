@@ -704,7 +704,7 @@ class EtherscanCollector extends BaseCollector {
         )
       }
       // Setup counters
-      const section = row.issue(providerKey)
+      row.issue(providerKey)
       row.createCounter(terminalCounterTypes.NETWORK)
       row.createCounter(terminalCounterTypes.TOKEN)
       row.createCounter(terminalLogTypes.EROR, true)

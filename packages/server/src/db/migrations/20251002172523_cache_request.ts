@@ -1,6 +1,6 @@
 import type { Knex } from 'knex'
 
-import userConfig from '../../../config'
+import _userConfig from '../../../config'
 import { log } from '../../logger'
 import * as utils from '../utils'
 import { tableNames } from '../tables'

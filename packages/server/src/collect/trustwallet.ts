@@ -343,7 +343,7 @@ class TrustWalletCollector extends BaseCollector {
 
   private blockchainFolders: string[] = []
 
-  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
     const row = utils.terminal.issue({
       type: terminalRowTypes.SETUP,

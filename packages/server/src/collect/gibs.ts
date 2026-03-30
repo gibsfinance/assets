@@ -14,11 +14,11 @@ const file = await fs.promises.readFile(pathToNativeV4Pulse)
 class GibsCollector extends BaseCollector {
   readonly key = 'gibs'
 
-  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
     })
-    const network = await db.insertNetworkFromChainId(943)
+    await db.insertNetworkFromChainId(943)
     await db.insertList({
       providerId: provider.providerId,
       name: 'Gibs',
@@ -38,7 +38,7 @@ class GibsCollector extends BaseCollector {
     ]
   }
 
-  async collect(signal: AbortSignal): Promise<void> {
+  async collect(_signal: AbortSignal): Promise<void> {
     const [provider] = await db.insertProvider({
       key: providerKey,
     })
