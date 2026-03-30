@@ -65,24 +65,15 @@ describe('parseFormatPreference', () => {
   })
 
   it('deduplicates format names', () => {
-    expect(parseFormatPreference('png,png,webp')).toEqual([
-      ['.png'],
-      ['.webp'],
-    ])
+    expect(parseFormatPreference('png,png,webp')).toEqual([['.png'], ['.webp']])
   })
 
   it('is case-insensitive', () => {
-    expect(parseFormatPreference('PNG,WebP')).toEqual([
-      ['.png'],
-      ['.webp'],
-    ])
+    expect(parseFormatPreference('PNG,WebP')).toEqual([['.png'], ['.webp']])
   })
 
   it('skips unknown format names', () => {
-    expect(parseFormatPreference('vector,bmp,png')).toEqual([
-      ['.svg', '.svg+xml', '.xml'],
-      ['.png'],
-    ])
+    expect(parseFormatPreference('vector,bmp,png')).toEqual([['.svg', '.svg+xml', '.xml'], ['.png']])
   })
 
   it('returns empty array when all names are unknown', () => {
@@ -90,16 +81,11 @@ describe('parseFormatPreference', () => {
   })
 
   it('trims whitespace around names', () => {
-    expect(parseFormatPreference(' png , webp ')).toEqual([
-      ['.png'],
-      ['.webp'],
-    ])
+    expect(parseFormatPreference(' png , webp ')).toEqual([['.png'], ['.webp']])
   })
 
   it('handles raster as a group', () => {
-    expect(parseFormatPreference('raster')).toEqual([
-      ['.png', '.jpg', '.jpeg', '.webp', '.gif'],
-    ])
+    expect(parseFormatPreference('raster')).toEqual([['.png', '.jpg', '.jpeg', '.webp', '.gif']])
   })
 
   it('treats svg and jpeg as aliases', () => {

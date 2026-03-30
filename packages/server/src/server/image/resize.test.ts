@@ -22,7 +22,16 @@ vi.mock('../../../config', () => ({
   default: { cacheSeconds: 86400 },
 }))
 
-import { parseResizeParams, svgHasViewBox, checkRateLimit, extToFormat, formatToContentType, maybeResize, normalizeFormat, sendVariant } from './resize'
+import {
+  parseResizeParams,
+  svgHasViewBox,
+  checkRateLimit,
+  extToFormat,
+  formatToContentType,
+  maybeResize,
+  normalizeFormat,
+  sendVariant,
+} from './resize'
 import * as db from '../../db'
 import sharp from 'sharp'
 
@@ -42,14 +51,16 @@ function mockRes(): any {
   return res
 }
 
-function makeImage(overrides: Partial<{
-  imageHash: string
-  content: Buffer
-  ext: string
-  uri: string
-  mode: string
-  createdAt: Date
-}> = {}): any {
+function makeImage(
+  overrides: Partial<{
+    imageHash: string
+    content: Buffer
+    ext: string
+    uri: string
+    mode: string
+    createdAt: Date
+  }> = {},
+): any {
   return {
     imageHash: 'abc123',
     content: Buffer.from('fake-image-data'),
@@ -583,16 +594,18 @@ describe('sendVariant (via maybeResize)', () => {
     vi.mocked(sharp).mockReturnValue(mockPipeline as any)
   })
 
-  function makeVariant(overrides: Partial<{
-    imageHash: string
-    width: number
-    height: number
-    format: string
-    content: Buffer
-    accessCount: number
-    createdAt: Date
-    lastAccessedAt: Date
-  }> = {}): any {
+  function makeVariant(
+    overrides: Partial<{
+      imageHash: string
+      width: number
+      height: number
+      format: string
+      content: Buffer
+      accessCount: number
+      createdAt: Date
+      lastAccessedAt: Date
+    }> = {},
+  ): any {
     return {
       imageHash: 'abc123',
       width: 72,
@@ -700,16 +713,20 @@ describe('normalizeFormat', () => {
 describe('sendVariant (direct)', () => {
   it('sets headers and sends content', () => {
     const res = mockRes()
-    sendVariant(res, {
-      imageHash: 'abc',
-      width: 72,
-      height: 72,
-      format: 'webp',
-      content: Buffer.from('test'),
-      accessCount: 1,
-      createdAt: new Date().toISOString(),
-      lastAccessedAt: new Date().toISOString(),
-    }, 'https://example.com/img.png')
+    sendVariant(
+      res,
+      {
+        imageHash: 'abc',
+        width: 72,
+        height: 72,
+        format: 'webp',
+        content: Buffer.from('test'),
+        accessCount: 1,
+        createdAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString(),
+      },
+      'https://example.com/img.png',
+    )
 
     expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age='))
     expect(res.set).toHaveBeenCalledWith('x-resize', '72x72')

@@ -44,11 +44,16 @@ export function svgHasViewBox(content: Buffer): boolean {
 /** Map format string to content-type */
 export function formatToContentType(format: string): string {
   switch (format) {
-    case 'webp': return 'image/webp'
-    case 'png': return 'image/png'
-    case 'jpg': return 'image/jpeg'
-    case 'avif': return 'image/avif'
-    default: return 'application/octet-stream'
+    case 'webp':
+      return 'image/webp'
+    case 'png':
+      return 'image/png'
+    case 'jpg':
+      return 'image/jpeg'
+    case 'avif':
+      return 'image/avif'
+    default:
+      return 'application/octet-stream'
   }
 }
 
@@ -122,11 +127,7 @@ export function checkRateLimit(imageHash: string): boolean {
  * Attempt to serve a resized/transcoded variant of the image.
  * Returns true if a variant was served, false if caller should use default sendImage.
  */
-export async function maybeResize(
-  req: Request,
-  res: Response,
-  img: Image,
-): Promise<boolean> {
+export async function maybeResize(req: Request, res: Response, img: Image): Promise<boolean> {
   const params = parseResizeParams(req.query)
   if (!params) return false
 
@@ -194,21 +195,23 @@ export async function maybeResize(
     db.insertVariant(variantRecord).catch(() => {})
   }
 
-  sendVariant(res, {
-    ...variantRecord,
-    accessCount: 1,
-    createdAt: new Date().toISOString(),
-    lastAccessedAt: new Date().toISOString(),
-  }, img.uri)
+  sendVariant(
+    res,
+    {
+      ...variantRecord,
+      accessCount: 1,
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    },
+    img.uri,
+  )
 
   return true
 }
 
 export function sendVariant(res: Response, variant: ImageVariant, uri?: string): void {
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  r = r.set('x-resize', variant.width && variant.height
-    ? `${variant.width}x${variant.height}`
-    : 'transcoded')
+  r = r.set('x-resize', variant.width && variant.height ? `${variant.width}x${variant.height}` : 'transcoded')
   if (uri) {
     if (uri.startsWith('http') || uri.startsWith('ipfs')) {
       r = r.set('x-uri', uri)

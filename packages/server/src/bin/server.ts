@@ -12,16 +12,19 @@ db.migrate()
     await syncDefaultOrder(keys, manifests)
     startPeriodicRefresh(keys, manifests, 60_000)
     // Daily variant prune job
-    const pruneTimer = setInterval(async () => {
-      try {
-        const deleted = await db.pruneVariants()
-        if (deleted > 0) {
-          log('pruned %d image variants', deleted)
+    const pruneTimer = setInterval(
+      async () => {
+        try {
+          const deleted = await db.pruneVariants()
+          if (deleted > 0) {
+            log('pruned %d image variants', deleted)
+          }
+        } catch (err) {
+          log('variant prune failed: %o', err)
         }
-      } catch (err) {
-        log('variant prune failed: %o', err)
-      }
-    }, 24 * 60 * 60 * 1000)
+      },
+      24 * 60 * 60 * 1000,
+    )
     pruneTimer.unref()
     return server.main()
   })

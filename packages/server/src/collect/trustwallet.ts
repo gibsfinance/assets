@@ -143,15 +143,11 @@ const loadChainId = async (blockchainKey: string) => {
   // Match chainSlug and name first (more specific), chain field last
   // (chain: "Solana" on Neon EVM would incorrectly match the solana folder)
   const candidates = chainList.filter(
-    (c) =>
-      sterilize(c.chainSlug) === sterilizedBlockchainKey ||
-      sterilize(c.name) === sterilizedBlockchainKey,
+    (c) => sterilize(c.chainSlug) === sterilizedBlockchainKey || sterilize(c.name) === sterilizedBlockchainKey,
   )
   // Only try the less-specific chain field if no slug/name matches found
   if (candidates.length === 0) {
-    candidates.push(
-      ...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey),
-    )
+    candidates.push(...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey))
   }
   const chain =
     // Exact slug match first
@@ -159,16 +155,20 @@ const loadChainId = async (blockchainKey: string) => {
     // Then prefer candidate whose name contains the key (ignoring spaces/separators)
     candidates.find(
       (c) =>
-        c.name?.toLowerCase().replace(/[\s-_]/g, '').includes(blockchainKey) ||
-        c.chainSlug?.toLowerCase().replace(/[\s-_]/g, '').includes(blockchainKey),
+        c.name
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey) ||
+        c.chainSlug
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey),
     ) ||
     // When ambiguous, prefer mainnet over testnet/devnet
-    candidates.find(
-      (c) => {
-        const n = c.name?.toLowerCase() ?? ''
-        return !n.includes('testnet') && !n.includes('devnet')
-      },
-    ) ||
+    candidates.find((c) => {
+      const n = c.name?.toLowerCase() ?? ''
+      return !n.includes('testnet') && !n.includes('devnet')
+    }) ||
     candidates[0]
   const row = utils.terminal.get(providerKey)!
   if (chain) {

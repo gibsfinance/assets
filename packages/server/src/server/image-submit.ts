@@ -33,58 +33,62 @@ export function parseDataUri(dataUri: string): { mime: string; buffer: Buffer } 
  *   imageHash   – content-addressed hash of the stored image
  *   imageUrl    – relative URL to retrieve the image directly
  */
-router.post('/submit', json({ limit: '1mb' }), nextOnError(async (req, res) => {
-  const { chainId, address, image, submittedBy } = req.body as Record<string, unknown>
+router.post(
+  '/submit',
+  json({ limit: '1mb' }),
+  nextOnError(async (req, res) => {
+    const { chainId, address, image, submittedBy } = req.body as Record<string, unknown>
 
-  if (!chainId || !address || !image || !submittedBy) {
-    res.status(400).json({ error: 'Missing required fields: chainId, address, image, submittedBy' })
-    return
-  }
-
-  if (typeof image !== 'string' || !image.startsWith('data:')) {
-    res.status(400).json({ error: 'image must be a data URI (data:image/...;base64,...)' })
-    return
-  }
-
-  const parsed = parseDataUri(image)
-  if (!parsed) {
-    res.status(400).json({ error: 'Invalid data URI format' })
-    return
-  }
-
-  if (parsed.buffer.length > MAX_IMAGE_SIZE) {
-    res.status(400).json({ error: `Image exceeds ${MAX_IMAGE_SIZE / 1024}KB limit` })
-    return
-  }
-
-  // Detect actual format from magic bytes — do not trust the declared MIME
-  const detected = await fileType.fileTypeFromBuffer(Uint8Array.from(parsed.buffer))
-
-  if (!detected || !detected.mime.startsWith('image/')) {
-    // file-type cannot detect SVG (plain-text format); fall back to content sniff
-    const head = parsed.buffer.toString('utf8', 0, Math.min(parsed.buffer.length, 512))
-    if (!head.includes('<svg')) {
-      res.status(400).json({ error: 'Unrecognized image format' })
+    if (!chainId || !address || !image || !submittedBy) {
+      res.status(400).json({ error: 'Missing required fields: chainId, address, image, submittedBy' })
       return
     }
-  }
 
-  const originalUri = `submit://${String(submittedBy)}/${String(chainId)}/${String(address).toLowerCase()}`
+    if (typeof image !== 'string' || !image.startsWith('data:')) {
+      res.status(400).json({ error: 'image must be a data URI (data:image/...;base64,...)' })
+      return
+    }
 
-  const result = await db.insertImage({
-    providerKey: PROVIDER_KEY,
-    originalUri,
-    image: parsed.buffer,
-    listId: null,
-  })
+    const parsed = parseDataUri(image)
+    if (!parsed) {
+      res.status(400).json({ error: 'Invalid data URI format' })
+      return
+    }
 
-  if (!result) {
-    res.status(400).json({ error: 'Failed to process image — unrecognized format' })
-    return
-  }
+    if (parsed.buffer.length > MAX_IMAGE_SIZE) {
+      res.status(400).json({ error: `Image exceeds ${MAX_IMAGE_SIZE / 1024}KB limit` })
+      return
+    }
 
-  res.status(201).json({
-    imageHash: result.image.imageHash,
-    imageUrl: `/image/direct/${result.image.imageHash}`,
-  })
-}))
+    // Detect actual format from magic bytes — do not trust the declared MIME
+    const detected = await fileType.fileTypeFromBuffer(Uint8Array.from(parsed.buffer))
+
+    if (!detected || !detected.mime.startsWith('image/')) {
+      // file-type cannot detect SVG (plain-text format); fall back to content sniff
+      const head = parsed.buffer.toString('utf8', 0, Math.min(parsed.buffer.length, 512))
+      if (!head.includes('<svg')) {
+        res.status(400).json({ error: 'Unrecognized image format' })
+        return
+      }
+    }
+
+    const originalUri = `submit://${String(submittedBy)}/${String(chainId)}/${String(address).toLowerCase()}`
+
+    const result = await db.insertImage({
+      providerKey: PROVIDER_KEY,
+      originalUri,
+      image: parsed.buffer,
+      listId: null,
+    })
+
+    if (!result) {
+      res.status(400).json({ error: 'Failed to process image — unrecognized format' })
+      return
+    }
+
+    res.status(201).json({
+      imageHash: result.image.imageHash,
+      imageUrl: `/image/direct/${result.image.imageHash}`,
+    })
+  }),
+)

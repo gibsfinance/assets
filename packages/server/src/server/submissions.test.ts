@@ -25,9 +25,13 @@ vi.mock('../db/drizzle', () => ({
 
 // Mock schema — just provide the table/column references the code uses
 vi.mock('../db/schema', () => {
-  const makeTable = (name: string) => new Proxy({}, {
-    get: (_, prop) => `${name}.${String(prop)}`,
-  })
+  const makeTable = (name: string) =>
+    new Proxy(
+      {},
+      {
+        get: (_, prop) => `${name}.${String(prop)}`,
+      },
+    )
   return {
     listSubmission: makeTable('list_submission'),
   }
@@ -37,9 +41,12 @@ vi.mock('../db/schema', () => {
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
   desc: vi.fn((...args: unknown[]) => ({ type: 'desc', args })),
-  sql: Object.assign(vi.fn((...args: unknown[]) => args), {
-    raw: vi.fn((s: string) => s),
-  }),
+  sql: Object.assign(
+    vi.fn((...args: unknown[]) => args),
+    {
+      raw: vi.fn((s: string) => s),
+    },
+  ),
 }))
 
 /**
@@ -52,7 +59,11 @@ import { router, resolveImageMode } from './submissions'
 
 /** Extracted slugify from source for local assertions */
 const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64)
 
 /**
  * Make an HTTP request using node:http (bypasses the mocked global fetch).
@@ -78,7 +89,9 @@ function httpRequest(
       },
       (res) => {
         let data = ''
-        res.on('data', (chunk) => { data += chunk })
+        res.on('data', (chunk) => {
+          data += chunk
+        })
         res.on('end', () => {
           try {
             resolve({ status: res.statusCode!, body: JSON.parse(data) })
@@ -268,12 +281,14 @@ describe('POST /submit -- probe validation', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    chain.returning.mockResolvedValueOnce([{
-      id: 'uuid-2',
-      status: 'pending',
-      providerKey: 'user-alice-jones',
-      listKey: 'my-fancy-list',
-    }])
+    chain.returning.mockResolvedValueOnce([
+      {
+        id: 'uuid-2',
+        status: 'pending',
+        providerKey: 'user-alice-jones',
+        listKey: 'my-fancy-list',
+      },
+    ])
 
     const res = await httpRequest(port, 'POST', '/api/lists/submit', {
       url: 'https://example.com/list.json',
@@ -298,12 +313,14 @@ describe('POST /submit -- probe validation', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    chain.returning.mockResolvedValueOnce([{
-      id: 'uuid-3',
-      status: 'pending',
-      providerKey: 'user-test',
-      listKey: 'test',
-    }])
+    chain.returning.mockResolvedValueOnce([
+      {
+        id: 'uuid-3',
+        status: 'pending',
+        providerKey: 'user-test',
+        listKey: 'test',
+      },
+    ])
 
     await httpRequest(port, 'POST', '/api/lists/submit', {
       url: 'https://example.com/list.json',
@@ -311,9 +328,7 @@ describe('POST /submit -- probe validation', () => {
       submittedBy: 'test',
     })
 
-    expect(chain.values).toHaveBeenCalledWith(
-      expect.objectContaining({ description: '' }),
-    )
+    expect(chain.values).toHaveBeenCalledWith(expect.objectContaining({ description: '' }))
   })
 })
 
@@ -416,9 +431,7 @@ describe('PATCH /submissions/:id', () => {
   })
 
   it('accepts status=approved', async () => {
-    chain.returning.mockResolvedValueOnce([
-      { id: 'uuid-1', status: 'approved', imageMode: 'auto' },
-    ])
+    chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'approved', imageMode: 'auto' }])
 
     const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
       status: 'approved',
@@ -521,37 +534,45 @@ describe('resolveImageMode', () => {
 
   it('save mode + < 10 subscribers + stale access (>30 days) resolves to link', () => {
     const staleDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
-    expect(resolveImageMode({
-      image_mode: 'save',
-      subscriber_count: 9,
-      last_accessed_at: staleDate,
-    })).toBe('link')
+    expect(
+      resolveImageMode({
+        image_mode: 'save',
+        subscriber_count: 9,
+        last_accessed_at: staleDate,
+      }),
+    ).toBe('link')
   })
 
   it('save mode + < 10 subscribers + recent access returns null', () => {
     const recentDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-    expect(resolveImageMode({
-      image_mode: 'save',
-      subscriber_count: 9,
-      last_accessed_at: recentDate,
-    })).toBeNull()
+    expect(
+      resolveImageMode({
+        image_mode: 'save',
+        subscriber_count: 9,
+        last_accessed_at: recentDate,
+      }),
+    ).toBeNull()
   })
 
   it('save mode + >= 10 subscribers returns null regardless of access time', () => {
     const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
-    expect(resolveImageMode({
-      image_mode: 'save',
-      subscriber_count: 10,
-      last_accessed_at: staleDate,
-    })).toBeNull()
+    expect(
+      resolveImageMode({
+        image_mode: 'save',
+        subscriber_count: 10,
+        last_accessed_at: staleDate,
+      }),
+    ).toBeNull()
   })
 
   it('save mode + < 10 subscribers + null last_accessed_at resolves to link (Infinity days)', () => {
-    expect(resolveImageMode({
-      image_mode: 'save',
-      subscriber_count: 9,
-      last_accessed_at: null,
-    })).toBe('link')
+    expect(
+      resolveImageMode({
+        image_mode: 'save',
+        subscriber_count: 9,
+        last_accessed_at: null,
+      }),
+    ).toBe('link')
   })
 
   it('link mode returns null (no transition needed)', () => {

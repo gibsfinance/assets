@@ -9,10 +9,7 @@ import sharp from 'sharp'
  * SVG images: Strip dangerous elements (script, foreignObject, use with external
  * refs), event handler attributes (on*), and javascript: URIs.
  */
-export async function sanitizeImage(
-  image: Buffer,
-  ext: string,
-): Promise<Buffer> {
+export async function sanitizeImage(image: Buffer, ext: string): Promise<Buffer> {
   if (ext === '.svg') {
     return sanitizeSvg(image)
   }
@@ -67,8 +64,8 @@ const DANGEROUS_ELEMENTS = [
 /** Build a regex that matches opening and closing tags + content for dangerous elements */
 const DANGEROUS_ELEMENT_REGEX = new RegExp(
   DANGEROUS_ELEMENTS.map((el) => `<${el}[\\s>][\\s\\S]*?</${el}\\s*>`).join('|') +
-  '|' +
-  DANGEROUS_ELEMENTS.map((el) => `<${el}[\\s/][^>]*/>`).join('|'),
+    '|' +
+    DANGEROUS_ELEMENTS.map((el) => `<${el}[\\s/][^>]*/>`).join('|'),
   'gi',
 )
 
@@ -76,16 +73,13 @@ const DANGEROUS_ELEMENT_REGEX = new RegExp(
 const EVENT_HANDLER_REGEX = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi
 
 /** Matches javascript: URIs in href/xlink:href/src attributes */
-const JAVASCRIPT_URI_REGEX =
-  /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))javascript:[^"']*(?:"|')/gi
+const JAVASCRIPT_URI_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))javascript:[^"']*(?:"|')/gi
 
 /** Matches <use> elements with external references (xlink:href="http://..." or href="http://...") */
-const EXTERNAL_USE_REGEX =
-  /<use\s[^>]*(?:xlink:)?href\s*=\s*(?:"|')https?:\/\/[^"']*(?:"|')[^>]*\/?>/gi
+const EXTERNAL_USE_REGEX = /<use\s[^>]*(?:xlink:)?href\s*=\s*(?:"|')https?:\/\/[^"']*(?:"|')[^>]*\/?>/gi
 
 /** Matches data: URIs that aren't images (could be text/html, application/javascript, etc.) */
-const DANGEROUS_DATA_URI_REGEX =
-  /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))data:(?!image\/)[^"']*(?:"|')/gi
+const DANGEROUS_DATA_URI_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))data:(?!image\/)[^"']*(?:"|')/gi
 
 /** Matches set/animate elements that can modify href to javascript: */
 const DANGEROUS_ANIMATE_REGEX =

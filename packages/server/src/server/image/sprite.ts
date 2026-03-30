@@ -45,10 +45,7 @@ async function resolveListId(providerKey: string, listKey: string): Promise<stri
     .select({ listId: s.list.listId })
     .from(s.list)
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-    .where(and(
-      eq(s.provider.key, providerKey),
-      eq(s.list.key, listKey || providerKey),
-    ))
+    .where(and(eq(s.provider.key, providerKey), eq(s.list.key, listKey || providerKey)))
     .limit(1)
   return row?.listId ?? null
 }
@@ -69,11 +66,10 @@ function queryListTokens(listId: string) {
     .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
     .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
     .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
-    .where(and(
-      eq(s.listToken.listId, listId),
-      ne(s.image.imageHash, ''),
-    ))
-    .orderBy(dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 ELSE 2 END ASC`)
+    .where(and(eq(s.listToken.listId, listId), ne(s.image.imageHash, '')))
+    .orderBy(
+      dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 ELSE 2 END ASC`,
+    )
     .$dynamic()
 }
 
@@ -123,7 +119,9 @@ export const manifest: RequestHandler = async (req, res, next) => {
 
   const rows = Math.ceil(rasterIdx / cols)
   const params = new URLSearchParams({
-    size: String(size), cols: String(cols), limit: String(limit),
+    size: String(size),
+    cols: String(cols),
+    limit: String(limit),
     ...(mixed ? { content: 'mixed' } : {}),
     ...(chainFilter ? { chainId: chainFilter } : {}),
   })
@@ -159,7 +157,7 @@ export const sheet: RequestHandler = async (req, res, next) => {
   let q = queryListTokens(listId)
   if (chainFilter) q = q.where(eq(s.network.chainId, chainFilter))
 
-  const tokens = await q.limit(limit) as unknown as SpriteToken[]
+  const tokens = (await q.limit(limit)) as unknown as SpriteToken[]
 
   const seen = new Set<string>()
   const deduped: SpriteToken[] = []
@@ -224,6 +222,9 @@ export const sheet: RequestHandler = async (req, res, next) => {
   if (tokenJson.length < 4096) {
     res.set('x-sprite-tokens', tokenJson)
   }
-  res.set('access-control-expose-headers', 'x-sprite-size, x-sprite-cols, x-sprite-rows, x-sprite-count, x-sprite-tokens')
+  res.set(
+    'access-control-expose-headers',
+    'x-sprite-size, x-sprite-cols, x-sprite-rows, x-sprite-count, x-sprite-tokens',
+  )
   res.send(sprite)
 }

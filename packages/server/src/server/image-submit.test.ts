@@ -20,8 +20,7 @@ import { parseDataUri } from './image-submit'
 describe('parseDataUri', () => {
   it('returns mime and buffer for a valid PNG data URI', () => {
     // Minimal 1x1 PNG in base64
-    const base64 =
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
     const dataUri = `data:image/png;base64,${base64}`
 
     const result = parseDataUri(dataUri)

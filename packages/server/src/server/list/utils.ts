@@ -11,7 +11,18 @@ import * as s from '../../db/schema'
 
 export const respondWithList = async (
   res: Response,
-  list: { listId: string; name: string | null; imageHash: string | null; ext: string | null; mode: string | null; uri: string | null; updatedAt: string; major: number; minor: number; patch: number },
+  list: {
+    listId: string
+    name: string | null
+    imageHash: string | null
+    ext: string | null
+    mode: string | null
+    uri: string | null
+    updatedAt: string
+    major: number
+    minor: number
+    patch: number
+  },
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string>,
 ) => {
@@ -67,9 +78,7 @@ export const normalizeTokens = (
         }
         // Collect unique source lists (providerKey/listKey) across duplicates
         const sources = _.uniq(
-          tkns
-            .filter((t) => t.providerKey && t.listKey)
-            .map((t) => `${t.providerKey}/${t.listKey}`),
+          tkns.filter((t) => t.providerKey && t.listKey).map((t) => `${t.providerKey}/${t.listKey}`),
         )
         if (sources.length > 0) {
           baseline.sources = sources

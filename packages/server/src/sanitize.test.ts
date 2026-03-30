@@ -66,9 +66,7 @@ describe('sanitizeImage', () => {
     })
 
     it('strips <iframe> elements', async () => {
-      const svg = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg"><iframe src="https://evil.com"/></svg>',
-      )
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><iframe src="https://evil.com"/></svg>')
       const result = await sanitizeImage(svg, '.svg')
       expect(result.toString()).not.toContain('<iframe')
     })
@@ -101,15 +99,14 @@ describe('sanitizeImage', () => {
     })
 
     it('handles case-insensitive element names', async () => {
-      const svg = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg"><SCRIPT>alert(1)</SCRIPT><circle r="5"/></svg>',
-      )
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><SCRIPT>alert(1)</SCRIPT><circle r="5"/></svg>')
       const result = await sanitizeImage(svg, '.svg')
       const output = result.toString()
       expect(output).not.toContain('SCRIPT')
       expect(output).not.toContain('alert')
       expect(output).toContain('<circle')
     })
+
     it('strips CSS @import rules', async () => {
       const svg = Buffer.from(
         '<svg xmlns="http://www.w3.org/2000/svg"><style>@import url("https://evil.com/styles.css");</style><circle r="5"/></svg>',
@@ -122,9 +119,7 @@ describe('sanitizeImage', () => {
     })
 
     it('strips file:// protocol URIs', async () => {
-      const svg = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/passwd"/></svg>',
-      )
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/passwd"/></svg>')
       const result = await sanitizeImage(svg, '.svg')
       const output = result.toString()
       expect(output).not.toContain('file://')
@@ -138,7 +133,9 @@ describe('sanitizeImage', () => {
       const sharp = (await import('sharp')).default
       const original = await sharp({
         create: { width: 1, height: 1, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } },
-      }).png().toBuffer()
+      })
+        .png()
+        .toBuffer()
 
       const result = await sanitizeImage(original, '.png')
       // Result should still be a valid PNG
@@ -152,7 +149,9 @@ describe('sanitizeImage', () => {
       const sharp = (await import('sharp')).default
       const original = await sharp({
         create: { width: 1, height: 1, channels: 3, background: { r: 0, g: 0, b: 255 } },
-      }).jpeg().toBuffer()
+      })
+        .jpeg()
+        .toBuffer()
 
       const result = await sanitizeImage(original, '.jpg')
       // Result should still be a valid JPEG (starts with FF D8)
@@ -164,7 +163,9 @@ describe('sanitizeImage', () => {
       const sharp = (await import('sharp')).default
       const original = await sharp({
         create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 255, b: 0, alpha: 1 } },
-      }).webp().toBuffer()
+      })
+        .webp()
+        .toBuffer()
 
       const result = await sanitizeImage(original, '.webp')
       // RIFF header for WebP

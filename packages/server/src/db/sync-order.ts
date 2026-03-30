@@ -98,9 +98,7 @@ export const syncDefaultOrder = async (
         .limit(1)
 
       if (existingOrder) {
-        await tx
-          .delete(s.listOrderItem)
-          .where(eq(s.listOrderItem.listOrderId, existingOrder.listOrderId))
+        await tx.delete(s.listOrderItem).where(eq(s.listOrderItem.listOrderId, existingOrder.listOrderId))
       }
 
       // Upsert the order + insert all items

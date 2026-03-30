@@ -18,9 +18,13 @@ vi.mock('../db/drizzle', () => ({
 
 // Mock schema
 vi.mock('../db/schema', () => {
-  const makeTable = (name: string) => new Proxy({}, {
-    get: (_, prop) => `${name}.${String(prop)}`,
-  })
+  const makeTable = (name: string) =>
+    new Proxy(
+      {},
+      {
+        get: (_, prop) => `${name}.${String(prop)}`,
+      },
+    )
   return {
     listSubmission: makeTable('list_submission'),
   }
@@ -29,9 +33,12 @@ vi.mock('../db/schema', () => {
 // Mock drizzle-orm operators
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => ({ type: 'eq', args })),
-  sql: Object.assign(vi.fn((...args: unknown[]) => args), {
-    raw: vi.fn((s: string) => s),
-  }),
+  sql: Object.assign(
+    vi.fn((...args: unknown[]) => args),
+    {
+      raw: vi.fn((s: string) => s),
+    },
+  ),
 }))
 
 /**
@@ -50,11 +57,7 @@ vi.mock('@gibs/utils', () => ({
   failureLog: vi.fn(),
 }))
 
-import {
-  loadSubmissionCollectors,
-  updateSubmissionStatus,
-  bumpSubscriberCount,
-} from './user-submissions'
+import { loadSubmissionCollectors, updateSubmissionStatus, bumpSubscriberCount } from './user-submissions'
 import { RemoteTokenListCollector } from './remote-tokenlist'
 import { failureLog } from '@gibs/utils'
 
@@ -193,11 +196,7 @@ describe('updateSubmissionStatus', () => {
         status: 'stale',
       }),
     )
-    expect(failureLog).toHaveBeenCalledWith(
-      expect.stringContaining('stale'),
-      'user-alice',
-      5,
-    )
+    expect(failureLog).toHaveBeenCalledWith(expect.stringContaining('stale'), 'user-alice', 5)
   })
 })
 

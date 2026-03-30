@@ -43,7 +43,13 @@ describe('normalizeTokens', () => {
     const tokens = [
       makeToken({ providedId: '0xfirst', name: 'Zebra', symbol: 'ZZZ', providerKey: 'pulsex', listKey: 'extended' }),
       makeToken({ providedId: '0xsecond', name: 'Apple', symbol: 'AAA', providerKey: 'dexscreener', listKey: 'api' }),
-      makeToken({ providedId: '0xthird', name: 'Middle', symbol: 'MMM', providerKey: 'coingecko', listKey: 'ethereum' }),
+      makeToken({
+        providedId: '0xthird',
+        name: 'Middle',
+        symbol: 'MMM',
+        providerKey: 'coingecko',
+        listKey: 'ethereum',
+      }),
     ]
 
     const result = normalizeTokens(tokens as any)
@@ -80,11 +86,7 @@ describe('normalizeTokens', () => {
     const result = normalizeTokens(tokens as any)
 
     expect(result).toHaveLength(1)
-    expect(result[0].sources).toEqual([
-      'pulsex/extended',
-      'dexscreener/api',
-      'coingecko/pulsechain',
-    ])
+    expect(result[0].sources).toEqual(['pulsex/extended', 'dexscreener/api', 'coingecko/pulsechain'])
   })
 
   it('handles mixed: some tokens duplicated, some unique', () => {

@@ -75,9 +75,7 @@ export const ids = {
 export { migrate } from './drizzle'
 
 /** Run a Drizzle transaction. */
-export const transaction = async <T>(
-  fn: (tx: DrizzleTx) => Promise<T>,
-): Promise<T> => {
+export const transaction = async <T>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => {
   return getDrizzle().transaction(fn)
 }
 
@@ -540,9 +538,7 @@ export const getImageByAddress = async (
     .where(and(eq(s.token.providedId, address), eq(s.token.networkId, network.networkId)))
     .limit(1)
   if (!token) return null
-  const conditions = [
-    eq(s.listToken.tokenId, token.tokenId),
-  ]
+  const conditions = [eq(s.listToken.tokenId, token.tokenId)]
   if (providerId) {
     conditions.push(eq(s.list.providerId, providerId))
   }
@@ -552,9 +548,7 @@ export const getImageByAddress = async (
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .where(and(...conditions))
     .limit(1)
-  const listTokens = listTokenRow
-    ? { ...listTokenRow.list_token, ...listTokenRow.list }
-    : undefined
+  const listTokens = listTokenRow ? { ...listTokenRow.list_token, ...listTokenRow.list } : undefined
   return { token, listTokens }
 }
 
@@ -937,7 +931,10 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
 // TODO: This updates ALL rows in the list table — no WHERE clause. Likely a bug; preserve behavior for now.
 export const updateList = (list: Partial<List>, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
-  return db.update(s.list).set(list as Record<string, unknown>).returning()
+  return db
+    .update(s.list)
+    .set(list as Record<string, unknown>)
+    .returning()
 }
 
 export const insertProvider = async (provider: InsertableProvider | InsertableProvider[], tx?: DrizzleTx) => {
@@ -1071,10 +1068,7 @@ export const addBridgeExtensions = <T extends ReturnType<typeof getTokensUnderLi
   return qb
     .fullJoin(
       s.bridgeLink,
-      or(
-        eq(s.bridgeLink.nativeTokenId, s.token.tokenId),
-        eq(s.bridgeLink.bridgedTokenId, s.token.tokenId),
-      ),
+      or(eq(s.bridgeLink.nativeTokenId, s.token.tokenId), eq(s.bridgeLink.bridgedTokenId, s.token.tokenId)),
     )
     .innerJoin(s.bridge, eq(s.bridge.bridgeId, s.bridgeLink.bridgeId))
     .innerJoin(networkA, eq(networkA.networkId, s.bridge.homeNetworkId))
@@ -1089,11 +1083,7 @@ export const getListOrderId = async (orderParam: string) => {
   const db = getDrizzle()
 
   // Try lookup by key first (e.g. "default")
-  const [byKey] = await db
-    .select()
-    .from(s.listOrder)
-    .where(eq(s.listOrder.key, orderParam))
-    .limit(1)
+  const [byKey] = await db.select().from(s.listOrder).where(eq(s.listOrder.key, orderParam)).limit(1)
   if (byKey) return byKey.listOrderId as viem.Hex
 
   // Try as hex listOrderId
@@ -1233,13 +1223,7 @@ export const applyOrder = async (
   return rows.rows
 }
 
-export const getVariant = async (
-  imageHash: string,
-  width: number,
-  height: number,
-  format: string,
-  tx?: DrizzleTx,
-) => {
+export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const [row] = await db
     .select()
@@ -1256,10 +1240,7 @@ export const getVariant = async (
   return row
 }
 
-export const insertVariant = async (
-  variant: InsertableImageVariant,
-  tx?: DrizzleTx,
-): Promise<void> => {
+export const insertVariant = async (variant: InsertableImageVariant, tx?: DrizzleTx): Promise<void> => {
   const db = tx ?? getDrizzle()
   await db
     .insert(s.imageVariant)
@@ -1295,8 +1276,8 @@ export const bumpVariantAccess = async (
 }
 
 export const pruneVariants = async (
-  minAccessCount: number = 3,
-  maxAgeHours: number = 24,
+  minAccessCount = 3,
+  maxAgeHours = 24,
   tx?: DrizzleTx,
 ): Promise<number> => {
   const db = tx ?? getDrizzle()
@@ -1347,7 +1328,10 @@ export const insertBridgeLink = async (bridgeLink: InsertableBridgeLink, tx?: Dr
 
 export const updateBridgeBlockProgress = (bridgeId: string, updates: Partial<Bridge>, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
-  return db.update(s.bridge).set(updates as Record<string, unknown>).where(eq(s.bridge.bridgeId, bridgeId))
+  return db
+    .update(s.bridge)
+    .set(updates as Record<string, unknown>)
+    .where(eq(s.bridge.bridgeId, bridgeId))
 }
 
 export const getBridge = async (bridgeId: string, tx?: DrizzleTx) => {

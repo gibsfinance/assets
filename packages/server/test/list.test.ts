@@ -9,7 +9,7 @@ import { TokenList } from '../src/types'
 import _ from 'lodash'
 import { isDbAvailable } from './db-available'
 
-test('/list', { skip: !await isDbAvailable() && 'no database connection' }, async (t) => {
+test('/list', { skip: !(await isDbAvailable()) && 'no database connection' }, async (t) => {
   let provider!: Provider
   let list!: List
   t.beforeEach(async () => {

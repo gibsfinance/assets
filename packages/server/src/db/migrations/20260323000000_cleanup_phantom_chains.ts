@@ -20,37 +20,27 @@ const PHANTOM_CHAIN_IDS = [
 export async function up(knex: Knex): Promise<void> {
   for (const chainId of PHANTOM_CHAIN_IDS) {
     // Find the networkId(s) for this phantom chain
-    const networks = await knex('network')
-      .select('networkId')
-      .where('chainId', chainId)
+    const networks = await knex('network').select('networkId').where('chainId', chainId)
 
     if (networks.length === 0) continue
 
     const networkIds = networks.map((n: { networkId: string }) => n.networkId)
 
     // Find all tokenIds on these networks
-    const tokens = await knex('token')
-      .select('tokenId')
-      .whereIn('networkId', networkIds)
+    const tokens = await knex('token').select('tokenId').whereIn('networkId', networkIds)
 
     const tokenIds = tokens.map((t: { tokenId: string }) => t.tokenId)
 
     if (tokenIds.length > 0) {
       // Delete list_token rows referencing these tokens
-      await knex('list_token')
-        .whereIn('tokenId', tokenIds)
-        .del()
+      await knex('list_token').whereIn('tokenId', tokenIds).del()
 
       // Delete the tokens
-      await knex('token')
-        .whereIn('tokenId', tokenIds)
-        .del()
+      await knex('token').whereIn('tokenId', tokenIds).del()
     }
 
     // Delete the phantom network(s)
-    await knex('network')
-      .where('chainId', chainId)
-      .del()
+    await knex('network').where('chainId', chainId).del()
   }
 }
 

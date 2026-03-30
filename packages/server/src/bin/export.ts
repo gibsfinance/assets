@@ -70,10 +70,7 @@ async function main() {
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
-    .where(and(
-      eq(s.network.chainId, String(chainId)),
-      eq(s.token.providedId, token),
-    ))
+    .where(and(eq(s.network.chainId, String(chainId)), eq(s.token.providedId, token)))
   await Promise.all(
     matches.map(async (res) => {
       const dirname = path.join(imgExportDir, res.providerKey, res.listKey)

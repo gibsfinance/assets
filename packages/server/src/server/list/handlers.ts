@@ -40,9 +40,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
   const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
   const match = allLists.find(
     (row) =>
-      String(row.list?.major) === major &&
-      String(row.list?.minor) === minor &&
-      String(row.list?.patch) === patch,
+      String(row.list?.major) === major && String(row.list?.minor) === minor && String(row.list?.patch) === patch,
   )
   if (!match) {
     return next(createError.NotFound('versioned list missing'))
@@ -148,10 +146,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // Use applyOrder (dedupe: true) for ranked, one-row-per-token results
   const tokens = defaultOrderId
     ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
-    : await db
-        .getTokensUnderListId()
-        .where(whereClause)
-        .orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
+    : await db.getTokensUnderListId().where(whereClause).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
 
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)

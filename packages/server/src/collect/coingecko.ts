@@ -128,7 +128,7 @@ class CoinGeckoCollector extends BaseCollector {
           listKey: largeListKey,
           tokenList: tokenListUrl,
           row: section,
-          rewriteLogoURI: (uri) => uri.includes('/thumb/') ? uri.replace('/thumb/', '/large/') : uri,
+          rewriteLogoURI: (uri) => (uri.includes('/thumb/') ? uri.replace('/thumb/', '/large/') : uri),
         })
         let retries = 0
         for (;;) {

@@ -381,12 +381,14 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
         decimals: schemaMod.token.decimals,
       })
       .from(schemaMod.token)
-      .where(and(
-        eq(schemaMod.token.providedId, address),
-        eq(schemaMod.token.networkId, networkId),
-        ne(schemaMod.token.name, ''),
-        ne(schemaMod.token.symbol, ''),
-      ))
+      .where(
+        and(
+          eq(schemaMod.token.providedId, address),
+          eq(schemaMod.token.networkId, networkId),
+          ne(schemaMod.token.name, ''),
+          ne(schemaMod.token.symbol, ''),
+        ),
+      )
       .limit(1)
     if (existingToken) {
       metadata = [existingToken.name, existingToken.symbol, existingToken.decimals]

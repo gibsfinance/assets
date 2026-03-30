@@ -206,14 +206,13 @@ class DexscreenerCollector extends BaseCollector {
           const { getDrizzle } = await import('../db/drizzle')
           const { eq: eqOp, and: andOp } = await import('drizzle-orm')
           const schemaMod = await import('../db/schema')
-          const [network] = await getDrizzle()
+          const [network] = (await getDrizzle()
             .select()
             .from(schemaMod.network)
-            .where(andOp(
-              eqOp(schemaMod.network.type, chain.type),
-              eqOp(schemaMod.network.chainId, chain.id.toString()),
-            ))
-            .limit(1) as Network[]
+            .where(
+              andOp(eqOp(schemaMod.network.type, chain.type), eqOp(schemaMod.network.chainId, chain.id.toString())),
+            )
+            .limit(1)) as Network[]
           const k = chain.id.toString()
           if (!network) {
             row.increment(terminalLogTypes.EROR, new Set([k]))

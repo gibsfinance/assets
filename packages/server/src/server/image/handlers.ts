@@ -37,10 +37,7 @@ export const getListTokens = async ({
   const drizzle = getDrizzle()
 
   // Build WHERE conditions
-  const conditions: SQL[] = [
-    eq(s.token.networkId, networkId),
-    eq(s.token.providedId, address),
-  ]
+  const conditions: SQL[] = [eq(s.token.networkId, networkId), eq(s.token.providedId, address)]
   if (exts?.length) {
     conditions.push(inArray(s.image.ext, exts))
   }
@@ -57,7 +54,9 @@ export const getListTokens = async ({
     const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
     return {
       filter: { networkId, providedId: address },
-      img: rows[0] as (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
+      img: rows[0] as
+        | (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List)
+        | undefined,
     }
   }
 
@@ -73,9 +72,7 @@ export const getListTokens = async ({
     .limit(1)
 
   // Flatten the joined row into a single object
-  const img = row
-    ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image }
-    : undefined
+  const img = row ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image } : undefined
 
   return {
     filter: { networkId, providedId: address },
@@ -101,7 +98,7 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
 
   return {
     filter: { networkId },
-    img: row ? { ...row.image, ...row.network } as any : undefined,
+    img: row ? ({ ...row.image, ...row.network } as any) : undefined,
   }
 }
 

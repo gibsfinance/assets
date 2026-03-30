@@ -8,7 +8,10 @@ export async function up(knex: Knex): Promise<void> {
   if (!exists) {
     log('creating table %o', tableNames.imageVariant)
     await knex.schema.withSchema(userConfig.database.schema).createTable(tableNames.imageVariant, (t) => {
-      t.text('imageHash').notNullable().references('imageHash').inTable(`${userConfig.database.schema}.${tableNames.image}`)
+      t.text('imageHash')
+        .notNullable()
+        .references('imageHash')
+        .inTable(`${userConfig.database.schema}.${tableNames.image}`)
       t.integer('width').notNullable()
       t.integer('height').notNullable()
       t.text('format').notNullable()

@@ -18,10 +18,7 @@ import * as s from '../db/schema'
  */
 export async function loadSubmissionCollectors(): Promise<Record<string, BaseCollector>> {
   const db = getDrizzle()
-  const submissions = await db
-    .select()
-    .from(s.listSubmission)
-    .where(eq(s.listSubmission.status, 'approved'))
+  const submissions = await db.select().from(s.listSubmission).where(eq(s.listSubmission.status, 'approved'))
 
   const collectors: Record<string, BaseCollector> = {}
 
@@ -52,11 +49,7 @@ export async function updateSubmissionStatus(
   options: { success: boolean; contentHash?: string },
 ): Promise<void> {
   const db = getDrizzle()
-  const [sub] = await db
-    .select()
-    .from(s.listSubmission)
-    .where(eq(s.listSubmission.providerKey, providerKey))
-    .limit(1)
+  const [sub] = await db.select().from(s.listSubmission).where(eq(s.listSubmission.providerKey, providerKey)).limit(1)
 
   if (!sub || sub.status !== 'approved') return
 
@@ -79,10 +72,7 @@ export async function updateSubmissionStatus(
       updates.status = 'stale'
       failureLog('Submission %s marked stale after %d failures', providerKey, newFailCount)
     }
-    await db
-      .update(s.listSubmission)
-      .set(updates)
-      .where(eq(s.listSubmission.id, sub.id))
+    await db.update(s.listSubmission).set(updates).where(eq(s.listSubmission.id, sub.id))
   }
 }
 

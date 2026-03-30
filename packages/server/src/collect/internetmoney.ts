@@ -211,12 +211,14 @@ class InternetMoneyCollector extends BaseCollector {
             decimals: schemaMod.token.decimals,
           })
           .from(schemaMod.token)
-          .where(andOp(
-            eqOp(schemaMod.token.providedId, address),
-            eqOp(schemaMod.token.networkId, networkId),
-            neOp(schemaMod.token.name, ''),
-            neOp(schemaMod.token.symbol, ''),
-          ))
+          .where(
+            andOp(
+              eqOp(schemaMod.token.providedId, address),
+              eqOp(schemaMod.token.networkId, networkId),
+              neOp(schemaMod.token.name, ''),
+              neOp(schemaMod.token.symbol, ''),
+            ),
+          )
           .limit(1)
 
         let name: string, symbol: string, decimals: number

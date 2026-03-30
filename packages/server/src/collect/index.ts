@@ -28,11 +28,7 @@ const checkOutstandingConnections = async (provider: string) => {
   `)
   const activeRows = result.rows
   if (activeRows.length > 0) {
-    failureLog(
-      'outstanding after %s: pg_active=%d',
-      provider,
-      activeRows.length,
-    )
+    failureLog('outstanding after %s: pg_active=%d', provider, activeRows.length)
     for (const row of activeRows) {
       failureLog('  pid=%d state=%s duration=%s query=%s', row.pid, row.state, row.xact_duration, row.query)
     }
