@@ -25,3 +25,37 @@ export function cubicEaseOut(progress: number): number {
 export function clampValue(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+/** Format byte count as human-readable string (B, KB, MB) */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Detect image format from a URI (data URI or URL with extension) */
+export function detectImageFormat(imageUri: string): string {
+  if (imageUri.startsWith('data:')) {
+    return imageUri.split(';')[0].split('/')[1] || 'unknown'
+  }
+  return imageUri.match(/\.(svg|png|webp|jpg|jpeg|gif)(\?|$)/i)?.[1] || 'auto'
+}
+
+/** Append width/height query params to an image URL, passthrough data URIs */
+export function buildImageUrlWithSize(imageUri: string, width: number, height: number): string {
+  if (imageUri.startsWith('data:')) return imageUri
+  const separator = imageUri.includes('?') ? '&' : '?'
+  return `${imageUri}${separator}w=${width}&h=${height}`
+}
+
+/** Generate a slugified repo name for a token list */
+export function generateRepoName(listName: string, customName?: string): string {
+  if (customName) return customName
+  return `token-list-${listName.toLowerCase().replace(/\s+/g, '-')}`
+}
+
+/** Generate a default commit message for a token list update */
+export function generateCommitMessage(listName: string, customMessage?: string): string {
+  if (customMessage) return customMessage
+  return `Update ${listName} token list`
+}

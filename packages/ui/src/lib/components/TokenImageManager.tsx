@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import Image from './Image'
 import { getApiUrl } from '../utils'
+import { detectImageFormat, buildImageUrlWithSize } from '../utils/formatting'
 
 interface TokenImageManagerProps {
   chainId: number
@@ -53,9 +54,7 @@ export default function TokenImageManager({
     onImageChange(defaultUri)
   }, [chainId, address, onImageChange])
 
-  const format = previewUri.startsWith('data:')
-    ? previewUri.split(';')[0].split('/')[1] || 'unknown'
-    : previewUri.match(/\.(svg|png|webp|jpg|jpeg|gif)(\?|$)/i)?.[1] || 'auto'
+  const format = detectImageFormat(previewUri)
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-lg dark:border-surface-3 dark:bg-surface-1">
@@ -76,11 +75,7 @@ export default function TokenImageManager({
         {PREVIEW_SIZES.map((size) => (
           <div key={size} className="flex flex-col items-center gap-1">
             <Image
-              src={
-                previewUri.startsWith('data:')
-                  ? previewUri
-                  : `${previewUri}${previewUri.includes('?') ? '&' : '?'}w=${size}&h=${size}`
-              }
+              src={buildImageUrlWithSize(previewUri, size, size)}
               size={size}
               skeleton
               shape="circle"

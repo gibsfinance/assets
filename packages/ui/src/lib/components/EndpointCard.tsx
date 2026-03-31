@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import CodeBlock from './CodeBlock'
 import Image from './Image'
+import { formatBytes } from '../utils/formatting'
+import { countResults, isCacheHit, parsePathParams } from '../utils/token-search'
 
 interface EndpointCardProps {
   method: string
@@ -11,17 +13,16 @@ interface EndpointCardProps {
 }
 
 function PathDisplay({ path }: { path: string }) {
-  const parts = path.split(/(\{[^}]+\})/)
+  const parts = parsePathParams(path)
   return (
     <span className="font-mono text-sm">
-      {parts.map((part, index) => {
-        const isParam = /^\{[^}]+\}$/.test(part)
-        return isParam ? (
-          <span key={index} className="text-accent-500">{part}</span>
+      {parts.map((part, index) =>
+        part.isParam ? (
+          <span key={index} className="text-accent-500">{part.text}</span>
         ) : (
-          <span key={index} className="text-gray-900 dark:text-white">{part}</span>
-        )
-      })}
+          <span key={index} className="text-gray-900 dark:text-white">{part.text}</span>
+        ),
+      )}
     </span>
   )
 }
@@ -39,11 +40,6 @@ interface ResponseStats {
   resultCount: number | null
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function StatsPanel({ stats, loading, error }: { stats: ResponseStats | null; loading: boolean; error: string | null }) {
   if (loading) {
@@ -87,14 +83,6 @@ function StatsPanel({ stats, loading, error }: { stats: ResponseStats | null; lo
   )
 }
 
-function countResults(data: unknown): number | null {
-  if (!data || typeof data !== 'object') return null
-  const obj = data as Record<string, unknown>
-  if ('total' in obj && typeof obj.total === 'number') return obj.total
-  if ('tokens' in obj && Array.isArray(obj.tokens)) return obj.tokens.length
-  if (Array.isArray(data)) return data.length
-  return null
-}
 
 function ResponsePanel({ url }: { url: string }) {
   const [json, setJson] = useState<unknown>(null)
@@ -118,8 +106,7 @@ function ResponsePanel({ url }: { url: string }) {
     fetch(url, { signal: ac.signal })
       .then(async (r) => {
         const duration = Math.round(performance.now() - start)
-        const cacheHeader = r.headers.get('cf-cache-status') || r.headers.get('x-cache') || ''
-        const cacheHit = /HIT/i.test(cacheHeader)
+        const cacheHit = isCacheHit(r.headers)
         const contentType = r.headers.get('content-type') || ''
 
         if (isImage) {

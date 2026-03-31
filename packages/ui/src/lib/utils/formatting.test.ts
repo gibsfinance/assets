@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { formatPercent, overlapLabel, truncateAddress, cubicEaseOut, clampValue } from './formatting'
+import {
+  formatPercent,
+  overlapLabel,
+  truncateAddress,
+  cubicEaseOut,
+  clampValue,
+  formatBytes,
+  detectImageFormat,
+  buildImageUrlWithSize,
+  generateRepoName,
+  generateCommitMessage,
+} from './formatting'
 
 describe('formatPercent', () => {
   it('formats whole ratios', () => {
@@ -113,5 +124,83 @@ describe('clampValue', () => {
   it('handles value at boundaries', () => {
     expect(clampValue(0, 0, 10)).toBe(0)
     expect(clampValue(10, 0, 10)).toBe(10)
+  })
+})
+
+describe('formatBytes', () => {
+  it('formats bytes', () => {
+    expect(formatBytes(500)).toBe('500 B')
+    expect(formatBytes(0)).toBe('0 B')
+  })
+
+  it('formats kilobytes', () => {
+    expect(formatBytes(1024)).toBe('1.0 KB')
+    expect(formatBytes(1536)).toBe('1.5 KB')
+  })
+
+  it('formats megabytes', () => {
+    expect(formatBytes(1024 * 1024)).toBe('1.0 MB')
+    expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.5 MB')
+  })
+})
+
+describe('detectImageFormat', () => {
+  it('detects format from data URI', () => {
+    expect(detectImageFormat('data:image/png;base64,abc')).toBe('png')
+    expect(detectImageFormat('data:image/svg+xml;base64,abc')).toBe('svg+xml')
+  })
+
+  it('returns unknown for malformed data URI', () => {
+    expect(detectImageFormat('data:;base64,abc')).toBe('unknown')
+  })
+
+  it('detects format from URL extension', () => {
+    expect(detectImageFormat('https://example.com/token.png')).toBe('png')
+    expect(detectImageFormat('https://example.com/token.svg')).toBe('svg')
+    expect(detectImageFormat('https://example.com/token.webp?w=64')).toBe('webp')
+  })
+
+  it('returns auto for unknown extension', () => {
+    expect(detectImageFormat('https://example.com/token')).toBe('auto')
+    expect(detectImageFormat('https://example.com/token.bmp')).toBe('auto')
+  })
+})
+
+describe('buildImageUrlWithSize', () => {
+  it('appends w and h params to URL', () => {
+    expect(buildImageUrlWithSize('https://gib.show/image/1/0xabc', 64, 64)).toBe(
+      'https://gib.show/image/1/0xabc?w=64&h=64',
+    )
+  })
+
+  it('uses & when URL already has query params', () => {
+    expect(buildImageUrlWithSize('https://gib.show/image/1/0xabc?as=webp', 64, 64)).toBe(
+      'https://gib.show/image/1/0xabc?as=webp&w=64&h=64',
+    )
+  })
+
+  it('passes through data URIs unchanged', () => {
+    const dataUri = 'data:image/png;base64,abc'
+    expect(buildImageUrlWithSize(dataUri, 64, 64)).toBe(dataUri)
+  })
+})
+
+describe('generateRepoName', () => {
+  it('generates slug from list name', () => {
+    expect(generateRepoName('My Token List')).toBe('token-list-my-token-list')
+  })
+
+  it('uses custom name when provided', () => {
+    expect(generateRepoName('My List', 'custom-repo')).toBe('custom-repo')
+  })
+})
+
+describe('generateCommitMessage', () => {
+  it('generates default message', () => {
+    expect(generateCommitMessage('PulseChain Tokens')).toBe('Update PulseChain Tokens token list')
+  })
+
+  it('uses custom message when provided', () => {
+    expect(generateCommitMessage('X', 'feat: add new tokens')).toBe('feat: add new tokens')
   })
 })

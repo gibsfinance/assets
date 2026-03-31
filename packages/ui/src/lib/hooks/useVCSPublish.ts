@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { LocalList } from './useLocalLists'
+import { generateRepoName, generateCommitMessage } from '../utils/formatting'
 
 /** Pluggable interface for version control system publishing */
 export interface VCSPublisher {
@@ -113,9 +114,9 @@ export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {
       const token = getToken('github')
       if (!token) throw new Error('Not authorized with GitHub')
 
-      const repoName = options.repoName || `token-list-${list.name.toLowerCase().replace(/\s+/g, '-')}`
+      const repoName = generateRepoName(list.name, options.repoName)
       const branch = options.branch || 'main'
-      const message = options.commitMessage || `Update ${list.name} token list`
+      const message = generateCommitMessage(list.name, options.commitMessage)
 
       const headers = {
         Authorization: `token ${token}`,
@@ -233,9 +234,9 @@ export function createGitLabPublisher(options: GitLabPublisherOptions): VCSPubli
         'Content-Type': 'application/json',
       }
 
-      const repoName = publishOptions.repoName || `token-list-${list.name.toLowerCase().replace(/\s+/g, '-')}`
+      const repoName = generateRepoName(list.name, publishOptions.repoName)
       const branch = publishOptions.branch || 'main'
-      const message = publishOptions.commitMessage || `Update ${list.name} token list`
+      const message = generateCommitMessage(list.name, publishOptions.commitMessage)
 
       // Get current user
       const userRes = await fetch(`${apiUrl}/user`, { headers })
@@ -356,9 +357,9 @@ export function createGiteaPublisher(options: GiteaPublisherOptions): VCSPublish
         'Content-Type': 'application/json',
       }
 
-      const repoName = publishOptions.repoName || `token-list-${list.name.toLowerCase().replace(/\s+/g, '-')}`
+      const repoName = generateRepoName(list.name, publishOptions.repoName)
       const branch = publishOptions.branch || 'main'
-      const message = publishOptions.commitMessage || `Update ${list.name} token list`
+      const message = generateCommitMessage(list.name, publishOptions.commitMessage)
 
       // Get current user
       const userRes = await fetch(`${apiUrl}/user`, { headers })

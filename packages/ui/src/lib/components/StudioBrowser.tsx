@@ -8,6 +8,7 @@ import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import { deduplicateTokens } from '../utils/dedup-tokens'
+import { filterTokensBySearch, getPopularChains } from '../utils/token-search'
 import NetworkSelect from './NetworkSelect'
 import TokenSearch from './TokenSearch'
 import Image from './Image'
@@ -196,16 +197,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
-    return metrics.networks.supported
-      .map((n: { chainId: number }) => ({
-        chainId: String(n.chainId),
-        name: getNetworkName(n.chainId),
-        tokenCount: metrics.tokenList.byChain[n.chainId] || 0,
-      }))
-      .filter((n: { tokenCount: number }) => n.tokenCount >= 10)
-      .filter((n: { name: string }) => !n.name.toLowerCase().includes('testnet'))
-      .sort((a: { tokenCount: number }, b: { tokenCount: number }) => b.tokenCount - a.tokenCount)
-      .slice(0, POPULAR_CHAIN_COUNT)
+    return getPopularChains(metrics.networks.supported, metrics.tokenList.byChain, getNetworkName, {
+      limit: POPULAR_CHAIN_COUNT,
+    })
   }, [metrics])
 
   const {
@@ -310,13 +304,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     }
 
     // Filter by search query
-    const query = searchState?.query?.trim().toLowerCase()
+    const query = searchState?.query?.trim() || ''
     if (query) {
-      tokens = tokens.filter((t) =>
-        t.name.toLowerCase().includes(query) ||
-        t.symbol.toLowerCase().includes(query) ||
-        t.address.toLowerCase().includes(query),
-      )
+      tokens = filterTokensBySearch(tokens, query)
     }
 
     return tokens
