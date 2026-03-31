@@ -1,3 +1,12 @@
+/**
+ * @module db
+ * Database query layer — all Drizzle ORM operations for tokens, images, lists, providers.
+ *
+ * Key export: `applyOrder()` — builds a CTE with `dense_rank()` window function to
+ * return images ordered by provider ranking, list version, and format preference.
+ * The `dedupe` flag controls whether only rank-1 images are returned (image endpoints)
+ * or all rows (token list endpoints). The `sorted` flag adds an outer ORDER BY.
+ */
 import * as fs from 'fs'
 import * as path from 'path'
 import * as viem from 'viem'

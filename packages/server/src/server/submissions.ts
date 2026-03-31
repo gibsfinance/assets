@@ -1,3 +1,12 @@
+/**
+ * @module submissions
+ * User-submitted token list CRUD: submit, review, approve, and auto-mode resolution.
+ *
+ * `POST /submit` — validates URL (probes for JSON with `tokens` array), generates
+ * providerKey/listKey via slugify, inserts into `list_submission` with upsert.
+ * `GET /submissions/approved` — returns approved lists for the collector pipeline,
+ * auto-upgrading image mode based on subscriber count and access recency.
+ */
 import { Router, json } from 'express'
 import { nextOnError } from './utils'
 import { getDrizzle } from '../db/drizzle'

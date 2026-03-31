@@ -1,3 +1,12 @@
+/**
+ * @module list/handlers
+ * Express routes for token list endpoints: merged, by-provider, by-chain.
+ *
+ * `/list/merged/default` — all tokens across all providers, no specific order.
+ * `/list/{provider}/{key}` — single provider list in its native order.
+ * `/list/tokensByChain/{chainId}` — all tokens for a chain, ordered by provider ranking
+ * via `applyOrder(sorted: true)` with separate sources query for providerKey/listKey.
+ */
 import createError from 'http-errors'
 import * as db from '../../db'
 import type { Request, RequestHandler } from 'express'

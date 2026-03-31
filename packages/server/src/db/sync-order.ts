@@ -1,3 +1,12 @@
+/**
+ * @module sync-order
+ * Computes and caches the default image priority ordering on server startup.
+ *
+ * Provider order is determined by their position in `collectables.ts`.
+ * Each provider's sub-lists get rankings spaced by RANKING_SPACING (1000),
+ * so `ranking / 1000` groups sub-lists under a provider and the remainder
+ * provides sub-ordering. This ranking feeds the `dense_rank()` CTE in `applyOrder()`.
+ */
 import type { DiscoveryManifest } from '../collect/base-collector'
 import type { BackfillableInsertableListOrderItem } from './schema-types'
 import * as db from '.'

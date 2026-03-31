@@ -1,3 +1,8 @@
+/**
+ * @module code-output
+ * CSS and URL generation for the Studio code output panel.
+ * Extracted from CodeOutput.tsx to enable testing without React rendering.
+ */
 import type { StudioAppearance } from '../types'
 
 export function shadowToCSS(shadow: StudioAppearance['shadow']): string {

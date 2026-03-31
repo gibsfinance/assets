@@ -1,3 +1,10 @@
+/**
+ * @module token-search
+ * Shared token filtering, sorting, and API response inspection utilities.
+ *
+ * Used by TokenSearch, StudioBrowser, and EndpointCard. Extracted to eliminate
+ * duplicated filter/sort logic across components and enable isolated testing.
+ */
 import type { Token } from '../types'
 
 /** Filter tokens by search term matching name, symbol, or address (case-insensitive) */

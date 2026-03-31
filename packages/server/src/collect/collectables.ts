@@ -1,3 +1,12 @@
+/**
+ * @module collectables
+ * Provider registry — the ordered list of all token data collectors.
+ *
+ * **Order matters**: position in this array determines image priority ranking.
+ * Providers listed first get lower ranking numbers, which means their images
+ * are preferred when multiple providers have the same token. The ranking is
+ * computed by `sync-order.ts` at startup using RANKING_SPACING (1000) per provider.
+ */
 import chains from '../chains'
 import '../utils'
 import countriesCollector from './countries'

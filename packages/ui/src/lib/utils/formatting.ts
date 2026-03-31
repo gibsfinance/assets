@@ -1,3 +1,11 @@
+/**
+ * @module formatting
+ * Pure formatting and conversion utilities shared across UI components.
+ *
+ * Extracted from BadgeConfigurator, CountUpNumber, NumberStepper, EndpointCard,
+ * TokenImageManager, ListTokenRow, and useVCSPublish to eliminate duplication.
+ */
+
 /** Format a 0-1 ratio as a percentage string, e.g. 0.75 → "75%" */
 export function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`

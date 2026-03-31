@@ -1,3 +1,13 @@
+/**
+ * @module image/handlers
+ * Express handlers for token image serving: lookup, format validation, resize, and fallback.
+ *
+ * Image lookup flow: getListImage → getListTokens (DB query via applyOrder or direct drizzle)
+ * → validateOutputFormat → sendImage (redirect/serve decision via classifyImageServe).
+ *
+ * Query params: `?as=webp` converts output format, `?only=vector` filters source type,
+ * `?mode=link` forces redirect to source URI. Path extension (`.webp`) is equivalent to `?as=`.
+ */
 import * as viem from 'viem'
 import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'

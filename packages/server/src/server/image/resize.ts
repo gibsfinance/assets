@@ -1,3 +1,12 @@
+/**
+ * @module image/resize
+ * On-the-fly image resize and format conversion using sharp.
+ *
+ * `maybeResize()` is the entry point — checks for `?w=`, `?h=`, `?as=` query params,
+ * looks up cached variants in `image_variant` table, or creates new ones via sharp pipeline.
+ * Per-image and global rate limits prevent cache pollution from enumeration attacks.
+ * SVGs with viewBox are served as-is unless explicit format conversion is requested.
+ */
 import sharp from 'sharp'
 import type { Request, Response } from 'express'
 import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'

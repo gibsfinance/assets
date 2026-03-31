@@ -1,3 +1,11 @@
+/**
+ * @module image-submit
+ * User-uploaded token image endpoint: `POST /api/images/submit`.
+ *
+ * Accepts base64 data URIs, validates format (png/jpg/webp/gif/svg) and size (512KB max),
+ * detects actual file type via magic bytes (with SVG XML fallback), then stores
+ * through the existing image pipeline (`fetchImageAndStoreForToken`).
+ */
 import { Router, json } from 'express'
 import * as fileType from 'file-type'
 import * as db from '../db'

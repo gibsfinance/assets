@@ -1,3 +1,13 @@
+/**
+ * @module list/utils
+ * Token list response formatting and query param filtering.
+ *
+ * `normalizeTokens()` deduplicates token results by chainId+address, preserving
+ * input order (first occurrence wins). Optionally collects `sources` (providerKey/listKey)
+ * and bridge/header extensions across duplicate entries.
+ *
+ * `tokenFilters()` parses `?chainId=` and `?decimals=` query params into predicate functions.
+ */
 import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
