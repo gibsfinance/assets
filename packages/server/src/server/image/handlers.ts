@@ -161,7 +161,7 @@ export const splitExt = (filename: string): FilenameParts => {
 }
 
 /** Parse ?only= query param into source extension filter */
-const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] | undefined => {
+export const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] | undefined => {
   if (!query) return undefined
   const raw = _.isString(query) ? query.toLowerCase() : ''
   if (!raw) return undefined
@@ -169,8 +169,25 @@ const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | unde
   return exts ?? undefined
 }
 
-const CONVERTIBLE_RASTER = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.avif'])
-const SVG_EXTS = new Set(['.svg', '.svg+xml'])
+export const CONVERTIBLE_RASTER = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.avif'])
+export const SVG_EXTS = new Set(['.svg', '.svg+xml'])
+
+/**
+ * Validate whether the requested output format is compatible with the source image.
+ * Returns null if valid, or an error string describing the incompatibility.
+ */
+export const validateOutputFormat = (sourceExt: string, outputExt: string): string | null => {
+  const isSvgSource = SVG_EXTS.has(sourceExt)
+  const wantsSvg = outputExt === '.svg' || outputExt === '.svg+xml'
+  if (wantsSvg && !isSvgSource) {
+    return 'no SVG available for this token'
+  }
+  const wantsRaster = CONVERTIBLE_RASTER.has(outputExt)
+  if (!wantsRaster && !wantsSvg) {
+    return `unsupported output format ${outputExt}`
+  }
+  return null
+}
 
 const getListImage =
   (parseOrder: boolean) =>
@@ -211,20 +228,17 @@ const getListImage =
     }
     // Validate format compatibility
     if (outputExt) {
-      const isSvgSource = SVG_EXTS.has(img.ext)
-      const wantsSvg = outputExt === '.svg' || outputExt === '.svg+xml'
-      if (wantsSvg && !isSvgSource) {
-        throw httpErrors.NotFound(`no SVG available for this token`)
-      }
-      const wantsRaster = CONVERTIBLE_RASTER.has(outputExt)
-      if (!wantsRaster && !wantsSvg) {
-        throw httpErrors.NotAcceptable(`unsupported output format ${outputExt}`)
+      const formatError = validateOutputFormat(img.ext, outputExt)
+      if (formatError) {
+        const status = formatError.startsWith('unsupported') ? 406 : 404
+        throw status === 406 ? httpErrors.NotAcceptable(formatError) : httpErrors.NotFound(formatError)
       }
     }
     return { img, outputExt }
   }
 
-const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined) => {
+/** Convert Express query param to a flat string array, handling string, array, and object shapes */
+export const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] => {
   if (!query) {
     return []
   }
@@ -322,7 +336,8 @@ export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
-const ignoreNotFound = (err: HttpError) => {
+/** Swallow 404 errors (return null), re-throw anything else */
+export const ignoreNotFound = (err: HttpError) => {
   if (err.status === 404) {
     return null
   }
@@ -398,21 +413,35 @@ export const resolveImageMode = (mode: ImageModeParam | null | undefined): Image
   return imageMode.SAVE
 }
 
-const MIN_SERVABLE_RASTER_SIZE = 200
+export const MIN_SERVABLE_RASTER_SIZE = 200
 
-export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+export type ImageServeDecision = 'redirect' | 'serve' | 'unavailable'
+
+/** Decide how to serve an image: redirect to source, serve content, or 404 */
+export const classifyImageServe = (
+  img: { ext: string; content: Buffer | null; uri: string | null },
+  mode: string,
+): ImageServeDecision => {
   const isSvg = img.ext === '.svg' || img.ext === '.svg+xml'
   const hasContent = img.content && img.content.length > 0
-  const isTooSmall = hasContent && !isSvg && img.content.length < MIN_SERVABLE_RASTER_SIZE
+  const isTooSmall = hasContent && !isSvg && img.content!.length < MIN_SERVABLE_RASTER_SIZE
   const hasRedirectUri = img.uri && img.uri.startsWith('http')
 
-  // Redirect when LINK mode, content empty, or content is a tiny placeholder
   if ((mode === imageMode.LINK || !hasContent || isTooSmall) && hasRedirectUri) {
+    return 'redirect'
+  }
+  if (!hasContent || isTooSmall) {
+    return 'unavailable'
+  }
+  return 'serve'
+}
+
+export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+  const decision = classifyImageServe(img, mode)
+  if (decision === 'redirect') {
     return res.redirect(img.uri)
   }
-
-  // No usable content and no valid redirect
-  if (!hasContent || isTooSmall) {
+  if (decision === 'unavailable') {
     return res.status(404).json({ error: 'image content unavailable' })
   }
 

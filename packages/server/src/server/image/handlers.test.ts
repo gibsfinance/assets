@@ -47,6 +47,12 @@ import {
   getImageByHash,
   bestGuessNetworkImageFromOnOnChainInfo,
   tryMultiple,
+  queryStringToList,
+  ignoreNotFound,
+  validateOutputFormat,
+  classifyImageServe,
+  parseTypeFilter,
+  MIN_SERVABLE_RASTER_SIZE,
 } from './handlers'
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
@@ -480,6 +486,19 @@ describe('image handlers', () => {
 
       expect(result.img).toBeUndefined()
     })
+
+    it('applies ext filter when provided', async () => {
+      const fakeRow = {
+        image: makeImage({ ext: '.svg' }),
+        network: { networkId: 'eip155:1' },
+      }
+      const chain = makeDrizzleChain([fakeRow])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const result = await getNetworkIcon(1, ['.svg'])
+
+      expect(result.img).toBeDefined()
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -650,6 +669,70 @@ describe('image handlers', () => {
       await handler(req, res, vi.fn())
 
       expect(res.send).toHaveBeenCalled()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // getImage — format validation paths
+  // -----------------------------------------------------------------------
+  describe('getImage format validation', () => {
+    it('throws NotFound when SVG requested but source is raster', async () => {
+      const img = makeImage({ ext: '.png' })
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      const chain = makeDrizzleChain([
+        {
+          provider: { key: 'test' },
+          list: { listId: '1' },
+          list_token: { tokenId: '1' },
+          token: { networkId: 'eip155:1' },
+          image: img,
+        },
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: `${TEST_ADDRESS}.svg` },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/no SVG available/)
+    })
+
+    it('throws NotAcceptable for unsupported output format', async () => {
+      const img = makeImage({ ext: '.png' })
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      const chain = makeDrizzleChain([
+        {
+          provider: { key: 'test' },
+          list: { listId: '1' },
+          list_token: { tokenId: '1' },
+          token: { networkId: 'eip155:1' },
+          image: img,
+        },
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: `${TEST_ADDRESS}.bmp` },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/unsupported output format/)
+    })
+
+    it('throws BadRequest for invalid address', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: 'not-an-address' },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/address/)
     })
   })
 
@@ -1029,6 +1112,200 @@ describe('image handlers', () => {
       await tryMultiple(req as any, res, next)
 
       expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // queryStringToList (extracted pure function)
+  // -----------------------------------------------------------------------
+  describe('queryStringToList', () => {
+    it('returns empty array for falsy input', () => {
+      expect(queryStringToList(undefined)).toEqual([])
+      expect(queryStringToList('')).toEqual([])
+    })
+
+    it('splits comma-separated string', () => {
+      expect(queryStringToList('pulsex,coingecko')).toEqual(['pulsex', 'coingecko'])
+    })
+
+    it('filters empty segments from string', () => {
+      expect(queryStringToList('pulsex,,coingecko,')).toEqual(['pulsex', 'coingecko'])
+    })
+
+    it('handles single string value', () => {
+      expect(queryStringToList('pulsex')).toEqual(['pulsex'])
+    })
+
+    it('converts array values to strings', () => {
+      expect(queryStringToList(['pulsex', 'coingecko'])).toEqual(['pulsex', 'coingecko'])
+    })
+
+    it('converts object via toString fallback', () => {
+      const qs = { nested: 'value' } as any
+      const result = queryStringToList(qs)
+      expect(result).toEqual(['[object Object]'])
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // ignoreNotFound (extracted pure function)
+  // -----------------------------------------------------------------------
+  describe('ignoreNotFound', () => {
+    it('returns null for 404 errors', () => {
+      const err = { status: 404, message: 'Not Found' } as any
+      expect(ignoreNotFound(err)).toBeNull()
+    })
+
+    it('re-throws non-404 errors', () => {
+      const err = { status: 500, message: 'Server Error' } as any
+      expect(() => ignoreNotFound(err)).toThrow()
+    })
+
+    it('re-throws 403 errors', () => {
+      const err = { status: 403, message: 'Forbidden' } as any
+      expect(() => ignoreNotFound(err)).toThrow()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // validateOutputFormat (extracted pure function)
+  // -----------------------------------------------------------------------
+  describe('validateOutputFormat', () => {
+    it('returns null for valid raster-to-raster conversions', () => {
+      expect(validateOutputFormat('.png', '.webp')).toBeNull()
+      expect(validateOutputFormat('.jpg', '.png')).toBeNull()
+      expect(validateOutputFormat('.webp', '.avif')).toBeNull()
+    })
+
+    it('returns null for svg-to-svg', () => {
+      expect(validateOutputFormat('.svg', '.svg')).toBeNull()
+      expect(validateOutputFormat('.svg+xml', '.svg')).toBeNull()
+    })
+
+    it('returns null for svg-to-raster', () => {
+      expect(validateOutputFormat('.svg', '.png')).toBeNull()
+      expect(validateOutputFormat('.svg', '.webp')).toBeNull()
+    })
+
+    it('returns error for raster-to-svg request', () => {
+      const result = validateOutputFormat('.png', '.svg')
+      expect(result).toBe('no SVG available for this token')
+    })
+
+    it('returns error for unsupported output format', () => {
+      const result = validateOutputFormat('.png', '.bmp')
+      expect(result).toContain('unsupported output format')
+    })
+
+    it('returns error for tiff output', () => {
+      expect(validateOutputFormat('.png', '.tiff')).toContain('unsupported')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // classifyImageServe (extracted pure function)
+  // -----------------------------------------------------------------------
+  describe('classifyImageServe', () => {
+    it('returns serve for normal image with content', () => {
+      const img = { ext: '.png', content: Buffer.from('x'.repeat(300)), uri: 'https://example.com/img.png' }
+      expect(classifyImageServe(img, 'save')).toBe('serve')
+    })
+
+    it('returns redirect for LINK mode with http URI', () => {
+      const img = { ext: '.png', content: Buffer.from('x'.repeat(300)), uri: 'https://example.com/img.png' }
+      expect(classifyImageServe(img, 'link')).toBe('redirect')
+    })
+
+    it('returns redirect when content is empty and URI exists', () => {
+      const img = { ext: '.png', content: Buffer.from(''), uri: 'https://example.com/img.png' }
+      expect(classifyImageServe(img, 'save')).toBe('redirect')
+    })
+
+    it('returns redirect when raster content is tiny (< MIN_SERVABLE_RASTER_SIZE)', () => {
+      const img = { ext: '.png', content: Buffer.from('x'.repeat(50)), uri: 'https://example.com/img.png' }
+      expect(classifyImageServe(img, 'save')).toBe('redirect')
+    })
+
+    it('returns serve for tiny SVG (SVGs are not subject to size filter)', () => {
+      const img = { ext: '.svg', content: Buffer.from('<svg/>'), uri: 'https://example.com/img.svg' }
+      expect(classifyImageServe(img, 'save')).toBe('serve')
+    })
+
+    it('returns unavailable when no content and no http URI', () => {
+      const img = { ext: '.png', content: null, uri: null }
+      expect(classifyImageServe(img, 'save')).toBe('unavailable')
+    })
+
+    it('returns unavailable when tiny raster and no redirect URI', () => {
+      const img = { ext: '.png', content: Buffer.from('x'), uri: 'data:image/png;base64,abc' }
+      expect(classifyImageServe(img, 'save')).toBe('unavailable')
+    })
+
+    it('returns serve for content at exact MIN_SERVABLE_RASTER_SIZE threshold', () => {
+      const img = {
+        ext: '.png',
+        content: Buffer.from('x'.repeat(MIN_SERVABLE_RASTER_SIZE)),
+        uri: 'https://example.com/img.png',
+      }
+      expect(classifyImageServe(img, 'save')).toBe('serve')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // parseTypeFilter (extracted pure function)
+  // -----------------------------------------------------------------------
+  describe('parseTypeFilter', () => {
+    it('returns undefined for falsy input', () => {
+      expect(parseTypeFilter(undefined)).toBeUndefined()
+      expect(parseTypeFilter('')).toBeUndefined()
+    })
+
+    it('returns extension list for known format', () => {
+      expect(parseTypeFilter('vector')).toEqual(['.svg', '.svg+xml', '.xml'])
+      expect(parseTypeFilter('png')).toEqual(['.png'])
+      expect(parseTypeFilter('webp')).toEqual(['.webp'])
+    })
+
+    it('is case-insensitive', () => {
+      expect(parseTypeFilter('SVG')).toEqual(['.svg', '.svg+xml'])
+      expect(parseTypeFilter('PNG')).toEqual(['.png'])
+    })
+
+    it('returns undefined for unknown format', () => {
+      expect(parseTypeFilter('bmp')).toBeUndefined()
+      expect(parseTypeFilter('tiff')).toBeUndefined()
+    })
+
+    it('returns undefined for non-string query (array/object)', () => {
+      expect(parseTypeFilter(['vector', 'png'])).toBeUndefined()
+      expect(parseTypeFilter({ nested: 'value' } as any)).toBeUndefined()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // getImage — bad chainId path
+  // -----------------------------------------------------------------------
+  describe('getImage bad chainId', () => {
+    it('throws BadRequest for chainId=0', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '0', address: TEST_ADDRESS },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/chainId/)
+    })
+
+    it('throws BadRequest for non-numeric chainId', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: 'abc', address: TEST_ADDRESS },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/chainId/)
     })
   })
 })
