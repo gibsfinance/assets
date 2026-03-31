@@ -1,100 +1,512 @@
 {
-  "id": "00000000-0000-0000-0000-000000000000",
-  "prevId": "",
+  "id": "d7da7368-c9b9-40a5-9601-51cb8f20262b",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.knex_migrations": {
-      "name": "knex_migrations",
+    "public.bridge": {
+      "name": "bridge",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "batch": {
-          "name": "batch",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "migration_time": {
-          "name": "migration_time",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.knex_migrations_lock": {
-      "name": "knex_migrations_lock",
-      "schema": "",
-      "columns": {
-        "index": {
-          "name": "index",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "is_locked": {
-          "name": "is_locked",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.provider": {
-      "name": "provider",
-      "schema": "",
-      "columns": {
         "provider_id": {
           "name": "provider_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_network_id": {
+          "name": "home_network_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_address": {
+          "name": "home_address",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "foreign_network_id": {
+          "name": "foreign_network_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "foreign_address": {
+          "name": "foreign_address",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bridge_id": {
+          "name": "bridge_id",
+          "type": "text",
           "primaryKey": true,
           "notNull": true
         },
-        "key": {
-          "name": "key",
+        "current_foreign_block_number": {
+          "name": "current_foreign_block_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "current_home_block_number": {
+          "name": "current_home_block_number",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "bridge_link_order_id": {
+          "name": "bridge_link_order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "bridge_bridgeid_index": {
+          "name": "bridge_bridgeid_index",
+          "columns": [
+            {
+              "expression": "bridge_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_currentforeignblocknumber_index": {
+          "name": "bridge_currentforeignblocknumber_index",
+          "columns": [
+            {
+              "expression": "current_foreign_block_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int8_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_currenthomeblocknumber_index": {
+          "name": "bridge_currenthomeblocknumber_index",
+          "columns": [
+            {
+              "expression": "current_home_block_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "int8_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_foreignaddress_index": {
+          "name": "bridge_foreignaddress_index",
+          "columns": [
+            {
+              "expression": "foreign_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "citext_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_foreignnetworkid_index": {
+          "name": "bridge_foreignnetworkid_index",
+          "columns": [
+            {
+              "expression": "foreign_network_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_homeaddress_index": {
+          "name": "bridge_homeaddress_index",
+          "columns": [
+            {
+              "expression": "home_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "citext_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_homenetworkid_index": {
+          "name": "bridge_homenetworkid_index",
+          "columns": [
+            {
+              "expression": "home_network_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_providerid_index": {
+          "name": "bridge_providerid_index",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_type_index": {
+          "name": "bridge_type_index",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bridge_providerid_foreign": {
+          "name": "bridge_providerid_foreign",
+          "tableFrom": "bridge",
+          "tableTo": "provider",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "bridge_homenetworkid_foreign": {
+          "name": "bridge_homenetworkid_foreign",
+          "tableFrom": "bridge",
+          "tableTo": "network",
+          "columnsFrom": [
+            "home_network_id"
+          ],
+          "columnsTo": [
+            "network_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "bridge_foreignnetworkid_foreign": {
+          "name": "bridge_foreignnetworkid_foreign",
+          "tableFrom": "bridge",
+          "tableTo": "network",
+          "columnsFrom": [
+            "foreign_network_id"
+          ],
+          "columnsTo": [
+            "network_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bridge_link": {
+      "name": "bridge_link",
+      "schema": "",
+      "columns": {
+        "bridge_link_id": {
+          "name": "bridge_link_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "native_token_id": {
+          "name": "native_token_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
+        "bridged_token_id": {
+          "name": "bridged_token_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "default": "''"
+          "notNull": true
         },
-        "description": {
-          "name": "description",
+        "bridge_id": {
+          "name": "bridge_id",
           "type": "text",
           "primaryKey": false,
+          "notNull": true
+        },
+        "transaction_hash": {
+          "name": "transaction_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "bridge_link_bridgedtokenid_index": {
+          "name": "bridge_link_bridgedtokenid_index",
+          "columns": [
+            {
+              "expression": "bridged_token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_link_bridgeid_index": {
+          "name": "bridge_link_bridgeid_index",
+          "columns": [
+            {
+              "expression": "bridge_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_link_bridgelinkid_index": {
+          "name": "bridge_link_bridgelinkid_index",
+          "columns": [
+            {
+              "expression": "bridge_link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_link_nativetokenid_index": {
+          "name": "bridge_link_nativetokenid_index",
+          "columns": [
+            {
+              "expression": "native_token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bridge_link_transactionhash_index": {
+          "name": "bridge_link_transactionhash_index",
+          "columns": [
+            {
+              "expression": "transaction_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bridge_link_nativetokenid_foreign": {
+          "name": "bridge_link_nativetokenid_foreign",
+          "tableFrom": "bridge_link",
+          "tableTo": "token",
+          "columnsFrom": [
+            "native_token_id"
+          ],
+          "columnsTo": [
+            "token_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "bridge_link_bridgedtokenid_foreign": {
+          "name": "bridge_link_bridgedtokenid_foreign",
+          "tableFrom": "bridge_link",
+          "tableTo": "token",
+          "columnsFrom": [
+            "bridged_token_id"
+          ],
+          "columnsTo": [
+            "token_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "bridge_link_bridgeid_foreign": {
+          "name": "bridge_link_bridgeid_foreign",
+          "tableFrom": "bridge_link",
+          "tableTo": "bridge",
+          "columnsFrom": [
+            "bridge_id"
+          ],
+          "columnsTo": [
+            "bridge_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cache_request": {
+      "name": "cache_request",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
           "notNull": false,
-          "default": "''"
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "cache_request_key_index": {
+          "name": "cache_request_key_index",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.header_link": {
+      "name": "header_link",
+      "schema": "",
+      "columns": {
+        "list_token_id": {
+          "name": "list_token_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "image_hash": {
+          "name": "image_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -112,15 +524,15 @@
         }
       },
       "indexes": {
-        "provider_key_index": {
-          "name": "provider_key_index",
+        "header_link_imagehash_index": {
+          "name": "header_link_imagehash_index",
           "columns": [
             {
-              "expression": "key",
+              "expression": "image_hash",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -128,15 +540,15 @@
           "method": "btree",
           "with": {}
         },
-        "provider_providerid_index": {
-          "name": "provider_providerid_index",
+        "header_link_listtokenid_index": {
+          "name": "header_link_listtokenid_index",
           "columns": [
             {
-              "expression": "provider_id",
+              "expression": "list_token_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -145,17 +557,38 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "provider_key_unique": {
-          "columns": ["key"],
-          "nullsNotDistinct": false,
-          "name": "provider_key_unique"
+      "foreignKeys": {
+        "header_link_listtokenid_foreign": {
+          "name": "header_link_listtokenid_foreign",
+          "tableFrom": "header_link",
+          "tableTo": "list_token",
+          "columnsFrom": [
+            "list_token_id"
+          ],
+          "columnsTo": [
+            "list_token_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "header_link_imagehash_foreign": {
+          "name": "header_link_imagehash_foreign",
+          "tableFrom": "header_link",
+          "tableTo": "image",
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
-      "checkConstraints": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.image": {
@@ -206,10 +639,10 @@
           "columns": [
             {
               "expression": "ext",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -222,10 +655,10 @@
           "columns": [
             {
               "expression": "image_hash",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -238,10 +671,10 @@
           "columns": [
             {
               "expression": "mode",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -254,10 +687,10 @@
           "columns": [
             {
               "expression": "uri",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -269,319 +702,50 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.list_tag": {
-      "name": "list_tag",
+    "public.image_variant": {
+      "name": "image_variant",
       "schema": "",
       "columns": {
-        "provider_id": {
-          "name": "provider_id",
+        "image_hash": {
+          "name": "image_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "list_id": {
-          "name": "list_id",
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "format": {
+          "name": "format",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
+        "content": {
+          "name": "content",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_count": {
+          "name": "access_count",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "list_tag_listid_index": {
-          "name": "list_tag_listid_index",
-          "columns": [
-            {
-              "expression": "list_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "list_tag_providerid_index": {
-          "name": "list_tag_providerid_index",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "list_tag_providerid_foreign": {
-          "name": "list_tag_providerid_foreign",
-          "tableFrom": "list_tag",
-          "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "list_tag_listid_foreign": {
-          "name": "list_tag_listid_foreign",
-          "tableFrom": "list_tag",
-          "tableTo": "list",
-          "schemaTo": "public",
-          "columnsFrom": ["list_id"],
-          "columnsTo": ["list_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.metadata": {
-      "name": "metadata",
-      "schema": "",
-      "columns": {
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "network_id": {
-          "name": "network_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "list_id": {
-          "name": "list_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provided_id": {
-          "name": "provided_id",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata_id": {
-          "name": "metadata_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "metadata_listid_index": {
-          "name": "metadata_listid_index",
-          "columns": [
-            {
-              "expression": "list_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "metadata_metadataid_index": {
-          "name": "metadata_metadataid_index",
-          "columns": [
-            {
-              "expression": "metadata_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "metadata_networkid_index": {
-          "name": "metadata_networkid_index",
-          "columns": [
-            {
-              "expression": "network_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "metadata_providedid_index": {
-          "name": "metadata_providedid_index",
-          "columns": [
-            {
-              "expression": "provided_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "citext_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "metadata_providerid_index": {
-          "name": "metadata_providerid_index",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "metadata_providerid_foreign": {
-          "name": "metadata_providerid_foreign",
-          "tableFrom": "metadata",
-          "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "metadata_networkid_foreign": {
-          "name": "metadata_networkid_foreign",
-          "tableFrom": "metadata",
-          "tableTo": "network",
-          "schemaTo": "public",
-          "columnsFrom": ["network_id"],
-          "columnsTo": ["network_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "metadata_listid_foreign": {
-          "name": "metadata_listid_foreign",
-          "tableFrom": "metadata",
-          "tableTo": "list",
-          "schemaTo": "public",
-          "columnsFrom": ["list_id"],
-          "columnsTo": ["list_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.token": {
-      "name": "token",
-      "schema": "",
-      "columns": {
-        "network_id": {
-          "name": "network_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provided_id": {
-          "name": "provided_id",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "symbol": {
-          "name": "symbol",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "decimals": {
-          "name": "decimals",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unknown'"
+          "default": 1
         },
         "created_at": {
           "name": "created_at",
@@ -590,119 +754,31 @@
           "notNull": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "token_id": {
-          "name": "token_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
+        "last_accessed_at": {
+          "name": "last_accessed_at",
+          "type": "timestamp(3) with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
         }
       },
       "indexes": {
-        "token_decimals_index": {
-          "name": "token_decimals_index",
+        "idx_image_variant_prune": {
+          "name": "idx_image_variant_prune",
           "columns": [
             {
-              "expression": "decimals",
+              "expression": "access_count",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "int2_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_name_index": {
-          "name": "token_name_index",
-          "columns": [
+              "opclass": "int4_ops"
+            },
             {
-              "expression": "name",
+              "expression": "last_accessed_at",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_networkid_index": {
-          "name": "token_networkid_index",
-          "columns": [
-            {
-              "expression": "network_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_providedid_index": {
-          "name": "token_providedid_index",
-          "columns": [
-            {
-              "expression": "provided_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "citext_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_symbol_index": {
-          "name": "token_symbol_index",
-          "columns": [
-            {
-              "expression": "symbol",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_tokenid_index": {
-          "name": "token_tokenid_index",
-          "columns": [
-            {
-              "expression": "token_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "token_type_index": {
-          "name": "token_type_index",
-          "columns": [
-            {
-              "expression": "type",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "timestamptz_ops"
             }
           ],
           "isUnique": false,
@@ -712,21 +788,34 @@
         }
       },
       "foreignKeys": {
-        "token_networkid_foreign": {
-          "name": "token_networkid_foreign",
-          "tableFrom": "token",
-          "tableTo": "network",
-          "schemaTo": "public",
-          "columnsFrom": ["network_id"],
-          "columnsTo": ["network_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
+        "image_variant_imagehash_foreign": {
+          "name": "image_variant_imagehash_foreign",
+          "tableFrom": "image_variant",
+          "tableTo": "image",
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "image_variant_pkey": {
+          "name": "image_variant_pkey",
+          "columns": [
+            "image_hash",
+            "width",
+            "height",
+            "format"
+          ]
+        }
+      },
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.link": {
@@ -766,10 +855,10 @@
           "columns": [
             {
               "expression": "image_hash",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -782,10 +871,10 @@
           "columns": [
             {
               "expression": "uri",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -799,283 +888,20 @@
           "name": "link_imagehash_foreign",
           "tableFrom": "link",
           "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.list_order": {
-      "name": "list_order",
-      "schema": "",
-      "columns": {
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "list_order_id": {
-          "name": "list_order_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "list_order_key_index": {
-          "name": "list_order_key_index",
-          "columns": [
-            {
-              "expression": "key",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "list_order_listorderid_index": {
-          "name": "list_order_listorderid_index",
-          "columns": [
-            {
-              "expression": "list_order_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "list_order_providerid_index": {
-          "name": "list_order_providerid_index",
-          "columns": [
-            {
-              "expression": "provider_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "list_order_type_index": {
-          "name": "list_order_type_index",
-          "columns": [
-            {
-              "expression": "type",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "list_order_providerid_foreign": {
-          "name": "list_order_providerid_foreign",
-          "tableFrom": "list_order",
-          "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.network": {
-      "name": "network",
-      "schema": "",
-      "columns": {
-        "network_id": {
-          "name": "network_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "chain_id": {
-          "name": "chain_id",
-          "type": "numeric(78, 0)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "image_hash": {
-          "name": "image_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "network_chainid_index": {
-          "name": "network_chainid_index",
-          "columns": [
-            {
-              "expression": "chain_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "numeric_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "network_imagehash_index": {
-          "name": "network_imagehash_index",
-          "columns": [
-            {
-              "expression": "image_hash",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "network_networkid_index": {
-          "name": "network_networkid_index",
-          "columns": [
-            {
-              "expression": "network_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "network_type_index": {
-          "name": "network_type_index",
-          "columns": [
-            {
-              "expression": "type",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "network_imagehash_foreign": {
-          "name": "network_imagehash_foreign",
-          "tableFrom": "network",
-          "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
       "isRLSEnabled": false
     },
     "public.list": {
@@ -1174,10 +1000,10 @@
           "columns": [
             {
               "expression": "image_hash",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1190,10 +1016,10 @@
           "columns": [
             {
               "expression": "key",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1206,10 +1032,10 @@
           "columns": [
             {
               "expression": "list_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1222,10 +1048,10 @@
           "columns": [
             {
               "expression": "network_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1238,10 +1064,10 @@
           "columns": [
             {
               "expression": "provider_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1255,9 +1081,12 @@
           "name": "list_providerid_foreign",
           "tableFrom": "list",
           "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1265,9 +1094,12 @@
           "name": "list_networkid_foreign",
           "tableFrom": "list",
           "tableTo": "network",
-          "schemaTo": "public",
-          "columnsFrom": ["network_id"],
-          "columnsTo": ["network_id"],
+          "columnsFrom": [
+            "network_id"
+          ],
+          "columnsTo": [
+            "network_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1275,291 +1107,58 @@
           "name": "list_imagehash_foreign",
           "tableFrom": "list",
           "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.bridge_link": {
-      "name": "bridge_link",
+    "public.list_order": {
+      "name": "list_order",
       "schema": "",
       "columns": {
-        "bridge_link_id": {
-          "name": "bridge_link_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "native_token_id": {
-          "name": "native_token_id",
+        "provider_id": {
+          "name": "provider_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "bridged_token_id": {
-          "name": "bridged_token_id",
+        "key": {
+          "name": "key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "bridge_id": {
-          "name": "bridge_id",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "transaction_hash": {
-          "name": "transaction_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "bridge_link_bridgedtokenid_index": {
-          "name": "bridge_link_bridgedtokenid_index",
-          "columns": [
-            {
-              "expression": "bridged_token_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_link_bridgeid_index": {
-          "name": "bridge_link_bridgeid_index",
-          "columns": [
-            {
-              "expression": "bridge_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_link_bridgelinkid_index": {
-          "name": "bridge_link_bridgelinkid_index",
-          "columns": [
-            {
-              "expression": "bridge_link_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_link_nativetokenid_index": {
-          "name": "bridge_link_nativetokenid_index",
-          "columns": [
-            {
-              "expression": "native_token_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_link_transactionhash_index": {
-          "name": "bridge_link_transactionhash_index",
-          "columns": [
-            {
-              "expression": "transaction_hash",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "bridge_link_nativetokenid_foreign": {
-          "name": "bridge_link_nativetokenid_foreign",
-          "tableFrom": "bridge_link",
-          "tableTo": "token",
-          "schemaTo": "public",
-          "columnsFrom": ["native_token_id"],
-          "columnsTo": ["token_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "bridge_link_bridgedtokenid_foreign": {
-          "name": "bridge_link_bridgedtokenid_foreign",
-          "tableFrom": "bridge_link",
-          "tableTo": "token",
-          "schemaTo": "public",
-          "columnsFrom": ["bridged_token_id"],
-          "columnsTo": ["token_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "bridge_link_bridgeid_foreign": {
-          "name": "bridge_link_bridgeid_foreign",
-          "tableFrom": "bridge_link",
-          "tableTo": "bridge",
-          "schemaTo": "public",
-          "columnsFrom": ["bridge_id"],
-          "columnsTo": ["bridge_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.header_link": {
-      "name": "header_link",
-      "schema": "",
-      "columns": {
-        "list_token_id": {
-          "name": "list_token_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "image_hash": {
-          "name": "image_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "header_link_imagehash_index": {
-          "name": "header_link_imagehash_index",
-          "columns": [
-            {
-              "expression": "image_hash",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "header_link_listtokenid_index": {
-          "name": "header_link_listtokenid_index",
-          "columns": [
-            {
-              "expression": "list_token_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "header_link_listtokenid_foreign": {
-          "name": "header_link_listtokenid_foreign",
-          "tableFrom": "header_link",
-          "tableTo": "list_token",
-          "schemaTo": "public",
-          "columnsFrom": ["list_token_id"],
-          "columnsTo": ["list_token_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "header_link_imagehash_foreign": {
-          "name": "header_link_imagehash_foreign",
-          "tableFrom": "header_link",
-          "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.list_token": {
-      "name": "list_token",
-      "schema": "",
-      "columns": {
-        "token_id": {
-          "name": "token_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "list_id": {
-          "name": "list_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "image_hash": {
-          "name": "image_hash",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "list_token_id": {
-          "name": "list_token_id",
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "list_order_id": {
+          "name": "list_order_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true
@@ -1577,24 +1176,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": "CURRENT_TIMESTAMP"
-        },
-        "list_token_order_id": {
-          "name": "list_token_order_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
         }
       },
       "indexes": {
-        "list_token_imagehash_index": {
-          "name": "list_token_imagehash_index",
+        "list_order_key_index": {
+          "name": "list_order_key_index",
           "columns": [
             {
-              "expression": "image_hash",
+              "expression": "key",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1602,15 +1195,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_token_listid_index": {
-          "name": "list_token_listid_index",
+        "list_order_listorderid_index": {
+          "name": "list_order_listorderid_index",
           "columns": [
             {
-              "expression": "list_id",
+              "expression": "list_order_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1618,15 +1211,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_token_listtokenid_index": {
-          "name": "list_token_listtokenid_index",
+        "list_order_providerid_index": {
+          "name": "list_order_providerid_index",
           "columns": [
             {
-              "expression": "list_token_id",
+              "expression": "provider_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1634,15 +1227,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_token_tokenid_index": {
-          "name": "list_token_tokenid_index",
+        "list_order_type_index": {
+          "name": "list_order_type_index",
           "columns": [
             {
-              "expression": "token_id",
+              "expression": "type",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1652,49 +1245,38 @@
         }
       },
       "foreignKeys": {
-        "list_token_tokenid_foreign": {
-          "name": "list_token_tokenid_foreign",
-          "tableFrom": "list_token",
-          "tableTo": "token",
-          "schemaTo": "public",
-          "columnsFrom": ["token_id"],
-          "columnsTo": ["token_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "list_token_listid_foreign": {
-          "name": "list_token_listid_foreign",
-          "tableFrom": "list_token",
-          "tableTo": "list",
-          "schemaTo": "public",
-          "columnsFrom": ["list_id"],
-          "columnsTo": ["list_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "list_token_imagehash_foreign": {
-          "name": "list_token_imagehash_foreign",
-          "tableFrom": "list_token",
-          "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
+        "list_order_providerid_foreign": {
+          "name": "list_order_providerid_foreign",
+          "tableFrom": "list_order",
+          "tableTo": "provider",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.bridge": {
-      "name": "bridge",
+    "public.list_order_item": {
+      "name": "list_order_item",
       "schema": "",
       "columns": {
-        "type": {
-          "name": "type",
+        "list_order_id": {
+          "name": "list_order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "list_key": {
+          "name": "list_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1705,49 +1287,17 @@
           "primaryKey": false,
           "notNull": true
         },
-        "home_network_id": {
-          "name": "home_network_id",
+        "list_id": {
+          "name": "list_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "home_address": {
-          "name": "home_address",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "foreign_network_id": {
-          "name": "foreign_network_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "foreign_address": {
-          "name": "foreign_address",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bridge_id": {
-          "name": "bridge_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "current_foreign_block_number": {
-          "name": "current_foreign_block_number",
+        "ranking": {
+          "name": "ranking",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "current_home_block_number": {
-          "name": "current_home_block_number",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -1762,25 +1312,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": "CURRENT_TIMESTAMP"
-        },
-        "bridge_link_order_id": {
-          "name": "bridge_link_order_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
-        "bridge_bridgeid_index": {
-          "name": "bridge_bridgeid_index",
+        "list_order_item_listid_index": {
+          "name": "list_order_item_listid_index",
           "columns": [
             {
-              "expression": "bridge_id",
+              "expression": "list_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1788,15 +1331,15 @@
           "method": "btree",
           "with": {}
         },
-        "bridge_currentforeignblocknumber_index": {
-          "name": "bridge_currentforeignblocknumber_index",
+        "list_order_item_listkey_index": {
+          "name": "list_order_item_listkey_index",
           "columns": [
             {
-              "expression": "current_foreign_block_number",
+              "expression": "list_key",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "int8_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1804,15 +1347,15 @@
           "method": "btree",
           "with": {}
         },
-        "bridge_currenthomeblocknumber_index": {
-          "name": "bridge_currenthomeblocknumber_index",
+        "list_order_item_listorderid_index": {
+          "name": "list_order_item_listorderid_index",
           "columns": [
             {
-              "expression": "current_home_block_number",
+              "expression": "list_order_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "int8_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1820,79 +1363,15 @@
           "method": "btree",
           "with": {}
         },
-        "bridge_foreignaddress_index": {
-          "name": "bridge_foreignaddress_index",
-          "columns": [
-            {
-              "expression": "foreign_address",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "citext_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_foreignnetworkid_index": {
-          "name": "bridge_foreignnetworkid_index",
-          "columns": [
-            {
-              "expression": "foreign_network_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_homeaddress_index": {
-          "name": "bridge_homeaddress_index",
-          "columns": [
-            {
-              "expression": "home_address",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "citext_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_homenetworkid_index": {
-          "name": "bridge_homenetworkid_index",
-          "columns": [
-            {
-              "expression": "home_network_id",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bridge_providerid_index": {
-          "name": "bridge_providerid_index",
+        "list_order_item_providerid_index": {
+          "name": "list_order_item_providerid_index",
           "columns": [
             {
               "expression": "provider_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -1900,15 +1379,15 @@
           "method": "btree",
           "with": {}
         },
-        "bridge_type_index": {
-          "name": "bridge_type_index",
+        "list_order_item_ranking_index": {
+          "name": "list_order_item_ranking_index",
           "columns": [
             {
-              "expression": "type",
+              "expression": "ranking",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "int8_ops"
             }
           ],
           "isUnique": false,
@@ -1918,90 +1397,58 @@
         }
       },
       "foreignKeys": {
-        "bridge_providerid_foreign": {
-          "name": "bridge_providerid_foreign",
-          "tableFrom": "bridge",
-          "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "bridge_homenetworkid_foreign": {
-          "name": "bridge_homenetworkid_foreign",
-          "tableFrom": "bridge",
-          "tableTo": "network",
-          "schemaTo": "public",
-          "columnsFrom": ["home_network_id"],
-          "columnsTo": ["network_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        },
-        "bridge_foreignnetworkid_foreign": {
-          "name": "bridge_foreignnetworkid_foreign",
-          "tableFrom": "bridge",
-          "tableTo": "network",
-          "schemaTo": "public",
-          "columnsFrom": ["foreign_network_id"],
-          "columnsTo": ["network_id"],
-          "onDelete": "cascade",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.cache_request": {
-      "name": "cache_request",
-      "schema": "",
-      "columns": {
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp(3) with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "cache_request_key_index": {
-          "name": "cache_request_key_index",
-          "columns": [
-            {
-              "expression": "key",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
-            }
+        "list_order_item_listorderid_foreign": {
+          "name": "list_order_item_listorderid_foreign",
+          "tableFrom": "list_order_item",
+          "tableTo": "list_order",
+          "columnsFrom": [
+            "list_order_id"
           ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
+          "columnsTo": [
+            "list_order_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "list_order_item_providerid_foreign": {
+          "name": "list_order_item_providerid_foreign",
+          "tableFrom": "list_order_item",
+          "tableTo": "provider",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "list_order_item_listid_foreign": {
+          "name": "list_order_item_listid_foreign",
+          "tableFrom": "list_order_item",
+          "tableTo": "list",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "list_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "list_order_item_pkey": {
+          "name": "list_order_item_pkey",
+          "columns": [
+            "list_order_id",
+            "ranking"
+          ]
+        }
+      },
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.list_submission": {
@@ -2119,10 +1566,10 @@
           "columns": [
             {
               "expression": "provider_key",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2135,10 +1582,10 @@
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2151,10 +1598,10 @@
           "columns": [
             {
               "expression": "submitted_by",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2167,10 +1614,10 @@
           "columns": [
             {
               "expression": "url",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2183,18 +1630,692 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "list_submission_url_unique": {
-          "columns": ["url"],
+          "name": "list_submission_url_unique",
           "nullsNotDistinct": false,
-          "name": "list_submission_url_unique"
+          "columns": [
+            "url"
+          ]
         },
         "list_submission_provider_key_list_key_unique": {
-          "columns": ["provider_key", "list_key"],
+          "name": "list_submission_provider_key_list_key_unique",
           "nullsNotDistinct": false,
-          "name": "list_submission_provider_key_list_key_unique"
+          "columns": [
+            "provider_key",
+            "list_key"
+          ]
         }
       },
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.list_tag": {
+      "name": "list_tag",
+      "schema": "",
+      "columns": {
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "list_id": {
+          "name": "list_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "list_tag_listid_index": {
+          "name": "list_tag_listid_index",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "list_tag_providerid_index": {
+          "name": "list_tag_providerid_index",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "list_tag_providerid_foreign": {
+          "name": "list_tag_providerid_foreign",
+          "tableFrom": "list_tag",
+          "tableTo": "provider",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "list_tag_listid_foreign": {
+          "name": "list_tag_listid_foreign",
+          "tableFrom": "list_tag",
+          "tableTo": "list",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "list_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.list_token": {
+      "name": "list_token",
+      "schema": "",
+      "columns": {
+        "token_id": {
+          "name": "token_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "list_id": {
+          "name": "list_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image_hash": {
+          "name": "image_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "list_token_id": {
+          "name": "list_token_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "list_token_order_id": {
+          "name": "list_token_order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "list_token_imagehash_index": {
+          "name": "list_token_imagehash_index",
+          "columns": [
+            {
+              "expression": "image_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "list_token_listid_index": {
+          "name": "list_token_listid_index",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "list_token_listtokenid_index": {
+          "name": "list_token_listtokenid_index",
+          "columns": [
+            {
+              "expression": "list_token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "list_token_tokenid_index": {
+          "name": "list_token_tokenid_index",
+          "columns": [
+            {
+              "expression": "token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "list_token_tokenid_foreign": {
+          "name": "list_token_tokenid_foreign",
+          "tableFrom": "list_token",
+          "tableTo": "token",
+          "columnsFrom": [
+            "token_id"
+          ],
+          "columnsTo": [
+            "token_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "list_token_listid_foreign": {
+          "name": "list_token_listid_foreign",
+          "tableFrom": "list_token",
+          "tableTo": "list",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "list_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "list_token_imagehash_foreign": {
+          "name": "list_token_imagehash_foreign",
+          "tableFrom": "list_token",
+          "tableTo": "image",
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.metadata": {
+      "name": "metadata",
+      "schema": "",
+      "columns": {
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "network_id": {
+          "name": "network_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "list_id": {
+          "name": "list_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provided_id": {
+          "name": "provided_id",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_id": {
+          "name": "metadata_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "metadata_listid_index": {
+          "name": "metadata_listid_index",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "metadata_metadataid_index": {
+          "name": "metadata_metadataid_index",
+          "columns": [
+            {
+              "expression": "metadata_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "metadata_networkid_index": {
+          "name": "metadata_networkid_index",
+          "columns": [
+            {
+              "expression": "network_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "metadata_providedid_index": {
+          "name": "metadata_providedid_index",
+          "columns": [
+            {
+              "expression": "provided_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "citext_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "metadata_providerid_index": {
+          "name": "metadata_providerid_index",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "metadata_providerid_foreign": {
+          "name": "metadata_providerid_foreign",
+          "tableFrom": "metadata",
+          "tableTo": "provider",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "metadata_networkid_foreign": {
+          "name": "metadata_networkid_foreign",
+          "tableFrom": "metadata",
+          "tableTo": "network",
+          "columnsFrom": [
+            "network_id"
+          ],
+          "columnsTo": [
+            "network_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "metadata_listid_foreign": {
+          "name": "metadata_listid_foreign",
+          "tableFrom": "metadata",
+          "tableTo": "list",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "list_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.network": {
+      "name": "network",
+      "schema": "",
+      "columns": {
+        "network_id": {
+          "name": "network_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_id": {
+          "name": "chain_id",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "image_hash": {
+          "name": "image_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "network_chainid_index": {
+          "name": "network_chainid_index",
+          "columns": [
+            {
+              "expression": "chain_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "numeric_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "network_imagehash_index": {
+          "name": "network_imagehash_index",
+          "columns": [
+            {
+              "expression": "image_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "network_networkid_index": {
+          "name": "network_networkid_index",
+          "columns": [
+            {
+              "expression": "network_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "network_type_index": {
+          "name": "network_type_index",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "network_imagehash_foreign": {
+          "name": "network_imagehash_foreign",
+          "tableFrom": "network",
+          "tableTo": "image",
+          "columnsFrom": [
+            "image_hash"
+          ],
+          "columnsTo": [
+            "image_hash"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.provider": {
+      "name": "provider",
+      "schema": "",
+      "columns": {
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "provider_key_index": {
+          "name": "provider_key_index",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "provider_providerid_index": {
+          "name": "provider_providerid_index",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "provider_key_unique": {
+          "name": "provider_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.tag": {
@@ -2247,10 +2368,10 @@
           "columns": [
             {
               "expression": "description",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2263,10 +2384,10 @@
           "columns": [
             {
               "expression": "key",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2279,10 +2400,10 @@
           "columns": [
             {
               "expression": "name",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2295,10 +2416,10 @@
           "columns": [
             {
               "expression": "provider_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2312,9 +2433,12 @@
           "name": "tag_providerid_foreign",
           "tableFrom": "tag",
           "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "columnsTo": [
+            "provider_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -2322,73 +2446,83 @@
       "compositePrimaryKeys": {
         "tag_pkey": {
           "name": "tag_pkey",
-          "columns": ["provider_id", "key"]
+          "columns": [
+            "provider_id",
+            "key"
+          ]
         }
       },
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.list_order_item": {
-      "name": "list_order_item",
+    "public.token": {
+      "name": "token",
       "schema": "",
       "columns": {
-        "list_order_id": {
-          "name": "list_order_id",
+        "network_id": {
+          "name": "network_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "list_key": {
-          "name": "list_key",
+        "provided_id": {
+          "name": "provided_id",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "provider_id": {
-          "name": "provider_id",
+        "symbol": {
+          "name": "symbol",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "list_id": {
-          "name": "list_id",
+        "decimals": {
+          "name": "decimals",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "ranking": {
-          "name": "ranking",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'unknown'"
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
+          "type": "timestamp(3) with time zone",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "default": "CURRENT_TIMESTAMP"
         },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "CURRENT_TIMESTAMP"
+        "token_id": {
+          "name": "token_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
         }
       },
       "indexes": {
-        "list_order_item_listid_index": {
-          "name": "list_order_item_listid_index",
+        "token_decimals_index": {
+          "name": "token_decimals_index",
           "columns": [
             {
-              "expression": "list_id",
+              "expression": "decimals",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "int2_ops"
             }
           ],
           "isUnique": false,
@@ -2396,15 +2530,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_order_item_listkey_index": {
-          "name": "list_order_item_listkey_index",
+        "token_name_index": {
+          "name": "token_name_index",
           "columns": [
             {
-              "expression": "list_key",
+              "expression": "name",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2412,15 +2546,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_order_item_listorderid_index": {
-          "name": "list_order_item_listorderid_index",
+        "token_networkid_index": {
+          "name": "token_networkid_index",
           "columns": [
             {
-              "expression": "list_order_id",
+              "expression": "network_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2428,15 +2562,15 @@
           "method": "btree",
           "with": {}
         },
-        "list_order_item_providerid_index": {
-          "name": "list_order_item_providerid_index",
+        "token_providedid_index": {
+          "name": "token_providedid_index",
           "columns": [
             {
-              "expression": "provider_id",
+              "expression": "provided_id",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
-              "isExpression": false
+              "opclass": "citext_ops"
             }
           ],
           "isUnique": false,
@@ -2444,15 +2578,47 @@
           "method": "btree",
           "with": {}
         },
-        "list_order_item_ranking_index": {
-          "name": "list_order_item_ranking_index",
+        "token_symbol_index": {
+          "name": "token_symbol_index",
           "columns": [
             {
-              "expression": "ranking",
+              "expression": "symbol",
+              "isExpression": false,
               "asc": true,
               "nulls": "last",
-              "opclass": "int8_ops",
-              "isExpression": false
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "token_tokenid_index": {
+          "name": "token_tokenid_index",
+          "columns": [
+            {
+              "expression": "token_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "token_type_index": {
+          "name": "token_type_index",
+          "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops"
             }
           ],
           "isUnique": false,
@@ -2462,150 +2628,24 @@
         }
       },
       "foreignKeys": {
-        "list_order_item_listorderid_foreign": {
-          "name": "list_order_item_listorderid_foreign",
-          "tableFrom": "list_order_item",
-          "tableTo": "list_order",
-          "schemaTo": "public",
-          "columnsFrom": ["list_order_id"],
-          "columnsTo": ["list_order_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "list_order_item_providerid_foreign": {
-          "name": "list_order_item_providerid_foreign",
-          "tableFrom": "list_order_item",
-          "tableTo": "provider",
-          "schemaTo": "public",
-          "columnsFrom": ["provider_id"],
-          "columnsTo": ["provider_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "list_order_item_listid_foreign": {
-          "name": "list_order_item_listid_foreign",
-          "tableFrom": "list_order_item",
-          "tableTo": "list",
-          "schemaTo": "public",
-          "columnsFrom": ["list_id"],
-          "columnsTo": ["list_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "list_order_item_pkey": {
-          "name": "list_order_item_pkey",
-          "columns": ["list_order_id", "ranking"]
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {},
-      "policies": {},
-      "isRLSEnabled": false
-    },
-    "public.image_variant": {
-      "name": "image_variant",
-      "schema": "",
-      "columns": {
-        "image_hash": {
-          "name": "image_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "width": {
-          "name": "width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "height": {
-          "name": "height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "format": {
-          "name": "format",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "access_count": {
-          "name": "access_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp(3) with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_accessed_at": {
-          "name": "last_accessed_at",
-          "type": "timestamp(3) with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "idx_image_variant_prune": {
-          "name": "idx_image_variant_prune",
-          "columns": [
-            {
-              "expression": "access_count",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "int4_ops",
-              "isExpression": false
-            },
-            {
-              "expression": "last_accessed_at",
-              "asc": true,
-              "nulls": "last",
-              "opclass": "timestamptz_ops",
-              "isExpression": false
-            }
+        "token_networkid_foreign": {
+          "name": "token_networkid_foreign",
+          "tableFrom": "token",
+          "tableTo": "network",
+          "columnsFrom": [
+            "network_id"
           ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
+          "columnsTo": [
+            "network_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
         }
       },
-      "foreignKeys": {
-        "image_variant_imagehash_foreign": {
-          "name": "image_variant_imagehash_foreign",
-          "tableFrom": "image_variant",
-          "tableTo": "image",
-          "schemaTo": "public",
-          "columnsFrom": ["image_hash"],
-          "columnsTo": ["image_hash"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "image_variant_pkey": {
-          "name": "image_variant_pkey",
-          "columns": ["image_hash", "width", "height", "format"]
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {},
       "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
@@ -2616,42 +2656,8 @@
   "policies": {},
   "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "tables": {
-      "token": {
-        "columns": {
-          "decimals": {
-            "isDefaultAnExpression": true
-          }
-        }
-      },
-      "list": {
-        "columns": {
-          "patch": {
-            "isDefaultAnExpression": true
-          },
-          "minor": {
-            "isDefaultAnExpression": true
-          },
-          "major": {
-            "isDefaultAnExpression": true
-          }
-        }
-      },
-      "bridge": {
-        "columns": {
-          "current_foreign_block_number": {
-            "isDefaultAnExpression": true
-          },
-          "current_home_block_number": {
-            "isDefaultAnExpression": true
-          }
-        }
-      }
-    }
+    "tables": {}
   }
 }
