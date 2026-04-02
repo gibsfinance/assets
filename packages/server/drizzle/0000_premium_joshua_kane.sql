@@ -2,6 +2,25 @@ CREATE EXTENSION IF NOT EXISTS citext;
 --> statement-breakpoint
 CREATE EXTENSION IF NOT EXISTS plpython3u;
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION keccak256(input TEXT)
+RETURNS TEXT AS $$
+import sha3
+k = sha3.keccak_256()
+if input is None:
+    k.update(b'')
+else:
+    k.update(input.encode('utf-8'))
+return k.hexdigest()
+$$ LANGUAGE plpython3u;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION autoupdate_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "bridge" (
 	"type" text NOT NULL,
 	"provider_id" text NOT NULL,
@@ -221,6 +240,195 @@ DO $$ BEGIN ALTER TABLE "metadata" ADD CONSTRAINT "metadata_listid_foreign" FORE
 DO $$ BEGIN ALTER TABLE "network" ADD CONSTRAINT "network_imagehash_foreign" FOREIGN KEY ("image_hash") REFERENCES "public"."image"("image_hash") ON DELETE no action ON UPDATE no action; EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
 DO $$ BEGIN ALTER TABLE "tag" ADD CONSTRAINT "tag_providerid_foreign" FOREIGN KEY ("provider_id") REFERENCES "public"."provider"("provider_id") ON DELETE cascade ON UPDATE cascade; EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
 DO $$ BEGIN ALTER TABLE "token" ADD CONSTRAINT "token_networkid_foreign" FOREIGN KEY ("network_id") REFERENCES "public"."network"("network_id") ON DELETE cascade ON UPDATE cascade; EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
+
+-- Composite ID generator functions (keccak256 hash of natural key columns)
+CREATE OR REPLACE FUNCTION gcid_provider_provider_id_key()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.provider_id := keccak256(NEW.key::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_network_network_id_type_chainid()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.network_id := keccak256(NEW.type::text || NEW.chain_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_list_list_id_providerid_key_major_minor_patch()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.list_id := keccak256(NEW.provider_id::text || NEW.key::text || NEW.major::text || NEW.minor::text || NEW.patch::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_metadata_metadata_id_providerid_networkid_listid_providedid()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.metadata_id := keccak256(NEW.provider_id::text || NEW.network_id::text || NEW.list_id::text || NEW.provided_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_token_token_id_networkid_providedid()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.token_id := keccak256(NEW.network_id::text || NEW.provided_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_list_token_list_token_id_tokenid_listid()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.list_token_id := keccak256(NEW.token_id::text || NEW.list_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_list_order_list_order_id_providerid_key()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.list_order_id := keccak256(NEW.provider_id::text || NEW.key::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_bridge_bridge_id_type_providerid_homenetworkid_homeaddress_foreignnetworkid_foreignaddress()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.bridge_id := keccak256(NEW.type::text || NEW.provider_id::text || NEW.home_network_id::text || NEW.home_address::text || NEW.foreign_network_id::text || NEW.foreign_address::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION gcid_bridge_link_bridge_link_id_nativetokenid_bridgedtokenid_bridgeid()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.bridge_link_id := keccak256(NEW.native_token_id::text || NEW.bridged_token_id::text || NEW.bridge_id::text);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+
+-- Composite ID triggers (auto-generate primary keys from natural key columns)
+DROP TRIGGER IF EXISTS set_composite_id_provider ON provider;
+CREATE TRIGGER set_composite_id_provider
+BEFORE INSERT OR UPDATE OF key ON provider
+FOR EACH ROW
+EXECUTE FUNCTION gcid_provider_provider_id_key();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_network ON network;
+CREATE TRIGGER set_composite_id_network
+BEFORE INSERT OR UPDATE OF type, chain_id ON network
+FOR EACH ROW
+EXECUTE FUNCTION gcid_network_network_id_type_chainid();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_list ON list;
+CREATE TRIGGER set_composite_id_list
+BEFORE INSERT OR UPDATE OF provider_id, key, major, minor, patch ON list
+FOR EACH ROW
+EXECUTE FUNCTION gcid_list_list_id_providerid_key_major_minor_patch();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_metadata ON metadata;
+CREATE TRIGGER set_composite_id_metadata
+BEFORE INSERT OR UPDATE OF provider_id, network_id, list_id, provided_id ON metadata
+FOR EACH ROW
+EXECUTE FUNCTION gcid_metadata_metadata_id_providerid_networkid_listid_providedid();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_token ON token;
+CREATE TRIGGER set_composite_id_token
+BEFORE INSERT OR UPDATE OF network_id, provided_id ON token
+FOR EACH ROW
+EXECUTE FUNCTION gcid_token_token_id_networkid_providedid();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_list_token ON list_token;
+CREATE TRIGGER set_composite_id_list_token
+BEFORE INSERT OR UPDATE OF token_id, list_id ON list_token
+FOR EACH ROW
+EXECUTE FUNCTION gcid_list_token_list_token_id_tokenid_listid();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_list_order ON list_order;
+CREATE TRIGGER set_composite_id_list_order
+BEFORE INSERT OR UPDATE OF provider_id, key ON list_order
+FOR EACH ROW
+EXECUTE FUNCTION gcid_list_order_list_order_id_providerid_key();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_bridge ON bridge;
+CREATE TRIGGER set_composite_id_bridge
+BEFORE INSERT OR UPDATE OF type, provider_id, home_network_id, home_address, foreign_network_id, foreign_address ON bridge
+FOR EACH ROW
+EXECUTE FUNCTION gcid_bridge_bridge_id_type_providerid_homenetworkid_homeaddress_foreignnetworkid_foreignaddress();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS set_composite_id_bridge_link ON bridge_link;
+CREATE TRIGGER set_composite_id_bridge_link
+BEFORE INSERT OR UPDATE OF native_token_id, bridged_token_id, bridge_id ON bridge_link
+FOR EACH ROW
+EXECUTE FUNCTION gcid_bridge_link_bridge_link_id_nativetokenid_bridgedtokenid_bridgeid();
+--> statement-breakpoint
+
+-- Auto-update timestamp triggers
+DROP TRIGGER IF EXISTS autoupdate_public_provider_timestamp ON provider;
+CREATE TRIGGER autoupdate_public_provider_timestamp
+BEFORE UPDATE ON "public"."provider"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_list_timestamp ON list;
+CREATE TRIGGER autoupdate_public_list_timestamp
+BEFORE UPDATE ON "public"."list"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_list_token_timestamp ON list_token;
+CREATE TRIGGER autoupdate_public_list_token_timestamp
+BEFORE UPDATE ON "public"."list_token"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_link_timestamp ON link;
+CREATE TRIGGER autoupdate_public_link_timestamp
+BEFORE UPDATE ON "public"."link"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_list_order_timestamp ON list_order;
+CREATE TRIGGER autoupdate_public_list_order_timestamp
+BEFORE UPDATE ON "public"."list_order"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_list_order_item_timestamp ON list_order_item;
+CREATE TRIGGER autoupdate_public_list_order_item_timestamp
+BEFORE UPDATE ON "public"."list_order_item"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_metadata_timestamp ON metadata;
+CREATE TRIGGER autoupdate_public_metadata_timestamp
+BEFORE UPDATE ON "public"."metadata"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS autoupdate_public_tag_timestamp ON tag;
+CREATE TRIGGER autoupdate_public_tag_timestamp
+BEFORE UPDATE ON "public"."tag"
+FOR EACH ROW
+WHEN (OLD.* IS DISTINCT FROM NEW.*)
+EXECUTE PROCEDURE autoupdate_timestamp();
+--> statement-breakpoint
+
 CREATE INDEX IF NOT EXISTS "bridge_bridgeid_index" ON "bridge" USING btree ("bridge_id" text_ops);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "bridge_currentforeignblocknumber_index" ON "bridge" USING btree ("current_foreign_block_number" int8_ops);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "bridge_currenthomeblocknumber_index" ON "bridge" USING btree ("current_home_block_number" int8_ops);--> statement-breakpoint

@@ -31,6 +31,12 @@ export const teardown = async () => {
       await tx.delete(s.network).where(inArray(s.network.networkId, networkIds))
     }
   })
+  // Reset accumulated arrays so subsequent tests start clean
+  inserted.network!.length = 0
+  inserted.provider!.length = 0
+  inserted.list!.length = 0
+  inserted.token!.length = 0
+  inserted.list_token!.length = 0
 }
 
 const insert = async <T = any>(
