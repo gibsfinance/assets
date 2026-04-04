@@ -1,11 +1,12 @@
-import { getDB } from '../db'
+import { migrate } from '../db/drizzle'
 
 async function main() {
-  const db = getDB()
   try {
-    await db.migrate.latest()
-  } finally {
-    await db.destroy()
+    await migrate()
+    console.log('Migrations complete')
+  } catch (err) {
+    console.error('Migration failed:', err)
+    process.exit(1)
   }
 }
 

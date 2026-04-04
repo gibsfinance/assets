@@ -1,8 +1,19 @@
+/**
+ * @module sync-order
+ * Computes and caches the default image priority ordering on server startup.
+ *
+ * Provider order is determined by their position in `collectables.ts`.
+ * Each provider's sub-lists get rankings spaced by RANKING_SPACING (1000),
+ * so `ranking / 1000` groups sub-lists under a provider and the remainder
+ * provides sub-ordering. This ranking feeds the `dense_rank()` CTE in `applyOrder()`.
+ */
 import type { DiscoveryManifest } from '../collect/base-collector'
-import type { BackfillableInsertableListOrderItem } from 'knex/types/tables'
+import type { BackfillableInsertableListOrderItem } from './schema-types'
 import * as db from '.'
 import * as viem from 'viem'
-import { tableNames } from './tables'
+import { getDrizzle } from './drizzle'
+import { eq, isNotNull } from 'drizzle-orm'
+import * as s from './schema'
 
 const RANKING_SPACING = 1000n
 
@@ -86,14 +97,17 @@ export const syncDefaultOrder = async (
       ranking: r.ranking,
     }))
 
-    await db.transaction(async (tx) => {
+    const drizzle = getDrizzle()
+    await drizzle.transaction(async (tx) => {
       // Find existing default order to clean up stale items
-      const [existingOrder] = await tx(tableNames.listOrder)
-        .where({ providerId: gibsProvider.providerId, key: 'default' })
-        .select('listOrderId')
+      const [existingOrder] = await tx
+        .select({ listOrderId: s.listOrder.listOrderId })
+        .from(s.listOrder)
+        .where(eq(s.listOrder.providerId, gibsProvider.providerId))
+        .limit(1)
 
       if (existingOrder) {
-        await tx(tableNames.listOrderItem).where('listOrderId', existingOrder.listOrderId).delete()
+        await tx.delete(s.listOrderItem).where(eq(s.listOrderItem.listOrderId, existingOrder.listOrderId))
       }
 
       // Upsert the order + insert all items
@@ -120,23 +134,24 @@ export const syncDefaultOrder = async (
  */
 export const buildManifestsFromDB = async (collectableKeys: string[]): Promise<Map<string, DiscoveryManifest>> => {
   const manifests = new Map<string, DiscoveryManifest>()
-  const t = db.getDB()
+  const drizzle = getDrizzle()
 
-  const rows = await t
-    .select([t.raw(`${tableNames.provider}.key as provider_key`), t.raw(`${tableNames.list}.key as list_key`)])
-    .from(tableNames.provider)
-    .leftJoin(tableNames.list, {
-      [`${tableNames.list}.providerId`]: `${tableNames.provider}.providerId`,
+  const rows = await drizzle
+    .select({
+      providerKey: s.provider.key,
+      listKey: s.list.key,
     })
-    .whereNotNull(`${tableNames.list}.key`)
+    .from(s.provider)
+    .leftJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+    .where(isNotNull(s.list.key))
 
   // Group by provider key
   const byProvider = new Map<string, { listKey: string }[]>()
-  for (const row of rows as { provider_key: string; list_key: string }[]) {
-    if (!row.provider_key || !row.list_key) continue
-    const existing = byProvider.get(row.provider_key) ?? []
-    existing.push({ listKey: row.list_key })
-    byProvider.set(row.provider_key, existing)
+  for (const row of rows) {
+    if (!row.providerKey || !row.listKey) continue
+    const existing = byProvider.get(row.providerKey) ?? []
+    existing.push({ listKey: row.listKey })
+    byProvider.set(row.providerKey, existing)
   }
 
   // Map provider keys back to collectable keys

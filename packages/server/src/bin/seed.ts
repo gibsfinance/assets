@@ -1,12 +1,5 @@
-import { getDB } from '../db'
-
 async function main() {
-  const db = getDB()
-  try {
-    await db.seed.run()
-  } finally {
-    await db.destroy()
-  }
+  console.log('Seed: Drizzle does not have a built-in seed runner. Use drizzle-kit or custom scripts.')
 }
 
 main().catch(console.error)

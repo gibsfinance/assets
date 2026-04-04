@@ -158,7 +158,7 @@ class SequentialRpcProcessor {
 
     // Create the next processor that includes the 500ms delay
     const nextProcessor = rpcWork.then(
-      async (result) => {
+      async (_result) => {
         // Wait 500ms before allowing the next request on this chain
         await delay(500)
         return // Return void for the processor chain
@@ -297,15 +297,6 @@ async function getSupportedChainConfigs(signal?: AbortSignal): Promise<ChainConf
     })
     .map(mapEtherscanChainToConfig)
     .filter((config): config is ChainConfig => config !== null) // Remove null entries
-}
-
-type TokenData = {
-  address: Address
-  name: string
-  symbol: string
-  decimals: number
-  logoURI?: string
-  etherscanUrl: string
 }
 
 /**
@@ -499,7 +490,6 @@ async function processChainTokens({
   chainConfig,
   row,
   listId,
-  providerId,
   signal,
 }: {
   chainConfig: ChainConfig
@@ -531,7 +521,6 @@ async function processChainTokens({
 
     // Process tokens in batches for efficiency, separating token insertion from image fetching
     const section = row.get(providerKey)!
-    let successCount = 0
 
     // Collect all valid tokens with their metadata and URIs
     const validTokens: {
@@ -586,7 +575,7 @@ async function processChainTokens({
     }[] = []
 
     try {
-      const insertedTokens = await db.insertTokenBatch(tokenInserts)
+      await db.insertTokenBatch(tokenInserts)
 
       // Create list associations for all inserted tokens
       for (const [batchIndex, token] of validTokens.entries()) {
@@ -623,7 +612,6 @@ async function processChainTokens({
           }
 
           row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-          successCount++
         } catch (error) {
           row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
           failureLog('Failed to store token %o on %o: %o', token.address, chainKey, error)
@@ -716,7 +704,7 @@ class EtherscanCollector extends BaseCollector {
         )
       }
       // Setup counters
-      const section = row.issue(providerKey)
+      row.issue(providerKey)
       row.createCounter(terminalCounterTypes.NETWORK)
       row.createCounter(terminalCounterTypes.TOKEN)
       row.createCounter(terminalLogTypes.EROR, true)

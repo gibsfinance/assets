@@ -17,8 +17,7 @@ async function runCollect() {
     count: providerList.length,
   })
   try {
-    const dbInstance = db.getDB()
-    await dbInstance.migrate.latest()
+    await db.migrate()
     await db.purgeExpiredCache().catch(_.noop)
     await collect.main(providerList, logger, concurrency)
   } catch (err) {

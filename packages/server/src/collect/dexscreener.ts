@@ -16,7 +16,7 @@ import { Collector } from '@gibs/dexscreener/collector'
 import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
-import type { Network } from 'knex/types/tables.js'
+import type { Network } from '../db/schema-types'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
@@ -96,7 +96,7 @@ const parseSidebarChainInfo = () => {
 class DexscreenerCollector extends BaseCollector {
   readonly key = 'dexscreener'
 
-  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal?: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
       name: 'DexScreener',
@@ -203,11 +203,16 @@ class DexscreenerCollector extends BaseCollector {
       row.createCounter('image', true)
       await Promise.all(
         relevantChains.map(async ([key, chain]) => {
-          const filter = {
-            type: chain.type,
-            chainId: chain.id.toString(),
-          }
-          const network = await db.getNetworks().where(filter).first<Network>()
+          const { getDrizzle } = await import('../db/drizzle')
+          const { eq: eqOp, and: andOp } = await import('drizzle-orm')
+          const schemaMod = await import('../db/schema')
+          const [network] = (await getDrizzle()
+            .select()
+            .from(schemaMod.network)
+            .where(
+              andOp(eqOp(schemaMod.network.type, chain.type), eqOp(schemaMod.network.chainId, chain.id.toString())),
+            )
+            .limit(1)) as Network[]
           const k = chain.id.toString()
           if (!network) {
             row.increment(terminalLogTypes.EROR, new Set([k]))
@@ -239,7 +244,7 @@ class DexscreenerCollector extends BaseCollector {
           }))
 
           // Batch insert all tokens
-          const insertedTokens = await db.insertTokenBatch(tokenInserts)
+          await db.insertTokenBatch(tokenInserts)
 
           // Create list associations and handle headers
           for (const [batchIndex, token] of all.entries()) {

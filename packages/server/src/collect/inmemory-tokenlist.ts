@@ -2,7 +2,7 @@ import * as db from '../db'
 import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
 import * as types from '../types'
 import * as utils from '../utils'
-import type { List, Network, Provider } from 'knex/types/tables'
+import type { List, Network, Provider } from '../db/schema-types'
 import { failureLog } from '@gibs/utils'
 
 type CollectInput = {

@@ -13,6 +13,8 @@ COPY packages/utils/package.json packages/utils/package.json
 COPY packages/dexscreener/package.json packages/dexscreener/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/server/package.json packages/server/package.json
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/react/package.json packages/react/package.json
 
 # Install dependencies (cached unless package.json or lockfile changes)
 RUN yarn install --immutable

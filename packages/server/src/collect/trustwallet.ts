@@ -136,14 +136,41 @@ const loadChainId = async (blockchainKey: string) => {
 
   const chainList = await getChainListResult()
   const sterilizedBlockchainKey = sterilize(blockchainKey)
-  const chain = chainList.find(
-    (c) =>
-      sterilize(c.name) === sterilizedBlockchainKey ||
-      sterilize(c.chainSlug) === sterilizedBlockchainKey ||
-      sterilize(c.chain) === sterilizedBlockchainKey,
+  // Sterilize is aggressive (strips "chain", "net", etc.) which can create
+  // collisions — e.g. "smartchain" → "smart" matches "Smart Mainnet" (661898459)
+  // instead of BNB Smart Chain (56). When multiple chains match, prefer the one
+  // whose original name/slug contains the blockchain key as a substring.
+  // Match chainSlug and name first (more specific), chain field last
+  // (chain: "Solana" on Neon EVM would incorrectly match the solana folder)
+  const candidates = chainList.filter(
+    (c) => sterilize(c.chainSlug) === sterilizedBlockchainKey || sterilize(c.name) === sterilizedBlockchainKey,
   )
+  // Only try the less-specific chain field if no slug/name matches found
+  if (candidates.length === 0) {
+    candidates.push(...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey))
+  }
+  const chain =
+    // Exact slug match first
+    candidates.find((c) => c.chainSlug === blockchainKey) ||
+    // Then prefer candidate whose name contains the key (ignoring spaces/separators)
+    candidates.find(
+      (c) =>
+        c.name
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey) ||
+        c.chainSlug
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey),
+    ) ||
+    // When ambiguous, prefer mainnet over testnet/devnet
+    candidates.find((c) => {
+      const n = c.name?.toLowerCase() ?? ''
+      return !n.includes('testnet') && !n.includes('devnet')
+    }) ||
+    candidates[0]
   const row = utils.terminal.get(providerKey)!
-  // chain id from chain list is more trustworthy
   if (chain) {
     chainId = chain.chainId
   }
@@ -316,7 +343,7 @@ class TrustWalletCollector extends BaseCollector {
 
   private blockchainFolders: string[] = []
 
-  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
     const row = utils.terminal.issue({
       type: terminalRowTypes.SETUP,

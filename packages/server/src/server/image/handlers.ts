@@ -1,18 +1,32 @@
+/**
+ * @module image/handlers
+ * Express handlers for token image serving: lookup, format validation, resize, and fallback.
+ *
+ * Image lookup flow: getListImage → getListTokens (DB query via applyOrder or direct drizzle)
+ * → validateOutputFormat → sendImage (redirect/serve decision via classifyImageServe).
+ *
+ * Query params: `?as=webp` converts output format, `?only=vector` filters source type,
+ * `?mode=link` forces redirect to source URI. Path extension (`.webp`) is equivalent to `?as=`.
+ */
 import * as viem from 'viem'
 import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
-import { imageMode, tableNames } from '../../db/tables'
+import { imageMode } from '../../db/tables'
 import type { ChainId } from '@gibs/utils'
 import * as utils from '../../utils'
 import * as db from '../../db'
 import config from '../../../config'
-import { Image, ListOrder, ListOrderItem, ListToken, List, Token } from 'knex/types/tables'
+import type { Image, ListOrder, ListOrderItem, ListToken, List, Token } from '../../db/schema-types'
 import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
 import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
+import { maybeResize } from './resize'
+import { getDrizzle } from '../../db/drizzle'
+import { eq, and, inArray, type SQL } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 export const getListTokens = async ({
   chainId,
@@ -29,72 +43,72 @@ export const getListTokens = async ({
   providerKey?: string[]
   listKey?: string[]
 }) => {
-  const filter = {
-    [`${tableNames.token}.networkId`]: utils.chainIdToNetworkId(chainId),
-    [`${tableNames.token}.providedId`]: address,
-  }
-  let q = db
-    .getDB()
-    .select([
-      '*',
-      db.getDB().raw(`${tableNames.provider}.key as provider_key`),
-      db.getDB().raw(`${tableNames.list}.key as list_key`),
-    ])
-    .from(tableNames.provider)
-    .rightJoin(`${config.database.schema}.${tableNames.list}`, {
-      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.listToken}`, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.token}`, {
-      [`${tableNames.token}.tokenId`]: `${tableNames.listToken}.tokenId`,
-    })
-    .rightJoin(`${config.database.schema}.${tableNames.image}`, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
-    })
-    .where(filter)
+  const networkId = utils.chainIdToNetworkId(chainId)
+  const drizzle = getDrizzle()
+
+  // Build WHERE conditions
+  const conditions: SQL[] = [eq(s.token.networkId, networkId), eq(s.token.providedId, address)]
   if (exts?.length) {
-    q = q.whereIn('ext', exts)
+    conditions.push(inArray(s.image.ext, exts))
   }
   if (providerKey?.length) {
-    q = q.whereIn(`${tableNames.provider}.key`, providerKey)
+    conditions.push(inArray(s.provider.key, providerKey))
   }
   if (listKey?.length) {
-    q = q.whereIn(`${tableNames.list}.key`, listKey)
+    conditions.push(inArray(s.list.key, listKey))
   }
+  const whereClause = and(...conditions)!
+
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const orderedQuery = db.applyOrder(q, effectiveOrderId)
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
     return {
-      filter,
-      img: await orderedQuery.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
+      filter: { networkId, providedId: address },
+      img: rows[0] as
+        | (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List)
+        | undefined,
     }
   }
+
+  // No ordering — simple query
+  const [row] = await drizzle
+    .select()
+    .from(s.provider)
+    .rightJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+    .rightJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
+    .rightJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .rightJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .where(whereClause)
+    .limit(1)
+
+  // Flatten the joined row into a single object
+  const img = row ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image } : undefined
+
   return {
-    filter,
-    img: await q.first<Image & Token & ListOrder & ListOrderItem & ListToken & List>(),
+    filter: { networkId, providedId: address },
+    img: img as (Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
   }
 }
 
 export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
-  const filter = {
-    networkId: utils.chainIdToNetworkId(chainId),
-  }
-  let q = db
-    .getDB()
-    .select<Image>('*')
-    .from(tableNames.image)
-    .leftJoin(`${config.database.schema}.${tableNames.network}`, {
-      [`${tableNames.network}.imageHash`]: `${tableNames.image}.imageHash`,
-    })
-    .where(filter)
+  const networkId = utils.chainIdToNetworkId(chainId)
+  const drizzle = getDrizzle()
+
+  const conditions: SQL[] = [eq(s.network.networkId, networkId)]
   if (exts?.length) {
-    q = q.whereIn('ext', exts)
+    conditions.push(inArray(s.image.ext, exts))
   }
+
+  const [row] = await drizzle
+    .select()
+    .from(s.image)
+    .leftJoin(s.network, eq(s.network.imageHash, s.image.imageHash))
+    .where(and(...conditions))
+    .limit(1)
+
   return {
-    filter,
-    img: await q.first(),
+    filter: { networkId },
+    img: row ? ({ ...row.image, ...row.network } as any) : undefined,
   }
 }
 
@@ -108,6 +122,38 @@ export const extFilter = new Map<string, string[]>([
   ['.raster', ['.png', '.jpg', '.jpeg', '.webp', '.gif']],
   ['.vector', ['.svg', '.xml']],
 ])
+
+/** Maps user-facing format names to concrete file extensions */
+export const formatToExts = new Map<string, string[]>([
+  ['vector', ['.svg', '.svg+xml', '.xml']],
+  ['svg', ['.svg', '.svg+xml']],
+  ['webp', ['.webp']],
+  ['png', ['.png']],
+  ['jpg', ['.jpg', '.jpeg']],
+  ['jpeg', ['.jpg', '.jpeg']],
+  ['gif', ['.gif']],
+  ['raster', ['.png', '.jpg', '.jpeg', '.webp', '.gif']],
+])
+
+/**
+ * Parse the `format` query param into an ordered list of extension groups.
+ * e.g. "vector,webp,png,jpg" → [['.svg','.svg+xml','.xml'], ['.webp'], ['.png'], ['.jpg','.jpeg']]
+ */
+export const parseFormatPreference = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[][] => {
+  if (!query) return []
+  const raw = _.isString(query) ? query : Array.isArray(query) ? query.join(',') : ''
+  if (!raw) return []
+  const seen = new Set<string>()
+  const result: string[][] = []
+  for (const name of raw.split(',')) {
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    const exts = formatToExts.get(trimmed)
+    if (exts) result.push(exts)
+  }
+  return result
+}
 
 export const splitExt = (filename: string): FilenameParts => {
   const ext = path.extname(filename)
@@ -124,44 +170,85 @@ export const splitExt = (filename: string): FilenameParts => {
   }
 }
 
+/** Parse ?only= query param into source extension filter */
+export const parseTypeFilter = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] | undefined => {
+  if (!query) return undefined
+  const raw = _.isString(query) ? query.toLowerCase() : ''
+  if (!raw) return undefined
+  const exts = formatToExts.get(raw)
+  return exts ?? undefined
+}
+
+export const CONVERTIBLE_RASTER = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.avif'])
+export const SVG_EXTS = new Set(['.svg', '.svg+xml'])
+
+/**
+ * Validate whether the requested output format is compatible with the source image.
+ * Returns null if valid, or an error string describing the incompatibility.
+ */
+export const validateOutputFormat = (sourceExt: string, outputExt: string): string | null => {
+  const isSvgSource = SVG_EXTS.has(sourceExt)
+  const wantsSvg = outputExt === '.svg' || outputExt === '.svg+xml'
+  if (wantsSvg && !isSvgSource) {
+    return 'no SVG available for this token'
+  }
+  const wantsRaster = CONVERTIBLE_RASTER.has(outputExt)
+  if (!wantsRaster && !wantsSvg) {
+    return `unsupported output format ${outputExt}`
+  }
+  return null
+}
+
 const getListImage =
   (parseOrder: boolean) =>
   async ({
     chainId,
     address: addressParam,
     order: orderParam,
+    typeFilter,
     providerKey,
     listKey,
   }: {
     chainId: number
     address: string
     order?: string
+    typeFilter?: string[]
     providerKey?: string[]
     listKey?: string[]
-  }) => {
+  }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
     if (!+chainId) {
       throw httpErrors.BadRequest('chainId')
     }
-    const { filename: address, exts } = splitExt(addressParam)
+    const { filename: address, ext: requestedExt } = splitExt(addressParam)
     if (!viem.isAddress(address)) {
       throw httpErrors.BadRequest('address')
     }
+    const outputExt = requestedExt ?? null
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens({
       chainId: +chainId,
       address,
       listOrderId,
-      exts,
+      exts: typeFilter,
       providerKey,
       listKey,
     })
     if (!img) {
       throw httpErrors.NotFound('list image missing')
     }
-    return img
+    // Validate format compatibility
+    if (outputExt) {
+      const formatError = validateOutputFormat(img.ext, outputExt)
+      if (formatError) {
+        const status = formatError.startsWith('unsupported') ? 406 : 404
+        throw status === 406 ? httpErrors.NotAcceptable(formatError) : httpErrors.NotFound(formatError)
+      }
+    }
+    return { img, outputExt }
   }
 
-const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined) => {
+/** Convert Express query param to a flat string array, handling string, array, and object shapes */
+export const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[] => {
   if (!query) {
     return []
   }
@@ -179,51 +266,66 @@ const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)[] | un
 
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
-  async (req, res) => {
-    const img = await getListImage(parseOrder)({
+  async (req, res, _next) => {
+    const { img, outputExt } = await getListImage(parseOrder)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
       order: req.params.order,
+      typeFilter: parseTypeFilter(req.query.only),
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
+    // Path extension (.webp, .png) = output format conversion
+    if (outputExt && !req.query.as) {
+      ;(req.query as Record<string, string>).as = outputExt.replace('.', '')
+    }
+    if (await maybeResize(req, res, img)) return
     sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
   }
 
-export const getImageAndFallback: RequestHandler = async (req, res) => {
+export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
-  let img = await getListImage(true)({
+  const typeFilter = parseTypeFilter(req.query.only)
+  let result = await getListImage(true)({
     chainId: Number(req.params.chainId),
     address: req.params.address as viem.Hex,
     order: req.params.order,
+    typeFilter,
     providerKey,
     listKey,
   }).catch(ignoreNotFound)
-  if (!img) {
-    img = await getListImage(false)({
+  if (!result) {
+    result = await getListImage(false)({
       chainId: Number(req.params.chainId),
       address: req.params.address as viem.Hex,
+      typeFilter,
       providerKey,
       listKey,
     })
   }
+  if (!result) return next(httpErrors.NotFound('image not found'))
+  const { img, outputExt } = result
+  if (outputExt && !req.query.format) {
+    ;(req.query as Record<string, string>).format = outputExt.replace('.', '')
+  }
+  if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   const { filename, exts } = splitExt(req.params.imageHash)
-  const img = await db
-    .getDB()
-    .select('*')
-    .from(tableNames.image)
-    .where('imageHash', filename)
-    .whereIn('ext', exts as string[])
-    .first()
+  const drizzle = getDrizzle()
+  const [img] = await drizzle
+    .select()
+    .from(s.image)
+    .where(and(eq(s.image.imageHash, filename), inArray(s.image.ext, exts as string[])))
+    .limit(1)
   if (!img) {
     return next(httpErrors.NotFound('image not found'))
   }
-  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  if (await maybeResize(req, res, img as any)) return
+  sendImage(res, img as any, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {
@@ -238,12 +340,14 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
   return img
 }
 
-export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res) => {
+export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
   const img = await bestGuessNeworkImage(req.params.chainId)
+  if (await maybeResize(req, res, img)) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
-const ignoreNotFound = (err: HttpError) => {
+/** Swallow 404 errors (return null), re-throw anything else */
+export const ignoreNotFound = (err: HttpError) => {
   if (err.status === 404) {
     return null
   }
@@ -259,7 +363,7 @@ export const tryMultiple: RequestHandler<
   any,
   any,
   any,
-  { i: string | string[]; mode: ImageModeParam } & KeyFilterQuery
+  { i: string | string[]; mode: ImageModeParam; as?: string; only?: string } & KeyFilterQuery
 > = async (req, res, next) => {
   const { i } = req.query
   let images: string[] = []
@@ -275,6 +379,7 @@ export const tryMultiple: RequestHandler<
     if (!address) {
       const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
       if (!img) continue
+      if (await maybeResize(req, res, img)) return
       return sendImage(res, img, resolveImageMode(req.query.mode))
     }
     if (order && order.length !== 64 /* check if hex */) {
@@ -282,23 +387,27 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
-    let img = await getListImage(true)({
+    const typeFilter = parseTypeFilter(req.query.only)
+    let result = await getListImage(true)({
       chainId: Number(chainId),
       address,
       order,
+      typeFilter,
       providerKey,
       listKey,
     }).catch(ignoreNotFound)
-    if (!img) {
-      img = await getListImage(false)({
+    if (!result) {
+      result = await getListImage(false)({
         chainId: Number(chainId),
         address,
+        typeFilter,
         providerKey,
         listKey,
       }).catch(ignoreNotFound)
     }
-    if (img) {
-      return sendImage(res, img, resolveImageMode(req.query.mode))
+    if (result) {
+      if (await maybeResize(req, res, result.img)) return
+      return sendImage(res, result.img, resolveImageMode(req.query.mode))
     }
   }
   return next(httpErrors.NotFound('image not found from list'))
@@ -314,13 +423,40 @@ export const resolveImageMode = (mode: ImageModeParam | null | undefined): Image
   return imageMode.SAVE
 }
 
-export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
-  if (mode === imageMode.LINK) {
-    if (img.uri && img.uri.startsWith('https')) {
-      return res.redirect(img.uri)
-    }
+export const MIN_SERVABLE_RASTER_SIZE = 200
+
+export type ImageServeDecision = 'redirect' | 'serve' | 'unavailable'
+
+/** Decide how to serve an image: redirect to source, serve content, or 404 */
+export const classifyImageServe = (
+  img: { ext: string; content: Buffer | null; uri: string | null },
+  mode: string,
+): ImageServeDecision => {
+  const isSvg = img.ext === '.svg' || img.ext === '.svg+xml'
+  const hasContent = img.content && img.content.length > 0
+  const isTooSmall = hasContent && !isSvg && img.content!.length < MIN_SERVABLE_RASTER_SIZE
+  const hasRedirectUri = img.uri && img.uri.startsWith('http')
+
+  if ((mode === imageMode.LINK || !hasContent || isTooSmall) && hasRedirectUri) {
+    return 'redirect'
   }
+  if (!hasContent || isTooSmall) {
+    return 'unavailable'
+  }
+  return 'serve'
+}
+
+export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+  const decision = classifyImageServe(img, mode)
+  if (decision === 'redirect') {
+    return res.redirect(img.uri)
+  }
+  if (decision === 'unavailable') {
+    return res.status(404).json({ error: 'image content unavailable' })
+  }
+
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  r = r.set('x-resize', 'original')
   if (img.uri) {
     if (img.uri.startsWith('http') || img.uri.startsWith('ipfs')) {
       r = r.set('x-uri', img.uri)

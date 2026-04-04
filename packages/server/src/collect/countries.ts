@@ -4,8 +4,8 @@ import { harvested } from '../paths'
 import * as db from '../db'
 import { limitBy } from 'packages/utils/src'
 import * as utils from '../utils'
-import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
-import { hexToBytes, keccak256, stringToHex, toBytes } from 'viem'
+import { terminalLogTypes, terminalRowTypes } from '../log/types'
+import { keccak256, stringToHex } from 'viem'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'countries'
@@ -95,7 +95,7 @@ class CountriesCollector extends BaseCollector {
             networkId: network.networkId,
             providedId,
           })
-          const result = await db
+          await db
             .fetchImageAndStoreForToken({
               listId: list.listId,
               uri: bytes,

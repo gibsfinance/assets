@@ -1,0 +1,33 @@
+# Gib.Show — Progress
+
+## Session: March 25-30, 2026
+
+### Completed
+- Knex → Drizzle ORM migration (all 5 phases + cleanup)
+- Token list ordering: provider ranking → version → format preference
+- Image serving: ?as= for conversion, ?only= for source filtering
+- Pumptires collector migrated to api2.pump.tires v2 API
+- Server coverage: 56% → 98% lines (247 server tests + 46 UI tests)
+- Production hotfixes: applyOrder raw SQL + missing joins
+- Docs page: live editable endpoints with stats panel
+- Lint: 0 errors (54 warnings in collectors — unused vars)
+- Fixed tokenFilters decimals bug (_.toArray split '18' → ['1','8'])
+- Fixed CI: typecheck (Hex types), prettier formatting, tsconfig excludes
+- Extracted pure functions from UI components → utils/ with tests
+- UI type fixes: CodeOutput shape literal, StudioBrowser ListDescription
+
+### Production State
+- Two hotfixes pushed (applyOrder syntax + missing joins)
+- Still on old Knex codebase — Drizzle migration not merged yet
+- Merge staging → production needed for full deployment
+
+### Test Coverage
+- Server: 97.96% lines, 94.33% branches, 97.1% functions (247 tests)
+- UI utils: 46 pure function tests (code-output, formatting, list-order)
+- Coverage files: handlers.ts 94%, submissions.ts 100%, resize.ts 100%
+
+### Next Steps
+- Merge staging → production
+- Clean up 54 unused import lint warnings in collectors
+- Remove old Knex migration files from staging (still in src/db/migrations/)
+- Consider extracting more UI logic (TokenSearch dedup/sort, useTokenBrowser)

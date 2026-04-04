@@ -1,4 +1,4 @@
-import { svelte } from '@sveltejs/vite-plugin-svelte'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import replace from '@rollup/plugin-replace'
 import pkg from './package.json' with { type: 'json' }
@@ -20,13 +20,22 @@ export default defineConfig({
       values: {
         'process.env.PUBLIC_BASE_URL': JSON.stringify(process.env.PUBLIC_BASE_URL ?? ''),
         'process.env.PUBLIC_NODE_ENV': JSON.stringify(process.env.PUBLIC_NODE_ENV),
+        'process.env.VITE_GITHUB_CLIENT_ID': JSON.stringify(process.env.VITE_GITHUB_CLIENT_ID ?? ''),
         'process.env.PUBLIC_VERSION': JSON.stringify([pkg.version, githash, new Date().toISOString()].join('_')),
       },
     }),
     tailwindcss(),
-    svelte(),
+    react(),
   ],
   base: './',
+  server: {
+    proxy: process.env.PUBLIC_BASE_URL ? undefined : {
+      '/image': { target: 'http://localhost:3456', changeOrigin: true },
+      '/list': { target: 'http://localhost:3456', changeOrigin: true },
+      '/token': { target: 'http://localhost:3456', changeOrigin: true },
+      '/api': { target: 'http://localhost:3456', changeOrigin: true },
+    },
+  },
   preview: {
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },

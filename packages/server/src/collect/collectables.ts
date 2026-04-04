@@ -1,3 +1,12 @@
+/**
+ * @module collectables
+ * Provider registry — the ordered list of all token data collectors.
+ *
+ * **Order matters**: position in this array determines image priority ranking.
+ * Providers listed first get lower ranking numbers, which means their images
+ * are preferred when multiple providers have the same token. The ranking is
+ * computed by `sync-order.ts` at startup using RANKING_SPACING (1000) per provider.
+ */
 import chains from '../chains'
 import '../utils'
 import countriesCollector from './countries'
@@ -16,7 +25,7 @@ import levinswapCollector from './levinswap'
 import honeyswapCollector from './honeyswap'
 import pancakeCollector from './pancake'
 import quickswapCollector from './quickswap'
-import rollCollector from './roll'
+// import rollCollector from './roll' // app.tryroll.com DNS dead — domain no longer resolves
 import scrollCollector from './scroll'
 import setCollector from './set'
 import klerosCollector from './kleros'
@@ -68,7 +77,7 @@ type CollectableKey =
   | 'honeyswap'
   | 'pancake'
   | 'quickswap'
-  | 'roll'
+  // | 'roll' // DNS dead
   | 'scroll'
   | 'set'
   | 'omnibridge'
@@ -119,7 +128,7 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     honeyswap: honeyswapCollector,
     pancake: pancakeCollector,
     quickswap: quickswapCollector,
-    roll: rollCollector,
+    // roll: rollCollector, // DNS dead
     scroll: scrollCollector,
     set: setCollector,
     omnibridge: new OmnibridgeCollector([

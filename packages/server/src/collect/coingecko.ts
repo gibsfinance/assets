@@ -61,15 +61,20 @@ class CoinGeckoCollector extends BaseCollector {
       name: 'CoinGecko',
     })
 
-    // Create per-platform lists via remote-tokenlist pattern (each platform is a list)
+    // Create per-platform lists: original (thumb) + large variant
     const lists: { listKey: string }[] = []
     for (const platform of validPlatforms) {
       const listKey = platform.id
+      const largeListKey = `${platform.id}-large`
       await db.insertList({
         providerId: provider.providerId,
         key: listKey,
       })
-      lists.push({ listKey })
+      await db.insertList({
+        providerId: provider.providerId,
+        key: largeListKey,
+      })
+      lists.push({ listKey }, { listKey: largeListKey })
     }
 
     this.platforms = platforms
@@ -104,21 +109,32 @@ class CoinGeckoCollector extends BaseCollector {
         if (typeof platform.chain_identifier !== 'number') return
 
         const listKey = platform.id
-        const cacheKey = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
-        const isCached = await db.getCachedRequest(cacheKey)
+        const largeListKey = `${platform.id}-large`
+        const tokenListUrl = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
+        const isCached = await db.getCachedRequest(tokenListUrl)
         if (!isCached) {
           await rateLimiter()
         }
-        const collect = remoteTokenList.collect({
+        // Collect original (thumb) list
+        const collectOriginal = remoteTokenList.collect({
           providerKey,
           listKey,
-          tokenList: `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`,
+          tokenList: tokenListUrl,
           row: section,
+        })
+        // Collect large variant — same URL, rewrite logoURI before fetch
+        const collectLarge = remoteTokenList.collect({
+          providerKey,
+          listKey: largeListKey,
+          tokenList: tokenListUrl,
+          row: section,
+          rewriteLogoURI: (uri) => (uri.includes('/thumb/') ? uri.replace('/thumb/', '/large/') : uri),
         })
         let retries = 0
         for (;;) {
           try {
-            await collect(signal)
+            await collectOriginal(signal)
+            await collectLarge(signal)
           } catch (err) {
             if (
               (err as Error).message.includes('429 Too Many Requests') ||

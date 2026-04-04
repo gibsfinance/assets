@@ -2,30 +2,7 @@ import { type Chain, type Address } from 'viem'
 import { erc20Read, createChainClient } from '@gibs/utils/viem'
 import _ from 'lodash'
 import { failureLog, limitBy } from '@gibs/utils'
-import {
-  mainnet,
-  polygon,
-  arbitrum,
-  optimism,
-  base,
-  bsc,
-  avalanche,
-  fantom,
-  cronos,
-  celo,
-  moonbeam,
-  moonriver,
-  gnosis,
-  kava,
-  boba,
-  mantle,
-  linea,
-  scroll,
-  polygonZkEvm,
-  blast,
-  polynomial,
-  pulsechain,
-} from 'viem/chains'
+import { mainnet, arbitrum, optimism, boba, polynomial, pulsechain } from 'viem/chains'
 
 import { fetch } from '../fetch'
 import * as db from '../db'
@@ -181,7 +158,6 @@ async function fetchRouteScanTokens({
 async function backfillTokenMetadata({
   chain,
   address,
-  signal,
 }: {
   chain: Chain
   address: Address
@@ -215,7 +191,6 @@ async function processToken({
   network,
   globalListId,
   chainListId,
-  providerId,
   signal,
   totalProcessed,
   row,
@@ -334,7 +309,6 @@ async function processChainTokens({
 
     // Process tokens with pagination
     const section = row.get(providerKey)!
-    let successCount = 0
     let totalProcessed = 0
     let nextToken: string | undefined
     const maxTokens = 500 // Limit total tokens per chain to avoid overwhelming the system
@@ -392,9 +366,7 @@ async function processChainTokens({
         )
       })
 
-      const results = await Promise.all(tokenPromises)
-      const batchSuccessCount = results.filter(Boolean).length
-      successCount += batchSuccessCount
+      await Promise.all(tokenPromises)
       totalProcessed += routeScanResponse.items.length
 
       // Check if there are more pages
@@ -594,7 +566,7 @@ class RoutescanCollector extends BaseCollector {
         )
       }
       // Setup counters
-      const section = row.issue(providerKey)
+      row.issue(providerKey)
       row.createCounter(terminalCounterTypes.NETWORK)
       row.createCounter(terminalCounterTypes.TOKEN)
       row.createCounter(terminalLogTypes.EROR, true)

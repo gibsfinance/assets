@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "include": ["src/**/*.ts"],
+  "exclude": ["src/db/migrations", "src/db/config.ts", "src/db/utils.ts", "src/db/seeds"],
   "compilerOptions": {
     "outDir": "./dist",
     "jsx": "preserve",

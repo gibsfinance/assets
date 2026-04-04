@@ -50,7 +50,7 @@ class OmnibridgeCollector extends BaseCollector {
     this.config = config
   }
 
-  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const manifest: DiscoveryManifest = []
 
     for (const c of this.config) {

@@ -6,8 +6,7 @@ import { syncDefaultOrder, buildManifestsFromDB } from '../db/sync-order'
 import { allCollectables } from '../collect/collectables'
 const arg = harvestArgs()
 
-db.getDB()
-  .migrate.latest()
+db.migrate()
   .then(() => harvest.main(arg))
   .then(async () => {
     const keys = allCollectables()

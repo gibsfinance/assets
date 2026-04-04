@@ -5,8 +5,7 @@ import { erc20Read, failureLog } from '@gibs/utils'
 import * as utils from '../utils'
 import { fetch } from '../fetch'
 import * as db from '../db'
-import { Tx } from '../db/tables'
-import type { List, Provider } from 'knex/types/tables'
+import type { List, Provider } from '../db/schema-types'
 import promiseLimit from 'promise-limit'
 import _ from 'lodash'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -147,7 +146,6 @@ class InternetMoneyCollector extends BaseCollector {
             chainId: network.chainId,
           },
         })
-        const chain = networkToChain(network)
         const networkList = this.networkListByNetwork.get(network)!
 
         // Store network icon
@@ -202,13 +200,25 @@ class InternetMoneyCollector extends BaseCollector {
         const networkId = utils.chainIdToNetworkId(chain.id)
 
         // Check if token already has metadata in DB -- skip RPC if so
-        const existingToken = await db
-          .getDB()
-          .from('token')
-          .where({ providedId: address, networkId })
-          .whereNot('name', '')
-          .whereNot('symbol', '')
-          .first<{ name: string; symbol: string; decimals: number }>()
+        const { getDrizzle } = await import('../db/drizzle')
+        const { eq: eqOp, and: andOp, ne: neOp } = await import('drizzle-orm')
+        const schemaMod = await import('../db/schema')
+        const [existingToken] = await getDrizzle()
+          .select({
+            name: schemaMod.token.name,
+            symbol: schemaMod.token.symbol,
+            decimals: schemaMod.token.decimals,
+          })
+          .from(schemaMod.token)
+          .where(
+            andOp(
+              eqOp(schemaMod.token.providedId, address),
+              eqOp(schemaMod.token.networkId, networkId),
+              neOp(schemaMod.token.name, ''),
+              neOp(schemaMod.token.symbol, ''),
+            ),
+          )
+          .limit(1)
 
         let name: string, symbol: string, decimals: number
         if (existingToken) {

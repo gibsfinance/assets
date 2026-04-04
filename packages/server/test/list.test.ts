@@ -2,13 +2,14 @@ import { test } from 'node:test'
 import { app } from '../src/server/app'
 import supertest from 'supertest'
 import { tableNames } from '../src/db/tables'
-import type { List, Provider } from 'knex/types/tables'
+import type { List, Provider } from '../src/db/schema-types'
 import assert from 'assert'
 import * as testUtils from './utils'
 import { TokenList } from '../src/types'
 import _ from 'lodash'
+import { isDbAvailable } from './db-available'
 
-test('/list', async (t) => {
+test('/list', { skip: !(await isDbAvailable()) && 'no database connection' }, async (t) => {
   let provider!: Provider
   let list!: List
   t.beforeEach(async () => {

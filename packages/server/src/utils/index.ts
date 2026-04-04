@@ -14,7 +14,7 @@ import promiseLimit from 'promise-limit'
 import { failures, type ChainId } from '@gibs/utils'
 
 import type { TokenEntry } from '../types'
-import { Image } from 'knex/types/tables.js'
+import type { Image } from '../db/schema-types'
 import { imageMode } from '../db/tables'
 import { createTerminal } from '../log/App'
 import * as paths from '../paths'
