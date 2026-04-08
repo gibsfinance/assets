@@ -36,15 +36,15 @@ export const respondWithList = async (
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string>,
 ) => {
-  let q = db.getTokensUnderListId().where(eq(s.listToken.listId, list.listId))
-  if (extensions.has('bridgeInfo')) {
-    q = db.addBridgeExtensions(q) as unknown as typeof q
-  }
-  if (extensions.has('headerUri')) {
-    q = db.addHeaderUriExtension(q) as unknown as typeof q
-  }
-  const tokens = await q.orderBy(asc(s.listToken.listTokenOrderId))
-  // could possibly be turned into a query
+  const hasBridge = extensions.has('bridgeInfo')
+  const hasHeader = extensions.has('headerUri')
+  const tokens =
+    hasBridge || hasHeader
+      ? await db.getTokensWithExtensions(list.listId, { bridgeInfo: hasBridge, headerUri: hasHeader })
+      : await db
+          .getTokensUnderListId()
+          .where(eq(s.listToken.listId, list.listId))
+          .orderBy(asc(s.listToken.listTokenOrderId))
   const tkns = normalizeTokens(tokens as unknown as TokenInfo[], filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json({
@@ -99,7 +99,7 @@ export const normalizeTokens = (
             tkns,
             (ext, tkn) => {
               if (bridgeInfoExtension) {
-                if (tkn.bridge.bridgeId && viem.isAddress(tkn.providedId)) {
+                if (tkn.bridge?.bridgeId && viem.isAddress(tkn.providedId)) {
                   everAddedExtension = true
                   const networkNotSelf = +tkn.chainId === +tkn.networkA.chainId ? tkn.networkB : tkn.networkA
                   const tokenNotSelf =

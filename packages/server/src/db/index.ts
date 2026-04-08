@@ -37,8 +37,7 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, or, lt, gte, desc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from './schema'
 
 export const ids = {
@@ -1043,35 +1042,102 @@ export const getLists = async (providerKey: string, listKey: string) => {
  * `headerListTokenId` / `headerImageHash` must access them from the
  * `header_link` portion of the flattened row.
  */
-export const addHeaderUriExtension = <T extends ReturnType<typeof getTokensUnderListId>>(qb: T) => {
-  return qb.fullJoin(s.headerLink, eq(s.headerLink.listTokenId, s.listToken.listTokenId))
+/**
+ * Recursively convert an object's keys from snake_case to camelCase.
+ * Used to post-process row_to_json() results, which return DB column names.
+ */
+const camelCaseKeys = (obj: Record<string, unknown> | null): Record<string, unknown> | null => {
+  if (!obj) return null
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [_.camelCase(k), v]))
 }
 
-const networkA = alias(s.network, 'network_a')
-const networkB = alias(s.network, 'network_b')
-const nativeToken = alias(s.token, 'native_token')
-const bridgedToken = alias(s.token, 'bridged_token')
-
 /**
- * Add bridge extension joins. Like `addHeaderUriExtension`, Drizzle $dynamic()
- * cannot add new select columns after initial select. The row_to_json columns
- * are handled via raw SQL in callers that need the full bridge info.
+ * Fetch tokens under a list with bridge and/or header extensions via raw SQL.
  *
- * For the list/utils.ts `respondWithList` path, we add the joins so the data
- * is accessible in the flattened result. The `row_to_json` aggregation is done
- * at the application layer in `normalizeTokens`.
+ * Drizzle's $dynamic() can add JOINs but NOT SELECT columns. The old Knex code
+ * used row_to_json() to embed joined tables as nested JSON objects, plus a global
+ * postProcessResponse to camelCase all keys. This function reproduces that behavior
+ * using raw SQL (same pattern as applyOrder).
  */
-export const addBridgeExtensions = <T extends ReturnType<typeof getTokensUnderListId>>(qb: T) => {
-  return qb
-    .fullJoin(
-      s.bridgeLink,
-      or(eq(s.bridgeLink.nativeTokenId, s.token.tokenId), eq(s.bridgeLink.bridgedTokenId, s.token.tokenId)),
-    )
-    .innerJoin(s.bridge, eq(s.bridge.bridgeId, s.bridgeLink.bridgeId))
-    .innerJoin(networkA, eq(networkA.networkId, s.bridge.homeNetworkId))
-    .innerJoin(networkB, eq(networkB.networkId, s.bridge.foreignNetworkId))
-    .innerJoin(nativeToken, eq(nativeToken.tokenId, s.bridgeLink.nativeTokenId))
-    .innerJoin(bridgedToken, eq(bridgedToken.tokenId, s.bridgeLink.bridgedTokenId))
+export const getTokensWithExtensions = async (
+  listId: string,
+  { bridgeInfo = false, headerUri = false }: { bridgeInfo?: boolean; headerUri?: boolean } = {},
+) => {
+  const db = getDrizzle()
+  const result = await db.execute<Record<string, unknown>>(dsql`
+    SELECT
+      "network"."chain_id" AS "chainId",
+      "token"."provided_id" AS "providedId",
+      "token"."decimals",
+      "token"."symbol",
+      "token"."name",
+      "token"."token_id" AS "tokenId",
+      "image"."image_hash" AS "imageHash",
+      "image"."ext",
+      "image"."mode",
+      "image"."uri",
+      "provider"."key" AS "providerKey",
+      "list"."key" AS "listKey"
+      ${
+        bridgeInfo
+          ? dsql`
+        , row_to_json("bridge".*) AS "bridge"
+        , row_to_json("bridge_link".*) AS "bridgeLink"
+        , row_to_json("network_a".*) AS "networkA"
+        , row_to_json("network_b".*) AS "networkB"
+        , row_to_json("native_token".*) AS "nativeToken"
+        , row_to_json("bridged_token".*) AS "bridgedToken"
+      `
+          : dsql``
+      }
+      ${
+        headerUri
+          ? dsql`
+        , "header_link"."image_hash" AS "headerImageHash"
+      `
+          : dsql``
+      }
+    FROM "list_token"
+    FULL JOIN "image" ON "image"."image_hash" = "list_token"."image_hash"
+    INNER JOIN "token" ON "token"."token_id" = "list_token"."token_id"
+    INNER JOIN "network" ON "network"."network_id" = "token"."network_id"
+    INNER JOIN "list" ON "list"."list_id" = "list_token"."list_id"
+    INNER JOIN "provider" ON "provider"."provider_id" = "list"."provider_id"
+    ${
+      bridgeInfo
+        ? dsql`
+      FULL JOIN "bridge_link" ON (
+        "bridge_link"."native_token_id" = "token"."token_id"
+        OR "bridge_link"."bridged_token_id" = "token"."token_id"
+      )
+      INNER JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
+      INNER JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
+      INNER JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
+      INNER JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
+      INNER JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
+    `
+        : dsql``
+    }
+    ${
+      headerUri
+        ? dsql`
+      FULL JOIN "header_link" ON "header_link"."list_token_id" = "list_token"."list_token_id"
+    `
+        : dsql``
+    }
+    WHERE "list_token"."list_id" = ${listId}
+    ORDER BY "list_token"."list_token_order_id" ASC
+  `)
+  if (!bridgeInfo) return result.rows
+  return result.rows.map((row) => ({
+    ...row,
+    bridge: camelCaseKeys(row.bridge as Record<string, unknown> | null),
+    bridgeLink: camelCaseKeys(row.bridgeLink as Record<string, unknown> | null),
+    networkA: camelCaseKeys(row.networkA as Record<string, unknown> | null),
+    networkB: camelCaseKeys(row.networkB as Record<string, unknown> | null),
+    nativeToken: camelCaseKeys(row.nativeToken as Record<string, unknown> | null),
+    bridgedToken: camelCaseKeys(row.bridgedToken as Record<string, unknown> | null),
+  }))
 }
 
 export const getListOrderId = async (orderParam: string) => {
