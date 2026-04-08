@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGetTokensUnderListId = vi.fn()
-const mockAddBridgeExtensions = vi.fn()
-const mockAddHeaderUriExtension = vi.fn()
+const mockGetTokensWithExtensions = vi.fn()
 
 vi.mock('../../db/tables', () => ({
   imageMode: { SAVE: 'save', LINK: 'link' },
 }))
 vi.mock('../../db', () => ({
   getTokensUnderListId: (...args: unknown[]) => mockGetTokensUnderListId(...args),
-  addBridgeExtensions: (...args: unknown[]) => mockAddBridgeExtensions(...args),
-  addHeaderUriExtension: (...args: unknown[]) => mockAddHeaderUriExtension(...args),
+  getTokensWithExtensions: (...args: unknown[]) => mockGetTokensWithExtensions(...args),
 }))
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/schema', () => ({
@@ -587,34 +585,34 @@ describe('respondWithList', () => {
     expect(body.version).toEqual({ major: 0, minor: 0, patch: 0 })
   })
 
-  it('calls addBridgeExtensions when bridgeInfo extension is requested', async () => {
-    const query = createMockQuery([])
-    mockAddBridgeExtensions.mockReturnValue(query)
+  it('uses getTokensWithExtensions when bridgeInfo extension is requested', async () => {
+    mockGetTokensWithExtensions.mockResolvedValue([])
     const res = createMockResponse()
 
     await respondWithList(res as any, baseList, [], new Set(['bridgeInfo']))
 
-    expect(mockAddBridgeExtensions).toHaveBeenCalled()
+    expect(mockGetTokensWithExtensions).toHaveBeenCalledWith('list-1', { bridgeInfo: true, headerUri: false })
+    expect(mockGetTokensUnderListId).not.toHaveBeenCalled()
   })
 
-  it('calls addHeaderUriExtension when headerUri extension is requested', async () => {
-    const query = createMockQuery([])
-    mockAddHeaderUriExtension.mockReturnValue(query)
+  it('uses getTokensWithExtensions when headerUri extension is requested', async () => {
+    mockGetTokensWithExtensions.mockResolvedValue([])
     const res = createMockResponse()
 
     await respondWithList(res as any, baseList, [], new Set(['headerUri']))
 
-    expect(mockAddHeaderUriExtension).toHaveBeenCalled()
+    expect(mockGetTokensWithExtensions).toHaveBeenCalledWith('list-1', { bridgeInfo: false, headerUri: true })
+    expect(mockGetTokensUnderListId).not.toHaveBeenCalled()
   })
 
-  it('does not call bridge/header extensions when not requested', async () => {
+  it('uses getTokensUnderListId when no extensions are requested', async () => {
     createMockQuery([])
     const res = createMockResponse()
 
     await respondWithList(res as any, baseList, [], new Set())
 
-    expect(mockAddBridgeExtensions).not.toHaveBeenCalled()
-    expect(mockAddHeaderUriExtension).not.toHaveBeenCalled()
+    expect(mockGetTokensUnderListId).toHaveBeenCalled()
+    expect(mockGetTokensWithExtensions).not.toHaveBeenCalled()
   })
 
   it('passes filters through to normalizeTokens', async () => {
