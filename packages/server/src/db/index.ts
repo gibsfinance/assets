@@ -1287,14 +1287,16 @@ export const applyOrder = async (
 }
 
 /**
- * Simple join query for /list/tokens/:chainId — returns all list_token rows
- * for a chain with their image data. Deduplication happens in normalizeTokens.
- * No LATERAL, no ranking, no batching — just a straight indexed join.
+ * Flat join query for /list/tokens/:chainId — returns all list_token rows
+ * for a chain ordered by provider ranking. normalizeTokens handles dedup
+ * (first occurrence wins = best-ranked provider) and source collection.
  */
 export const getTokensByChain = async (
+  listOrderId: viem.Hex,
   chainId: string,
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
+  const formatOrder = buildFormatOrderSql()
   const rows = await db.execute<Record<string, unknown>>(dsql`
     SELECT
       ${s.network.chainId} AS "chainId",
@@ -1309,15 +1311,27 @@ export const getTokensByChain = async (
       ${s.image.uri},
       ${s.provider.key} AS "providerKey",
       ${s.list.key} AS "listKey",
-      ${s.listToken.listTokenOrderId} AS "listTokenOrderId"
+      ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+      COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
     FROM ${s.token}
     INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
     INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
     INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
     LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+    LEFT JOIN ${s.listOrderItem} ON (
+      ${eq(s.listOrderItem.listKey, s.list.key)}
+      AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+      AND ${s.listOrderItem.listOrderId} = ${listOrderId}
+    )
     WHERE ${s.network.chainId} = ${chainId}
-    ORDER BY ${s.listToken.listTokenOrderId} ASC
+    ORDER BY
+      (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
+      ${formatOrder} ASC,
+      ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+      ${s.list.default} ASC,
+      ${s.list.key} ASC,
+      ${s.listToken.listTokenOrderId} ASC
   `)
   return rows.rows
 }

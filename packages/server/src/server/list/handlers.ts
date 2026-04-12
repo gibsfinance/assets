@@ -16,8 +16,9 @@ import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
+import { getDefaultListOrderId } from '../../db/sync-order'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -159,10 +160,12 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     return
   }
 
-  // Single query — returns all list_token rows for the chain.
-  // normalizeTokens deduplicates by address (first occurrence wins)
-  // and collects sources from providerKey/listKey across duplicates.
-  const tokens = await db.getTokensByChain(chainId)
+  // Single flat join ordered by provider ranking — normalizeTokens deduplicates
+  // by address (first occurrence wins = best-ranked) and collects sources.
+  const defaultOrderId = getDefaultListOrderId()
+  const tokens = defaultOrderId
+    ? await db.getTokensByChain(defaultOrderId, chainId)
+    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId)).orderBy(asc(s.listToken.listTokenOrderId))
 
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
