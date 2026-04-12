@@ -1,22 +1,20 @@
-import * as server from '../server'
 import * as db from '../db'
 import { cleanup } from '../cleanup'
 import { syncDefaultOrder, buildManifestsFromDB, startPeriodicRefresh } from '../db/sync-order'
 import { allCollectables } from '../collect/collectables'
 import { log } from '../logger'
-import { setReady } from '../server/app'
+import { app, setReady } from '../server/app'
+import { listen } from '../server'
 
-// Start HTTP server immediately so the load balancer can probe /health (503 until ready)
-server
-  .listen()
+// Start HTTP server immediately so the load balancer can probe /health (503 until ready).
+// Warm-up runs in the background; setReady() flips /health to 200 when done.
+listen()
   .then(async () => {
-    // Run migrations + warm-up while returning 503 on /health
     await db.migrate()
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
     await syncDefaultOrder(keys, manifests)
     startPeriodicRefresh(keys, manifests, 60_000)
-    // Daily variant prune job
     const pruneTimer = setInterval(
       async () => {
         try {
@@ -31,12 +29,15 @@ server
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
-    // Flip health check to 200 — load balancer can start routing traffic
     setReady()
     log('server ready')
+    // Wait for the server to close before running cleanup
+    return new Promise<void>((resolve, reject) => {
+      app.once('close', resolve).once('error', reject)
+    })
   })
+  .then(cleanup)
   .catch((err) => {
     console.error(err)
     process.exit(1)
   })
-  .then(cleanup)
