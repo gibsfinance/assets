@@ -1024,14 +1024,26 @@ export const getLists = async (providerKey: string, listKey: string) => {
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
     : and(eq(s.provider.key, providerKey), eq(s.list.default, true))
-  return db
+  const rows = await db
     .select()
     .from(s.provider)
     .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
     .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
-    .fullJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+    .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
     .where(whereClause)
     .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+  // Fall back to any list for this provider if no default exists
+  if (rows.length === 0 && !listKey) {
+    return db
+      .select()
+      .from(s.provider)
+      .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+      .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
+      .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+      .where(eq(s.provider.key, providerKey))
+      .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+  }
+  return rows
 }
 
 /**
