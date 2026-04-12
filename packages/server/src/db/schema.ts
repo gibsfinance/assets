@@ -127,6 +127,11 @@ export const token = pgTable(
     index().using('btree', table.decimals.asc().nullsLast().op('int2_ops')),
     index().using('btree', table.name.asc().nullsLast().op('text_ops')),
     index('token_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
+    index('idx_token_network_token').using(
+      'btree',
+      table.networkId.asc().nullsLast().op('text_ops'),
+      table.tokenId.asc().nullsLast().op('text_ops'),
+    ),
     index('token_providedid_index').using('btree', table.providedId.asc().nullsLast().op('citext_ops')),
     index().using('btree', table.symbol.asc().nullsLast().op('text_ops')),
     index('token_tokenid_index').using('btree', table.tokenId.asc().nullsLast().op('text_ops')),
@@ -218,6 +223,11 @@ export const listToken = pgTable(
     index('list_token_listid_index').using('btree', table.listId.asc().nullsLast().op('text_ops')),
     index('list_token_listtokenid_index').using('btree', table.listTokenId.asc().nullsLast().op('text_ops')),
     index('list_token_tokenid_index').using('btree', table.tokenId.asc().nullsLast().op('text_ops')),
+    index('idx_list_token_token_list').using(
+      'btree',
+      table.tokenId.asc().nullsLast().op('text_ops'),
+      table.listId.asc().nullsLast().op('text_ops'),
+    ),
     foreignKey({
       columns: [table.tokenId],
       foreignColumns: [token.tokenId],
@@ -421,6 +431,12 @@ export const listOrderItem = pgTable(
     index('list_order_item_listorderid_index').using('btree', table.listOrderId.asc().nullsLast().op('text_ops')),
     index('list_order_item_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.ranking.asc().nullsLast().op('int8_ops')),
+    index('idx_list_order_item_join').using(
+      'btree',
+      table.listOrderId.asc().nullsLast().op('text_ops'),
+      table.providerId.asc().nullsLast().op('text_ops'),
+      table.listKey.asc().nullsLast().op('text_ops'),
+    ),
     foreignKey({
       columns: [table.listOrderId],
       foreignColumns: [listOrder.listOrderId],

@@ -61,7 +61,7 @@ export const getListTokens = async ({
 
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider', undefined, { includeContent: true })
     return {
       filter: { networkId, providedId: address },
       img: rows[0] as

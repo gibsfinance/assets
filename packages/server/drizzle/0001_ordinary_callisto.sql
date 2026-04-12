@@ -1,0 +1,3 @@
+CREATE INDEX IF NOT EXISTS "idx_list_order_item_join" ON "list_order_item" USING btree ("list_order_id" text_ops,"provider_id" text_ops,"list_key" text_ops);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_list_token_token_list" ON "list_token" USING btree ("token_id" text_ops,"list_id" text_ops);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_token_network_token" ON "token" USING btree ("network_id" text_ops,"token_id" text_ops);

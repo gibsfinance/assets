@@ -153,17 +153,13 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const whereClause = eq(s.network.chainId, chainId)
   const defaultOrderId = getDefaultListOrderId()
 
-  // Use applyOrder (dedupe: true) for ranked, one-row-per-token results
-  const tokens = defaultOrderId
-    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
-    : await db.getTokensUnderListId().where(whereClause).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
-
-  const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
-
-  // Lightweight query for sources — just providerKey/listKey per address
+  // Run both queries in parallel — they share no dependencies
   const drizzle = getDrizzle()
-  const sourceRows = await drizzle
+  const tokensPromise = defaultOrderId
+    ? db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
+    : db.getTokensUnderListId().where(whereClause).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
+
+  const sourcesPromise = drizzle
     .select({
       providedId: s.token.providedId,
       providerKey: s.provider.key,
@@ -175,6 +171,11 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .where(eq(s.network.chainId, chainId))
+
+  const [tokens, sourceRows] = await Promise.all([tokensPromise, sourcesPromise])
+
+  const filters = utils.tokenFilters(req.query)
+  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
 
   const sourcesByAddress = new Map<string, Set<string>>()
   for (const row of sourceRows) {

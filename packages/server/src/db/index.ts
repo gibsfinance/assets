@@ -1218,7 +1218,7 @@ export const applyOrder = async (
   whereClause: SQL,
   baseFrom: 'listToken' | 'provider' = 'listToken',
   formatPreference?: string[][],
-  { dedupe = true, sorted = false }: { dedupe?: boolean; sorted?: boolean } = {},
+  { dedupe = true, sorted = false, includeContent = false }: { dedupe?: boolean; sorted?: boolean; includeContent?: boolean } = {},
 ) => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql(formatPreference)
@@ -1253,7 +1253,7 @@ export const applyOrder = async (
         ${s.image.ext},
         ${s.image.mode},
         ${s.image.uri},
-        ${s.image.content},
+        ${includeContent ? dsql`${s.image.content},` : dsql``}
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
