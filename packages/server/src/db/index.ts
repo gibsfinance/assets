@@ -1336,6 +1336,7 @@ export const getTokensByChain = async (
       AND ${s.listOrderItem.listOrderId} = ${listOrderId}
     )
     WHERE ${s.network.chainId} = ${chainId}
+      AND ${s.token.providedId} LIKE '0x%'
   `)
   return rows.rows
 }
