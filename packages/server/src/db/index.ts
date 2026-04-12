@@ -1294,7 +1294,7 @@ export const applyOrder = async (
  * Phase 2: process in batches of BATCH_SIZE, each LATERAL query
  *          completing well under the 60s timeout.
  */
-const TOKEN_BATCH_SIZE = 5000
+const TOKEN_BATCH_SIZE = 2000
 
 export const getTokensByChain = async (
   listOrderId: viem.Hex,
@@ -1303,31 +1303,34 @@ export const getTokensByChain = async (
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql()
 
-  // Phase 1: get all token_ids for this chain (index-only scan, fast)
-  const idRows = await db
-    .select({ tokenId: s.token.tokenId })
-    .from(s.token)
-    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
-    .where(eq(s.network.chainId, chainId))
-
-  const allTokenIds = idRows.map((r) => r.tokenId)
-  if (allTokenIds.length === 0) return []
-
-  // Phase 2: process in batches, each staying under statement_timeout
+  // Keyset pagination with CTE-first batching.
+  // The CTE limits to BATCH_SIZE tokens, then LATERAL only runs on those.
+  // Each batch completes in ~0.5s locally, well under the 60s statement_timeout.
   const results: Record<string, unknown>[] = []
-  for (let i = 0; i < allTokenIds.length; i += TOKEN_BATCH_SIZE) {
-    const batch = allTokenIds.slice(i, i + TOKEN_BATCH_SIZE)
+  let cursor = ''
+  let hasMore = true
+  while (hasMore) {
     const rows = await db.execute<Record<string, unknown>>(dsql`
+      WITH batch AS (
+        SELECT ${s.token.tokenId}, ${s.token.providedId}, ${s.token.decimals},
+               ${s.token.symbol}, ${s.token.name}, ${s.token.networkId}
+        FROM ${s.token}
+        INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+        WHERE ${s.network.chainId} = ${chainId}
+          AND ${s.token.tokenId} > ${cursor}
+        ORDER BY ${s.token.tokenId} ASC
+        LIMIT ${TOKEN_BATCH_SIZE}
+      )
       SELECT
         ${s.network.chainId} AS "chainId",
-        ${s.token.providedId} AS "providedId",
-        ${s.token.decimals},
-        ${s.token.symbol},
-        ${s.token.name},
-        ${s.token.tokenId} AS "tokenId",
+        batch.${s.token.providedId} AS "providedId",
+        batch.${s.token.decimals},
+        batch.${s.token.symbol},
+        batch.${s.token.name},
+        batch.${s.token.tokenId} AS "tokenId",
         best.*
-      FROM ${s.token}
-      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+      FROM batch
+      INNER JOIN ${s.network} ON ${s.network.networkId} = batch.${s.token.networkId}
       CROSS JOIN LATERAL (
         SELECT
           ${s.image.imageHash} AS "imageHash",
@@ -1351,7 +1354,7 @@ export const getTokensByChain = async (
           AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
           AND ${s.listOrderItem.listOrderId} = ${listOrderId}
         )
-        WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
+        WHERE ${s.listToken.tokenId} = batch.${s.token.tokenId}
         ORDER BY
           (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
           ${formatOrder} ASC,
@@ -1361,9 +1364,12 @@ export const getTokensByChain = async (
           ${s.listToken.listTokenOrderId} ASC
         LIMIT 1
       ) best
-      WHERE ${s.token.tokenId} = ANY(${batch})
     `)
     results.push(...rows.rows)
+    hasMore = rows.rows.length === TOKEN_BATCH_SIZE
+    if (hasMore) {
+      cursor = rows.rows[rows.rows.length - 1].tokenId as string
+    }
   }
   return results
 }
