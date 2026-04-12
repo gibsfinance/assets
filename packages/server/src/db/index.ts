@@ -1303,14 +1303,16 @@ export const getTokensByChain = async (
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql()
 
-  // Keyset pagination with CTE-first batching.
-  // The CTE limits to BATCH_SIZE tokens, then LATERAL only runs on those.
-  // Each batch completes in ~0.5s locally, well under the 60s statement_timeout.
-  const results: Record<string, unknown>[] = []
-  let cursor = ''
-  let hasMore = true
-  while (hasMore) {
-    const rows = await db.execute<Record<string, unknown>>(dsql`
+  // REPEATABLE READ ensures all batches see the same snapshot — no phantom
+  // tokens or shifted images between batch 1 and batch N.
+  return db.transaction(async (tx) => {
+    await tx.execute(dsql.raw('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ'))
+
+    const results: Record<string, unknown>[] = []
+    let cursor = ''
+    let hasMore = true
+    while (hasMore) {
+      const rows = await tx.execute<Record<string, unknown>>(dsql`
       WITH batch AS (
         SELECT ${s.token.tokenId}, ${s.token.providedId}, ${s.token.decimals},
                ${s.token.symbol}, ${s.token.name}, ${s.token.networkId}
@@ -1365,13 +1367,14 @@ export const getTokensByChain = async (
         LIMIT 1
       ) best
     `)
-    results.push(...rows.rows)
-    hasMore = rows.rows.length === TOKEN_BATCH_SIZE
-    if (hasMore) {
-      cursor = rows.rows[rows.rows.length - 1].tokenId as string
+      results.push(...rows.rows)
+      hasMore = rows.rows.length === TOKEN_BATCH_SIZE
+      if (hasMore) {
+        cursor = rows.rows[rows.rows.length - 1].tokenId as string
+      }
     }
-  }
-  return results
+    return results
+  })
 }
 
 export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {
