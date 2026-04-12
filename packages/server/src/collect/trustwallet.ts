@@ -345,10 +345,6 @@ class TrustWalletCollector extends BaseCollector {
 
   async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
-    const row = utils.terminal.issue({
-      type: terminalRowTypes.SETUP,
-      id: providerKey,
-    })
 
     blockchainFolders.sort()
     await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
@@ -390,8 +386,6 @@ class TrustWalletCollector extends BaseCollector {
     }
 
     this.blockchainFolders = blockchainFolders
-    // Row stays open for collect phase
-    row.complete()
 
     return [{ providerKey, lists }]
   }

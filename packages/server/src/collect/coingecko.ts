@@ -52,6 +52,12 @@ class CoinGeckoCollector extends BaseCollector {
       `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
     )
 
+    // API can return an error object instead of an array (rate limit, bad key)
+    if (!Array.isArray(platforms)) {
+      failureLog('coingecko asset_platforms returned non-array: %o', typeof platforms)
+      return []
+    }
+
     // Filter to platforms with valid chain identifiers
     const validPlatforms = platforms.filter((p) => p.chain_identifier && typeof p.chain_identifier === 'number')
 
