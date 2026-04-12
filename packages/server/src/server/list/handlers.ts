@@ -11,6 +11,7 @@ import createError from 'http-errors'
 import * as db from '../../db'
 import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
+import { rankTokenRows } from './ranking'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
@@ -153,18 +154,7 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
     ? await db.getTokensByChain(defaultOrderId, chainId)
     : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId))) as any[]
 
-  tokens.sort((a, b) => {
-    const rankA = Math.floor((a.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
-    const rankB = Math.floor((b.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
-    if (rankA !== rankB) return rankA - rankB
-    const imgA = a.imageHash ? 0 : 1
-    const imgB = b.imageHash ? 0 : 1
-    if (imgA !== imgB) return imgA - imgB
-    const fmtA = a.ext === '.svg' || a.ext === '.svg+xml' ? 0 : a.ext === '.webp' ? 1 : 2
-    const fmtB = b.ext === '.svg' || b.ext === '.svg+xml' ? 0 : b.ext === '.webp' ? 1 : 2
-    if (fmtA !== fmtB) return fmtA - fmtB
-    return (a.listTokenOrderId ?? 0) - (b.listTokenOrderId ?? 0)
-  })
+  tokens.sort(rankTokenRows)
 
   const filters = utils.tokenFilters({})
   const entries = utils.normalizeTokens(tokens, filters, extensions)
