@@ -1333,11 +1333,11 @@ export const getTokensByChain = async (
           )
           SELECT
             ${cId} AS "chainId",
-            batch.${s.token.providedId} AS "providedId",
-            batch.${s.token.decimals},
-            batch.${s.token.symbol},
-            batch.${s.token.name},
-            batch.${s.token.tokenId} AS "tokenId",
+            batch.provided_id AS "providedId",
+            batch.decimals,
+            batch.symbol,
+            batch.name,
+            batch.token_id AS "tokenId",
             best.*
           FROM batch
           CROSS JOIN LATERAL (
@@ -1363,7 +1363,7 @@ export const getTokensByChain = async (
               AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
               AND ${s.listOrderItem.listOrderId} = ${listOrderId}
             )
-            WHERE ${s.listToken.tokenId} = batch.${s.token.tokenId}
+            WHERE ${s.listToken.tokenId} = batch.token_id
             ORDER BY
               (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
               ${formatOrder} ASC,
