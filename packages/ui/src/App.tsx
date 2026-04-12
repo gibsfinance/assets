@@ -3,7 +3,6 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './lib/contexts/ThemeContext'
 import { SettingsProvider } from './lib/contexts/SettingsContext'
-import { MetricsProvider } from './lib/contexts/MetricsContext'
 import { StudioProvider } from './lib/contexts/StudioContext'
 import { ListEditorProvider } from './lib/contexts/ListEditorContext'
 import { handleOAuthCallback } from './lib/hooks/useVCSPublish'
@@ -24,22 +23,20 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <SettingsProvider>
-          <MetricsProvider>
-            <StudioProvider>
-              <ListEditorProvider>
-                <HashRouter>
-                  <Routes>
-                    <Route element={<Layout />}>
-                      <Route index element={<Home />} />
-                      <Route path="studio" element={<Studio />} />
-                      <Route path="wizard" element={<Navigate to="/studio" replace />} />
-                      <Route path="docs" element={<Docs />} />
-                    </Route>
-                  </Routes>
-                </HashRouter>
-              </ListEditorProvider>
-            </StudioProvider>
-          </MetricsProvider>
+          <StudioProvider>
+            <ListEditorProvider>
+              <HashRouter>
+                <Routes>
+                  <Route element={<Layout />}>
+                    <Route index element={<Home />} />
+                    <Route path="studio" element={<Studio />} />
+                    <Route path="wizard" element={<Navigate to="/studio" replace />} />
+                    <Route path="docs" element={<Docs />} />
+                  </Route>
+                </Routes>
+              </HashRouter>
+            </ListEditorProvider>
+          </StudioProvider>
         </SettingsProvider>
       </ThemeProvider>
     </QueryClientProvider>

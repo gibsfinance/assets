@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
-import { useMetricsContext } from '../contexts/MetricsContext'
+import { useMetrics } from '../hooks/useMetrics'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
@@ -193,12 +193,8 @@ const ROW_HEIGHT = 44
 
 export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
-  const { metrics, providers, fetchMetrics } = useMetricsContext()
+  const { metrics, providers } = useMetrics()
   const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor, openNewEditor } = useListEditor()
-
-  useEffect(() => {
-    if (!metrics) fetchMetrics()
-  }, [metrics, fetchMetrics])
 
   const popularChains = useMemo(() => {
     if (!metrics) return []

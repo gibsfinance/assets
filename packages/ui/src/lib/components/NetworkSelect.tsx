@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
 import { useSettings } from '../contexts/SettingsContext'
-import { useMetricsContext } from '../contexts/MetricsContext'
+import { useMetrics } from '../hooks/useMetrics'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
 import Image from './Image'
@@ -15,7 +15,7 @@ interface NetworkSelectProps {
 export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { showTestnets } = useSettings()
-  const { metrics } = useMetricsContext()
+  const { metrics } = useMetrics()
 
   const sortedNetworks = useMemo(() => {
     if (!metrics) return []

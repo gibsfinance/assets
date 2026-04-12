@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import _ from 'lodash'
 import { getApiUrl } from '../utils'
-import { useMetricsContext } from '../contexts/MetricsContext'
+import { useMetrics, useProviders } from '../hooks/useMetrics'
 import { limitConcurrency } from '../utils/concurrency'
 import type { ListDescription, SearchUpdate, Token } from '../types'
 import TokenListFilter from './TokenListFilter'
@@ -29,7 +29,8 @@ export default function TokenSearch({
   const [_isSearching, setIsSearching] = useState(false)
   const [isGlobalSearching, setIsGlobalSearching] = useState(false)
   const searchAbortControllerRef = useRef<AbortController | null>(null)
-  const { metrics, providers: contextProviders, fetchProviders } = useMetricsContext()
+  const { metrics } = useMetrics()
+  const { data: contextProviders = [] } = useProviders()
 
 
 
@@ -71,7 +72,7 @@ export default function TokenSearch({
     }
 
     try {
-      const lists = contextProviders.length ? contextProviders : await fetchProviders()
+      const lists = contextProviders
       if (!lists.length) {
         onSearchUpdate({
           query,
@@ -208,7 +209,7 @@ export default function TokenSearch({
       tokens: globalSearchResults,
       isError: false,
     })
-  }, [query, metrics, onSearchUpdate])
+  }, [query, metrics, contextProviders, onSearchUpdate])
 
   const debouncedSearch = useMemo(
     () =>

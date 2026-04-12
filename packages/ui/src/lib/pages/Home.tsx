@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
+import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMetricsContext } from '../contexts/MetricsContext'
+import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
@@ -137,12 +137,8 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { metrics: metricsData, fetchMetrics } = useMetricsContext()
+  const { metrics: metricsData } = useMetrics()
   const { showTestnets, setShowTestnets } = useSettings()
-
-  useEffect(() => {
-    fetchMetrics()
-  }, [fetchMetrics])
 
   const filteredNetworks = useMemo(() => {
     if (!metricsData) return []
