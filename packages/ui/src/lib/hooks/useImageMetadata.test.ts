@@ -13,29 +13,24 @@ vi.stubGlobal('fetch', mockFetch)
 // Image mock helpers
 // ---------------------------------------------------------------------------
 function makeImageClass(width: number, height: number, fail: boolean) {
-  return class MockImage {
-    crossOrigin = ''
-    naturalWidth = width
-    naturalHeight = height
-    onload: (() => void) | null = null
-    onerror: ((e: unknown) => void) | null = null
-
-    // Avoid a class-field + getter/setter conflict by using a method-level variable
-    private _src = ''
-
-    get src() {
-      return this._src
-    }
-
-    set src(value: string) {
-      this._src = value
-      if (fail) {
-        Promise.resolve().then(() => this.onerror?.(new Error('Image load failed')))
-      } else {
-        Promise.resolve().then(() => this.onload?.())
-      }
-    }
+  function MockImage(this: Record<string, unknown>) {
+    this.crossOrigin = ''
+    this.naturalWidth = width
+    this.naturalHeight = height
+    this.onload = null
+    this.onerror = null
+    Object.defineProperty(this, 'src', {
+      set(_value: string) {
+        const self = this as Record<string, ((...args: unknown[]) => void) | null>
+        if (fail) {
+          Promise.resolve().then(() => self.onerror?.(new Error('Image load failed')))
+        } else {
+          Promise.resolve().then(() => self.onload?.())
+        }
+      },
+    })
   }
+  return MockImage
 }
 
 let restoreImage: (() => void) | null = null
@@ -227,7 +222,7 @@ describe('fetchImageMetadata', () => {
     })
     stubImageLoad(16, 16)
 
-    const { fetchImageMetadata } = await import('./useImageMetadata')
+    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/tiny.png')
 
     expect(result.format).toBe('PNG')
@@ -249,7 +244,7 @@ describe('fetchImageMetadata', () => {
     })
     stubImageError()
 
-    const { fetchImageMetadata } = await import('./useImageMetadata')
+    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/binary.bin')
 
     expect(result.format).toBe('unknown')
