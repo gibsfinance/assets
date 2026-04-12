@@ -158,6 +158,14 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
 
   const filters = utils.tokenFilters({})
   const entries = utils.normalizeTokens(tokens, filters, extensions)
+
+  // Push tokens without images to the bottom of the list
+  entries.sort((a, b) => {
+    const aHas = a.logoURI ? 0 : 1
+    const bHas = b.logoURI ? 0 : 1
+    return aHas - bHas
+  })
+
   const limited = entries.slice(0, limit)
 
   return JSON.stringify({ chainId: +chainId, total: entries.length, tokens: limited })

@@ -129,7 +129,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const selectChain = useCallback((chainId: string | null) => {
-    setState((s) => ({ ...s, selectedChainId: chainId }))
+    setState((s) => ({
+      ...s,
+      selectedChainId: chainId,
+      selectedToken: chainId ? s.selectedToken : null,
+    }))
   }, [])
 
   const updateAppearance = useCallback((updates: Partial<StudioAppearance>) => {
