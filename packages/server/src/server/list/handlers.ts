@@ -16,9 +16,8 @@ import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
-import { getDefaultListOrderId } from '../../db/sync-order'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -160,47 +159,13 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     return
   }
 
-  const defaultOrderId = getDefaultListOrderId()
-
-  // Run both queries in parallel — they share no dependencies
-  const drizzle = getDrizzle()
-  const tokensPromise = defaultOrderId
-    ? db.getTokensByChain(defaultOrderId, chainId)
-    : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
-
-  const sourcesPromise = drizzle
-    .select({
-      providedId: s.token.providedId,
-      providerKey: s.provider.key,
-      listKey: s.list.key,
-    })
-    .from(s.token)
-    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
-    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
-    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
-    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-    .where(eq(s.network.chainId, chainId))
-
-  const [tokens, sourceRows] = await Promise.all([tokensPromise, sourcesPromise])
+  // Single query — returns all list_token rows for the chain.
+  // normalizeTokens deduplicates by address (first occurrence wins)
+  // and collects sources from providerKey/listKey across duplicates.
+  const tokens = await db.getTokensByChain(chainId)
 
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
-
-  const sourcesByAddress = new Map<string, Set<string>>()
-  for (const row of sourceRows) {
-    const key = row.providedId.toLowerCase()
-    let set = sourcesByAddress.get(key)
-    if (!set) {
-      set = new Set()
-      sourcesByAddress.set(key, set)
-    }
-    set.add(`${row.providerKey}/${row.listKey}`)
-  }
-
-  for (const entry of entries) {
-    const sources = sourcesByAddress.get(entry.address.toLowerCase())
-    if (sources) entry.sources = [...sources]
-  }
 
   const limited = entries.slice(0, limit)
 
