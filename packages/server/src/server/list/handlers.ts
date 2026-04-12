@@ -143,6 +143,39 @@ export const all: RequestHandler = async (req, res) => {
  * Server-side merge eliminates the need for N individual list fetches.
  * Supports ?limit=N (default 500, max 5000)
  */
+const FRESH_TTL_MS = 5 * 60 * 1000 // 5 minutes — serve without revalidation
+const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing in background
+
+/** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths). */
+const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
+  const defaultOrderId = getDefaultListOrderId()
+  const tokens = (defaultOrderId
+    ? await db.getTokensByChain(defaultOrderId, chainId)
+    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId))) as any[]
+
+  tokens.sort((a, b) => {
+    const rankA = Math.floor((a.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
+    const rankB = Math.floor((b.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
+    if (rankA !== rankB) return rankA - rankB
+    const imgA = a.imageHash ? 0 : 1
+    const imgB = b.imageHash ? 0 : 1
+    if (imgA !== imgB) return imgA - imgB
+    const fmtA = a.ext === '.svg' || a.ext === '.svg+xml' ? 0 : a.ext === '.webp' ? 1 : 2
+    const fmtB = b.ext === '.svg' || b.ext === '.svg+xml' ? 0 : b.ext === '.webp' ? 1 : 2
+    if (fmtA !== fmtB) return fmtA - fmtB
+    return (a.listTokenOrderId ?? 0) - (b.listTokenOrderId ?? 0)
+  })
+
+  const filters = utils.tokenFilters({})
+  const entries = utils.normalizeTokens(tokens, filters, extensions)
+  const limited = entries.slice(0, limit)
+
+  return JSON.stringify({ chainId: +chainId, total: entries.length, tokens: limited })
+}
+
+// In-flight revalidation tracker — prevents duplicate background refreshes
+const revalidating = new Set<string>()
+
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const chainId = req.params.chainId
   if (!chainId || !/^\d+$/.test(chainId)) return next(createError.BadRequest('valid numeric chainId required'))
@@ -151,51 +184,32 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const cacheKey = `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
 
-  // Serve from cache if available
+  // Check cache — expiresAt is the hard 1hr expiry
   const cached = await db.getCachedRequest(cacheKey)
   if (cached) {
     res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
     res.set('content-type', 'application/json')
     res.send(cached.value)
+
+    // If stale (past 5min fresh window), revalidate in the background
+    const cacheAge = Date.now() - new Date(cached.expiresAt!).getTime() + STALE_TTL_MS
+    if (cacheAge > FRESH_TTL_MS && !revalidating.has(cacheKey)) {
+      revalidating.add(cacheKey)
+      buildTokensByChainResponse(chainId, limit, extensions)
+        .then((body) => {
+          const expiresAt = new Date(Date.now() + STALE_TTL_MS)
+          return db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
+        })
+        .catch(() => {})
+        .finally(() => revalidating.delete(cacheKey))
+    }
     return
   }
 
-  // Flat join returns all rows unsorted (avoids 36MB disk sort in PG).
-  // Sort in JS is trivial for 100k rows in memory.
-  const defaultOrderId = getDefaultListOrderId()
-  const tokens = (defaultOrderId
-    ? await db.getTokensByChain(defaultOrderId, chainId)
-    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId))) as any[]
+  // No cache — build fresh (first request or after hard expiry)
+  const body = await buildTokensByChainResponse(chainId, limit, extensions)
 
-  // Sort by ranking so normalizeTokens' "first occurrence wins" = best-ranked
-  tokens.sort((a, b) => {
-    const rankA = Math.floor((a.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
-    const rankB = Math.floor((b.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
-    if (rankA !== rankB) return rankA - rankB
-    // Prefer rows with images
-    const imgA = a.imageHash ? 0 : 1
-    const imgB = b.imageHash ? 0 : 1
-    if (imgA !== imgB) return imgA - imgB
-    // Format preference: SVG > WebP > raster
-    const fmtA = a.ext === '.svg' || a.ext === '.svg+xml' ? 0 : a.ext === '.webp' ? 1 : 2
-    const fmtB = b.ext === '.svg' || b.ext === '.svg+xml' ? 0 : b.ext === '.webp' ? 1 : 2
-    if (fmtA !== fmtB) return fmtA - fmtB
-    return (a.listTokenOrderId ?? 0) - (b.listTokenOrderId ?? 0)
-  })
-
-  const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens, filters, extensions)
-
-  const limited = entries.slice(0, limit)
-
-  const body = JSON.stringify({
-    chainId: +chainId,
-    total: entries.length,
-    tokens: limited,
-  })
-
-  // Cache the response — TTL matches the HTTP cache-control header
-  const expiresAt = new Date(Date.now() + Number(config.cacheSeconds) * 1000)
+  const expiresAt = new Date(Date.now() + STALE_TTL_MS)
   db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any }).catch(() => {})
 
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
