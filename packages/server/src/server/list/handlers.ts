@@ -16,7 +16,7 @@ import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
 
@@ -160,15 +160,31 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     return
   }
 
-  // Single flat join ordered by provider ranking — normalizeTokens deduplicates
-  // by address (first occurrence wins = best-ranked) and collects sources.
+  // Flat join returns all rows unsorted (avoids 36MB disk sort in PG).
+  // Sort in JS is trivial for 100k rows in memory.
   const defaultOrderId = getDefaultListOrderId()
-  const tokens = defaultOrderId
+  const tokens = (defaultOrderId
     ? await db.getTokensByChain(defaultOrderId, chainId)
-    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId)).orderBy(asc(s.listToken.listTokenOrderId))
+    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId))) as any[]
+
+  // Sort by ranking so normalizeTokens' "first occurrence wins" = best-ranked
+  tokens.sort((a, b) => {
+    const rankA = Math.floor((a.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
+    const rankB = Math.floor((b.listRanking ?? Number.MAX_SAFE_INTEGER) / 1000)
+    if (rankA !== rankB) return rankA - rankB
+    // Prefer rows with images
+    const imgA = a.imageHash ? 0 : 1
+    const imgB = b.imageHash ? 0 : 1
+    if (imgA !== imgB) return imgA - imgB
+    // Format preference: SVG > WebP > raster
+    const fmtA = a.ext === '.svg' || a.ext === '.svg+xml' ? 0 : a.ext === '.webp' ? 1 : 2
+    const fmtB = b.ext === '.svg' || b.ext === '.svg+xml' ? 0 : b.ext === '.webp' ? 1 : 2
+    if (fmtA !== fmtB) return fmtA - fmtB
+    return (a.listTokenOrderId ?? 0) - (b.listTokenOrderId ?? 0)
+  })
 
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
+  const entries = utils.normalizeTokens(tokens, filters, extensions)
 
   const limited = entries.slice(0, limit)
 

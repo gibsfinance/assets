@@ -1296,7 +1296,6 @@ export const getTokensByChain = async (
   chainId: string,
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
-  const formatOrder = buildFormatOrderSql()
   const rows = await db.execute<Record<string, unknown>>(dsql`
     SELECT
       ${s.network.chainId} AS "chainId",
@@ -1325,14 +1324,6 @@ export const getTokensByChain = async (
       AND ${s.listOrderItem.listOrderId} = ${listOrderId}
     )
     WHERE ${s.network.chainId} = ${chainId}
-    ORDER BY
-      (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-      CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
-      ${formatOrder} ASC,
-      ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-      ${s.list.default} ASC,
-      ${s.list.key} ASC,
-      ${s.listToken.listTokenOrderId} ASC
   `)
   return rows.rows
 }
