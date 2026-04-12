@@ -1287,12 +1287,14 @@ export const applyOrder = async (
 }
 
 /**
- * Optimized query for /list/tokens/:chainId — uses DISTINCT ON instead of
- * dense_rank() CTE to pick the best image per token in a single pass.
+ * Optimized query for /list/tokens/:chainId — uses LATERAL + LIMIT 1 to
+ * pick the best image per token without materializing the full cross-product.
  *
- * Starts from network (filtered by chainId) → token → list_token, which
- * lets the planner use idx_token_network_token immediately rather than
- * scanning all list_tokens and filtering late.
+ * Starts from token (filtered by chainId via network), then for each token
+ * does an indexed LATERAL lookup into list_token → list → provider → image,
+ * sorting only ~2-10 rows per token in memory.
+ *
+ * Benchmarked at 1.4s for 45k Ethereum tokens vs 60s+ for the dense_rank CTE.
  */
 export const getTokensByChain = async (
   listOrderId: viem.Hex,
@@ -1301,45 +1303,50 @@ export const getTokensByChain = async (
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql()
   const rows = await db.execute<Record<string, unknown>>(dsql`
-    SELECT DISTINCT ON (${s.token.tokenId})
+    SELECT
       ${s.network.chainId} AS "chainId",
       ${s.token.providedId} AS "providedId",
       ${s.token.decimals},
       ${s.token.symbol},
       ${s.token.name},
       ${s.token.tokenId} AS "tokenId",
-      ${s.image.imageHash} AS "imageHash",
-      ${s.image.ext},
-      ${s.image.mode},
-      ${s.image.uri},
-      ${s.provider.key} AS "providerKey",
-      ${s.list.key} AS "listKey",
-      ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
-      ${s.list.major} AS "listMajor",
-      ${s.list.minor} AS "listMinor",
-      ${s.list.patch} AS "listPatch",
-      ${s.list.default} AS "listDefault",
-      COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
+      best.*
     FROM ${s.token}
     INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
-    INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
-    INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
-    INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
-    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
-    LEFT JOIN ${s.listOrderItem} ON (
-      ${eq(s.listOrderItem.listKey, s.list.key)}
-      AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
-      AND ${s.listOrderItem.listOrderId} = ${listOrderId}
-    )
+    CROSS JOIN LATERAL (
+      SELECT
+        ${s.image.imageHash} AS "imageHash",
+        ${s.image.ext},
+        ${s.image.mode},
+        ${s.image.uri},
+        ${s.provider.key} AS "providerKey",
+        ${s.list.key} AS "listKey",
+        ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+        ${s.list.major} AS "listMajor",
+        ${s.list.minor} AS "listMinor",
+        ${s.list.patch} AS "listPatch",
+        ${s.list.default} AS "listDefault",
+        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
+      FROM ${s.listToken}
+      INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
+      INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+      LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+      LEFT JOIN ${s.listOrderItem} ON (
+        ${eq(s.listOrderItem.listKey, s.list.key)}
+        AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+        AND ${s.listOrderItem.listOrderId} = ${listOrderId}
+      )
+      WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
+      ORDER BY
+        (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
+        ${formatOrder} ASC,
+        ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+        ${s.list.default} ASC,
+        ${s.list.key} ASC,
+        ${s.listToken.listTokenOrderId} ASC
+      LIMIT 1
+    ) best
     WHERE ${s.network.chainId} = ${chainId}
-    ORDER BY
-      ${s.token.tokenId},
-      (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-      ${formatOrder} ASC,
-      ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-      ${s.list.default} ASC,
-      ${s.list.key} ASC,
-      ${s.listToken.listTokenOrderId} ASC
   `)
   return rows.rows
 }
