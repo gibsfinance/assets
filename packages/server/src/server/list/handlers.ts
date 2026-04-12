@@ -159,14 +159,12 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   const filters = utils.tokenFilters({})
   const entries = utils.normalizeTokens(tokens, filters, extensions)
 
-  // Push tokens without images to the bottom of the list
-  entries.sort((a, b) => {
-    const aHas = a.logoURI ? 0 : 1
-    const bHas = b.logoURI ? 0 : 1
-    return aHas - bHas
-  })
+  // Stable partition: tokens with images first, imageless last, preserving rank order within each
+  const withImage = entries.filter((e) => e.logoURI)
+  const withoutImage = entries.filter((e) => !e.logoURI)
+  const ordered = withImage.concat(withoutImage)
 
-  const limited = entries.slice(0, limit)
+  const limited = ordered.slice(0, limit)
 
   return JSON.stringify({ chainId: +chainId, total: entries.length, tokens: limited })
 }
