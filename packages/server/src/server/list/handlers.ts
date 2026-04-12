@@ -149,6 +149,16 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
 
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)
+  const cacheKey = `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
+
+  // Serve from cache if available
+  const cached = await db.getCachedRequest(cacheKey)
+  if (cached) {
+    res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    res.set('content-type', 'application/json')
+    res.send(cached.value)
+    return
+  }
 
   const defaultOrderId = getDefaultListOrderId()
 
@@ -194,10 +204,17 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
 
   const limited = entries.slice(0, limit)
 
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json({
+  const body = JSON.stringify({
     chainId: +chainId,
     total: entries.length,
     tokens: limited,
   })
+
+  // Cache the response — TTL matches the HTTP cache-control header
+  const expiresAt = new Date(Date.now() + Number(config.cacheSeconds) * 1000)
+  db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any }).catch(() => {})
+
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  res.set('content-type', 'application/json')
+  res.send(body)
 }
