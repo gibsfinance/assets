@@ -8,7 +8,7 @@ import { listen } from '../server'
 
 // Start HTTP server immediately so the load balancer can probe /health (503 until ready).
 // Warm-up runs in the background; setReady() flips /health to 200 when done.
-listen()
+listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
   .then(async () => {
     await db.migrate()
     const keys = allCollectables()
