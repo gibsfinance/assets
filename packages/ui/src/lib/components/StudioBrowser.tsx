@@ -369,6 +369,22 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
             }
           })
           setListTokens('merged', tokens)
+
+          // Populate per-source list entries so the filter shows individual providers
+          const bySource = new Map<string, Token[]>()
+          for (const token of tokens) {
+            for (const ref of token.listReferences ?? []) {
+              const list = bySource.get(ref.sourceList)
+              if (list) {
+                list.push(token)
+              } else {
+                bySource.set(ref.sourceList, [token])
+              }
+            }
+          }
+          for (const [sourceList, sourceTokens] of bySource) {
+            setListTokens(sourceList, sourceTokens)
+          }
         }
       } catch (error) {
         console.error('Failed to fetch tokens for chain:', error)
