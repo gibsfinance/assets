@@ -150,14 +150,13 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)
 
-  const whereClause = eq(s.network.chainId, chainId)
   const defaultOrderId = getDefaultListOrderId()
 
   // Run both queries in parallel — they share no dependencies
   const drizzle = getDrizzle()
   const tokensPromise = defaultOrderId
-    ? db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
-    : db.getTokensUnderListId().where(whereClause).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
+    ? db.getTokensByChain(defaultOrderId, chainId)
+    : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
 
   const sourcesPromise = drizzle
     .select({
@@ -165,9 +164,9 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
       providerKey: s.provider.key,
       listKey: s.list.key,
     })
-    .from(s.listToken)
-    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .from(s.token)
     .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .where(eq(s.network.chainId, chainId))
