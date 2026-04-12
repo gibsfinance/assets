@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import BottomDrawer from '../components/BottomDrawer'
 import Image from '../components/Image'
@@ -30,57 +30,45 @@ export default function Studio() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // ---------------------------------------------------------------------------
-  // Single bidirectional sync — URL and state are reconciled in one effect.
-  // URL wins on initial load; after that, state changes push to URL.
-  // Running in ONE effect prevents the race where separate effects see stale
-  // values from the same render.
+  // URL IS the state. Derive chain/token/editor from searchParams.
+  // Push URL values into context so child components can read them.
+  // No bidirectional sync — one direction only: URL → context.
   // ---------------------------------------------------------------------------
+  const urlChain = searchParams.get('chain') ?? null
+  const urlEditor = searchParams.get('editor') ?? null
+
+  // URL → context: keep context in sync with URL (context is a read cache)
   useEffect(() => {
-    const urlChain = searchParams.get('chain') ?? null
-    const urlEditor = searchParams.get('editor') ?? null
-    const stateChain = selectedChainId ?? null
-    const stateEditor = editorOpen ? (activeList?.id ?? 'new') : null
-
-    // URL and state already agree — nothing to do
-    if (urlChain === stateChain && urlEditor === stateEditor) return
-
-    // URL differs from state — decide which direction to sync.
-    // On mount (state is default/null), URL wins. After that, state wins.
-    const urlHasChain = urlChain !== null
-    const stateHasChain = stateChain !== null
-
-    // Chain sync
-    if (urlChain !== stateChain) {
-      if (urlHasChain && !stateHasChain) {
-        // URL → State (initial load or direct navigation)
-        selectChain(urlChain)
-        return
-      }
-      // State → URL (user action in a child component)
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        if (stateChain) next.set('chain', stateChain)
-        else next.delete('chain')
-        return next
-      }, { replace: true })
-    }
-
-    // Editor sync
-    if (urlEditor !== stateEditor) {
-      if (urlEditor && !editorOpen) {
-        if (urlEditor === 'new') openNewEditor()
-        else openEditor(urlEditor)
-        return
-      }
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        if (stateEditor) next.set('editor', stateEditor)
-        else next.delete('editor')
-        return next
-      }, { replace: true })
-    }
+    if (urlChain !== selectedChainId) selectChain(urlChain)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, selectedChainId, editorOpen, activeList])
+  }, [urlChain])
+
+  useEffect(() => {
+    if (urlEditor === 'new' && !editorOpen) openNewEditor()
+    else if (urlEditor && urlEditor !== 'new' && !editorOpen) openEditor(urlEditor)
+    else if (!urlEditor && editorOpen) closeEditor()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlEditor])
+
+  // URL-updating handlers passed to children — these are the primary actions
+  const urlSelectChain = useCallback((chainId: string | null) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (chainId) next.set('chain', chainId)
+      else { next.delete('chain'); next.delete('token') }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const urlSelectToken = useCallback((token: Token) => {
+    selectToken(token) // update context immediately for configurator
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('chain', String(token.chainId))
+      next.set('token', token.address)
+      return next
+    }, { replace: true })
+  }, [setSearchParams, selectToken])
 
   return (
     <div className="h-screen">
@@ -138,7 +126,7 @@ export default function Studio() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <StudioBrowser onInspectToken={setInspectToken} />
+                <StudioBrowser onInspectToken={setInspectToken} selectChain={urlSelectChain} selectToken={urlSelectToken} />
               </div>
             </div>
           </div>
@@ -180,7 +168,7 @@ export default function Studio() {
           {editorOpen ? (
             <ListEditor />
           ) : (
-            <StudioBrowser onInspectToken={setInspectToken} />
+            <StudioBrowser onInspectToken={setInspectToken} selectChain={urlSelectChain} selectToken={urlSelectToken} />
           )}
         </div>
 

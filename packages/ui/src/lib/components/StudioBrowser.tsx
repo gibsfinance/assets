@@ -18,6 +18,8 @@ import type { Token, SearchUpdate } from '../types'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
+  selectChain?: (chainId: string | null) => void
+  selectToken?: (token: Token) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +194,12 @@ interface AvailableList {
 const POPULAR_CHAIN_COUNT = 8
 const ROW_HEIGHT = 44
 
-export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
-  const { selectedChainId, selectedToken, selectToken, selectChain } = useStudio()
+export default function StudioBrowser({ onInspectToken, selectChain: selectChainProp, selectToken: selectTokenProp }: StudioBrowserProps) {
+  const studio = useStudio()
+  const selectedChainId = studio.selectedChainId
+  const selectedToken = studio.selectedToken
+  const selectToken = selectTokenProp ?? studio.selectToken
+  const selectChain = selectChainProp ?? studio.selectChain
   const { metrics, providers } = useMetrics()
   const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor, openNewEditor } = useListEditor()
 
