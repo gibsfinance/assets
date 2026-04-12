@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
@@ -213,12 +214,9 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
   } = useTokenBrowser()
 
   /* ----- Local UI state -------------------------------------------------- */
-  const [isLoadingLists, setIsLoadingLists] = useState(false)
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
   const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set())
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(() => new Set())
-  /** Server-authoritative total token count for the selected chain */
-  const [serverTotal, setServerTotal] = useState<number | null>(null)
 
   /* ----- Derive available lists from context providers -------------------- */
   const availableLists = useMemo(() => {
@@ -278,6 +276,77 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
     [activeList, addToken, createList, setActiveList],
   )
 
+  /* ----- Fetch all tokens for a chain in one request --------------------- */
+  interface ApiToken {
+    chainId: number
+    address: string
+    name: string
+    symbol: string
+    decimals: number
+    logoURI?: string
+    sources?: string[]
+  }
+
+  const { data: chainData, isLoading: isLoadingLists } = useQuery({
+    queryKey: ['tokensByChain', selectedChainId],
+    queryFn: async () => {
+      const response = await fetch(getApiUrl(`/list/tokens/${selectedChainId}`))
+      if (!response.ok) throw new Error(`${response.status}`)
+      return response.json() as Promise<{
+        chainId: number
+        total: number
+        tokens: ApiToken[]
+      }>
+    },
+    enabled: !!selectedChainId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  })
+
+  const mergedTokens = useMemo(() => {
+    if (!chainData?.tokens) return []
+    return chainData.tokens.map((token) => {
+      const sources = token.sources ?? []
+      const primarySource = sources[0] ?? 'merged'
+      const listReferences = sources.map((src) => ({
+        sourceList: src,
+        imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
+        imageFormat: '',
+      }))
+      return {
+        chainId: token.chainId,
+        address: token.address,
+        name: token.name,
+        symbol: token.symbol,
+        decimals: token.decimals,
+        hasIcon: !!token.logoURI,
+        sourceList: primarySource,
+        listReferences: listReferences.length > 0 ? listReferences : undefined,
+      }
+    })
+  }, [chainData])
+
+  const serverTotal = chainData?.total ?? null
+
+  useEffect(() => {
+    clearTokens()
+    setFailedIcons(new Set())
+    if (mergedTokens.length === 0) return
+
+    setListTokens('merged', mergedTokens)
+    const bySource = new Map<string, Token[]>()
+    for (const token of mergedTokens) {
+      for (const ref of token.listReferences ?? []) {
+        const list = bySource.get(ref.sourceList)
+        if (list) list.push(token)
+        else bySource.set(ref.sourceList, [token])
+      }
+    }
+    for (const [sourceList, sourceTokens] of bySource) {
+      setListTokens(sourceList, sourceTokens)
+    }
+  }, [mergedTokens, clearTokens, setListTokens])
+
   /* ----- Derived --------------------------------------------------------- */
   const selectedChainNumeric = selectedChainId ? Number(selectedChainId) : null
 
@@ -315,89 +384,6 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
   const hasSearchQuery = !!searchState?.query?.trim()
   const tokenCount = hasSearchQuery ? filteredTokens.length : (serverTotal ?? filteredTokens.length)
-
-  /* ----- Fetch all tokens for a chain in one request --------------------- */
-  const fetchingChainRef = useRef<number | null>(null)
-  const tryFetchTokenLists = useCallback(
-    async (chainId: number) => {
-      if (fetchingChainRef.current === chainId) return
-      fetchingChainRef.current = chainId
-      clearTokens()
-      setIsLoadingLists(true)
-      setServerTotal(null)
-      setFailedIcons(new Set())
-
-      try {
-        const response = await fetch(getApiUrl(`/list/tokens/${chainId}`))
-        if (fetchingChainRef.current !== chainId) return // chain changed during fetch
-        if (!response.ok) throw new Error(`${response.status}`)
-
-        const data = await response.json()
-        if (typeof data?.total === 'number') {
-          setServerTotal(data.total)
-        }
-        if (data?.tokens && Array.isArray(data.tokens)) {
-          interface ApiToken {
-            chainId: number
-            address: string
-            name: string
-            symbol: string
-            decimals: number
-            logoURI?: string
-            sources?: string[]
-          }
-          const tokens: Token[] = data.tokens.map((token: ApiToken) => {
-            const sources = token.sources ?? []
-            const primarySource = sources[0] ?? 'merged'
-            const listReferences = sources.map((src) => ({
-              sourceList: src,
-              imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
-              imageFormat: '',
-            }))
-            return {
-              chainId: token.chainId,
-              address: token.address,
-              name: token.name,
-              symbol: token.symbol,
-              decimals: token.decimals,
-              hasIcon: !!token.logoURI,
-              sourceList: primarySource,
-              listReferences: listReferences.length > 0 ? listReferences : undefined,
-            }
-          })
-          setListTokens('merged', tokens)
-
-          // Populate per-source list entries so the filter shows individual providers
-          const bySource = new Map<string, Token[]>()
-          for (const token of tokens) {
-            for (const ref of token.listReferences ?? []) {
-              const list = bySource.get(ref.sourceList)
-              if (list) {
-                list.push(token)
-              } else {
-                bySource.set(ref.sourceList, [token])
-              }
-            }
-          }
-          for (const [sourceList, sourceTokens] of bySource) {
-            setListTokens(sourceList, sourceTokens)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch tokens for chain:', error)
-      } finally {
-        fetchingChainRef.current = null
-      }
-
-      setIsLoadingLists(false)
-    },
-    [clearTokens, setListTokens],
-  )
-
-  useEffect(() => {
-    if (!selectedChainId) return
-    tryFetchTokenLists(Number(selectedChainId))
-  }, [selectedChainId, tryFetchTokenLists])
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
