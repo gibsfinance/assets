@@ -99,14 +99,14 @@ export function useMetrics(): {
 
   const evmNetworks = networks.filter((n) => n.type === 'evm')
 
-  const byChain: Record<number, number> = {}
+  const byChain: Record<string, number> = {}
   for (const { chainId, count } of stats) {
-    byChain[Number(chainId)] = count
+    byChain[chainId] = count
   }
   const total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
 
   const supported = evmNetworks
-    .filter((n) => byChain[Number(n.chainId)] !== undefined)
+    .filter((n) => byChain[n.chainId] !== undefined)
     .map((n) => ({
       chainId: Number(n.chainId),
       name: `Chain ${n.chainId}`,

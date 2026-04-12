@@ -3,8 +3,8 @@ import { Router } from 'express'
 import { nextOnError } from '../utils'
 import { getDrizzle } from '../../db/drizzle'
 import { sql as dsql, eq } from 'drizzle-orm'
+import { fromCAIP2 } from '../../chain-id'
 import * as s from '../../db/schema'
-import { toCAIP2 } from '../../chain-id'
 
 export const router = Router() as Router
 
@@ -32,6 +32,11 @@ router.get(
   '/',
   nextOnError(async (_req, res) => {
     const counts = await getStats()
-    res.send(counts.map((r) => ({ ...r, chainIdentifier: toCAIP2(r.chainId) })))
+    // chainId = bare number for backwards compat, chainIdentifier = CAIP-2
+    res.send(counts.map((r) => ({
+      chainId: fromCAIP2(r.chainId),
+      chainIdentifier: r.chainId,
+      count: r.count,
+    })))
   }),
 )

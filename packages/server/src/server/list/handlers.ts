@@ -20,7 +20,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
-import { toCAIP2 } from '../../chain-id'
+import { toCAIP2, fromCAIP2 } from '../../chain-id'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -164,7 +164,7 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   const limited = entries.slice(0, limit)
 
   return JSON.stringify({
-    chainId: Number(chainId.split('-').pop()),
+    chainId: +fromCAIP2(chainId),
     chainIdentifier: chainId,
     total: entries.length,
     tokens: limited,

@@ -3,6 +3,7 @@ import { cacheResult } from '@gibs/utils'
 import type { Network } from '../../db/schema-types'
 import { nextOnError } from '../utils'
 import config from '../../../config'
+import { fromCAIP2 } from '../../chain-id'
 import { getDrizzle } from '../../db/drizzle'
 import * as s from '../../db/schema'
 
@@ -17,6 +18,11 @@ router.get(
   nextOnError(async (_req, res) => {
     const networks = await getNetworks()
     res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-    res.json(networks)
+    // Return bare chainId for backwards compat, add chainIdentifier
+    res.json(networks.map((n) => ({
+      ...n,
+      chainId: fromCAIP2(n.chainId),
+      chainIdentifier: n.chainId,
+    })))
   }),
 )
