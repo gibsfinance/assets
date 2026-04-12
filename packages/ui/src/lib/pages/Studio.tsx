@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import BottomDrawer from '../components/BottomDrawer'
 import Image from '../components/Image'
@@ -30,83 +30,57 @@ export default function Studio() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // ---------------------------------------------------------------------------
-  // URL → State: apply URL params on mount and when URL changes
+  // Single bidirectional sync — URL and state are reconciled in one effect.
+  // URL wins on initial load; after that, state changes push to URL.
+  // Running in ONE effect prevents the race where separate effects see stale
+  // values from the same render.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const chain = searchParams.get('chain')
-    const editor = searchParams.get('editor')
+    const urlChain = searchParams.get('chain') ?? null
+    const urlEditor = searchParams.get('editor') ?? null
+    const stateChain = selectedChainId ?? null
+    const stateEditor = editorOpen ? (activeList?.id ?? 'new') : null
 
-    // Sync chain from URL
-    if (chain && chain !== selectedChainId) {
-      selectChain(chain)
-    }
+    // URL and state already agree — nothing to do
+    if (urlChain === stateChain && urlEditor === stateEditor) return
 
-    // Sync editor from URL
-    if (editor === 'new' && !editorOpen) {
-      openNewEditor()
-    } else if (editor && editor !== 'new' && !editorOpen) {
-      openEditor(editor)
-    } else if (!editor && editorOpen) {
-      closeEditor()
-    }
-  // Only run when URL changes, not when state changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+    // URL differs from state — decide which direction to sync.
+    // On mount (state is default/null), URL wins. After that, state wins.
+    const urlHasChain = urlChain !== null
+    const stateHasChain = stateChain !== null
 
-  // ---------------------------------------------------------------------------
-  // State → URL: update URL when navigational state changes
-  // ---------------------------------------------------------------------------
-  const updateUrl = useCallback(
-    (updates: Record<string, string | null>) => {
+    // Chain sync
+    if (urlChain !== stateChain) {
+      if (urlHasChain && !stateHasChain) {
+        // URL → State (initial load or direct navigation)
+        selectChain(urlChain)
+        return
+      }
+      // State → URL (user action in a child component)
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev)
-        for (const [key, value] of Object.entries(updates)) {
-          if (value === null) {
-            next.delete(key)
-          } else {
-            next.set(key, value)
-          }
-        }
+        if (stateChain) next.set('chain', stateChain)
+        else next.delete('chain')
         return next
       }, { replace: true })
-    },
-    [setSearchParams],
-  )
+    }
 
-  // Sync chain selection to URL
-  useEffect(() => {
-    const urlChain = searchParams.get('chain')
-    if (selectedChainId && selectedChainId !== urlChain) {
-      updateUrl({ chain: selectedChainId })
-    } else if (!selectedChainId && urlChain) {
-      updateUrl({ chain: null })
+    // Editor sync
+    if (urlEditor !== stateEditor) {
+      if (urlEditor && !editorOpen) {
+        if (urlEditor === 'new') openNewEditor()
+        else openEditor(urlEditor)
+        return
+      }
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (stateEditor) next.set('editor', stateEditor)
+        else next.delete('editor')
+        return next
+      }, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChainId])
-
-  // Sync token selection to URL
-  useEffect(() => {
-    const urlToken = searchParams.get('token')
-    if (selectedToken && selectedToken.address !== urlToken) {
-      updateUrl({ token: selectedToken.address, chain: String(selectedToken.chainId) })
-    } else if (!selectedToken && urlToken) {
-      updateUrl({ token: null })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToken])
-
-  // Sync editor state to URL
-  useEffect(() => {
-    const urlEditor = searchParams.get('editor')
-    if (editorOpen && activeList && activeList.id !== urlEditor) {
-      updateUrl({ editor: activeList.id })
-    } else if (editorOpen && !activeList && urlEditor !== 'new') {
-      updateUrl({ editor: 'new' })
-    } else if (!editorOpen && urlEditor) {
-      updateUrl({ editor: null })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorOpen, activeList])
+  }, [searchParams, selectedChainId, editorOpen, activeList])
 
   return (
     <div className="h-screen">

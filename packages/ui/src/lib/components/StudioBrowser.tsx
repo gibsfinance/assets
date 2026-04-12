@@ -333,6 +333,7 @@ export default function StudioBrowser({ onInspectToken }: StudioBrowserProps) {
 
       try {
         const response = await fetch(getApiUrl(`/list/tokens/${chainId}`))
+        if (fetchingChainRef.current !== chainId) return // chain changed during fetch
         if (!response.ok) throw new Error(`${response.status}`)
 
         const data = await response.json()
