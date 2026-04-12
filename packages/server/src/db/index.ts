@@ -1468,6 +1468,11 @@ export const purgeExpiredCache = (tx?: DrizzleTx) => {
   return db.delete(s.cacheRequest).where(lt(s.cacheRequest.expiresAt, dsql`NOW()`))
 }
 
+export const clearCache = (tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return db.delete(s.cacheRequest)
+}
+
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   // Knex InsertableCacheRequest has expiresAt: Date; Drizzle schema uses mode: 'string'.

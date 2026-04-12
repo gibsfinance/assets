@@ -11,6 +11,8 @@ import { listen } from '../server'
 listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
   .then(async () => {
     await db.migrate()
+    await db.clearCache()
+    log('cache cleared')
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
     await syncDefaultOrder(keys, manifests)
