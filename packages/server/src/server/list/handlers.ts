@@ -20,6 +20,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
+import { fromCAIP2, toCAIP2 } from '../../chain-id'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -162,15 +163,22 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   const entries = allEntries.filter((e) => e.logoURI)
   const limited = entries.slice(0, limit)
 
-  return JSON.stringify({ chainId: +chainId, total: entries.length, tokens: limited })
+  return JSON.stringify({
+    chainId: +chainId,
+    chainIdentifier: toCAIP2(chainId),
+    total: entries.length,
+    tokens: limited,
+  })
 }
 
 // In-flight revalidation tracker — prevents duplicate background refreshes
 const revalidating = new Set<string>()
 
 export const tokensByChain: RequestHandler = async (req, res, next) => {
-  const chainId = req.params.chainId
-  if (!chainId || !/^\d+$/.test(chainId)) return next(createError.BadRequest('valid numeric chainId required'))
+  const rawChainId = req.params.chainId
+  if (!rawChainId) return next(createError.BadRequest('chainId required'))
+  // Accept both bare numbers (369) and CAIP-2 (eip155-369)
+  const chainId = fromCAIP2(rawChainId)
 
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)

@@ -4,6 +4,7 @@ import { nextOnError } from '../utils'
 import { getDrizzle } from '../../db/drizzle'
 import { sql as dsql, eq } from 'drizzle-orm'
 import * as s from '../../db/schema'
+import { toCAIP2 } from '../../chain-id'
 
 export const router = Router() as Router
 
@@ -31,6 +32,6 @@ router.get(
   '/',
   nextOnError(async (_req, res) => {
     const counts = await getStats()
-    res.send(counts)
+    res.send(counts.map((r) => ({ ...r, chainIdentifier: toCAIP2(r.chainId) })))
   }),
 )
