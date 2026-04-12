@@ -4,9 +4,14 @@ import { cleanup } from '../cleanup'
 import { syncDefaultOrder, buildManifestsFromDB, startPeriodicRefresh } from '../db/sync-order'
 import { allCollectables } from '../collect/collectables'
 import { log } from '../logger'
+import { setReady } from '../server/app'
 
-db.migrate()
+// Start HTTP server immediately so the load balancer can probe /health (503 until ready)
+server
+  .listen()
   .then(async () => {
+    // Run migrations + warm-up while returning 503 on /health
+    await db.migrate()
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
     await syncDefaultOrder(keys, manifests)
@@ -26,9 +31,12 @@ db.migrate()
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
-    return server.main()
+    // Flip health check to 200 — load balancer can start routing traffic
+    setReady()
+    log('server ready')
   })
   .catch((err) => {
     console.error(err)
+    process.exit(1)
   })
   .then(cleanup)

@@ -1011,7 +1011,7 @@ export const getTokensUnderListId = () => {
       listKey: s.list.key,
     })
     .from(s.listToken)
-    .fullJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .leftJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
     .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
     .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
@@ -1234,7 +1234,7 @@ export const applyOrder = async (
       `
       : dsql`
         ${s.listToken}
-        FULL OUTER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+        LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         INNER JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
         INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
         INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
