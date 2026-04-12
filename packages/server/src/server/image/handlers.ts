@@ -13,6 +13,7 @@ import httpErrors, { HttpError } from 'http-errors'
 import * as path from 'path'
 import { imageMode } from '../../db/tables'
 import type { ChainId } from '@gibs/utils'
+import { fromCAIP2 } from '../../chain-id'
 import * as utils from '../../utils'
 import * as db from '../../db'
 import config from '../../../config'
@@ -268,7 +269,7 @@ export const getImage =
   (parseOrder: boolean): RequestHandler =>
   async (req, res, _next) => {
     const { img, outputExt } = await getListImage(parseOrder)({
-      chainId: Number(req.params.chainId),
+      chainId: Number(fromCAIP2(req.params.chainId)),
       address: req.params.address as viem.Hex,
       order: req.params.order,
       typeFilter: parseTypeFilter(req.query.only),
@@ -288,7 +289,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const listKey = queryStringToList(req.query.listKey)
   const typeFilter = parseTypeFilter(req.query.only)
   let result = await getListImage(true)({
-    chainId: Number(req.params.chainId),
+    chainId: Number(fromCAIP2(req.params.chainId)),
     address: req.params.address as viem.Hex,
     order: req.params.order,
     typeFilter,
@@ -297,7 +298,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   }).catch(ignoreNotFound)
   if (!result) {
     result = await getListImage(false)({
-      chainId: Number(req.params.chainId),
+      chainId: Number(fromCAIP2(req.params.chainId)),
       address: req.params.address as viem.Hex,
       typeFilter,
       providerKey,
@@ -330,10 +331,11 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {
   const { filename: chainId, exts } = splitExt(chainIdParam)
-  if (!+chainId) {
+  const bareChainId = fromCAIP2(chainId)
+  if (!+bareChainId) {
     throw httpErrors.BadRequest('chainId')
   }
-  const { img } = await getNetworkIcon(+chainId, exts)
+  const { img } = await getNetworkIcon(+bareChainId, exts)
   if (!img) {
     throw httpErrors.NotFound('best guess network image not found')
   }

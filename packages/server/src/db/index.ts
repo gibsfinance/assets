@@ -14,6 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
+import { toCAIP2, fromCAIP2 } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
@@ -299,7 +300,7 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
     .values({
       networkId: dsql`''`,
       type,
-      chainId: chainId.toString(),
+      chainId: toCAIP2(chainId.toString()),
     })
     .onConflictDoUpdate({
       target: s.network.networkId,
@@ -525,7 +526,7 @@ export const getImageByAddress = async (
   const [network] = await db
     .select()
     .from(s.network)
-    .where(eq(s.network.chainId, String(chainId)))
+    .where(eq(s.network.chainId, toCAIP2(String(chainId))))
     .limit(1)
   if (!network) return null
   const [token] = await db

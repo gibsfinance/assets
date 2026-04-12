@@ -8,7 +8,6 @@ import {
   foreignKey,
   jsonb,
   smallint,
-  numeric,
   boolean,
   bigint,
   uuid,
@@ -85,7 +84,7 @@ export const network = pgTable(
   {
     networkId: text('network_id').primaryKey().notNull(),
     type: text().notNull(),
-    chainId: numeric('chain_id', { precision: 78, scale: 0 }).notNull(),
+    chainId: text('chain_id').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
@@ -95,7 +94,7 @@ export const network = pgTable(
     imageHash: text('image_hash'),
   },
   (table) => [
-    index('network_chainid_index').using('btree', table.chainId.asc().nullsLast().op('numeric_ops')),
+    index('network_chainid_index').using('btree', table.chainId.asc().nullsLast().op('text_ops')),
     index('network_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
     index('network_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),

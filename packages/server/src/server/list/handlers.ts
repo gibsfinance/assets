@@ -20,7 +20,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
-import { fromCAIP2, toCAIP2 } from '../../chain-id'
+import { toCAIP2 } from '../../chain-id'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -30,8 +30,8 @@ export const merged: RequestHandler = async (req, res, next) => {
   }
   const chainId = req.query.chainId as string | undefined
   const whereClause = chainId
-    ? and(dsql`${s.network.chainId} != '0'`, eq(s.network.chainId, chainId))!
-    : dsql`${s.network.chainId} != '0'`
+    ? and(dsql`${s.network.chainId} != 'asset-0'`, eq(s.network.chainId, toCAIP2(chainId)))!
+    : dsql`${s.network.chainId} != 'asset-0'`
   const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
@@ -177,8 +177,8 @@ const revalidating = new Set<string>()
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const rawChainId = req.params.chainId
   if (!rawChainId) return next(createError.BadRequest('chainId required'))
-  // Accept both bare numbers (369) and CAIP-2 (eip155-369)
-  const chainId = fromCAIP2(rawChainId)
+  // Accept both bare numbers (369) and CAIP-2 (eip155-369) — DB stores CAIP-2
+  const chainId = toCAIP2(rawChainId)
 
   const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
   const extensions = getExtensions(req)
