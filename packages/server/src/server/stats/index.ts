@@ -20,6 +20,7 @@ const getStats = cacheResult<Result[]>(async () => {
     })
     .from(s.network)
     .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
+    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
     .groupBy(s.network.chainId)
     .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
   return rows as unknown as Result[]
