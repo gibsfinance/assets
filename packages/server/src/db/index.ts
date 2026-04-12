@@ -1329,14 +1329,13 @@ export const getTokensByChain = async (
     INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
     INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
-    INNER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
     LEFT JOIN ${s.listOrderItem} ON (
       ${eq(s.listOrderItem.listKey, s.list.key)}
       AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
       AND ${s.listOrderItem.listOrderId} = ${listOrderId}
     )
     WHERE ${s.network.chainId} = ${chainId}
-      AND ${s.token.providedId} LIKE '0x%'
   `)
   return rows.rows
 }

@@ -157,7 +157,9 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   tokens.sort(rankTokenRows)
 
   const filters = utils.tokenFilters({})
-  const entries = utils.normalizeTokens(tokens, filters, extensions)
+  const allEntries = utils.normalizeTokens(tokens, filters, extensions)
+  // Only return tokens that have images — imageless tokens aren't useful to display
+  const entries = allEntries.filter((e) => e.logoURI)
   const limited = entries.slice(0, limit)
 
   return JSON.stringify({ chainId: +chainId, total: entries.length, tokens: limited })

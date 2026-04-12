@@ -2,7 +2,7 @@ import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'
 import { getDrizzle } from '../../db/drizzle'
-import { sql as dsql, eq, like } from 'drizzle-orm'
+import { sql as dsql, eq } from 'drizzle-orm'
 import * as s from '../../db/schema'
 
 export const router = Router() as Router
@@ -22,7 +22,6 @@ export const getStats = cacheResult<Result[]>(async () => {
     .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
     .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
     .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
-    .where(like(s.token.providedId, '0x%'))
     .groupBy(s.network.chainId)
     .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
   return rows as unknown as Result[]
