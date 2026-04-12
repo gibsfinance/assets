@@ -5,6 +5,7 @@ import { allCollectables } from '../collect/collectables'
 import { log } from '../logger'
 import { app, setReady } from '../server/app'
 import { listen } from '../server'
+import { getStats } from '../server/stats'
 
 // Start HTTP server immediately so the load balancer can probe /health (503 until ready).
 // Warm-up runs in the background; setReady() flips /health to 200 when done.
@@ -31,6 +32,8 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
+    // Pre-warm stats cache so first request is instant
+    getStats().then(() => log('stats cache warmed')).catch(() => {})
     setReady()
     log('server ready')
     // Wait for the server to close before running cleanup

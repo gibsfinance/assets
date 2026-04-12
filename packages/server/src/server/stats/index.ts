@@ -12,7 +12,7 @@ type Result = {
   count: number
 }
 
-const getStats = cacheResult<Result[]>(async () => {
+export const getStats = cacheResult<Result[]>(async () => {
   const rows = await getDrizzle()
     .select({
       chainId: s.network.chainId,
