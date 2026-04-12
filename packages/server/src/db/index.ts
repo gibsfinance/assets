@@ -1302,53 +1302,58 @@ export const getTokensByChain = async (
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql()
-  const rows = await db.execute<Record<string, unknown>>(dsql`
-    SELECT
-      ${s.network.chainId} AS "chainId",
-      ${s.token.providedId} AS "providedId",
-      ${s.token.decimals},
-      ${s.token.symbol},
-      ${s.token.name},
-      ${s.token.tokenId} AS "tokenId",
-      best.*
-    FROM ${s.token}
-    INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
-    CROSS JOIN LATERAL (
+  // Use a transaction to raise statement_timeout for large chains (ETH, BSC)
+  // while keeping the default 60s for everything else
+  return db.transaction(async (tx) => {
+    await tx.execute(dsql.raw("SET LOCAL statement_timeout = '300s'"))
+    const rows = await tx.execute<Record<string, unknown>>(dsql`
       SELECT
-        ${s.image.imageHash} AS "imageHash",
-        ${s.image.ext},
-        ${s.image.mode},
-        ${s.image.uri},
-        ${s.provider.key} AS "providerKey",
-        ${s.list.key} AS "listKey",
-        ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
-        ${s.list.major} AS "listMajor",
-        ${s.list.minor} AS "listMinor",
-        ${s.list.patch} AS "listPatch",
-        ${s.list.default} AS "listDefault",
-        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
-      FROM ${s.listToken}
-      INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
-      INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
-      LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
-      LEFT JOIN ${s.listOrderItem} ON (
-        ${eq(s.listOrderItem.listKey, s.list.key)}
-        AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
-        AND ${s.listOrderItem.listOrderId} = ${listOrderId}
-      )
-      WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
-      ORDER BY
-        (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-        ${formatOrder} ASC,
-        ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-        ${s.list.default} ASC,
-        ${s.list.key} ASC,
-        ${s.listToken.listTokenOrderId} ASC
-      LIMIT 1
-    ) best
-    WHERE ${s.network.chainId} = ${chainId}
-  `)
-  return rows.rows
+        ${s.network.chainId} AS "chainId",
+        ${s.token.providedId} AS "providedId",
+        ${s.token.decimals},
+        ${s.token.symbol},
+        ${s.token.name},
+        ${s.token.tokenId} AS "tokenId",
+        best.*
+      FROM ${s.token}
+      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+      CROSS JOIN LATERAL (
+        SELECT
+          ${s.image.imageHash} AS "imageHash",
+          ${s.image.ext},
+          ${s.image.mode},
+          ${s.image.uri},
+          ${s.provider.key} AS "providerKey",
+          ${s.list.key} AS "listKey",
+          ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+          ${s.list.major} AS "listMajor",
+          ${s.list.minor} AS "listMinor",
+          ${s.list.patch} AS "listPatch",
+          ${s.list.default} AS "listDefault",
+          COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
+        FROM ${s.listToken}
+        INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
+        INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+        LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+        LEFT JOIN ${s.listOrderItem} ON (
+          ${eq(s.listOrderItem.listKey, s.list.key)}
+          AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+          AND ${s.listOrderItem.listOrderId} = ${listOrderId}
+        )
+        WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
+        ORDER BY
+          (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
+          ${formatOrder} ASC,
+          ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+          ${s.list.default} ASC,
+          ${s.list.key} ASC,
+          ${s.listToken.listTokenOrderId} ASC
+        LIMIT 1
+      ) best
+      WHERE ${s.network.chainId} = ${chainId}
+    `)
+    return rows.rows
+  })
 }
 
 export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {
