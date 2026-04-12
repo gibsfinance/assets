@@ -97,21 +97,27 @@ export function useMetrics(): {
     return { metrics: null, providers: providers ?? [], isLoading }
   }
 
+  // Extract bare numeric reference from either "369" or "eip155-369"
+  const bare = (id: string) => id.includes('-') ? id.split('-').pop()! : id
+
   const evmNetworks = networks.filter((n) => n.type === 'evm')
 
   const byChain: Record<string, number> = {}
   for (const { chainId, count } of stats) {
-    byChain[chainId] = count
+    byChain[bare(chainId)] = count
   }
   const total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
 
   const supported = evmNetworks
-    .filter((n) => byChain[n.chainId] !== undefined)
-    .map((n) => ({
-      chainId: Number(n.chainId),
-      name: `Chain ${n.chainId}`,
-      isActive: n.chainId === '369',
-    }))
+    .filter((n) => byChain[bare(n.chainId)] !== undefined)
+    .map((n) => {
+      const id = bare(n.chainId)
+      return {
+        chainId: Number(id),
+        name: `Chain ${id}`,
+        isActive: id === '369',
+      }
+    })
 
   const metrics: PlatformMetrics = {
     tokenList: { total, byChain },
