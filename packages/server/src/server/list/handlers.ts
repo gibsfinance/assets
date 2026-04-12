@@ -164,8 +164,8 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   const limited = entries.slice(0, limit)
 
   return JSON.stringify({
-    chainId: +chainId,
-    chainIdentifier: toCAIP2(chainId),
+    chainId: Number(chainId.split('-').pop()),
+    chainIdentifier: chainId,
     total: entries.length,
     tokens: limited,
   })

@@ -12,7 +12,6 @@ import * as viem from 'viem'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { failures, type ChainId } from '@gibs/utils'
-import { toCAIP2 } from '../chain-id'
 
 import type { TokenEntry } from '../types'
 import type { Image } from '../db/schema-types'
@@ -71,8 +70,12 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') =>
-  toKeccakBytes(`${type}${toCAIP2(String(chainId))}`)
+/** Hash type + bare reference for network_id. Accepts both '369' and 'eip155-369'. */
+export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => {
+  const str = String(chainId)
+  const bare = str.includes('-') ? str.split('-').slice(1).join('-') : str
+  return toKeccakBytes(`${type}${bare}`)
+}
 
 const folderAccessLimit = promiseLimit<any>(256)
 
