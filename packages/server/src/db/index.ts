@@ -1303,74 +1303,82 @@ export const getTokensByChain = async (
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql()
 
-  // REPEATABLE READ ensures all batches see the same snapshot — no phantom
-  // tokens or shifted images between batch 1 and batch N.
+  // Resolve network_ids so each batch can use idx_token_network_token
+  // for an efficient keyset range scan (single network_id + token_id cursor).
+  const networkIds = await db
+    .select({ networkId: s.network.networkId, chainId: s.network.chainId })
+    .from(s.network)
+    .where(eq(s.network.chainId, chainId))
+
+  if (networkIds.length === 0) return []
+
+  // REPEATABLE READ ensures all batches see the same snapshot.
   return db.transaction(async (tx) => {
     await tx.execute(dsql.raw('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ'))
 
     const results: Record<string, unknown>[] = []
-    let cursor = ''
-    let hasMore = true
-    while (hasMore) {
-      const rows = await tx.execute<Record<string, unknown>>(dsql`
-      WITH batch AS (
-        SELECT ${s.token.tokenId}, ${s.token.providedId}, ${s.token.decimals},
-               ${s.token.symbol}, ${s.token.name}, ${s.token.networkId}
-        FROM ${s.token}
-        INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
-        WHERE ${s.network.chainId} = ${chainId}
-          AND ${s.token.tokenId} > ${cursor}
-        ORDER BY ${s.token.tokenId} ASC
-        LIMIT ${TOKEN_BATCH_SIZE}
-      )
-      SELECT
-        ${s.network.chainId} AS "chainId",
-        batch.${s.token.providedId} AS "providedId",
-        batch.${s.token.decimals},
-        batch.${s.token.symbol},
-        batch.${s.token.name},
-        batch.${s.token.tokenId} AS "tokenId",
-        best.*
-      FROM batch
-      INNER JOIN ${s.network} ON ${s.network.networkId} = batch.${s.token.networkId}
-      CROSS JOIN LATERAL (
-        SELECT
-          ${s.image.imageHash} AS "imageHash",
-          ${s.image.ext},
-          ${s.image.mode},
-          ${s.image.uri},
-          ${s.provider.key} AS "providerKey",
-          ${s.list.key} AS "listKey",
-          ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
-          ${s.list.major} AS "listMajor",
-          ${s.list.minor} AS "listMinor",
-          ${s.list.patch} AS "listPatch",
-          ${s.list.default} AS "listDefault",
-          COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
-        FROM ${s.listToken}
-        INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
-        INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
-        LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
-        LEFT JOIN ${s.listOrderItem} ON (
-          ${eq(s.listOrderItem.listKey, s.list.key)}
-          AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
-          AND ${s.listOrderItem.listOrderId} = ${listOrderId}
-        )
-        WHERE ${s.listToken.tokenId} = batch.${s.token.tokenId}
-        ORDER BY
-          (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-          ${formatOrder} ASC,
-          ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-          ${s.list.default} ASC,
-          ${s.list.key} ASC,
-          ${s.listToken.listTokenOrderId} ASC
-        LIMIT 1
-      ) best
-    `)
-      results.push(...rows.rows)
-      hasMore = rows.rows.length === TOKEN_BATCH_SIZE
-      if (hasMore) {
-        cursor = rows.rows[rows.rows.length - 1].tokenId as string
+    for (const { networkId, chainId: cId } of networkIds) {
+      let cursor = ''
+      let hasMore = true
+      while (hasMore) {
+        const rows = await tx.execute<Record<string, unknown>>(dsql`
+          WITH batch AS (
+            SELECT ${s.token.tokenId}, ${s.token.providedId}, ${s.token.decimals},
+                   ${s.token.symbol}, ${s.token.name}
+            FROM ${s.token}
+            WHERE ${s.token.networkId} = ${networkId}
+              AND ${s.token.tokenId} > ${cursor}
+            ORDER BY ${s.token.tokenId} ASC
+            LIMIT ${TOKEN_BATCH_SIZE}
+          )
+          SELECT
+            ${cId} AS "chainId",
+            batch.${s.token.providedId} AS "providedId",
+            batch.${s.token.decimals},
+            batch.${s.token.symbol},
+            batch.${s.token.name},
+            batch.${s.token.tokenId} AS "tokenId",
+            best.*
+          FROM batch
+          CROSS JOIN LATERAL (
+            SELECT
+              ${s.image.imageHash} AS "imageHash",
+              ${s.image.ext},
+              ${s.image.mode},
+              ${s.image.uri},
+              ${s.provider.key} AS "providerKey",
+              ${s.list.key} AS "listKey",
+              ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+              ${s.list.major} AS "listMajor",
+              ${s.list.minor} AS "listMinor",
+              ${s.list.patch} AS "listPatch",
+              ${s.list.default} AS "listDefault",
+              COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
+            FROM ${s.listToken}
+            INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
+            INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+            LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+            LEFT JOIN ${s.listOrderItem} ON (
+              ${eq(s.listOrderItem.listKey, s.list.key)}
+              AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+              AND ${s.listOrderItem.listOrderId} = ${listOrderId}
+            )
+            WHERE ${s.listToken.tokenId} = batch.${s.token.tokenId}
+            ORDER BY
+              (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
+              ${formatOrder} ASC,
+              ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+              ${s.list.default} ASC,
+              ${s.list.key} ASC,
+              ${s.listToken.listTokenOrderId} ASC
+            LIMIT 1
+          ) best
+        `)
+        results.push(...rows.rows)
+        hasMore = rows.rows.length === TOKEN_BATCH_SIZE
+        if (hasMore) {
+          cursor = rows.rows[rows.rows.length - 1].tokenId as string
+        }
       }
     }
     return results
