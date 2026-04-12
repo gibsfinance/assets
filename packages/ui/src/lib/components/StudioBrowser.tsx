@@ -60,8 +60,13 @@ function VirtualTokenList({
     measureElement: (el) => el.getBoundingClientRect().height,
   })
 
+  // Re-measure when tokens expand/collapse so rows below reflow
+  useEffect(() => {
+    virtualizer.measure()
+  }, [expandedTokens, virtualizer])
+
   return (
-    <div ref={parentRef} className="flex-1 overflow-y-auto" style={{ contain: 'strict' }}>
+    <div ref={parentRef} className="flex-1 overflow-y-auto" style={{ contain: 'layout style' }}>
       <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const token = tokens[virtualRow.index]
