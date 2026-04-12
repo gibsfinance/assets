@@ -14,7 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
-import { toCAIP2, fromCAIP2 } from '../chain-id'
+import { toCAIP2 } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
