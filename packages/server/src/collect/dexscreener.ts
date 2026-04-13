@@ -101,10 +101,10 @@ class DexscreenerCollector extends BaseCollector {
       key: providerKey,
       name: 'DexScreener',
     })
-    const allNetworksId = utils.chainIdToNetworkId(0)
+    const network = await db.insertNetworkFromChainId(0)
     await db.insertList({
       providerId: provider.providerId,
-      networkId: allNetworksId,
+      networkId: network.networkId,
       key: 'api',
       name: 'DexScreener',
     })
@@ -127,10 +127,10 @@ class DexscreenerCollector extends BaseCollector {
         key: providerKey,
         name: 'DexScreener',
       })
-      const allNetworksId = utils.chainIdToNetworkId(0)
+      const network = await db.insertNetworkFromChainId(0)
       const [listOfAllTokens] = await db.insertList({
         providerId: provider.providerId,
-        networkId: allNetworksId,
+        networkId: network.networkId,
         key: 'api',
         name: 'DexScreener',
       })
