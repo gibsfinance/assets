@@ -41,9 +41,20 @@ export const destroyTerminal = () => {
   terminal = null
 }
 
-// Handle Ctrl+C gracefully
+// Handle Ctrl+C gracefully — force exit after 3s if collectors don't stop
+let sigintCount = 0
 process.on('SIGINT', () => {
-  stop('Stopped by user')
+  sigintCount++
+  if (sigintCount === 1) {
+    stop('Stopped by user')
+    setTimeout(() => {
+      console.error('\nForce exiting — collectors did not stop in time')
+      process.exit(1)
+    }, 3000).unref()
+  } else {
+    // Second Ctrl+C = immediate exit
+    process.exit(1)
+  }
 })
 
 export const stop = (message: string) => {
