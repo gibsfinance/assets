@@ -1,5 +1,62 @@
 # Gib.Show — Progress
 
+## Session: April 12, 2026
+
+### Completed
+
+**Server performance (tokensByChain endpoint)**
+- Removed image.content blob from list queries
+- Added composite indexes for join optimization
+- FULL OUTER JOIN → LEFT JOIN for predicate pushdown
+- Replaced dense_rank CTE with flat join + JS-side ranking sort
+- Stale-while-revalidate response caching (5min fresh, 1hr stale)
+- Health check readiness gate (503 until migrations complete)
+- Stats endpoint pre-warmed on startup, cache cleared on startup
+
+**CAIP-2 chain identifiers**
+- Schema: network.chain_id from numeric → text, stores eip155-369 format
+- API: accepts both "369" and "eip155-369", returns bare chainId + chainIdentifier
+- chain 0 → asset-0 namespace
+- Trigger extracts bare reference (SPLIT_PART) to keep network_id hashes stable
+
+**TanStack Query migration**
+- Installed @tanstack/react-query
+- Migrated useImageMetadata, useMetrics (deleted MetricsContext), StudioBrowser token fetch
+
+**Collector fixes**
+- CoinGecko: guard non-array response
+- TrustWallet: removed duplicate terminal row
+- Countries: fixed import path
+- DexScreener: insert network before referencing its ID
+- Ctrl+C: 3s grace period force exit, double-tap immediate
+
+**UI fixes**
+- Virtualizer reflow on group expand
+- Image component: inline-block → flex
+- Studio URL as source of truth (no bidirectional sync race)
+- Per-source list entries in filter, imageless tokens filtered server-side
+- getLists: fallback when no default list
+
+**Testing: 307 server + 68 utils + 416 UI tests, all passing**
+
+**Abort signal audit (all 10 collectors fixed)**
+- Created signal-aware `delay()` helper in `packages/server/src/utils/delay.ts`
+- Added signal support to `erc20Read` in `@gibs/utils` (benefits 4 collectors)
+- countries: signal required, loop guard
+- internetmoney: signal guards in 3 loops (discover networks, collect icons, collect tokens)
+- coingecko: signal guard in retry loop, replaced `timeout()` with signal-aware `delay()`
+- trustwallet: signal passed to `getChainListResult` fetch, `loadChainId`, loop guard in collect
+- dexscreener: discover signal required, while-loop guard, signal to `fetchImageAndStoreForNetwork`
+- pumptires: loop guards in 3 maps (launched, highcap filter, highcap insert), cancellable multicall timeout
+- omnibridge: signal param added to `iterateOverRange`, cancellable retry delay, signal to `erc20Read`
+- etherscan: signal required everywhere, cancellable delays (500ms RPC, 3s nav, 10s Cloudflare), loop guards
+- routescan: signal required everywhere, cancellable rate-limit delay, signal to `erc20Read`/`backfillTokenMetadata`
+
+### Next Steps
+1. tokensByChain cold hit still slow for large chains (~16s ETH)
+2. `isActive: id === '369'` hardcoded in useMetrics — should be dynamic
+3. Merge staging → production
+
 ## Session: March 25-30, 2026
 
 ### Completed
@@ -7,27 +64,6 @@
 - Token list ordering: provider ranking → version → format preference
 - Image serving: ?as= for conversion, ?only= for source filtering
 - Pumptires collector migrated to api2.pump.tires v2 API
-- Server coverage: 56% → 98% lines (247 server tests + 46 UI tests)
+- Server coverage: 56% → 98% lines
 - Production hotfixes: applyOrder raw SQL + missing joins
 - Docs page: live editable endpoints with stats panel
-- Lint: 0 errors (54 warnings in collectors — unused vars)
-- Fixed tokenFilters decimals bug (_.toArray split '18' → ['1','8'])
-- Fixed CI: typecheck (Hex types), prettier formatting, tsconfig excludes
-- Extracted pure functions from UI components → utils/ with tests
-- UI type fixes: CodeOutput shape literal, StudioBrowser ListDescription
-
-### Production State
-- Two hotfixes pushed (applyOrder syntax + missing joins)
-- Still on old Knex codebase — Drizzle migration not merged yet
-- Merge staging → production needed for full deployment
-
-### Test Coverage
-- Server: 97.96% lines, 94.33% branches, 97.1% functions (247 tests)
-- UI utils: 46 pure function tests (code-output, formatting, list-order)
-- Coverage files: handlers.ts 94%, submissions.ts 100%, resize.ts 100%
-
-### Next Steps
-- Merge staging → production
-- Clean up 54 unused import lint warnings in collectors
-- Remove old Knex migration files from staging (still in src/db/migrations/)
-- Consider extracting more UI logic (TokenSearch dedup/sort, useTokenBrowser)
