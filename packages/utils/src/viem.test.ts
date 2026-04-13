@@ -457,4 +457,15 @@ describe('erc20Read', () => {
 
     vi.useRealTimers()
   })
+
+  it('rejects when signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('test abort'))
+    const chain = { id: 1, contracts: { multicall3: { address: '0x0' } } } as any
+    const client = {} as any
+    const target = '0x0000000000000000000000000000000000000001' as `0x${string}`
+    await expect(
+      erc20Read(chain, client, target, { signal: controller.signal }),
+    ).rejects.toThrow('test abort')
+  })
 })
