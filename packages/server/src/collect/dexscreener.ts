@@ -96,7 +96,7 @@ const parseSidebarChainInfo = () => {
 class DexscreenerCollector extends BaseCollector {
   readonly key = 'dexscreener'
 
-  async discover(_signal?: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
       name: 'DexScreener',
@@ -164,6 +164,7 @@ class DexscreenerCollector extends BaseCollector {
       row.createCounter('blacklisted', true)
       row.increment('blacklisted', chainBlacklist)
       await limitBy<[string, ChainInfo]>('dexscreener', 32).map([...parsedChainInfo.entries()], async ([key, info]) => {
+        if (signal.aborted) return
         const chain = chainIdToChain.get(key)
         if (!chain) {
           return
@@ -178,6 +179,7 @@ class DexscreenerCollector extends BaseCollector {
               uri: image ?? url.href,
               originalUri: url.href,
               providerKey: provider.providerId,
+              signal,
             },
             tx,
           )
@@ -227,6 +229,7 @@ class DexscreenerCollector extends BaseCollector {
           }
           let nextKeys = new Set<string>()
           while ((nextKeys = collector.getPendingTokens(16)).size) {
+            if (signal.aborted) return
             await Promise.all([collector.collect(nextKeys, signal), collector.collectDecimals(nextKeys)])
           }
           const [all, header] = collector.toTokenLists()
@@ -248,6 +251,7 @@ class DexscreenerCollector extends BaseCollector {
 
           // Create list associations and handle headers
           for (const [batchIndex, token] of all.entries()) {
+            if (signal.aborted) break
             const chainTokenId = utils.counterId.token([chain.id, token.address])
             const task = section.task(`saving-${key}-${token.address.toLowerCase()}`, {
               type: terminalRowTypes.STORAGE,
