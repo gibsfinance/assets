@@ -91,6 +91,7 @@ class InternetMoneyCollector extends BaseCollector {
 
     const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
     const networkToNetworkList = await networkLimiter.map(json, async (network) => {
+      if (signal.aborted) return [network, undefined!] as const
       const chain = networkToChain(network)
       await db.insertNetworkFromChainId(chain.id)
 
@@ -138,6 +139,7 @@ class InternetMoneyCollector extends BaseCollector {
       // Store network icons
       const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
       await networkLimiter.map(this.networkData, async (network) => {
+        if (signal.aborted) return
         summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
         const row = tasksSection.task(network.chainId.toString(), {
           type: terminalRowTypes.STORAGE,
@@ -186,6 +188,7 @@ class InternetMoneyCollector extends BaseCollector {
       })
 
       await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
+        if (signal.aborted) return
         summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
         const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
           type: terminalRowTypes.STORAGE,
