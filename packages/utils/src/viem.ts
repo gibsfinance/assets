@@ -145,10 +145,7 @@ export const erc20Read = async (
       )
     }),
     new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`erc20Read timeout: ${chain.id} ${target}`)),
-        erc20ReadTimeout,
-      )
+      const timer = setTimeout(() => reject(new Error(`erc20Read timeout: ${chain.id} ${target}`)), erc20ReadTimeout)
       signal?.addEventListener(
         'abort',
         () => {
