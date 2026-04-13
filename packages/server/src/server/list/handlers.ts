@@ -174,6 +174,32 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
 // In-flight revalidation tracker — prevents duplicate background refreshes
 const revalidating = new Set<string>()
 
+/**
+ * Pre-warm the tokensByChain cache for the top N chains by token count.
+ * Called at server startup so the first real request is served from cache.
+ */
+export const warmTokensByChainCache = async (
+  stats: { chainId: string; count: number }[],
+  topN = 5,
+): Promise<void> => {
+  const top = stats.slice(0, topN)
+  for (const { chainId: rawChainId } of top) {
+    try {
+      const chainId = toCAIP2(rawChainId)
+      const limit = 50_000
+      const extensions = new Set<string>()
+      const cacheKey = `tokens-by-chain:${chainId}:${limit}:`
+      const existing = await db.getCachedRequest(cacheKey)
+      if (existing) continue
+      const body = await buildTokensByChainResponse(chainId, limit, extensions)
+      const expiresAt = new Date(Date.now() + STALE_TTL_MS)
+      await db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
+    } catch {
+      // best-effort — startup must not fail if a chain is unavailable
+    }
+  }
+}
+
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const rawChainId = req.params.chainId
   if (!rawChainId) return next(createError.BadRequest('chainId required'))
