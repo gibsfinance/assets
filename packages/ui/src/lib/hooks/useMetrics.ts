@@ -115,13 +115,12 @@ export function useMetrics(): {
       return {
         chainId: Number(id),
         name: `Chain ${id}`,
-        isActive: id === '369',
       }
     })
 
   const metrics: PlatformMetrics = {
     tokenList: { total, byChain },
-    networks: { supported, active: 'PulseChain' },
+    networks: { supported },
   }
 
   return { metrics, providers: providers ?? [], isLoading }

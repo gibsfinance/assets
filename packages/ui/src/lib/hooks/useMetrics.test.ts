@@ -143,7 +143,6 @@ describe('useMetrics (composite)', () => {
     expect(metrics!.tokenList.byChain[1]).toBe(5000)
     expect(metrics!.tokenList.byChain[369]).toBe(2000)
     expect(metrics!.networks.supported).toHaveLength(2)
-    expect(metrics!.networks.active).toBe('PulseChain')
     expect(result.current.providers).toHaveLength(1)
   })
 
