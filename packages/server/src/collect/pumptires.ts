@@ -413,7 +413,12 @@ const univ2Abi = parseAbi([
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
 ])
 
-const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex }[], wpls: Hex, signal?: AbortSignal) => {
+const getReserves = async (
+  token: Hex,
+  situations: { factory: Hex; initCode: Hex }[],
+  wpls: Hex,
+  signal?: AbortSignal,
+) => {
   // the token pairs are the same for both situations so we can just use the first one
   const [situation] = situations
   const [, token0, token1] = tokenToPair(wpls, token, situation.factory, situation.initCode)
