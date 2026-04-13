@@ -79,14 +79,17 @@ type ChainList = {
   chainId: number
   chainSlug: string
 }
-const getChainListResult = _.memoize(async (): Promise<ChainList[]> => {
-  const response = await fetch('https://chainlist.org/rpcs.json')
-  if (!response.ok) {
-    throw new Error(`Failed to fetch chain list: ${response.status} ${response.statusText}`)
-  }
-  const data = (await response.json()) as ChainList[]
-  return data
-})
+const getChainListResult = _.memoize(
+  async (signal?: AbortSignal): Promise<ChainList[]> => {
+    const response = await fetch('https://chainlist.org/rpcs.json', { signal })
+    if (!response.ok) {
+      throw new Error(`Failed to fetch chain list: ${response.status} ${response.statusText}`)
+    }
+    const data = (await response.json()) as ChainList[]
+    return data
+  },
+  () => 'chainlist',
+)
 const sterilize = _.memoize((s: string | null = '') =>
   s
     ?.toLowerCase()
@@ -125,7 +128,7 @@ const sterilize = _.memoize((s: string | null = '') =>
     .split('net')
     .join(''),
 )
-const loadChainId = async (blockchainKey: string) => {
+const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [
     networkInfo,
@@ -134,7 +137,7 @@ const loadChainId = async (blockchainKey: string) => {
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
   let chainId: number | null = null
 
-  const chainList = await getChainListResult()
+  const chainList = await getChainListResult(signal)
   const sterilizedBlockchainKey = sterilize(blockchainKey)
   // Sterilize is aggressive (strips "chain", "net", etc.) which can create
   // collisions — e.g. "smartchain" → "smart" matches "Smart Mainnet" (661898459)
@@ -343,11 +346,11 @@ class TrustWalletCollector extends BaseCollector {
 
   private blockchainFolders: string[] = []
 
-  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
 
     blockchainFolders.sort()
-    await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
+    await Promise.all(blockchainFolders.map((folder) => loadChainId(folder, signal))).catch((err) => {
       failureLog('%o', (err as Error).message)
       return null
     })
@@ -404,6 +407,7 @@ class TrustWalletCollector extends BaseCollector {
       let globalCount = 0
       const limit = limitBy<string>('blockchains', 1)
       await limit.map(this.blockchainFolders, async (folder) => {
+        if (signal.aborted) return
         const chainId = networkNameToChainId.get(folder)
         if (!chainId) {
           return
