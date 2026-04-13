@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import * as viem from 'viem'
 import { erc20Read } from '@gibs/utils'
+import { delay } from '../utils/delay'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -261,8 +262,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
           const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
           const [[name, symbol, decimals], [bridgedName, bridgedSymbol, bridgedDecimals]] = await Promise.all([
-            erc20Read(fromConfig.chain, fromClient, native),
-            erc20Read(toConfig.chain, toClient, bridged),
+            erc20Read(fromConfig.chain, fromClient, native, { signal }),
+            erc20Read(toConfig.chain, toClient, bridged, { signal }),
           ])
 
           const metadata = {
@@ -355,7 +356,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         )
       })
       task.unmount()
-    })
+    }, 10_000n, signal)
     configRow.unmount()
   })
 
@@ -370,6 +371,7 @@ const iterateOverRange = async (
   end: bigint,
   iterator: (a: bigint, b: bigint) => Promise<void>,
   step = 10_000n,
+  signal?: AbortSignal,
 ) => {
   let fromBlock = start
   let consecutiveErrors = 0
@@ -379,6 +381,7 @@ const iterateOverRange = async (
   let currentStep = step
 
   do {
+    if (signal?.aborted) return
     try {
       if (currentStep > maxStep) {
         currentStep = maxStep
@@ -421,8 +424,9 @@ const iterateOverRange = async (
         fromBlock = fromBlock + currentStep
       }
 
-      const delay = isLimitError ? 200 : 5000
-      await new Promise((resolve) => setTimeout(resolve, delay))
+      const retryDelay = isLimitError ? 200 : 5000
+      await delay(retryDelay, signal).catch(() => {})
+      if (signal?.aborted) return
     }
   } while (fromBlock <= end)
 }
