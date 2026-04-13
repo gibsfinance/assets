@@ -1,9 +1,10 @@
 import * as remoteTokenList from './remote-tokenlist'
+import { delay } from '../utils/delay'
 import * as db from '../db'
 import _ from 'lodash'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
-import { failureLog, limitBy, timeout } from '@gibs/utils'
+import { failureLog, limitBy } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
@@ -138,19 +139,22 @@ class CoinGeckoCollector extends BaseCollector {
         })
         let retries = 0
         for (;;) {
+          if (signal.aborted) return
           try {
             await collectOriginal(signal)
             await collectLarge(signal)
           } catch (err) {
+            if (signal.aborted) return
             if (
               (err as Error).message.includes('429 Too Many Requests') ||
               (err as Error).message.includes('Throttled')
             ) {
               retries++
-              await timeout(5000 * retries).promise
               if (retries > 5) {
                 throw err
               }
+              await delay(5000 * retries, signal).catch(() => {})
+              if (signal.aborted) return
               continue
             }
             if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
