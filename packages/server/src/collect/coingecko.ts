@@ -16,7 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 // At most 1 concurrent DB write per coin; rate-limit API calls to 1 per 1.5s
 const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
-const rateLimiter = limitByTime(1_500)
+const rateLimiter = limitByTime(2_500) // public API: ~30 req/min limit; 2.5s ≈ 24/min with headroom
 
 const providerKey = 'coingecko'
 
@@ -184,6 +184,7 @@ class CoinGeckoCollector extends BaseCollector {
           if (signal.aborted) return
           try {
             const markets = await fetch(url, { signal }).then((r) => {
+              if (r.status === 429) throw new Error('HTTP 429')
               if (!r.ok) throw new Error(`HTTP ${r.status}`)
               return r.json() as Promise<MarketCoin[]>
             })
@@ -201,8 +202,11 @@ class CoinGeckoCollector extends BaseCollector {
               console.warn(`[coingecko] chunk ${ci + 1}/${chunks.length} failed after ${retries} retries, skipping`)
               break
             }
-            console.log(`[coingecko] chunk ${ci + 1}/${chunks.length} retry ${retries}/5 after error`)
-            await delay(5_000 * retries, signal).catch(() => {})
+            const msg = err instanceof Error ? err.message : String(err)
+            const isRateLimit = msg.includes('429')
+            const backoff = isRateLimit ? 60_000 : 5_000 * retries
+            console.log(`[coingecko] chunk ${ci + 1}/${chunks.length} retry ${retries}/5 — ${msg}${isRateLimit ? ' (rate limited, waiting 60s)' : ''}`)
+            await delay(backoff, signal).catch(() => {})
           }
         }
         row.increment('chunks', new Set([String(ci)]))
