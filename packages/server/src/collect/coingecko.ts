@@ -13,7 +13,7 @@ const API_BASE = 'https://api.coingecko.com/api/v3'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const apiKey = process.env.COINGECKO_API_KEY
-const keyParam = apiKey ? `&x_cg_demo_api_key=${apiKey}` : ''
+const keyParam = apiKey ? `&x_cg_pro_api_key=${apiKey}` : ''
 if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
 
 // Stable cache keys — no API key in them so cached data survives key rotation
@@ -21,13 +21,13 @@ const PLATFORMS_CACHE_KEY = `${API_BASE}/asset_platforms`
 const COINS_LIST_CACHE_KEY = `${API_BASE}/coins/list?include_platform=true`
 
 // Actual fetch URLs — include key for auth
-const PLATFORMS_URL = apiKey ? `${PLATFORMS_CACHE_KEY}?x_cg_demo_api_key=${apiKey}` : PLATFORMS_CACHE_KEY
+const PLATFORMS_URL = apiKey ? `${PLATFORMS_CACHE_KEY}?x_cg_pro_api_key=${apiKey}` : PLATFORMS_CACHE_KEY
 const COINS_LIST_URL = `${COINS_LIST_CACHE_KEY}${keyParam}`
 const MARKETS_BASE = `${API_BASE}/coins/markets`
 
-// Demo key: 30 req/min → 2s spacing with headroom. No key: slow to 15s to stay under 5/min floor.
+// Pro key: 500 req/min → 150ms spacing with headroom. No key: 15s to stay under anonymous floor.
 const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
-const rateLimiter = limitByTime(apiKey ? 2_000 : 15_000)
+const rateLimiter = limitByTime(apiKey ? 150 : 15_000)
 
 const providerKey = 'coingecko'
 
