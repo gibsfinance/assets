@@ -19,6 +19,8 @@ _backup/
 
 # Session / tool artifacts
 .serena/
+.claude/
+.remember/
 progress.txt
 docs/superpowers/
 
@@ -27,7 +29,6 @@ docs/superpowers/
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
-.claude/worktrees/
 .screenshots/
 .playwright-mcp/
 packages/ui/e2e/test-results/
