@@ -157,6 +157,9 @@ class CoinGeckoCollector extends BaseCollector {
         for (const c of coins) allCoinIds.add(c.coinId)
       }
       const coinIdList = [...allCoinIds]
+      console.log(
+        `[coingecko] ${this.platformCoins.size} EVM platforms, ${coinIdList.length} unique coins`,
+      )
 
       // --- 2. Batch-fetch images via coins/markets ---
       const imageMap = new Map<string, string>() // coinId → image URL
@@ -164,11 +167,13 @@ class CoinGeckoCollector extends BaseCollector {
       for (let i = 0; i < coinIdList.length; i += CHUNK_SIZE) {
         chunks.push(coinIdList.slice(i, i + CHUNK_SIZE))
       }
+      console.log(`[coingecko] fetching images: ${chunks.length} chunks of ${CHUNK_SIZE}`)
 
       row.createCounter('chunks')
       row.incrementTotal('chunks', new Set(chunks.map((_, i) => String(i))))
 
-      for (const chunk of chunks) {
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk = chunks[ci]!
         if (signal.aborted) return
         await rateLimiter()
         const url = `${MARKETS_BASE}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}`
@@ -189,12 +194,16 @@ class CoinGeckoCollector extends BaseCollector {
           } catch (err) {
             if (signal.aborted) return
             retries++
-            if (retries > 5) break // skip chunk, don't abort whole run
+            if (retries > 5) {
+              console.warn(`[coingecko] chunk ${ci + 1}/${chunks.length} failed after ${retries} retries, skipping`)
+              break
+            }
             await delay(5_000 * retries, signal).catch(() => {})
           }
         }
-        row.increment('chunks', new Set([String(chunks.indexOf(chunk))]))
+        row.increment('chunks', new Set([String(ci)]))
       }
+      console.log(`[coingecko] images fetched: ${imageMap.size} / ${coinIdList.length} coins have images`)
 
       // --- 3. Insert tokens per chain ---
       const [provider] = await db.insertProvider({ key: providerKey, name: 'CoinGecko' })
@@ -202,9 +211,15 @@ class CoinGeckoCollector extends BaseCollector {
       row.createCounter(terminalCounterTypes.NETWORK)
       row.incrementTotal(terminalCounterTypes.NETWORK, new Set([...this.platformCoins.keys()]))
 
+      let platformIdx = 0
       for (const [platformId, coins] of this.platformCoins) {
         if (signal.aborted) return
+        platformIdx++
         const section = row.issue(platformId)
+        const withImage = coins.filter((c) => imageMap.has(c.coinId))
+        console.log(
+          `[coingecko] ${platformId} (${platformIdx}/${this.platformCoins.size}): ${withImage.length} tokens with images`,
+        )
 
         row.createCounter(terminalCounterTypes.TOKEN)
         row.incrementTotal(terminalCounterTypes.TOKEN, new Set(coins.map((c) => c.coinId)))
@@ -240,6 +255,7 @@ class CoinGeckoCollector extends BaseCollector {
         })
 
         row.increment(terminalCounterTypes.NETWORK, platformId)
+        void section
       }
     } finally {
       row.complete()
