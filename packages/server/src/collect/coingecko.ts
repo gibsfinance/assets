@@ -245,9 +245,8 @@ class CoinGeckoCollector extends BaseCollector {
         const section = row.issue(platformId)
         const withImage = coins.filter((c) => imageMap.has(c.coinId))
         const caip2 = toCAIP2(String(coins[0]!.chainId))
-        console.log(
-          `[coingecko] ${platformId} → ${caip2} (${platformIdx}/${this.platformCoins.size}): ${withImage.length} tokens with images`,
-        )
+        const netLabel = `(${platformIdx}/${this.platformCoins.size}) ${platformId} → ${caip2}`
+        console.log(`[coingecko] ${netLabel}: starting ${withImage.length}/${coins.length} tokens have images`)
 
         row.createCounter(terminalCounterTypes.TOKEN)
         row.incrementTotal(terminalCounterTypes.TOKEN, new Set(coins.map((c) => c.coinId)))
@@ -282,11 +281,12 @@ class CoinGeckoCollector extends BaseCollector {
 
           inserted++
           if (inserted % 250 === 0) {
-            console.log(`[coingecko] ${platformId}: ${inserted}/${withImage.length} inserted`)
+            console.log(`[coingecko] ${netLabel}: ${inserted}/${withImage.length} inserted`)
           }
           row.increment(terminalCounterTypes.TOKEN, coin.coinId)
         })
 
+        console.log(`[coingecko] ${netLabel}: done — ${inserted}/${withImage.length} inserted`)
         row.increment(terminalCounterTypes.NETWORK, platformId)
         void section
       }
