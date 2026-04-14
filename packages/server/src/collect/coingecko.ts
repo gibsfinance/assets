@@ -9,10 +9,13 @@ import { BaseCollector, DiscoveryManifest } from './base-collector'
 import { toCAIP2 } from '../chain-id'
 
 const CHUNK_SIZE = 250
-const API_BASE = 'https://api.coingecko.com/api/v3'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const apiKey = process.env.COINGECKO_API_KEY
+// Pro plan uses a different hostname; demo/anonymous use the public endpoint
+const API_BASE = apiKey
+  ? 'https://pro-api.coingecko.com/api/v3'
+  : 'https://api.coingecko.com/api/v3'
 const keyParam = apiKey ? `&x_cg_pro_api_key=${apiKey}` : ''
 if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
 
