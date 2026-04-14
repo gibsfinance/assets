@@ -1,173 +1,246 @@
-import * as remoteTokenList from './remote-tokenlist'
+import { isAddress, getAddress } from 'viem'
 import { delay } from '../utils/delay'
 import * as db from '../db'
-import _ from 'lodash'
 import * as utils from '../utils'
-import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
-import { failureLog, limitBy } from '@gibs/utils'
+import { terminalCounterTypes, terminalRowTypes } from '../log/types'
+import { limitBy } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
-const limit = limitBy<AssetPlatform>(`coingecko-platforms`, 1)
+const CHUNK_SIZE = 250
+const PLATFORMS_URL = 'https://api.coingecko.com/api/v3/asset_platforms'
+const COINS_LIST_URL = 'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
+const MARKETS_BASE = 'https://api.coingecko.com/api/v3/coins/markets'
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// At most 1 concurrent DB write per coin; rate-limit API calls to 1 per 1.5s
+const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
 const rateLimiter = limitByTime(1_500)
+
+const providerKey = 'coingecko'
 
 type AssetPlatform = {
   id: string
   chain_identifier: number | null
   name: string
-  shortname: string
-  native_coin_id: string
-  image: {
-    thumb: string | null
-    small: string | null
-    large: string | null
-  }
-  network: {
-    id: number
-    isNetworkImage: boolean
-  }
 }
 
-const qs = 'x_cg_demo_api_key=' + process.env.COINGECKO_API_KEY
-const providerKey = 'coingecko'
+type CoinEntry = {
+  id: string
+  symbol: string
+  name: string
+  platforms: Record<string, string>
+}
+
+type MarketCoin = {
+  id: string
+  image: string
+}
+
+type ChainCoin = {
+  coinId: string
+  symbol: string
+  name: string
+  address: string
+  chainId: number
+  networkId: string
+  listId: string
+  orderIdx: number
+}
 
 /**
- * Two-phase collector for CoinGecko asset platforms.
- * Phase 1 (discover): gets platform list, creates provider + per-platform lists.
- * Phase 2 (collect): processes tokens for each platform.
+ * Two-phase collector for CoinGecko tokens using only public API endpoints.
+ *
+ * Phase 1 (discover): fetches asset_platforms + coins/list, builds per-chain
+ * token tables, registers lists in the DB.
+ *
+ * Phase 2 (collect): batch-fetches coin images via coins/markets (250 per
+ * request) then inserts tokens with their CoinGecko image URLs.
+ *
+ * No API key required.
  */
 class CoinGeckoCollector extends BaseCollector {
   readonly key = 'coingecko'
 
-  private platforms: AssetPlatform[] = []
+  // All EVM coins discovered during discover(), keyed by coingecko platform id
+  private platformCoins: Map<string, ChainCoin[]> = new Map()
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
-    if (!process.env.COINGECKO_API_KEY) {
-      console.warn('[coingecko] COINGECKO_API_KEY is not set — skipping')
-      return []
-    }
-
-    const url = `https://api.coingecko.com/api/v3/asset_platforms?${qs}`
+    // --- 1. Fetch platform → chain_id mapping ---
     const platforms = await db.cachedJSON<AssetPlatform[]>(
-      url,
+      PLATFORMS_URL,
       signal,
-      async (sig) => fetch(url, { signal: sig }).then((res) => res.json() as Promise<AssetPlatform[]>),
-      { validate: Array.isArray },
+      async (sig) => fetch(PLATFORMS_URL, { signal: sig }).then((r) => r.json()),
+      { validate: Array.isArray, ttl: DAY_MS },
     )
-
-    // API can return an error object instead of an array (rate limit, bad key)
     if (!Array.isArray(platforms)) {
       console.warn('[coingecko] asset_platforms returned non-array — %o', platforms)
       return []
     }
 
-    // Filter to platforms with valid chain identifiers
-    const validPlatforms = platforms.filter((p) => p.chain_identifier && typeof p.chain_identifier === 'number')
-
-    // Create provider
-    const [provider] = await db.insertProvider({
-      key: providerKey,
-      name: 'CoinGecko',
-    })
-
-    // Create per-platform lists: original (thumb) + large variant
-    const lists: { listKey: string }[] = []
-    for (const platform of validPlatforms) {
-      const listKey = platform.id
-      const largeListKey = `${platform.id}-large`
-      await db.insertList({
-        providerId: provider.providerId,
-        key: listKey,
-      })
-      await db.insertList({
-        providerId: provider.providerId,
-        key: largeListKey,
-      })
-      lists.push({ listKey }, { listKey: largeListKey })
+    const platformToChain = new Map<string, number>()
+    for (const p of platforms) {
+      if (p.chain_identifier && typeof p.chain_identifier === 'number') {
+        platformToChain.set(p.id, p.chain_identifier)
+      }
     }
 
-    this.platforms = platforms
+    // --- 2. Fetch all coins with platform addresses ---
+    const coinsList = await db.cachedJSON<CoinEntry[]>(
+      COINS_LIST_URL,
+      signal,
+      async (sig) => fetch(COINS_LIST_URL, { signal: sig }).then((r) => r.json()),
+      { validate: Array.isArray, ttl: DAY_MS },
+    )
+    if (!Array.isArray(coinsList)) {
+      console.warn('[coingecko] coins/list returned non-array — %o', coinsList)
+      return []
+    }
+
+    // --- 3. Build per-platform coin lists (EVM only, valid addresses) ---
+    const platformCoinsTmp = new Map<string, Array<{ coinId: string; symbol: string; name: string; address: string; chainId: number }>>()
+    for (const coin of coinsList) {
+      if (!coin.platforms) continue
+      for (const [platformId, rawAddress] of Object.entries(coin.platforms)) {
+        const chainId = platformToChain.get(platformId)
+        if (!chainId) continue
+        if (!isAddress(rawAddress)) continue
+        const address = getAddress(rawAddress)
+        const existing = platformCoinsTmp.get(platformId) ?? []
+        existing.push({ coinId: coin.id, symbol: coin.symbol, name: coin.name, address, chainId })
+        platformCoinsTmp.set(platformId, existing)
+      }
+    }
+
+    if (platformCoinsTmp.size === 0) {
+      console.warn('[coingecko] no EVM tokens found in coins/list')
+      return []
+    }
+
+    // --- 4. Create provider + per-platform lists, populate this.platformCoins ---
+    const [provider] = await db.insertProvider({ key: providerKey, name: 'CoinGecko' })
+
+    const lists: { listKey: string }[] = []
+    for (const [platformId, coins] of platformCoinsTmp) {
+      const chainId = coins[0]!.chainId
+      const network = await db.insertNetworkFromChainId(chainId)
+      const [dbList] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: network.networkId,
+        key: platformId,
+      })
+
+      const chainCoins: ChainCoin[] = coins.map((c, i) => ({
+        ...c,
+        networkId: network.networkId,
+        listId: dbList.listId,
+        orderIdx: i,
+      }))
+      this.platformCoins.set(platformId, chainCoins)
+      lists.push({ listKey: platformId })
+    }
 
     return [{ providerKey, lists }]
   }
 
   async collect(signal: AbortSignal): Promise<void> {
-    const row = utils.terminal.issue({
-      type: terminalRowTypes.SETUP,
-      id: providerKey,
-    })
+    const row = utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
     try {
-      const section = row.issue(providerKey)
-      if (!process.env.COINGECKO_API_KEY) {
+      if (this.platformCoins.size === 0) {
         row.increment('skipped', providerKey)
         return
       }
 
-      row.createCounter(terminalCounterTypes.NETWORK)
-      const platformIds = new Set(
-        _(this.platforms)
-          .map((platform) => platform.id)
-          .compact()
-          .value(),
-      )
-      row.incrementTotal(terminalCounterTypes.NETWORK, platformIds)
-      await limit.map(this.platforms, async (platform) => {
-        if (signal.aborted) return
-        if (!platform.chain_identifier) return
-        if (typeof platform.chain_identifier !== 'number') return
+      // --- 1. Collect all unique coin IDs across all chains ---
+      const allCoinIds = new Set<string>()
+      for (const coins of this.platformCoins.values()) {
+        for (const c of coins) allCoinIds.add(c.coinId)
+      }
+      const coinIdList = [...allCoinIds]
 
-        const listKey = platform.id
-        const largeListKey = `${platform.id}-large`
-        const tokenListUrl = `https://api.coingecko.com/api/v3/token_lists/${listKey}/all.json?${qs}`
-        const isCached = await db.getCachedRequest(tokenListUrl)
-        if (!isCached) {
-          await rateLimiter()
-        }
-        // Collect original (thumb) list
-        const collectOriginal = remoteTokenList.collect({
-          providerKey,
-          listKey,
-          tokenList: tokenListUrl,
-          row: section,
-        })
-        // Collect large variant — same URL, rewrite logoURI before fetch
-        const collectLarge = remoteTokenList.collect({
-          providerKey,
-          listKey: largeListKey,
-          tokenList: tokenListUrl,
-          row: section,
-          rewriteLogoURI: (uri) => (uri.includes('/thumb/') ? uri.replace('/thumb/', '/large/') : uri),
-        })
+      // --- 2. Batch-fetch images via coins/markets ---
+      const imageMap = new Map<string, string>() // coinId → image URL
+      const chunks: string[][] = []
+      for (let i = 0; i < coinIdList.length; i += CHUNK_SIZE) {
+        chunks.push(coinIdList.slice(i, i + CHUNK_SIZE))
+      }
+
+      row.createCounter('chunks')
+      row.incrementTotal('chunks', new Set(chunks.map((_, i) => String(i))))
+
+      for (const chunk of chunks) {
+        if (signal.aborted) return
+        await rateLimiter()
+        const url = `${MARKETS_BASE}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}`
         let retries = 0
         for (;;) {
           if (signal.aborted) return
           try {
-            await collectOriginal(signal)
-            await collectLarge(signal)
+            const markets = await fetch(url, { signal }).then((r) => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`)
+              return r.json() as Promise<MarketCoin[]>
+            })
+            if (Array.isArray(markets)) {
+              for (const coin of markets) {
+                if (coin.id && coin.image) imageMap.set(coin.id, coin.image)
+              }
+            }
+            break
           } catch (err) {
             if (signal.aborted) return
-            if (
-              (err as Error).message.includes('429 Too Many Requests') ||
-              (err as Error).message.includes('Throttled')
-            ) {
-              retries++
-              if (retries > 5) {
-                throw err
-              }
-              await delay(5000 * retries, signal).catch(() => {})
-              if (signal.aborted) return
-              continue
-            }
-            if ((err as Error).message === 'HTTP error! status: 404 Not Found') {
-              row.increment(terminalLogTypes.EROR, new Set([listKey]))
-              return
-            }
-            failureLog('%o', err)
-            throw err
+            retries++
+            if (retries > 5) break // skip chunk, don't abort whole run
+            await delay(5_000 * retries, signal).catch(() => {})
           }
-          break
         }
-      })
+        row.increment('chunks', new Set([String(chunks.indexOf(chunk))]))
+      }
+
+      // --- 3. Insert tokens per chain ---
+      const [provider] = await db.insertProvider({ key: providerKey, name: 'CoinGecko' })
+
+      row.createCounter(terminalCounterTypes.NETWORK)
+      row.incrementTotal(terminalCounterTypes.NETWORK, new Set([...this.platformCoins.keys()]))
+
+      for (const [platformId, coins] of this.platformCoins) {
+        if (signal.aborted) return
+        const section = row.issue(platformId)
+
+        row.createCounter(terminalCounterTypes.TOKEN)
+        row.incrementTotal(terminalCounterTypes.TOKEN, new Set(coins.map((c) => c.coinId)))
+
+        await insertLimit.map(coins, async (coin) => {
+          if (signal.aborted) return
+
+          const imageUri = imageMap.get(coin.coinId)
+          if (!imageUri) {
+            row.increment('skipped', coin.coinId)
+            return
+          }
+
+          await db
+            .fetchImageAndStoreForToken({
+              listId: coin.listId,
+              uri: imageUri,
+              originalUri: imageUri,
+              providerKey: provider.key,
+              listTokenOrderId: coin.orderIdx,
+              signal,
+              token: {
+                name: coin.name,
+                symbol: coin.symbol,
+                decimals: 0,
+                networkId: coin.networkId,
+                providedId: coin.address,
+              },
+            })
+            .catch(() => {})
+
+          row.increment(terminalCounterTypes.TOKEN, coin.coinId)
+        })
+
+        row.increment(terminalCounterTypes.NETWORK, platformId)
+      }
     } finally {
       row.complete()
     }
