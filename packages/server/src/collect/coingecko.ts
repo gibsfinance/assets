@@ -9,14 +9,20 @@ import { BaseCollector, DiscoveryManifest } from './base-collector'
 import { toCAIP2 } from '../chain-id'
 
 const CHUNK_SIZE = 250
-const PLATFORMS_URL = 'https://api.coingecko.com/api/v3/asset_platforms'
-const COINS_LIST_URL = 'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
-const MARKETS_BASE = 'https://api.coingecko.com/api/v3/coins/markets'
+const API_BASE = 'https://api.coingecko.com/api/v3'
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// At most 1 concurrent DB write per coin; rate-limit API calls to 1 per 1.5s
+const apiKey = process.env.COINGECKO_API_KEY
+const keyParam = apiKey ? `&x_cg_demo_api_key=${apiKey}` : ''
+if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
+
+const PLATFORMS_URL = `${API_BASE}/asset_platforms?${keyParam.slice(1)}`
+const COINS_LIST_URL = `${API_BASE}/coins/list?include_platform=true${keyParam}`
+const MARKETS_BASE = `${API_BASE}/coins/markets`
+
+// Demo key: 30 req/min → 2s spacing with headroom. No key: slow to 15s to stay under 5/min floor.
 const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
-const rateLimiter = limitByTime(2_500) // public API: ~30 req/min limit; 2.5s ≈ 24/min with headroom
+const rateLimiter = limitByTime(apiKey ? 2_000 : 15_000)
 
 const providerKey = 'coingecko'
 
@@ -178,7 +184,7 @@ class CoinGeckoCollector extends BaseCollector {
         const chunk = chunks[ci]!
         if (signal.aborted) return
         await rateLimiter()
-        const url = `${MARKETS_BASE}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}`
+        const url = `${MARKETS_BASE}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}${keyParam}`
         let retries = 0
         for (;;) {
           if (signal.aborted) return
