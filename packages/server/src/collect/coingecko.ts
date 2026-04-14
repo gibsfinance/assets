@@ -16,8 +16,13 @@ const apiKey = process.env.COINGECKO_API_KEY
 const keyParam = apiKey ? `&x_cg_demo_api_key=${apiKey}` : ''
 if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
 
-const PLATFORMS_URL = `${API_BASE}/asset_platforms?${keyParam.slice(1)}`
-const COINS_LIST_URL = `${API_BASE}/coins/list?include_platform=true${keyParam}`
+// Stable cache keys — no API key in them so cached data survives key rotation
+const PLATFORMS_CACHE_KEY = `${API_BASE}/asset_platforms`
+const COINS_LIST_CACHE_KEY = `${API_BASE}/coins/list?include_platform=true`
+
+// Actual fetch URLs — include key for auth
+const PLATFORMS_URL = apiKey ? `${PLATFORMS_CACHE_KEY}?x_cg_demo_api_key=${apiKey}` : PLATFORMS_CACHE_KEY
+const COINS_LIST_URL = `${COINS_LIST_CACHE_KEY}${keyParam}`
 const MARKETS_BASE = `${API_BASE}/coins/markets`
 
 // Demo key: 30 req/min → 2s spacing with headroom. No key: slow to 15s to stay under 5/min floor.
@@ -75,13 +80,18 @@ class CoinGeckoCollector extends BaseCollector {
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     // --- 1. Fetch platform → chain_id mapping ---
     const platforms = await db.cachedJSON<AssetPlatform[]>(
-      PLATFORMS_URL,
+      PLATFORMS_CACHE_KEY,
       signal,
       async (sig) => fetch(PLATFORMS_URL, { signal: sig }).then((r) => r.json()),
       { validate: Array.isArray, ttl: DAY_MS },
     )
     if (!Array.isArray(platforms)) {
-      console.warn('[coingecko] asset_platforms returned non-array — %o', platforms)
+      const body = platforms as { status?: { error_code?: number; error_message?: string } }
+      if (body?.status?.error_code === 10006) {
+        console.error('[coingecko] monthly call limit exhausted — skipping (resets next month or rotate key)')
+      } else {
+        console.warn('[coingecko] asset_platforms returned non-array — %o', platforms)
+      }
       return []
     }
 
@@ -94,7 +104,7 @@ class CoinGeckoCollector extends BaseCollector {
 
     // --- 2. Fetch all coins with platform addresses ---
     const coinsList = await db.cachedJSON<CoinEntry[]>(
-      COINS_LIST_URL,
+      COINS_LIST_CACHE_KEY,
       signal,
       async (sig) => fetch(COINS_LIST_URL, { signal: sig }).then((r) => r.json()),
       { validate: Array.isArray, ttl: DAY_MS },
