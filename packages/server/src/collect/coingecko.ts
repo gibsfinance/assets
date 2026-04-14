@@ -6,6 +6,7 @@ import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { limitBy } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { toCAIP2 } from '../chain-id'
 
 const CHUNK_SIZE = 250
 const PLATFORMS_URL = 'https://api.coingecko.com/api/v3/asset_platforms'
@@ -123,11 +124,12 @@ class CoinGeckoCollector extends BaseCollector {
     const lists: { listKey: string }[] = []
     for (const [platformId, coins] of platformCoinsTmp) {
       const chainId = coins[0]!.chainId
+      const listKey = String(chainId) // e.g. "56" — consistent with chain ID usage elsewhere
       const network = await db.insertNetworkFromChainId(chainId)
       const [dbList] = await db.insertList({
         providerId: provider.providerId,
         networkId: network.networkId,
-        key: platformId,
+        key: listKey,
       })
 
       const chainCoins: ChainCoin[] = coins.map((c, i) => ({
@@ -137,7 +139,7 @@ class CoinGeckoCollector extends BaseCollector {
         orderIdx: i,
       }))
       this.platformCoins.set(platformId, chainCoins)
-      lists.push({ listKey: platformId })
+      lists.push({ listKey })
     }
 
     return [{ providerKey, lists }]
@@ -190,6 +192,7 @@ class CoinGeckoCollector extends BaseCollector {
                 if (coin.id && coin.image) imageMap.set(coin.id, coin.image)
               }
             }
+            console.log(`[coingecko] chunk ${ci + 1}/${chunks.length} done — ${imageMap.size} images so far`)
             break
           } catch (err) {
             if (signal.aborted) return
@@ -198,6 +201,7 @@ class CoinGeckoCollector extends BaseCollector {
               console.warn(`[coingecko] chunk ${ci + 1}/${chunks.length} failed after ${retries} retries, skipping`)
               break
             }
+            console.log(`[coingecko] chunk ${ci + 1}/${chunks.length} retry ${retries}/5 after error`)
             await delay(5_000 * retries, signal).catch(() => {})
           }
         }
@@ -217,8 +221,9 @@ class CoinGeckoCollector extends BaseCollector {
         platformIdx++
         const section = row.issue(platformId)
         const withImage = coins.filter((c) => imageMap.has(c.coinId))
+        const caip2 = toCAIP2(String(coins[0]!.chainId))
         console.log(
-          `[coingecko] ${platformId} (${platformIdx}/${this.platformCoins.size}): ${withImage.length} tokens with images`,
+          `[coingecko] ${platformId} → ${caip2} (${platformIdx}/${this.platformCoins.size}): ${withImage.length} tokens with images`,
         )
 
         row.createCounter(terminalCounterTypes.TOKEN)
