@@ -43,7 +43,7 @@ class CoinGeckoCollector extends BaseCollector {
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     if (!process.env.COINGECKO_API_KEY) {
-      failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
+      console.warn('[coingecko] COINGECKO_API_KEY is not set — skipping')
       return []
     }
 
@@ -55,7 +55,7 @@ class CoinGeckoCollector extends BaseCollector {
 
     // API can return an error object instead of an array (rate limit, bad key)
     if (!Array.isArray(platforms)) {
-      failureLog('coingecko asset_platforms returned non-array: %o', typeof platforms)
+      console.warn('[coingecko] asset_platforms returned non-array (%s) — rate limited or bad key', typeof platforms)
       return []
     }
 
@@ -97,7 +97,6 @@ class CoinGeckoCollector extends BaseCollector {
     try {
       const section = row.issue(providerKey)
       if (!process.env.COINGECKO_API_KEY) {
-        failureLog('COINGECKO_API_KEY is not set. skipping coingecko collection')
         row.increment('skipped', providerKey)
         return
       }

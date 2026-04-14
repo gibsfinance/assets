@@ -267,7 +267,6 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       rerenderAfter(() => {
         row.hide = true
         doLog(() => {
-          console.log('calling hide again')
           log(`hiding row key=%o`, row.id)
         })
       })
