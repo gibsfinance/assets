@@ -1519,17 +1519,23 @@ export const cachedJSON = async <T extends object>(
   key: string,
   signal: AbortSignal,
   fn: (signal: AbortSignal) => Promise<T>,
-  { ttl = defaultTTL }: { ttl?: number } = {},
+  { ttl = defaultTTL, validate }: { ttl?: number; validate?: (result: unknown) => boolean } = {},
 ) => {
   const cached = await getCachedRequest(key)
   if (cached) {
-    return JSON.parse(cached.value) as T
+    const parsed = JSON.parse(cached.value) as T
+    // If a validator is provided and the cached value fails it, fall through to re-fetch.
+    // This handles previously-cached error responses (e.g. rate-limit JSON bodies).
+    if (!validate || validate(parsed)) return parsed
   }
   const result = (await fn(signal)) as T
-  await insertCacheRequest({
-    key,
-    value: JSON.stringify(result),
-    expiresAt: new Date(Date.now() + ttl).toISOString(),
-  })
+  // Only cache if the result passes validation
+  if (!validate || validate(result)) {
+    await insertCacheRequest({
+      key,
+      value: JSON.stringify(result),
+      expiresAt: new Date(Date.now() + ttl).toISOString(),
+    })
+  }
   return result
 }

@@ -47,15 +47,17 @@ class CoinGeckoCollector extends BaseCollector {
       return []
     }
 
-    const platforms = await db.cachedJSONRequest<AssetPlatform[]>(
-      `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+    const url = `https://api.coingecko.com/api/v3/asset_platforms?${qs}`
+    const platforms = await db.cachedJSON<AssetPlatform[]>(
+      url,
       signal,
-      `https://api.coingecko.com/api/v3/asset_platforms?${qs}`,
+      async (sig) => fetch(url, { signal: sig }).then((res) => res.json() as Promise<AssetPlatform[]>),
+      { validate: Array.isArray },
     )
 
     // API can return an error object instead of an array (rate limit, bad key)
     if (!Array.isArray(platforms)) {
-      console.warn('[coingecko] asset_platforms returned non-array (%s) — rate limited or bad key', typeof platforms)
+      console.warn('[coingecko] asset_platforms returned non-array — %o', platforms)
       return []
     }
 
