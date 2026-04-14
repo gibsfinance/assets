@@ -393,7 +393,9 @@ describe('image handlers', () => {
         address: TEST_ADDRESS,
       })
 
-      expect(db.applyOrder).toHaveBeenCalledWith('0xdefault', expect.anything(), 'provider', undefined, { includeContent: true })
+      expect(db.applyOrder).toHaveBeenCalledWith('0xdefault', expect.anything(), 'provider', undefined, {
+        includeContent: true,
+      })
       expect(result.img).toBe(fakeRow)
       expect(result.filter.networkId).toBe('eip155:1')
     })
@@ -456,7 +458,9 @@ describe('image handlers', () => {
         listOrderId: '0xcustom',
       })
 
-      expect(db.applyOrder).toHaveBeenCalledWith('0xcustom', expect.anything(), 'provider', undefined, { includeContent: true })
+      expect(db.applyOrder).toHaveBeenCalledWith('0xcustom', expect.anything(), 'provider', undefined, {
+        includeContent: true,
+      })
     })
   })
 

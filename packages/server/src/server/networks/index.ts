@@ -19,10 +19,12 @@ router.get(
     const networks = await getNetworks()
     res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
     // Return bare chainId for backwards compat, add chainIdentifier
-    res.json(networks.map((n) => ({
-      ...n,
-      chainId: fromCAIP2(n.chainId),
-      chainIdentifier: n.chainId,
-    })))
+    res.json(
+      networks.map((n) => ({
+        ...n,
+        chainId: fromCAIP2(n.chainId),
+        chainIdentifier: n.chainId,
+      })),
+    )
   }),
 )

@@ -13,9 +13,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 const apiKey = process.env.COINGECKO_API_KEY
 // Pro plan uses a different hostname; demo/anonymous use the public endpoint
-const API_BASE = apiKey
-  ? 'https://pro-api.coingecko.com/api/v3'
-  : 'https://api.coingecko.com/api/v3'
+const API_BASE = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3'
 const keyParam = apiKey ? `&x_cg_pro_api_key=${apiKey}` : ''
 if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
 
@@ -78,7 +76,7 @@ class CoinGeckoCollector extends BaseCollector {
   readonly key = 'coingecko'
 
   // All EVM coins discovered during discover(), keyed by coingecko platform id
-  private platformCoins: Map<string, ChainCoin[]> = new Map()
+  private platformCoins = new Map<string, ChainCoin[]>()
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     // --- 1. Fetch platform → chain_id mapping ---
@@ -118,7 +116,10 @@ class CoinGeckoCollector extends BaseCollector {
     }
 
     // --- 3. Build per-platform coin lists (EVM only, valid addresses) ---
-    const platformCoinsTmp = new Map<string, Array<{ coinId: string; symbol: string; name: string; address: string; chainId: number }>>()
+    const platformCoinsTmp = new Map<
+      string,
+      { coinId: string; symbol: string; name: string; address: string; chainId: number }[]
+    >()
     for (const coin of coinsList) {
       if (!coin.platforms) continue
       for (const [platformId, rawAddress] of Object.entries(coin.platforms)) {
@@ -178,9 +179,7 @@ class CoinGeckoCollector extends BaseCollector {
         for (const c of coins) allCoinIds.add(c.coinId)
       }
       const coinIdList = [...allCoinIds]
-      console.log(
-        `[coingecko] ${this.platformCoins.size} EVM platforms, ${coinIdList.length} unique coins`,
-      )
+      console.log(`[coingecko] ${this.platformCoins.size} EVM platforms, ${coinIdList.length} unique coins`)
 
       // --- 2. Batch-fetch images via coins/markets ---
       const imageMap = new Map<string, string>() // coinId → image URL
@@ -224,7 +223,9 @@ class CoinGeckoCollector extends BaseCollector {
             const msg = err instanceof Error ? err.message : String(err)
             const isRateLimit = msg.includes('429')
             const backoff = isRateLimit ? 60_000 : 5_000 * retries
-            console.log(`[coingecko] chunk ${ci + 1}/${chunks.length} retry ${retries}/5 — ${msg}${isRateLimit ? ' (rate limited, waiting 60s)' : ''}`)
+            console.log(
+              `[coingecko] chunk ${ci + 1}/${chunks.length} retry ${retries}/5 — ${msg}${isRateLimit ? ' (rate limited, waiting 60s)' : ''}`,
+            )
             await delay(backoff, signal).catch(() => {})
           }
         }

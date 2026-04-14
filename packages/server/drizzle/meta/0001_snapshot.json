@@ -237,12 +237,8 @@
           "name": "bridge_providerid_foreign",
           "tableFrom": "bridge",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -250,12 +246,8 @@
           "name": "bridge_homenetworkid_foreign",
           "tableFrom": "bridge",
           "tableTo": "network",
-          "columnsFrom": [
-            "home_network_id"
-          ],
-          "columnsTo": [
-            "network_id"
-          ],
+          "columnsFrom": ["home_network_id"],
+          "columnsTo": ["network_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -263,12 +255,8 @@
           "name": "bridge_foreignnetworkid_foreign",
           "tableFrom": "bridge",
           "tableTo": "network",
-          "columnsFrom": [
-            "foreign_network_id"
-          ],
-          "columnsTo": [
-            "network_id"
-          ],
+          "columnsFrom": ["foreign_network_id"],
+          "columnsTo": ["network_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -401,12 +389,8 @@
           "name": "bridge_link_nativetokenid_foreign",
           "tableFrom": "bridge_link",
           "tableTo": "token",
-          "columnsFrom": [
-            "native_token_id"
-          ],
-          "columnsTo": [
-            "token_id"
-          ],
+          "columnsFrom": ["native_token_id"],
+          "columnsTo": ["token_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -414,12 +398,8 @@
           "name": "bridge_link_bridgedtokenid_foreign",
           "tableFrom": "bridge_link",
           "tableTo": "token",
-          "columnsFrom": [
-            "bridged_token_id"
-          ],
-          "columnsTo": [
-            "token_id"
-          ],
+          "columnsFrom": ["bridged_token_id"],
+          "columnsTo": ["token_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -427,12 +407,8 @@
           "name": "bridge_link_bridgeid_foreign",
           "tableFrom": "bridge_link",
           "tableTo": "bridge",
-          "columnsFrom": [
-            "bridge_id"
-          ],
-          "columnsTo": [
-            "bridge_id"
-          ],
+          "columnsFrom": ["bridge_id"],
+          "columnsTo": ["bridge_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -562,12 +538,8 @@
           "name": "header_link_listtokenid_foreign",
           "tableFrom": "header_link",
           "tableTo": "list_token",
-          "columnsFrom": [
-            "list_token_id"
-          ],
-          "columnsTo": [
-            "list_token_id"
-          ],
+          "columnsFrom": ["list_token_id"],
+          "columnsTo": ["list_token_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -575,12 +547,8 @@
           "name": "header_link_imagehash_foreign",
           "tableFrom": "header_link",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -792,12 +760,8 @@
           "name": "image_variant_imagehash_foreign",
           "tableFrom": "image_variant",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -805,12 +769,7 @@
       "compositePrimaryKeys": {
         "image_variant_pkey": {
           "name": "image_variant_pkey",
-          "columns": [
-            "image_hash",
-            "width",
-            "height",
-            "format"
-          ]
+          "columns": ["image_hash", "width", "height", "format"]
         }
       },
       "uniqueConstraints": {},
@@ -888,12 +847,8 @@
           "name": "link_imagehash_foreign",
           "tableFrom": "link",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1081,12 +1036,8 @@
           "name": "list_providerid_foreign",
           "tableFrom": "list",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1094,12 +1045,8 @@
           "name": "list_networkid_foreign",
           "tableFrom": "list",
           "tableTo": "network",
-          "columnsFrom": [
-            "network_id"
-          ],
-          "columnsTo": [
-            "network_id"
-          ],
+          "columnsFrom": ["network_id"],
+          "columnsTo": ["network_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1107,12 +1054,8 @@
           "name": "list_imagehash_foreign",
           "tableFrom": "list",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -1249,12 +1192,8 @@
           "name": "list_order_providerid_foreign",
           "tableFrom": "list_order",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1431,12 +1370,8 @@
           "name": "list_order_item_listorderid_foreign",
           "tableFrom": "list_order_item",
           "tableTo": "list_order",
-          "columnsFrom": [
-            "list_order_id"
-          ],
-          "columnsTo": [
-            "list_order_id"
-          ],
+          "columnsFrom": ["list_order_id"],
+          "columnsTo": ["list_order_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1444,12 +1379,8 @@
           "name": "list_order_item_providerid_foreign",
           "tableFrom": "list_order_item",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1457,12 +1388,8 @@
           "name": "list_order_item_listid_foreign",
           "tableFrom": "list_order_item",
           "tableTo": "list",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "list_id"
-          ],
+          "columnsFrom": ["list_id"],
+          "columnsTo": ["list_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1470,10 +1397,7 @@
       "compositePrimaryKeys": {
         "list_order_item_pkey": {
           "name": "list_order_item_pkey",
-          "columns": [
-            "list_order_id",
-            "ranking"
-          ]
+          "columns": ["list_order_id", "ranking"]
         }
       },
       "uniqueConstraints": {},
@@ -1662,17 +1586,12 @@
         "list_submission_url_unique": {
           "name": "list_submission_url_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "url"
-          ]
+          "columns": ["url"]
         },
         "list_submission_provider_key_list_key_unique": {
           "name": "list_submission_provider_key_list_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_key",
-            "list_key"
-          ]
+          "columns": ["provider_key", "list_key"]
         }
       },
       "policies": {},
@@ -1749,12 +1668,8 @@
           "name": "list_tag_providerid_foreign",
           "tableFrom": "list_tag",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1762,12 +1677,8 @@
           "name": "list_tag_listid_foreign",
           "tableFrom": "list_tag",
           "tableTo": "list",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "list_id"
-          ],
+          "columnsFrom": ["list_id"],
+          "columnsTo": ["list_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -1921,12 +1832,8 @@
           "name": "list_token_tokenid_foreign",
           "tableFrom": "list_token",
           "tableTo": "token",
-          "columnsFrom": [
-            "token_id"
-          ],
-          "columnsTo": [
-            "token_id"
-          ],
+          "columnsFrom": ["token_id"],
+          "columnsTo": ["token_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1934,12 +1841,8 @@
           "name": "list_token_listid_foreign",
           "tableFrom": "list_token",
           "tableTo": "list",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "list_id"
-          ],
+          "columnsFrom": ["list_id"],
+          "columnsTo": ["list_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -1947,12 +1850,8 @@
           "name": "list_token_imagehash_foreign",
           "tableFrom": "list_token",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2105,12 +2004,8 @@
           "name": "metadata_providerid_foreign",
           "tableFrom": "metadata",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -2118,12 +2013,8 @@
           "name": "metadata_networkid_foreign",
           "tableFrom": "metadata",
           "tableTo": "network",
-          "columnsFrom": [
-            "network_id"
-          ],
-          "columnsTo": [
-            "network_id"
-          ],
+          "columnsFrom": ["network_id"],
+          "columnsTo": ["network_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         },
@@ -2131,12 +2022,8 @@
           "name": "metadata_listid_foreign",
           "tableFrom": "metadata",
           "tableTo": "list",
-          "columnsFrom": [
-            "list_id"
-          ],
-          "columnsTo": [
-            "list_id"
-          ],
+          "columnsFrom": ["list_id"],
+          "columnsTo": ["list_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -2261,12 +2148,8 @@
           "name": "network_imagehash_foreign",
           "tableFrom": "network",
           "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "image_hash"
-          ],
+          "columnsFrom": ["image_hash"],
+          "columnsTo": ["image_hash"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2362,9 +2245,7 @@
         "provider_key_unique": {
           "name": "provider_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -2486,12 +2367,8 @@
           "name": "tag_providerid_foreign",
           "tableFrom": "tag",
           "tableTo": "provider",
-          "columnsFrom": [
-            "provider_id"
-          ],
-          "columnsTo": [
-            "provider_id"
-          ],
+          "columnsFrom": ["provider_id"],
+          "columnsTo": ["provider_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }
@@ -2499,10 +2376,7 @@
       "compositePrimaryKeys": {
         "tag_pkey": {
           "name": "tag_pkey",
-          "columns": [
-            "provider_id",
-            "key"
-          ]
+          "columns": ["provider_id", "key"]
         }
       },
       "uniqueConstraints": {},
@@ -2708,12 +2582,8 @@
           "name": "token_networkid_foreign",
           "tableFrom": "token",
           "tableTo": "network",
-          "columnsFrom": [
-            "network_id"
-          ],
-          "columnsTo": [
-            "network_id"
-          ],
+          "columnsFrom": ["network_id"],
+          "columnsTo": ["network_id"],
           "onDelete": "cascade",
           "onUpdate": "cascade"
         }

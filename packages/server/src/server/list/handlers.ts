@@ -11,7 +11,6 @@ import createError from 'http-errors'
 import * as db from '../../db'
 import type { Request, RequestHandler } from 'express'
 import * as utils from './utils'
-import { rankTokenRows } from './ranking'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
@@ -148,17 +147,51 @@ export const all: RequestHandler = async (req, res) => {
 const FRESH_TTL_MS = 5 * 60 * 1000 // 5 minutes — serve without revalidation
 const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing in background
 
-/** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths). */
+/** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
+ *
+ * Uses applyOrder(dedupe=true, sorted=true) so the DB returns one row per token
+ * (best-ranked provider wins via dense_rank CTE), then a separate lightweight
+ * selectDistinct query fetches all providerKey/listKey memberships for the sources field.
+ * This avoids loading N rows-per-token into Node heap for chains with many list memberships.
+ */
 const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
   const defaultOrderId = getDefaultListOrderId()
-  const tokens = (defaultOrderId
-    ? await db.getTokensByChain(defaultOrderId, chainId)
-    : await db.getTokensUnderListId().where(eq(s.network.chainId, chainId))) as any[]
 
-  tokens.sort(rankTokenRows)
+  const [tokens, sourcesRows] = await Promise.all([
+    defaultOrderId
+      ? db.applyOrder(defaultOrderId, eq(s.network.chainId, chainId), 'listToken', undefined, {
+          dedupe: true,
+          sorted: true,
+        })
+      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)),
+    defaultOrderId ? db.getTokenSourcesByChain(chainId) : Promise.resolve([]),
+  ])
 
+  // Build address → sources[] map to patch onto entries after normalizeTokens.
+  // normalizeTokens only sees one row per token (already deduped), so we populate
+  // sources from this separate query rather than from duplicate rows.
+  const sourcesMap = new Map<string, string[]>()
+  for (const { providedId, providerKey, listKey } of sourcesRows) {
+    const key = providedId.toLowerCase()
+    const source = `${providerKey}/${listKey}`
+    const existing = sourcesMap.get(key)
+    if (existing) {
+      existing.push(source)
+    } else {
+      sourcesMap.set(key, [source])
+    }
+  }
+
+  // applyOrder(sorted=true) already orders by provider ranking — no JS sort needed.
   const filters = utils.tokenFilters({})
-  const allEntries = utils.normalizeTokens(tokens, filters, extensions)
+  const allEntries = utils.normalizeTokens(tokens as any, filters, extensions)
+
+  // Patch full sources onto each entry (normalizeTokens would only see the winning row's source).
+  for (const entry of allEntries) {
+    const fullSources = sourcesMap.get(entry.address as string)
+    if (fullSources) entry.sources = fullSources
+  }
+
   // Only return tokens that have images — imageless tokens aren't useful to display
   const entries = allEntries.filter((e) => e.logoURI)
   const limited = entries.slice(0, limit)
@@ -178,10 +211,7 @@ const revalidating = new Set<string>()
  * Pre-warm the tokensByChain cache for the top N chains by token count.
  * Called at server startup so the first real request is served from cache.
  */
-export const warmTokensByChainCache = async (
-  stats: { chainId: string; count: number }[],
-  topN = 5,
-): Promise<void> => {
+export const warmTokensByChainCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
   const top = stats.slice(0, topN)
   for (const { chainId: rawChainId } of top) {
     try {

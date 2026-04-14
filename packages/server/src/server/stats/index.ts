@@ -33,10 +33,12 @@ router.get(
   nextOnError(async (_req, res) => {
     const counts = await getStats()
     // chainId = bare number for backwards compat, chainIdentifier = CAIP-2
-    res.send(counts.map((r) => ({
-      chainId: fromCAIP2(r.chainId),
-      chainIdentifier: r.chainId,
-      count: r.count,
-    })))
+    res.send(
+      counts.map((r) => ({
+        chainId: fromCAIP2(r.chainId),
+        chainIdentifier: r.chainId,
+        count: r.count,
+      })),
+    )
   }),
 )
