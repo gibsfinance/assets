@@ -211,10 +211,7 @@ const revalidating = new Set<string>()
  * Pre-warm the tokensByChain cache for the top N chains by token count.
  * Called at server startup so the first real request is served from cache.
  */
-export const warmTokensByChainCache = async (
-  stats: { chainId: string; count: number }[],
-  topN = 5,
-): Promise<void> => {
+export const warmTokensByChainCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
   const top = stats.slice(0, topN)
   for (const { chainId: rawChainId } of top) {
     try {

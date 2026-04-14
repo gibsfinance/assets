@@ -1231,7 +1231,11 @@ export const applyOrder = async (
   whereClause: SQL,
   baseFrom: 'listToken' | 'provider' = 'listToken',
   formatPreference?: string[][],
-  { dedupe = true, sorted = false, includeContent = false }: { dedupe?: boolean; sorted?: boolean; includeContent?: boolean } = {},
+  {
+    dedupe = true,
+    sorted = false,
+    includeContent = false,
+  }: { dedupe?: boolean; sorted?: boolean; includeContent?: boolean } = {},
 ) => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql(formatPreference)

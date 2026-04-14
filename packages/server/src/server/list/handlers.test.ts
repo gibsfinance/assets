@@ -17,11 +17,7 @@ function row(overrides: Record<string, unknown> = {}) {
 
 describe('rankTokenRows', () => {
   it('sorts by ranking tier (ranking / 1000)', () => {
-    const rows = [
-      row({ listRanking: 5000 }),
-      row({ listRanking: 1000 }),
-      row({ listRanking: 3000 }),
-    ]
+    const rows = [row({ listRanking: 5000 }), row({ listRanking: 1000 }), row({ listRanking: 3000 })]
     rows.sort(rankTokenRows)
     expect(rows.map((r) => r.listRanking)).toEqual([1000, 3000, 5000])
   })
@@ -73,11 +69,7 @@ describe('rankTokenRows', () => {
   })
 
   it('falls back to listTokenOrderId when everything else is equal', () => {
-    const rows = [
-      row({ listTokenOrderId: 50 }),
-      row({ listTokenOrderId: 10 }),
-      row({ listTokenOrderId: 30 }),
-    ]
+    const rows = [row({ listTokenOrderId: 50 }), row({ listTokenOrderId: 10 }), row({ listTokenOrderId: 30 })]
     rows.sort(rankTokenRows)
     expect(rows.map((r) => r.listTokenOrderId)).toEqual([10, 30, 50])
   })
