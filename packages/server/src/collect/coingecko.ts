@@ -252,6 +252,7 @@ class CoinGeckoCollector extends BaseCollector {
         row.createCounter(terminalCounterTypes.TOKEN)
         row.incrementTotal(terminalCounterTypes.TOKEN, new Set(coins.map((c) => c.coinId)))
 
+        let inserted = 0
         await insertLimit.map(coins, async (coin) => {
           if (signal.aborted) return
 
@@ -279,6 +280,10 @@ class CoinGeckoCollector extends BaseCollector {
             })
             .catch(() => {})
 
+          inserted++
+          if (inserted % 250 === 0) {
+            console.log(`[coingecko] ${platformId}: ${inserted}/${withImage.length} inserted`)
+          }
           row.increment(terminalCounterTypes.TOKEN, coin.coinId)
         })
 
