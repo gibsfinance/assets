@@ -1426,8 +1426,13 @@ export const getTokenSourcesByChain = async (
 }
 
 /**
- * Count distinct tokens per chain that have at least one list_token with an image.
- * Used by /stats — avoids loading full token data just to count.
+ * Count distinct tokens per chain that have a usable image (matching directUri logic).
+ * A token counts if it has at least one list_token entry where:
+ *   - image.mode = 'link' AND image.uri IS NOT NULL, OR
+ *   - image.image_hash IS NOT NULL AND image.ext IS NOT NULL
+ * This mirrors the filter in buildTokensByChainResponse: `.filter(e => e.logoURI)`.
+ * Dedup is by (chain_id, provided_id) via COUNT(DISTINCT token_id), matching
+ * normalizeTokens' groupBy of `${chainId}-${providedId.toLowerCase()}`.
  */
 export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
   const db = getDrizzle()
@@ -1438,8 +1443,12 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
     WHERE ${s.network.chainId} != 'asset-0'
       AND EXISTS (
         SELECT 1 FROM ${s.listToken}
+        INNER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
-          AND ${s.listToken.imageHash} IS NOT NULL
+          AND (
+            (${s.image.mode} = 'link' AND ${s.image.uri} IS NOT NULL)
+            OR (${s.image.imageHash} IS NOT NULL AND ${s.image.ext} IS NOT NULL)
+          )
       )
     GROUP BY ${s.network.chainId}
     ORDER BY count DESC
