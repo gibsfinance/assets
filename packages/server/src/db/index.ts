@@ -1425,6 +1425,28 @@ export const getTokenSourcesByChain = async (
   )
 }
 
+/**
+ * Count distinct tokens per chain that have at least one list_token with an image.
+ * Used by /stats — avoids loading full token data just to count.
+ */
+export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
+  const db = getDrizzle()
+  const rows = await db.execute<{ chainId: string; count: string }>(dsql`
+    SELECT ${s.network.chainId} AS "chainId", COUNT(DISTINCT ${s.token.tokenId})::text AS count
+    FROM ${s.token}
+    INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+    WHERE ${s.network.chainId} != 'asset-0'
+      AND EXISTS (
+        SELECT 1 FROM ${s.listToken}
+        WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
+          AND ${s.listToken.imageHash} IS NOT NULL
+      )
+    GROUP BY ${s.network.chainId}
+    ORDER BY count DESC
+  `)
+  return rows.rows.map((r) => ({ chainId: r.chainId, count: Number(r.count) }))
+}
+
 export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const [row] = await db
