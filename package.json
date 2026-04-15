@@ -31,7 +31,6 @@
     "packages/server"
   ],
   "devDependencies": {
-    "@rollup/rollup-darwin-x64": "^4.60.1",
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3"
   },

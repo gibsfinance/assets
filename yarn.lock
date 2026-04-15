@@ -2677,14 +2677,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rollup/rollup-darwin-x64@npm:^4.60.1":
-  version: 4.60.1
-  resolution: "@rollup/rollup-darwin-x64@npm:4.60.1"
-  checksum: 10c0/914faebe151f0fb2908b68907ad370a33a68e1912bd0f4450c498204bcf95605ca45057bbaa328839f4b26f392604b347c281275b41ec2a193a30dd5c7eecfce
-  conditions: os=darwin & cpu=x64
-  languageName: node
-  linkType: hard
-
 "@rollup/rollup-freebsd-arm64@npm:4.59.0":
   version: 4.59.0
   resolution: "@rollup/rollup-freebsd-arm64@npm:4.59.0"
@@ -7003,7 +6995,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "gibassets@workspace:."
   dependencies:
-    "@rollup/rollup-darwin-x64": "npm:^4.60.1"
     concurrently: "npm:^9.1.2"
     typescript: "npm:^5.8.3"
     viem: "npm:^2.47.5"
