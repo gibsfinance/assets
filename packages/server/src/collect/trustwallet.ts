@@ -128,11 +128,28 @@ const sterilize = _.memoize((s: string | null = '') =>
     .split('net')
     .join(''),
 )
-// TrustWallet folder names that sterilize() misresolves.
-// sterilize strips "chain"/"network"/"evm"/"net" which can create collisions:
-//   "smartchain" → "smart" → matches "Smart Mainnet" (661898459) instead of BSC (56)
+// TrustWallet folder names that sterilize() misresolves or could misresolve.
+// sterilize strips "chain"/"network"/"evm"/"net" which creates collisions:
+//   "smartchain" → "smart" → matched "Smart Mainnet" (661898459) instead of BSC (56)
+// Preventive overrides for all lossy folders to avoid future regressions.
 const TRUSTWALLET_CHAIN_OVERRIDES: Record<string, number> = {
   smartchain: 56, // BNB Smart Chain
+  thorchain: 931, // THORChain EVM co-chain
+  okxchain: 66, // OKX Chain (OKC)
+  tomochain: 88, // TomoChain / Viction
+  gochain: 60, // GoChain
+  vechain: 100009, // VeChain
+  wanchain: 888, // Wanchain
+  zetachain: 7000, // ZetaChain
+  zetaevm: 7000, // ZetaChain EVM (same chain)
+  acalaevm: 787, // Acala EVM+
+  kavaevm: 2222, // Kava EVM
+  iotexevm: 4689, // IoTeX EVM
+  cfxevm: 1030, // Conflux eSpace
+  evmos: 9001, // Evmos
+  nativeevmos: 9001, // Evmos (native)
+  xrplevm: 1440002, // XRPL EVM Sidechain
+  polygonzkevm: 1101, // Polygon zkEVM
 }
 
 const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
