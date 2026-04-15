@@ -1,10 +1,10 @@
-import { getDB } from '../../db'
-import { tableNames } from '../../db/tables'
 import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'
-
-const db = getDB()
+import { getDrizzle } from '../../db/drizzle'
+import { sql as dsql, eq } from 'drizzle-orm'
+import { fromCAIP2 } from '../../chain-id'
+import * as s from '../../db/schema'
 
 export const router = Router() as Router
 
@@ -13,25 +13,32 @@ type Result = {
   count: number
 }
 
-const getStats = cacheResult<Result[]>(async () => {
-  const counts = await db
-    .select([
-      'network.chainId', //
-      db.raw('count(distinct(network.network_id, lower(token.token_id))) as count'),
-    ])
-    .from(tableNames.network)
-    .innerJoin(tableNames.token, 'network.network_id', 'token.network_id')
-    .innerJoin(tableNames.listToken, 'token.tokenId', 'listToken.tokenId')
-    .whereNotNull('listToken.imageHash')
-    .groupBy('network.chainId')
-    .orderBy('count', 'desc')
-  return counts
+export const getStats = cacheResult<Result[]>(async () => {
+  const rows = await getDrizzle()
+    .select({
+      chainId: s.network.chainId,
+      count: dsql<number>`count(distinct lower(${s.token.providedId}))`,
+    })
+    .from(s.network)
+    .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
+    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
+    .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .groupBy(s.network.chainId)
+    .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
+  return rows as unknown as Result[]
 })
 
 router.get(
   '/',
   nextOnError(async (_req, res) => {
     const counts = await getStats()
-    res.send(counts)
+    // chainId = bare number for backwards compat, chainIdentifier = CAIP-2
+    res.send(
+      counts.map((r) => ({
+        chainId: fromCAIP2(r.chainId),
+        chainIdentifier: r.chainId,
+        count: r.count,
+      })),
+    )
   }),
 )

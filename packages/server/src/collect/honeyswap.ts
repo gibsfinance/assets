@@ -1,6 +1,6 @@
-import * as remoteTokenList from './remote-tokenlist'
+import { RemoteTokenListCollector } from './remote-tokenlist'
 
-export const collect = remoteTokenList.collect({
+export default new RemoteTokenListCollector('honeyswap', {
   providerKey: 'honeyswap',
   listKey: 'exchange',
   tokenList: 'https://tokens.honeyswap.org/',

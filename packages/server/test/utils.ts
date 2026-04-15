@@ -1,8 +1,11 @@
 import * as db from '../src/db'
-import type { InsertableListToken, List, ListToken, Network, Provider, Token } from 'knex/types/tables'
+import type { InsertableListToken, List, ListToken, Network, Provider, Token } from '../src/db/schema-types'
 import * as viem from 'viem'
 import _ from 'lodash'
-import { TableNames, Tx, tableNames } from '../src/db/tables'
+import { TableNames, tableNames } from '../src/db/tables'
+import { getDrizzle, type DrizzleTx } from '../src/db/drizzle'
+import { eq, inArray } from 'drizzle-orm'
+import * as s from '../src/db/schema'
 
 const inserted: Partial<Record<TableNames, any[]>> = {
   network: [] as Network[],
@@ -17,28 +20,49 @@ export const get = (key: TableNames, index = 0) => {
 }
 
 export const teardown = async () => {
+  const drizzle = getDrizzle()
   const providerIds = inserted.provider!.map(({ providerId }) => providerId)
   const networkIds = inserted.network!.map(({ networkId }) => networkId)
-  await db.transaction(async (tx) => {
-    await tx.from(tableNames.provider).delete().whereIn('providerId', providerIds)
-    await tx.from(tableNames.network).delete().whereIn('networkId', networkIds)
+  await drizzle.transaction(async (tx) => {
+    if (providerIds.length) {
+      await tx.delete(s.provider).where(inArray(s.provider.providerId, providerIds))
+    }
+    if (networkIds.length) {
+      await tx.delete(s.network).where(inArray(s.network.networkId, networkIds))
+    }
   })
+  // Reset accumulated arrays so subsequent tests start clean
+  inserted.network!.length = 0
+  inserted.provider!.length = 0
+  inserted.list!.length = 0
+  inserted.token!.length = 0
+  inserted.list_token!.length = 0
 }
 
-const insert = async <T = any>(list: T[], count: number, fn: (i: number, tx: Tx) => Promise<T>, t: Tx = db.getDB()) => {
+const insert = async <T = any>(
+  list: T[],
+  count: number,
+  fn: (i: number, tx: DrizzleTx) => Promise<T>,
+  t?: DrizzleTx,
+) => {
   const len = list.length
-  await t.transaction(async (tx) => {
+  const run = async (tx: DrizzleTx) => {
     for (let i = 0; i < count; i++) {
       const res = await fn(i, tx)
       if (Array.isArray(res)) list.push(...res)
       else list.push(res)
     }
-  })
+  }
+  if (t) {
+    await run(t)
+  } else {
+    await getDrizzle().transaction(run)
+  }
   return list.slice(len)
 }
 
 export const setup = async () => {
-  await db.transaction(async (t) => {
+  await getDrizzle().transaction(async (t) => {
     const providers = await insert(
       inserted.provider!,
       4,
@@ -79,7 +103,7 @@ export const setup = async () => {
         (i, tx) =>
           db.insertToken(
             {
-              providedId: providedId(network.chainId, i),
+              providedId: providedId(+network.chainId, i),
               symbol: 'ETH' + i,
               name: 'Ether' + i,
               decimals: i % 3 === 1 ? 8 : 18,
@@ -107,16 +131,6 @@ export const setup = async () => {
       }
     }
     await insert(inserted.list_token!, 1, (_i, tx) => db.insertListToken(listTokens, tx), t)
-    // await db.insertListToken({
-    //   providedId: token0.providedId,
-    //   networkId: token0.networkId,
-    //   listId: list1.listId,
-    // })
-    // await db.insertListToken({
-    //   providedId: token1.providedId,
-    //   networkId: token1.networkId,
-    //   listId: list1.listId,
-    // })
   })
 }
 

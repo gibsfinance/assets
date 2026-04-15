@@ -28,21 +28,18 @@ import {
   blast,
 } from 'viem/chains'
 
+import { delay } from '../utils/delay'
 import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
 import * as path from 'path'
 import * as paths from '../paths'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'etherscan'
 
 const pageDir = path.join(paths.harvested, providerKey)
-
-/**
- * Delay utility to add pauses between requests
- */
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /**
  * Concurrency limiter for chain processing
@@ -52,7 +49,7 @@ const chainLimiter = limitBy<ChainConfig>(`${providerKey}-chains`, 1)
 /**
  * Concurrency limiter for puppeteer operations (more conservative)
  */
-const puppeteerLimiter = limitBy<Array<{ address: Address; logoURI?: string }>>(`${providerKey}-puppeteer`, 1)
+const puppeteerLimiter = limitBy<{ address: Address; logoURI?: string }[]>(`${providerKey}-puppeteer`, 1)
 
 /**
  * Shared browser instance for puppeteer operations
@@ -95,7 +92,10 @@ async function getSharedBrowser(): Promise<Browser> {
       sharedBrowser = await Promise.race([
         launchPromise,
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Browser launch timed out — is Chrome/Chromium installed?')), launchTimeout)
+          timer = setTimeout(
+            () => reject(new Error('Browser launch timed out — is Chrome/Chromium installed?')),
+            launchTimeout,
+          )
         }),
       ]).finally(() => clearTimeout(timer!))
     }
@@ -126,7 +126,11 @@ async function closeSharedBrowser() {
 class SequentialRpcProcessor {
   private chainProcessors = new Map<number, Promise<void>>()
 
-  async processToken(chain: Chain, address: Address, signal?: AbortSignal): Promise<{ name: string; symbol: string; decimals: number } | null> {
+  async processToken(
+    chain: Chain,
+    address: Address,
+    signal: AbortSignal,
+  ): Promise<{ name: string; symbol: string; decimals: number } | null> {
     const chainId = chain.id
 
     // Get or create the sequential processor for this chain
@@ -138,7 +142,7 @@ class SequentialRpcProcessor {
 
     // Create a promise for the actual RPC work (without delay)
     const rpcWork = currentChainProcessor.then(async () => {
-      if (signal?.aborted) throw new Error('Aborted')
+      if (signal.aborted) throw new Error('Aborted')
 
       const client = createChainClient(chain)
 
@@ -150,20 +154,23 @@ class SequentialRpcProcessor {
 
     // Create the next processor that includes the 500ms delay
     const nextProcessor = rpcWork.then(
-      async (result) => {
+      async (_result) => {
         // Wait 500ms before allowing the next request on this chain
-        await delay(500)
+        await delay(500, signal).catch(() => {})
         return // Return void for the processor chain
       },
       async (error) => {
         // Wait 500ms even on error to maintain rate limiting
-        await delay(500)
+        await delay(500, signal).catch(() => {})
         throw error
-      }
+      },
     )
 
     // Update the processor chain
-    this.chainProcessors.set(chainId, nextProcessor.catch(() => { }))
+    this.chainProcessors.set(
+      chainId,
+      nextProcessor.catch(() => undefined),
+    )
 
     // Return the RPC result immediately (without waiting for the delay)
     return rpcWork.catch((error) => {
@@ -193,7 +200,7 @@ type EtherscanChainInfo = {
 /**
  * Fetches the list of supported chains from Etherscan's chainlist API
  */
-async function fetchEtherscanChainList(signal?: AbortSignal): Promise<EtherscanChainInfo[]> {
+async function fetchEtherscanChainList(signal: AbortSignal): Promise<EtherscanChainInfo[]> {
   const response = await fetch('https://api.etherscan.io/v2/chainlist', { signal })
 
   if (!response.ok) {
@@ -227,9 +234,6 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
     return null
   }
 
-  // Find matching viem chain
-  let viemChain: Chain | undefined
-
   // Common chain mappings
   const chainMappings: Record<number, Chain> = {
     1: mainnet,
@@ -254,7 +258,7 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
     81457: blast,
   }
 
-  viemChain = chainMappings[chainId]
+  const viemChain = chainMappings[chainId]
 
   if (!viemChain) {
     return null // Skip chains we don't have viem support for
@@ -270,13 +274,14 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
 /**
  * Gets supported chain configurations from Etherscan API
  */
-async function getSupportedChainConfigs(signal?: AbortSignal): Promise<ChainConfig[]> {
+async function getSupportedChainConfigs(signal: AbortSignal): Promise<ChainConfig[]> {
   const etherscanChains = await fetchEtherscanChainList(signal)
 
   return etherscanChains
-    .filter(chain => {
+    .filter((chain) => {
       // Filter out testnets
-      const isTestnet = chain.chainname.toLowerCase().includes('testnet') ||
+      const isTestnet =
+        chain.chainname.toLowerCase().includes('testnet') ||
         chain.chainname.toLowerCase().includes('sepolia') ||
         chain.chainname.toLowerCase().includes('goerli') ||
         chain.chainname.toLowerCase().includes('amoy') ||
@@ -290,17 +295,6 @@ async function getSupportedChainConfigs(signal?: AbortSignal): Promise<ChainConf
     .filter((config): config is ChainConfig => config !== null) // Remove null entries
 }
 
-
-
-type TokenData = {
-  address: Address
-  name: string
-  symbol: string
-  decimals: number
-  logoURI?: string
-  etherscanUrl: string
-}
-
 /**
  * Fetch tokens using puppeteer to bypass Cloudflare protection
  */
@@ -312,20 +306,22 @@ async function fetchTopTokensViaPuppeteer({
 }: {
   explorerBaseUrl: string
   chainId: number
-  signal?: AbortSignal
+  signal: AbortSignal
   row: TerminalRowProxy
-}): Promise<Array<{ address: Address; logoURI?: string }>> {
+}): Promise<{ address: Address; logoURI?: string }[]> {
   let page = null
 
   try {
-    if (signal?.aborted) throw new Error('Aborted')
+    if (signal.aborted) throw new Error('Aborted')
 
     // Use shared browser instance
     const browser = await getSharedBrowser()
     page = await browser.newPage()
 
     // Set realistic browser settings
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36')
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    )
     await page.setViewport({ width: 1920, height: 1080 })
 
     // Set extra headers
@@ -345,31 +341,39 @@ async function fetchTopTokensViaPuppeteer({
       width: 1080,
       height: 1024,
       deviceScaleFactor: 1,
-    });
+    })
 
-    await delay(3000)
+    await delay(3000, signal).catch(() => {})
+    if (signal.aborted) return []
     // Check if we're still on a Cloudflare page
     const isCloudflareChallenge = await page.evaluate(() => {
-      return document.body.innerHTML.includes('Checking your browser') ||
+      return (
+        document.body.innerHTML.includes('Checking your browser') ||
         document.body.innerHTML.includes('DDoS protection') ||
         document.title.includes('Just a moment')
+      )
     })
 
     if (isCloudflareChallenge) {
       // Wait for potential Cloudflare challenge to complete
-      await delay(3000)
+      await delay(3000, signal).catch(() => {})
+      if (signal.aborted) return []
 
       let count = 5
       while (count > 0) {
+        if (signal.aborted) return []
         // Check if we're still on a Cloudflare page
         const isCloudflareChallenge = await page.evaluate(() => {
-          return document.body.innerHTML.includes('Checking your browser') ||
+          return (
+            document.body.innerHTML.includes('Checking your browser') ||
             document.body.innerHTML.includes('DDoS protection') ||
             document.title.includes('Just a moment')
+          )
         })
         if (isCloudflareChallenge) {
           // Wait longer for Cloudflare challenge to complete
-          await delay(10000)
+          await delay(10000, signal).catch(() => {})
+          if (signal.aborted) return []
           count--
           continue
         }
@@ -389,11 +393,10 @@ async function fetchTopTokensViaPuppeteer({
 
     // Parse with cheerio
     const $ = cheerio.load(html)
-    const tokenData: Array<{ address: Address; logoURI?: string }> = []
+    const tokenData: { address: Address; logoURI?: string }[] = []
 
     // Parse token addresses and logos from the table
     const rows = $('tbody tr')
-    // console.log(chainId, rows.length, rows.first())
     rows.each((_, row) => {
       const $row = $(row)
       // Find token address link
@@ -418,7 +421,7 @@ async function fetchTopTokensViaPuppeteer({
           }
 
           // Check if we already have this address
-          if (!tokenData.find(t => t.address === address)) {
+          if (!tokenData.find((t) => t.address === address)) {
             tokenData.push({ address, logoURI })
           }
         }
@@ -426,16 +429,13 @@ async function fetchTopTokensViaPuppeteer({
     })
 
     const finalTokenData = tokenData.slice(0, 100)
-    // console.log(`Found ${finalTokenData.length} tokens for chain ${chainId} ${explorerBaseUrl}`)
     return finalTokenData
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chainId}-puppeteer-error`]))
     failureLog('Puppeteer failed for chain %o: %o', chainId, error)
     return []
   } finally {
     if (page) {
-      // console.log('closing page', chainId)
       await page.close()
       page = null
     }
@@ -450,13 +450,13 @@ async function fetchTopTokens({
   explorerBaseUrl,
   signal,
   row,
-  chainId
+  chainId,
 }: {
   explorerBaseUrl: string
-  signal?: AbortSignal
+  signal: AbortSignal
   row: TerminalRowProxy
   chainId: number
-}): Promise<Array<{ address: Address; logoURI?: string }>> {
+}): Promise<{ address: Address; logoURI?: string }[]> {
   // Use puppeteer with concurrency limiting to avoid overwhelming the system
   return puppeteerLimiter(async () => {
     return fetchTopTokensViaPuppeteer({
@@ -478,7 +478,7 @@ async function fetchTokenMetadata({
 }: {
   chain: Chain
   address: Address
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<{ name: string; symbol: string; decimals: number } | null> {
   return rpcProcessor.processToken(chain, address, signal)
 }
@@ -490,14 +490,13 @@ async function processChainTokens({
   chainConfig,
   row,
   listId,
-  providerId,
   signal,
 }: {
   chainConfig: ChainConfig
   row: TerminalRowProxy
   listId: string
   providerId: string
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<void> {
   const { chain, explorerBaseUrl } = chainConfig
   const chainKey = chain.name.toLowerCase().replace(/\s+/g, '-')
@@ -511,7 +510,7 @@ async function processChainTokens({
       explorerBaseUrl,
       signal,
       row,
-      chainId: chain.id
+      chainId: chain.id,
     })
 
     if (tokenData.length === 0) {
@@ -522,19 +521,18 @@ async function processChainTokens({
 
     // Process tokens in batches for efficiency, separating token insertion from image fetching
     const section = row.get(providerKey)!
-    let successCount = 0
 
     // Collect all valid tokens with their metadata and URIs
-    const validTokens: Array<{
+    const validTokens: {
       address: `0x${string}`
       metadata: { symbol: string; name: string; decimals: number }
       logoURI: string | null
       index: number
-    }> = []
+    }[] = []
 
     for (const [index, { address, logoURI }] of tokenData.entries()) {
       const normalizedLogoURI = logoURI || null
-      if (signal?.aborted) break
+      if (signal.aborted) break
 
       const chainTokenId = utils.counterId.token([chain.id, address])
 
@@ -548,7 +546,6 @@ async function processChainTokens({
         }
 
         validTokens.push({ address, metadata, logoURI: normalizedLogoURI, index })
-
       } catch (error) {
         row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
         failureLog('Failed to fetch metadata for token %o on %o: %o', address, chainKey, error)
@@ -561,7 +558,7 @@ async function processChainTokens({
     }
 
     // Batch insert tokens first (without images)
-    const tokenInserts: Array<Parameters<typeof db.insertToken>[0]> = validTokens.map(({ address, metadata }) => ({
+    const tokenInserts: Parameters<typeof db.insertToken>[0][] = validTokens.map(({ address, metadata }) => ({
       type: 'erc20',
       symbol: metadata.symbol,
       name: metadata.name,
@@ -570,13 +567,19 @@ async function processChainTokens({
       providedId: address,
     }))
 
-    const tokensWithImages: Array<{ listTokenId: string; uri: string | null; originalUri: string | null; providerKey: string }> = []
+    const tokensWithImages: {
+      listTokenId: string
+      uri: string | null
+      originalUri: string | null
+      providerKey: string
+    }[] = []
 
     try {
-      const insertedTokens = await db.insertTokenBatch(tokenInserts)
+      await db.insertTokenBatch(tokenInserts)
 
       // Create list associations for all inserted tokens
       for (const [batchIndex, token] of validTokens.entries()) {
+        if (signal.aborted) break
         const chainTokenId = utils.counterId.token([chain.id, token.address])
         const task = section.task(`token-${chainKey}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
@@ -610,8 +613,6 @@ async function processChainTokens({
           }
 
           row.increment(terminalCounterTypes.TOKEN, chainTokenId)
-          successCount++
-
         } catch (error) {
           row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
           failureLog('Failed to store token %o on %o: %o', token.address, chainKey, error)
@@ -628,10 +629,12 @@ async function processChainTokens({
     // Batch fetch images for tokens that have URIs
     if (tokensWithImages.length > 0) {
       try {
-        await db.batchFetchImagesForTokens(tokensWithImages.map(item => ({
-          ...item,
-          signal,
-        })))
+        await db.batchFetchImagesForTokens(
+          tokensWithImages.map((item) => ({
+            ...item,
+            signal,
+          })),
+        )
         failureLog('Batch fetched images for %o tokens on chain %o', tokensWithImages.length, chainKey)
       } catch (error) {
         failureLog('Failed to batch fetch images for chain %o: %o', chainKey, error)
@@ -640,34 +643,21 @@ async function processChainTokens({
     }
 
     row.increment(terminalCounterTypes.NETWORK, new Set([chain.id.toString()]))
-    // console.log(`Processed ${successCount}/${tokenData.length} tokens for ${chainKey}`)
-
   } catch (error) {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
-    // console.error(`Failed to process chain ${chainKey}:`, error)
   }
 }
 
-/**
- * Main collector function
- */
-export const collect = async (signal?: AbortSignal) => {
-  const row = utils.terminal.issue({
-    type: terminalRowTypes.SETUP,
-    id: providerKey,
-  })
+class EtherscanCollector extends BaseCollector {
+  readonly key = 'etherscan'
 
-  try {
-    // Insert provider
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     const [provider] = await db.insertProvider({
       key: providerKey,
       name: 'Etherscan',
     })
-
-    // Create list for all tokens
-    // const allNetworksId = utils.chainIdToNetworkId(0)
     const allNetworks = await db.insertNetworkFromChainId(0, 'evm')
-    const [list] = await db.insertList({
+    await db.insertList({
       providerId: provider.providerId,
       networkId: allNetworks.networkId,
       key: 'top-tokens',
@@ -675,45 +665,82 @@ export const collect = async (signal?: AbortSignal) => {
       default: true,
     })
 
-    // Get enabled chains from Etherscan API (fail if unavailable)
-    const enabledChains = await getSupportedChainConfigs(signal)
+    return [
+      {
+        providerKey,
+        lists: [{ listKey: 'top-tokens' }],
+      },
+    ]
+  }
 
-    if (enabledChains.length === 0) {
-      throw new Error('Failed to fetch supported chains from Etherscan API. Cannot proceed without chain configuration.')
-    }
-    // Setup counters
-    const section = row.issue(providerKey)
-    row.createCounter(terminalCounterTypes.NETWORK)
-    row.createCounter(terminalCounterTypes.TOKEN)
-    row.createCounter(terminalLogTypes.EROR, true)
-    row.createCounter(terminalLogTypes.WARN, true)
-
-    row.incrementTotal(
-      terminalCounterTypes.NETWORK,
-      new Set(enabledChains.map(config => config.chain.id.toString()))
-    )
-
-    // Process chains with limited concurrency (max 8 at a time)
-    // Each chain handles its own rate limiting via SequentialRpcProcessor (500ms delays per chain)
-    await chainLimiter.map(enabledChains, async (chainConfig) => {
-      if (signal?.aborted) return
-
-      return processChainTokens({
-        chainConfig,
-        row,
-        listId: list.listId,
-        providerId: provider.providerId,
-        signal,
-      })
+  async collect(signal: AbortSignal): Promise<void> {
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
     })
 
-  } catch (error) {
-    failureLog('Etherscan collector failed: %o', error)
-    throw error
-  } finally {
-    // Close shared browser instance
-    await closeSharedBrowser()
-    row.remove(providerKey)
-    row.complete()
+    try {
+      // Insert provider
+      const [provider] = await db.insertProvider({
+        key: providerKey,
+        name: 'Etherscan',
+      })
+
+      // Create list for all tokens
+      const allNetworks = await db.insertNetworkFromChainId(0, 'evm')
+      const [list] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: allNetworks.networkId,
+        key: 'top-tokens',
+        name: 'Top Tokens by Volume',
+        default: true,
+      })
+
+      // Get enabled chains from Etherscan API (fail if unavailable)
+      const enabledChains = await getSupportedChainConfigs(signal)
+
+      if (enabledChains.length === 0) {
+        throw new Error(
+          'Failed to fetch supported chains from Etherscan API. Cannot proceed without chain configuration.',
+        )
+      }
+      // Setup counters
+      row.issue(providerKey)
+      row.createCounter(terminalCounterTypes.NETWORK)
+      row.createCounter(terminalCounterTypes.TOKEN)
+      row.createCounter(terminalLogTypes.EROR, true)
+      row.createCounter(terminalLogTypes.WARN, true)
+
+      row.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        new Set(enabledChains.map((config) => config.chain.id.toString())),
+      )
+
+      // Process chains with limited concurrency (max 8 at a time)
+      // Each chain handles its own rate limiting via SequentialRpcProcessor (500ms delays per chain)
+      await chainLimiter.map(enabledChains, async (chainConfig) => {
+        if (signal.aborted) return
+
+        return processChainTokens({
+          chainConfig,
+          row,
+          listId: list.listId,
+          providerId: provider.providerId,
+          signal,
+        })
+      })
+    } catch (error) {
+      failureLog('Etherscan collector failed: %o', error)
+      throw error
+    } finally {
+      // Close shared browser instance
+      await closeSharedBrowser()
+      row.remove(providerKey)
+      row.complete()
+    }
   }
 }
+
+const instance = new EtherscanCollector()
+export default instance
+export const collect = (signal: AbortSignal) => instance.collect(signal)

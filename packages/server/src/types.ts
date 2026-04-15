@@ -1,4 +1,4 @@
-import type { Bridge, BridgeLink, Image, Network, Token } from 'knex/types/tables'
+import type { Bridge, BridgeLink, Image, Network, Token } from './db/schema-types'
 import type { ImageMode } from './db/tables'
 import type { Hex } from 'viem'
 import { MinimalTokenInfo } from '@gibs/utils'
@@ -22,6 +22,7 @@ export type SansMetadataTokenEntry = {
   address: Hex
   logoURI?: string
   extensions?: Extensions
+  sources?: string[]
 }
 
 export type TokenEntry = SansMetadataTokenEntry & {
@@ -74,4 +75,9 @@ export type HeaderUriInfo = {
   headerListTokenId: string
 }
 
-export type TokenInfo = Network & Token & Image & BridgeLinkInfo & HeaderUriInfo
+export type TokenSourceInfo = {
+  providerKey: string
+  listKey: string
+}
+
+export type TokenInfo = Network & Token & Image & BridgeLinkInfo & HeaderUriInfo & TokenSourceInfo

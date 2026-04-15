@@ -1,13 +1,12 @@
 import { exportImage } from '../args'
-// import * as utils from '../utils'
 import * as paths from '../paths'
 import * as path from 'path'
 import * as fs from 'fs'
-import * as db from '../db'
 import { cleanup } from '../cleanup'
-import { tableNames } from '../db/tables'
-import { Image, List, ListToken, Network, Provider, Token } from 'knex/types/tables'
 import { failureLog } from '@gibs/utils/log'
+import { getDrizzle } from '../db/drizzle'
+import { eq, and } from 'drizzle-orm'
+import * as s from '../db/schema'
 
 main()
   .then(cleanup)
@@ -23,63 +22,53 @@ async function main() {
     force: true,
     recursive: true,
   })
+  const drizzle = getDrizzle()
   if (!token) {
-    const match = await db
-      .getDB()
-      .select('*')
-      .from(tableNames.network)
-      .join(tableNames.image, {
-        [`${tableNames.image}.imageHash`]: `${tableNames.network}.imageHash`,
-      })
-      .where({
-        chainId,
-      })
-      .first()
+    const [match] = await drizzle
+      .select()
+      .from(s.network)
+      .innerJoin(s.image, eq(s.image.imageHash, s.network.imageHash))
+      .where(eq(s.network.chainId, String(chainId)))
+      .limit(1)
+    if (!match) {
+      failureLog('no match found for chainId %o', chainId)
+      return
+    }
     await fs.promises.mkdir(imgExportDir, {
       recursive: true,
     })
-    await fs.promises.writeFile(path.join(imgExportDir, `${chainId}${match.ext}`), match.content)
+    await fs.promises.writeFile(path.join(imgExportDir, `${chainId}${match.image.ext}`), match.image.content)
     return
   }
   console.log('%o@%o', chainId, token)
-  const matches = await db
-    .getDB()
-    .from(tableNames.network)
-    .select<
-      (Network &
-        Token &
-        List &
-        Provider &
-        Image &
-        ListToken & {
-          providerKey: string
-          listKey: string
-        })[]
-    >([
-      '*',
-      db.getDB().raw(`${tableNames.provider}.key as provider_key`),
-      db.getDB().raw(`${tableNames.list}.key as list_key`),
-    ])
-    .where(`${tableNames.network}.chainId`, chainId)
-    .join(tableNames.listToken, {
-      [`${tableNames.listToken}.networkId`]: `${tableNames.network}.networkId`,
+  const matches = await drizzle
+    .select({
+      networkId: s.network.networkId,
+      chainId: s.network.chainId,
+      type: s.network.type,
+      tokenId: s.token.tokenId,
+      providedId: s.token.providedId,
+      name: s.token.name,
+      symbol: s.token.symbol,
+      decimals: s.token.decimals,
+      imageHash: s.image.imageHash,
+      content: s.image.content,
+      ext: s.image.ext,
+      mode: s.image.mode,
+      uri: s.image.uri,
+      listId: s.list.listId,
+      listTokenId: s.listToken.listTokenId,
+      providerId: s.provider.providerId,
+      providerKey: s.provider.key,
+      listKey: s.list.key,
     })
-    .join(tableNames.token, {
-      [`${tableNames.token}.networkId`]: `${tableNames.network}.networkId`,
-      [`${tableNames.token}.providedId`]: `${tableNames.listToken}.providedId`,
-    })
-    .join(tableNames.list, {
-      [`${tableNames.list}.listId`]: `${tableNames.listToken}.listId`,
-    })
-    .join(tableNames.provider, {
-      [`${tableNames.provider}.providerId`]: `${tableNames.list}.providerId`,
-    })
-    .where({
-      [`${tableNames.token}.providedId`]: token,
-    })
-    .join(tableNames.image, {
-      [`${tableNames.image}.imageHash`]: `${tableNames.listToken}.imageHash`,
-    })
+    .from(s.network)
+    .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
+    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .where(and(eq(s.network.chainId, String(chainId)), eq(s.token.providedId, token)))
   await Promise.all(
     matches.map(async (res) => {
       const dirname = path.join(imgExportDir, res.providerKey, res.listKey)

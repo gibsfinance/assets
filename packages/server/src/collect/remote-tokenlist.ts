@@ -6,6 +6,7 @@ import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes, TerminalSectionProxy } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 type Extension = {
   address: viem.Hex
@@ -28,10 +29,59 @@ type Input = {
   isDefault?: boolean
   /** a list of addresses to blacklist images to speed up load time */
   blacklist?: Set<string>
+  /** rewrite logoURI before fetching (e.g., thumb → large) */
+  rewriteLogoURI?: (uri: string) => string
 }
 
 /**
- * Main collection function that processes remote token lists and extensions
+ * Two-phase collector for remote token lists.
+ * Phase 1 (discover): fetches JSON, creates provider + list rows.
+ * Phase 2 (collect): processes tokens + images.
+ */
+export class RemoteTokenListCollector extends BaseCollector {
+  readonly key: string
+  private config: Input
+
+  constructor(key: string, config: Input) {
+    super()
+    this.key = key
+    this.config = config
+  }
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const { providerKey, listKey, tokenList: tokenListUrl } = this.config
+
+    // Fetch the remote JSON (cached by cachedJSONRequest)
+    const tokenList = await db.cachedJSONRequest<types.TokenList>(tokenListUrl, signal, tokenListUrl)
+    if (signal.aborted || !tokenList?.tokens) return []
+
+    // Run inmemory discover to create provider + list rows
+    await inmemoryTokenlist.discover({
+      providerKey,
+      listKey,
+      tokenList,
+      isDefault: this.config.isDefault,
+      signal,
+    })
+
+    return [
+      {
+        providerKey,
+        lists: [{ listKey }],
+      },
+    ]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    // Delegate to the existing factory collect — upserts are idempotent
+    const fn = collect(this.config)
+    await fn(signal)
+  }
+}
+
+/**
+ * Main collection function that processes remote token lists and extensions.
+ * Kept for backward compatibility with unconverted collectors.
  */
 export const collect =
   ({
@@ -42,44 +92,39 @@ export const collect =
     isDefault = true,
     blacklist = new Set<string>(),
     row: ro,
+    rewriteLogoURI,
   }: Input) =>
-    async (signal: AbortSignal) => {
-      const id = `${providerKey}/${listKey}`
-      const row = ro ? ro.task(id, { id, type: terminalRowTypes.SETUP }) :
-        (utils.terminal.get(id) ??
-          utils.terminal.issue({
-            type: terminalRowTypes.SETUP,
-            id,
-          }))
-      const tokenList = await db.cachedJSONRequest<types.TokenList>(
-        tokenListUrl,
-        signal,
-        tokenListUrl,
-      )
-      if (signal.aborted) {
-        return
-      }
+  async (signal: AbortSignal) => {
+    const id = `${providerKey}/${listKey}`
+    const row = ro
+      ? ro.task(id, { id, type: terminalRowTypes.SETUP })
+      : (utils.terminal.get(id) ??
+        utils.terminal.issue({
+          type: terminalRowTypes.SETUP,
+          id,
+        }))
+    try {
+      const tokenList = await db.cachedJSONRequest<types.TokenList>(tokenListUrl, signal, tokenListUrl)
+      if (signal.aborted) return
 
       if (!tokenList) {
         row.increment(terminalLogTypes.EROR, new Set([id]))
-        row.complete()
         throw new Error(`Invalid JSON response from ${tokenListUrl}`)
       }
 
-      if (signal.aborted) {
-        row.complete()
-        return
-      }
+      if (signal.aborted) return
 
       const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
       if (!tokenList.tokens) {
         failureLog('%o %o', tokenListUrl, tokenList)
-        row.complete()
         return
       }
       tokenList.tokens.forEach((token) => {
         if (blacked.has(token.address.toLowerCase())) {
           token.logoURI = ''
+        }
+        if (rewriteLogoURI && token.logoURI) {
+          token.logoURI = rewriteLogoURI(token.logoURI)
         }
       })
       const kv: KV = {}
@@ -109,6 +154,7 @@ export const collect =
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.chainToPublicClient(chain)
 
+            // eslint-disable-next-line prefer-const
             let [image, [name = item.name, symbol = item.symbol, decimals = item.decimals]] = await Promise.all([
               db.fetchImage(item.logoURI, signal, providerKey, item.address),
               erc20Read(chain, client, item.address),
@@ -126,17 +172,11 @@ export const collect =
 
             if (!image) {
               row.increment('missing', utils.counterId.token([item.network.id, item.address]))
-              // dbg(`No image found for token ${item.address} on chain ${item.network.id}`)
               return
             }
             await db.transaction(async (tx) => {
               const network = await db.insertNetworkFromChainId(item.network.id, undefined, tx)
               if (item.network.isNetworkImage) {
-                // updateStatus({
-                //   provider: providerKey,
-                //   message: `Storing network image for ${chain.name}...`,
-                //   phase: 'storing',
-                // } satisfies StatusProps)
                 await db.fetchImageAndStoreForNetwork(
                   {
                     network,
@@ -167,15 +207,15 @@ export const collect =
           }
         }),
       )
-      if (signal.aborted) {
-        row.complete()
-        return
-      }
+      if (signal.aborted) return
 
       const validExtras = _.compact(extras)
       tokenList.tokens = _.uniqBy([...validExtras, ...tokenList.tokens], 'address')
       row.createCounter(terminalCounterTypes.TOKEN)
-      row.incrementTotal(terminalCounterTypes.TOKEN, new Set(tokenList.tokens.map(token => utils.counterId.token([token.chainId, token.address]))))
+      row.incrementTotal(
+        terminalCounterTypes.TOKEN,
+        new Set(tokenList.tokens.map((token) => utils.counterId.token([token.chainId, token.address]))),
+      )
       const result = await inmemoryTokenlist.collect({
         providerKey,
         listKey,
@@ -184,6 +224,8 @@ export const collect =
         row,
         signal,
       })
-      row.complete()
       return result
+    } finally {
+      row.complete()
     }
+  }

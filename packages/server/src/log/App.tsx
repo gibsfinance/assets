@@ -41,9 +41,20 @@ export const destroyTerminal = () => {
   terminal = null
 }
 
-// Handle Ctrl+C gracefully
+// Handle Ctrl+C gracefully — force exit after 3s if collectors don't stop
+let sigintCount = 0
 process.on('SIGINT', () => {
-  stop('Stopped by user')
+  sigintCount++
+  if (sigintCount === 1) {
+    stop('Stopped by user')
+    setTimeout(() => {
+      console.error('\nForce exiting — collectors did not stop in time')
+      process.exit(1)
+    }, 3000).unref()
+  } else {
+    // Second Ctrl+C = immediate exit
+    process.exit(1)
+  }
 })
 
 export const stop = (message: string) => {
@@ -127,17 +138,24 @@ export const createTerminal = () => {
 
 export const logCounter = (key: types.TerminalCounterType | string, action: string, counter?: types.Counter) => {
   doLog(() => {
-    log(`${action} counter %o`, _.omitBy({
-      key,
-      current: counter?.current?.size,
-      total: counter?.total?.size,
-    }, _.isNil))
+    log(
+      `${action} counter %o`,
+      _.omitBy(
+        {
+          key,
+          current: counter?.current?.size,
+          total: counter?.total?.size,
+        },
+        _.isNil,
+      ),
+    )
   })
 }
 
 export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: types.TerminalRow) => {
+  const fullId = _.compact([parent?.fullId, row.id]).join(' ')
   return {
-    fullId: _.compact([parent?.fullId, row.id]).join(' '),
+    fullId,
     get(id: string) {
       const section = row.sections?.get(id)
       if (!section) {
@@ -152,7 +170,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
           row[k] = v
         }
         doLog(() => {
-          log(`updating row id=%o, kv=%o`, row.fullId, row.kv ?? {})
+          log(`updating row id=%o, kv=%o`, fullId, row.kv ?? {})
         })
       })
     },
@@ -249,7 +267,6 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
       rerenderAfter(() => {
         row.hide = true
         doLog(() => {
-          console.log('calling hide again')
           log(`hiding row key=%o`, row.id)
         })
       })

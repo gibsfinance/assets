@@ -2,12 +2,16 @@ import * as harvest from '../harvest'
 import * as db from '../db'
 import { cleanup } from '../cleanup'
 import { harvest as harvestArgs } from '../args/harvest'
-import { seedOrders } from '../db/create-orders'
+import { syncDefaultOrder, buildManifestsFromDB } from '../db/sync-order'
+import { allCollectables } from '../collect/collectables'
 const arg = harvestArgs()
 
-db.getDB()
-  .migrate.latest()
+db.migrate()
   .then(() => harvest.main(arg))
-  .then(() => seedOrders())
+  .then(async () => {
+    const keys = allCollectables()
+    const manifests = await buildManifestsFromDB(keys)
+    await syncDefaultOrder(keys, manifests)
+  })
   .catch((err) => console.log(err))
   .then(cleanup)

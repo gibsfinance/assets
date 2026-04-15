@@ -1,40 +1,57 @@
+/**
+ * @module list/utils
+ * Token list response formatting and query param filtering.
+ *
+ * `normalizeTokens()` deduplicates token results by chainId+address, preserving
+ * input order (first occurrence wins). Optionally collects `sources` (providerKey/listKey)
+ * and bridge/header extensions across duplicate entries.
+ *
+ * `tokenFilters()` parses `?chainId=` and `?decimals=` query params into predicate functions.
+ */
+import { fromCAIP2 } from '../../chain-id'
 import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
 import * as viem from 'viem'
-import type { Image, List, Network, Token } from 'knex/types/tables'
-import { Knex } from 'knex'
+import type { Network, Token } from '../../db/schema-types'
 import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
-import { tableNames } from '../../db/tables'
 import _ from 'lodash'
 import config from '../../../config'
-
-export const applyVersion = (version: string, db: Knex.QueryBuilder) => {
-  const [major, minor, patch] = version.split('.')
-  return db.where('major', major).where('minor', minor).where('patch', patch)
-}
+import { eq, asc } from 'drizzle-orm'
+import * as s from '../../db/schema'
 
 export const respondWithList = async (
   res: Response,
-  list: List & Image,
+  list: {
+    listId: string
+    name: string | null
+    imageHash: string | null
+    ext: string | null
+    mode: string | null
+    uri: string | null
+    updatedAt: string
+    major: number
+    minor: number
+    patch: number
+  },
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string>,
 ) => {
-  let q = db.getTokensUnderListId().where(`${tableNames.listToken}.listId`, list.listId)
-  if (extensions.has('bridgeInfo')) {
-    q = db.addBridgeExtensions(q)
-  }
-  if (extensions.has('headerUri')) {
-    q = db.addHeaderUriExtension(q)
-  }
-  const tokens = await q.orderBy('listTokenOrderId', 'asc')
-  // could possibly be turned into a query
-  const tkns = normalizeTokens(tokens, filters, extensions)
+  const hasBridge = extensions.has('bridgeInfo')
+  const hasHeader = extensions.has('headerUri')
+  const tokens =
+    hasBridge || hasHeader
+      ? await db.getTokensWithExtensions(list.listId, { bridgeInfo: hasBridge, headerUri: hasHeader })
+      : await db
+          .getTokensUnderListId()
+          .where(eq(s.listToken.listId, list.listId))
+          .orderBy(asc(s.listToken.listTokenOrderId))
+  const tkns = normalizeTokens(tokens as unknown as TokenInfo[], filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   res.json({
     name: list.name || '',
-    logoURI: utils.directUri(list),
-    timestamp: list.updatedAt.toISOString(),
+    logoURI: utils.directUri(list as any),
+    timestamp: new Date(list.updatedAt).toISOString(),
     version: {
       major: list.major || 0,
       minor: list.minor || 0,
@@ -60,7 +77,7 @@ export const normalizeTokens = (
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
         const baseline: TokenEntryMetadataOptional = {
-          chainId: +tkn.chainId,
+          chainId: +fromCAIP2(tkn.chainId),
           address: tkn.providedId.toLowerCase() as viem.Hex,
           logoURI: utils.directUri(tkn),
         }
@@ -70,13 +87,20 @@ export const normalizeTokens = (
           b.symbol = tkn.symbol
           b.decimals = tkn.decimals
         }
+        // Collect unique source lists (providerKey/listKey) across duplicates
+        const sources = _.uniq(
+          tkns.filter((t) => t.providerKey && t.listKey).map((t) => `${t.providerKey}/${t.listKey}`),
+        )
+        if (sources.length > 0) {
+          baseline.sources = sources
+        }
         if (showExtensions) {
           let everAddedExtension = false
           const extensions = _.reduce(
             tkns,
             (ext, tkn) => {
               if (bridgeInfoExtension) {
-                if (tkn.bridge.bridgeId && viem.isAddress(tkn.providedId)) {
+                if (tkn.bridge?.bridgeId && viem.isAddress(tkn.providedId)) {
                   everAddedExtension = true
                   const networkNotSelf = +tkn.chainId === +tkn.networkA.chainId ? tkn.networkB : tkn.networkA
                   const tokenNotSelf =
@@ -130,7 +154,7 @@ export const tokenFilters = (q: { chainId?: number | string | string[]; decimals
     filters.push((a) => chainIds.has(`${a.chainId}`))
   }
   if (q.decimals) {
-    const decimalsQs = _.toArray(q.decimals as string | string[])
+    const decimalsQs = (Array.isArray(q.decimals) ? q.decimals : [q.decimals]).map((d) => `${d}`)
     const decimals = new Set<number>(decimalsQs.map((d) => Number(d)))
     filters.push((a) => decimals.has(a.decimals))
   }

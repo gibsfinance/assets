@@ -1,65 +1,69 @@
-## Session: 2026-03-14 → 2026-03-16
+# Gib.Show — Progress
 
-### Accomplished
+## Session: April 12, 2026
 
-1. **Fixed production crash-loop #1 — tsx in devDependencies** (commit `7b6c3f06`)
-   - Moved `tsx` from devDeps to deps in `packages/server/package.json`
+### Completed
 
-2. **Fixed production crash-loop #2 — infinite BFS loop** (commit `7b6c3f06`)
-   - Wrapped `Collector.collect()` in try/finally so `markTokenAsFetched` always runs
-   - Verified: each address logs exactly once, BFS advances correctly
+**Server performance (tokensByChain endpoint)**
+- Removed image.content blob from list queries
+- Added composite indexes for join optimization
+- FULL OUTER JOIN → LEFT JOIN for predicate pushdown
+- Replaced dense_rank CTE with flat join + JS-side ranking sort
+- Stale-while-revalidate response caching (5min fresh, 1hr stale)
+- Health check readiness gate (503 until migrations complete)
+- Stats endpoint pre-warmed on startup, cache cleared on startup
 
-3. **Fixed RouteScan API errors + added caching + attribution** (commit `e0e70e63`)
-   - Removed invalid `sort=marketCap,desc` and `ecosystem=ethereum` query params
-   - Added 1h response caching via `db.cachedJSON` for tokens and blockchains
-   - Added RouteScan to "Powered by" attribution with light/dark SVGs
-   - Switched from `fetchImageAndStoreForToken` to `storeToken` (uri always null)
+**CAIP-2 chain identifiers**
+- Schema: network.chain_id from numeric → text, stores eip155-369 format
+- API: accepts both "369" and "eip155-369", returns bare chainId + chainIdentifier
+- chain 0 → asset-0 namespace
+- Trigger extracts bare reference (SPLIT_PART) to keep network_id hashes stable
 
-4. **Added image TTL caching system** (commit `e0e70e63`)
-   - `getFreshImageFromLink(uri, maxAgeMs)` — checks `link.updated_at` for staleness
-   - Wired 6h default TTL into all 4 image-handling functions
-   - `fetchImageAndStoreForNetwork` and `fetchAndInsertHeader` previously had NO cache
-   - All accept optional `maxImageAge` override per-caller
+**TanStack Query migration**
+- Installed @tanstack/react-query
+- Migrated useImageMetadata, useMetrics (deleted MetricsContext), StudioBrowser token fetch
 
-5. **Added batch DB utility functions** (commit `e0e70e63`)
-   - `resolveImage()` — fetch + detect extension, no DB writes
-   - `insertTokenBatch(tokens[])` — batch upsert tokens
-   - `storeToken({token, listId, imageHash, listTokenOrderId})` — token + listToken without image pipeline
-   - Default JSON cache TTL changed from 24h to 1h
+**Collector fixes**
+- CoinGecko: guard non-array response
+- TrustWallet: removed duplicate terminal row
+- Countries: fixed import path
+- DexScreener: insert network before referencing its ID
+- Ctrl+C: 3s grace period force exit, double-tap immediate
 
-6. **Investigated Etherscan API alternatives**
-   - No undocumented `tokenlist` endpoint exists
-   - `token/tokeninfo` works but single-contract only, `image` field empty
-   - `account/addresstokenbalance` is closest to a token list (address-specific)
-   - Puppeteer scraping remains the only way to get volume-ranked tokens
+**UI fixes**
+- Virtualizer reflow on group expand
+- Image component: inline-block → flex
+- Studio URL as source of truth (no bidirectional sync race)
+- Per-source list entries in filter, imageless tokens filtered server-side
+- getLists: fallback when no default list
 
-### Performance Analysis Completed
+**Testing: 307 server + 68 utils + 416 UI tests, all passing**
 
-**Top bottlenecks identified:**
-- Etherscan Puppeteer: 83+ seconds per chain, fully serialized
-- Image fetching: no parallelism, 4-5 DB round-trips per token (now has TTL caching)
-- Retry strategy: constant 10s delays, 5 attempts = 40s per failed fetch
-- DexScreener BFS: unbounded traversal, but needed for full coverage
-
-**New utilities available for collectors:**
-- `storeToken` — for collectors that don't need images (routescan already using it)
-- `insertTokenBatch` — for batch-inserting tokens (not yet wired into collectors)
-- `resolveImage` — for separating image fetch from DB writes
-
-### Current State
-- Git: `staging` branch, commit `e0e70e63`
-- Local DB: running healthy on port 5876
-- TypeScript: clean compile
-- RouteScan: working with caching, verified all 4 chains return 200
-- Batch operations: implemented and verified with tests
-- DexScreener: converted to batch token insertion with separated image fetching
-- Omnibridge: converted to use `storeToken` for cleaner code
-- Etherscan: converted to batch token insertion (83s → ~10-15s expected)
-- New utility: `batchFetchImagesForTokens` for concurrent image fetching
+**Abort signal audit (all 10 collectors fixed)**
+- Created signal-aware `delay()` helper in `packages/server/src/utils/delay.ts`
+- Added signal support to `erc20Read` in `@gibs/utils` (benefits 4 collectors)
+- countries: signal required, loop guard
+- internetmoney: signal guards in 3 loops (discover networks, collect icons, collect tokens)
+- coingecko: signal guard in retry loop, replaced `timeout()` with signal-aware `delay()`
+- trustwallet: signal passed to `getChainListResult` fetch, `loadChainId`, loop guard in collect
+- dexscreener: discover signal required, while-loop guard, signal to `fetchImageAndStoreForNetwork`
+- pumptires: loop guards in 3 maps (launched, highcap filter, highcap insert), cancellable multicall timeout
+- omnibridge: signal param added to `iterateOverRange`, cancellable retry delay, signal to `erc20Read`
+- etherscan: signal required everywhere, cancellable delays (500ms RPC, 3s nav, 10s Cloudflare), loop guards
+- routescan: signal required everywhere, cancellable rate-limit delay, signal to `erc20Read`/`backfillTokenMetadata`
 
 ### Next Steps
-- [x] Wire `insertTokenBatch` into dexscreener collector for batch efficiency
-- [x] Wire `storeToken` into omnibridge collector (passes null URIs like routescan)
-- [x] Created `batchFetchImagesForTokens` utility for separated image fetching
-- [x] Wire `insertTokenBatch` into etherscan collector (83s → ~10-15s expected)
-- [ ] Push to staging and deploy to Railway
+1. tokensByChain cold hit still slow for large chains (~16s ETH)
+2. `isActive: id === '369'` hardcoded in useMetrics — should be dynamic
+3. Merge staging → production
+
+## Session: March 25-30, 2026
+
+### Completed
+- Knex → Drizzle ORM migration (all 5 phases + cleanup)
+- Token list ordering: provider ranking → version → format preference
+- Image serving: ?as= for conversion, ?only= for source filtering
+- Pumptires collector migrated to api2.pump.tires v2 API
+- Server coverage: 56% → 98% lines
+- Production hotfixes: applyOrder raw SQL + missing joins
+- Docs page: live editable endpoints with stats panel

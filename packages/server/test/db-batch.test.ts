@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'assert'
-import type { InsertableToken } from 'knex/types/tables'
+import type { InsertableToken } from '../src/db/schema-types'
 
 // Test the batch operation data structures and logic without database dependency
 test('batch operations data validation', async (t) => {

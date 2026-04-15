@@ -6,6 +6,9 @@ import * as utils from '../utils'
 import { minimalList } from '../server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
 import * as db from '../db'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
+
+const providerKey = 'pulsex'
 
 const pulsexConfig = new Map<
   viem.Chain,
@@ -57,187 +60,220 @@ const pulsexConfig = new Map<
   ],
 ])
 
-export const collect = async (signal: AbortSignal) => {
-  await db.insertProvider({
-    key: 'pulsex',
-    name: 'PulseX',
-    description: 'the pulsex token list hosted in their code',
-  })
+const listKeys = [
+  'extended',
+  'extended-composite',
+  'v0.1.2',
+  'v0.1.2-composite',
+  'v4-v0.1.2',
+  'v4-v0.1.2-composite',
+  'inline',
+] as const
 
-  const inlineTokensMainnet = Array.from(pulsexConfig.get(pulsechain)!.targets).map((address) => {
-    return {
-      address,
-      logoURI: `https://tokens.app.pulsex.com/images/tokens/${address}.png`,
-      network: {
-        id: pulsechain.id,
-        isNetworkImage: false,
-      },
-    }
-  })
-  const inlineTokensV4 = Array.from(pulsexConfig.get(pulsechainV4)!.targets).map((address) => {
-    return {
-      address,
-      logoURI: `https://tokens.app.v4.testnet.pulsex.com/images/tokens/${address}.png`,
-      network: {
-        id: pulsechainV4.id,
-        isNetworkImage: false,
-      },
-    }
-  })
-  const remoteListOriginal = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'extended',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
-    isDefault: false,
-    extension: [
-      {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: 369,
-          isNetworkImage: true,
-        },
-      },
-    ],
-  })
-  const remoteListOriginalComposite = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'extended-composite',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
-    isDefault: false,
-    extension: [
-      {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: 369,
-          isNetworkImage: true,
-        },
-      },
-      ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
-    ],
-  })
+class PulsexCollector extends BaseCollector {
+  readonly key = 'pulsex'
 
-  const remoteListV1_0_2Mainnet = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'v0.1.2',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
-    isDefault: false,
-    extension: [
+  async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
+    await db.insertProvider({
+      key: providerKey,
+      name: 'PulseX',
+      description: 'the pulsex token list hosted in their code',
+    })
+
+    return [
       {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: pulsechain.id,
-          isNetworkImage: true,
-        },
+        providerKey,
+        lists: listKeys.map((listKey) => ({ listKey })),
       },
-    ],
-  })
-  const remoteListV1_0_2MainnetComposite = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'v0.1.2-composite',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
-    isDefault: true,
-    extension: [
-      {
-        address: viem.zeroAddress,
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        name: 'Pulse',
-        symbol: 'PLS',
-        decimals: 18,
-        network: {
-          id: pulsechain.id,
-          isNetworkImage: true,
-        },
-      },
-      {
-        address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+    ]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    await db.insertProvider({
+      key: providerKey,
+      name: 'PulseX',
+      description: 'the pulsex token list hosted in their code',
+    })
+
+    const inlineTokensMainnet = Array.from(pulsexConfig.get(pulsechain)!.targets).map((address) => {
+      return {
+        address,
+        logoURI: `https://tokens.app.pulsex.com/images/tokens/${address}.png`,
         network: {
           id: pulsechain.id,
           isNetworkImage: false,
         },
-      },
-      ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
-    ],
-  })
-  const remoteListV1_0_2V4 = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'v4-v0.1.2',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
-    isDefault: false,
-    extension: [
-      {
-        address: '0x70499adEBB11Efd915E3b69E700c331778628707',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: pulsechainV4.id,
-          isNetworkImage: true,
-        },
-      },
-    ],
-  })
-  const remoteListV1_0_2V4Composite = remoteTokenList.collect({
-    providerKey: 'pulsex',
-    listKey: 'v4-v0.1.2-composite',
-    tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
-    isDefault: false,
-    extension: [
-      {
-        address: viem.zeroAddress,
-        name: 'V4 Pulse',
-        symbol: 'V4PLS',
-        decimals: 18,
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
-        network: {
-          id: pulsechainV4.id,
-          isNetworkImage: true,
-        },
-      },
-      {
-        address: '0x70499adEBB11Efd915E3b69E700c331778628707',
-        logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+      }
+    })
+    const inlineTokensV4 = Array.from(pulsexConfig.get(pulsechainV4)!.targets).map((address) => {
+      return {
+        address,
+        logoURI: `https://tokens.app.v4.testnet.pulsex.com/images/tokens/${address}.png`,
         network: {
           id: pulsechainV4.id,
           isNetworkImage: false,
         },
-      },
-      ...inlineTokensV4.filter((token) => token.address !== '0x70499adEBB11Efd915E3b69E700c331778628707'),
-    ],
-  })
+      }
+    })
+    const remoteListOriginal = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'extended',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
+      isDefault: false,
+      extension: [
+        {
+          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: 369,
+            isNetworkImage: true,
+          },
+        },
+      ],
+    })
+    const remoteListOriginalComposite = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'extended-composite',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended.tokenlist.json',
+      isDefault: false,
+      extension: [
+        {
+          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: 369,
+            isNetworkImage: true,
+          },
+        },
+        ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+      ],
+    })
 
-  await Promise.all([
-    // lists
-    remoteListOriginal(signal),
-    remoteListV1_0_2Mainnet(signal),
-    remoteListV1_0_2V4(signal),
-    // original lists + inline/hardcoded tokens
-    remoteListOriginalComposite(signal),
-    remoteListV1_0_2MainnetComposite(signal),
-    remoteListV1_0_2V4Composite(signal),
-    // hardcoded tokens
-    ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
-      const client = utils.chainToPublicClient(chain)
-      const targets = [...config.targets.values()]
-      const tokens = await Promise.all(targets.map((target) => erc20Read(chain, client, target)))
-      const list = tokens.map(([name, symbol, decimals], index) => {
-        return {
-          name,
-          symbol,
-          decimals,
-          chainId: chain.id,
-          address: targets[index],
-          logoURI: `https://${config.domain}/images/tokens/${targets[index]}.png`,
-        }
-      })
-      await inmemory.collect({
-        providerKey: 'pulsex',
-        listKey: 'inline',
-        tokenList: minimalList(list),
-        isDefault: config.isDefault,
-        signal,
-      })
-    }),
-  ])
+    const remoteListV1_0_2Mainnet = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'v0.1.2',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
+      isDefault: false,
+      extension: [
+        {
+          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: pulsechain.id,
+            isNetworkImage: true,
+          },
+        },
+      ],
+    })
+    const remoteListV1_0_2MainnetComposite = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'v0.1.2-composite',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
+      isDefault: true,
+      extension: [
+        {
+          address: viem.zeroAddress,
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          name: 'Pulse',
+          symbol: 'PLS',
+          decimals: 18,
+          network: {
+            id: pulsechain.id,
+            isNetworkImage: true,
+          },
+        },
+        {
+          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: pulsechain.id,
+            isNetworkImage: false,
+          },
+        },
+        ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+      ],
+    })
+    const remoteListV1_0_2V4 = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'v4-v0.1.2',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
+      isDefault: false,
+      extension: [
+        {
+          address: '0x70499adEBB11Efd915E3b69E700c331778628707',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: pulsechainV4.id,
+            isNetworkImage: true,
+          },
+        },
+      ],
+    })
+    const remoteListV1_0_2V4Composite = remoteTokenList.collect({
+      providerKey: 'pulsex',
+      listKey: 'v4-v0.1.2-composite',
+      tokenList: 'https://tokens.app.pulsex.com/pulsex-extended-v0.1.2.tokenlist.json',
+      isDefault: false,
+      extension: [
+        {
+          address: viem.zeroAddress,
+          name: 'V4 Pulse',
+          symbol: 'V4PLS',
+          decimals: 18,
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: pulsechainV4.id,
+            isNetworkImage: true,
+          },
+        },
+        {
+          address: '0x70499adEBB11Efd915E3b69E700c331778628707',
+          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          network: {
+            id: pulsechainV4.id,
+            isNetworkImage: false,
+          },
+        },
+        ...inlineTokensV4.filter((token) => token.address !== '0x70499adEBB11Efd915E3b69E700c331778628707'),
+      ],
+    })
+
+    await Promise.all([
+      // lists
+      remoteListOriginal(signal),
+      remoteListV1_0_2Mainnet(signal),
+      remoteListV1_0_2V4(signal),
+      // original lists + inline/hardcoded tokens
+      remoteListOriginalComposite(signal),
+      remoteListV1_0_2MainnetComposite(signal),
+      remoteListV1_0_2V4Composite(signal),
+      // hardcoded tokens
+      ...[...pulsexConfig.entries()].map(async ([chain, config]) => {
+        const client = utils.chainToPublicClient(chain)
+        const targets = [...config.targets.values()]
+        const tokens = await Promise.all(targets.map((target) => erc20Read(chain, client, target)))
+        const list = tokens.map(([name, symbol, decimals], index) => {
+          return {
+            name,
+            symbol,
+            decimals,
+            chainId: chain.id,
+            address: targets[index],
+            logoURI: `https://${config.domain}/images/tokens/${targets[index]}.png`,
+          }
+        })
+        await inmemory.collect({
+          providerKey: 'pulsex',
+          listKey: 'inline',
+          tokenList: minimalList(list),
+          isDefault: config.isDefault,
+          signal,
+        })
+      }),
+    ])
+  }
 }
+
+const instance = new PulsexCollector()
+export default instance
+export const collect = (signal: AbortSignal) => instance.collect(signal)

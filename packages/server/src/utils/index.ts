@@ -14,14 +14,21 @@ import promiseLimit from 'promise-limit'
 import { failures, type ChainId } from '@gibs/utils'
 
 import type { TokenEntry } from '../types'
-import { Image } from 'knex/types/tables.js'
+import type { Image } from '../db/schema-types'
 import { imageMode } from '../db/tables'
 import { createTerminal } from '../log/App'
 import * as paths from '../paths'
 
 export const printFailures = () => {
-  const failuresPath = path.join(paths.root, 'failures.json')
-  fs.writeFileSync(failuresPath, JSON.stringify(failures, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))
+  try {
+    const failuresPath = path.join(paths.root, 'failures.json')
+    fs.writeFileSync(
+      failuresPath,
+      JSON.stringify(failures, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2),
+    )
+  } catch {
+    // failures.json is best-effort — skip if path is read-only (e.g. CI)
+  }
 }
 
 export const getFullChainId = (chainId: ChainId) => viem.toHex(chainId, { size: 32 })
@@ -63,7 +70,12 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => toKeccakBytes(`${type}${chainId}`)
+/** Hash type + bare reference for network_id. Accepts both '369' and 'eip155-369'. */
+export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => {
+  const str = String(chainId)
+  const bare = str.includes('-') ? str.split('-').slice(1).join('-') : str
+  return toKeccakBytes(`${type}${bare}`)
+}
 
 const folderAccessLimit = promiseLimit<any>(256)
 

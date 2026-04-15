@@ -8,7 +8,6 @@ export interface TokenInfo {
 export interface NetworkInfo {
   chainId: number
   name: string
-  isActive: boolean
 }
 
 export interface PlatformMetrics {
@@ -18,6 +17,5 @@ export interface PlatformMetrics {
   }
   networks: {
     supported: NetworkInfo[]
-    active: string
   }
 }

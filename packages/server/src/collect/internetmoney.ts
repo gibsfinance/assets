@@ -5,11 +5,11 @@ import { erc20Read, failureLog } from '@gibs/utils'
 import * as utils from '../utils'
 import { fetch } from '../fetch'
 import * as db from '../db'
-import { Tx } from '../db/tables'
-import type { List, Provider } from 'knex/types/tables'
+import type { List, Provider } from '../db/schema-types'
 import promiseLimit from 'promise-limit'
 import _ from 'lodash'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 const CONCURRENT_TOKENS = 16
@@ -44,36 +44,38 @@ const networkToChain = (network: NetworkInfo) => {
 }
 
 /**
- * Main collection function that processes Internet Money networks and tokens
+ * Two-phase collector for Internet Money networks and tokens.
+ * Phase 1 (discover): calls the networks API, creates provider + per-network lists.
+ * Phase 2 (collect): processes tokens for each network.
  */
-export const collect = async (signal: AbortSignal) => {
-  const summaryRow = utils.terminal.issue({
-    type: terminalRowTypes.SUMMARY,
-    id: providerKey,
-  })
-  const tasksSection = summaryRow.issue('tasks')
+class InternetMoneyCollector extends BaseCollector {
+  readonly key = 'internetmoney'
 
-  const json = await fetch(baseUrl, { signal })
-    .then((res): Promise<NetworkInfo[]> => res.json())
-    .then((res) => (Array.isArray(res) ? res : []))
-  const encounteredChainIds = new Set<bigint>()
-  let provider!: Provider
-  let insertedList!: List
-  if (signal.aborted) {
-    return
-  }
-  await db.transaction(async (tx) => {
-    ;[provider] = await db.insertProvider(
-      {
-        name: 'Internet Money',
-        key: providerKey,
-      },
-      tx,
-    )
-    await db.insertNetworkFromChainId(0, undefined, tx)
-      ;[insertedList] = await db.insertList(
+  private networkData: NetworkInfo[] = []
+  private provider!: Provider
+  private insertedList!: List
+  private networkListByNetwork = new Map<NetworkInfo, List>()
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const json = await fetch(baseUrl, { signal })
+      .then((res): Promise<NetworkInfo[]> => res.json())
+      .then((res) => (Array.isArray(res) ? res : []))
+
+    if (signal.aborted) return []
+
+    // Create provider and default wallet list
+    await db.transaction(async (tx) => {
+      ;[this.provider] = await db.insertProvider(
         {
-          providerId: provider.providerId,
+          name: 'Internet Money',
+          key: providerKey,
+        },
+        tx,
+      )
+      await db.insertNetworkFromChainId(0, undefined, tx)
+      ;[this.insertedList] = await db.insertList(
+        {
+          providerId: this.provider.providerId,
           networkId: utils.chainIdToNetworkId(0),
           key: 'wallet',
           name: 'default wallet list',
@@ -82,172 +84,220 @@ export const collect = async (signal: AbortSignal) => {
         },
         tx,
       )
-  })
-
-  summaryRow.createCounter(terminalCounterTypes.NETWORK)
-  summaryRow.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network(json, (n) => n.chainId),
-  )
-
-  summaryRow.incrementTotal(
-    terminalCounterTypes.TOKEN,
-    utils.mapToSet.token(
-      json.flatMap((n) => n.tokens.map((t) => [n.chainId, t.address] as [number, string])),
-      (t) => t,
-    ),
-  )
-  // Process tokens in parallel with controlled concurrency
-  type NetworkAndToken = {
-    network: NetworkInfo
-    token: TokenInfo
-    globalOrderId: number
-    scopedOrderId: number
-  }
-  const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
-  const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
-  const networkToNetworkList = await networkLimiter.map(json, async (network) => {
-    summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
-    const row = tasksSection.task(network.chainId.toString(), {
-      type: terminalRowTypes.STORAGE,
-      id: providerKey,
-      kv: {
-        chainId: network.chainId,
-      },
     })
-    const chain = networkToChain(network)
-    await db.insertNetworkFromChainId(chain.id)
 
-    encounteredChainIds.add(BigInt(chain.id))
+    // Create per-network lists
+    const lists: { listKey: string; listId?: string }[] = [{ listKey: 'wallet', listId: this.insertedList.listId }]
 
-    const insertAndGetNetworkList = (t: Tx) => {
-      return db.insertList(
-        {
-          providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(chain.id),
-          key: `wallet-${chain.id}`,
-          name: `default wallet list for chain ${chain.id}`,
-          description: `the list that loads by default in the wallet for ${chain.id}`,
-        },
-        t,
-      )
-    }
+    const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
+    const networkToNetworkList = await networkLimiter.map(json, async (network) => {
+      if (signal.aborted) return [network, undefined!] as const
+      const chain = networkToChain(network)
+      await db.insertNetworkFromChainId(chain.id)
 
-    // Store network icon
-    const networkListItem = await db.transaction(async (tx) => {
-      const [networkList] = await insertAndGetNetworkList(tx)
-      await db.fetchImageAndStoreForList(
-        {
-          listId: networkList.listId,
-          uri: network.icon,
-          originalUri: network.icon,
-          providerKey: provider.key,
-          signal,
-        },
-        tx,
-      )
+      const listKey = `wallet-${chain.id}`
+      const [networkList] = await db.insertList({
+        providerId: this.provider.providerId,
+        networkId: utils.chainIdToNetworkId(chain.id),
+        key: listKey,
+        name: `default wallet list for chain ${chain.id}`,
+        description: `the list that loads by default in the wallet for ${chain.id}`,
+      })
+
+      lists.push({ listKey, listId: networkList.listId })
       return [network, networkList] as const
     })
-    row.unmount()
-    return networkListItem
-  })
 
-  const networkListByNetwork = new Map(networkToNetworkList)
-  let globalOrderId = 0
-  const allTokens = _.flatMap(json, (network) => {
-    return network.tokens.map((tkn, i) => {
-      return {
-        network,
-        token: tkn,
-        globalOrderId: globalOrderId++,
-        scopedOrderId: i,
-      }
-    })
-  })
+    this.networkListByNetwork = new Map(networkToNetworkList)
+    this.networkData = json
 
-  await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
-    summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
-    const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
-      type: terminalRowTypes.STORAGE,
+    return [{ providerKey, lists }]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const summaryRow = utils.terminal.issue({
       id: providerKey,
-      kv: {
-        chainId: network.chainId,
-        address: token.address,
-      },
+      type: terminalRowTypes.SUMMARY,
     })
-    const address = viem.getAddress(token.address)
-    const chain = networkToChain(network)
-    const networkId = utils.chainIdToNetworkId(chain.id)
+    try {
+      const tasksSection = summaryRow.issue('tasks')
 
-    // Check if token already has metadata in DB — skip RPC if so
-    const existingToken = await db.getDB()
-      .from('token')
-      .where({ providedId: address, networkId })
-      .whereNot('name', '')
-      .whereNot('symbol', '')
-      .first<{ name: string; symbol: string; decimals: number }>()
+      summaryRow.createCounter(terminalCounterTypes.NETWORK)
+      summaryRow.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        utils.mapToSet.network(this.networkData, (n) => n.chainId),
+      )
 
-    let name: string, symbol: string, decimals: number
-    if (existingToken) {
-      ({ name, symbol, decimals } = existingToken)
-    } else {
-      try {
-        const client = utils.chainToPublicClient(chain)
-        const result = await erc20Read(chain, client, address)
-        ;[name, symbol, decimals] = result
-      } catch (err) {
-        failureLog(`${providerKey} rpc failed %o %o: %o`, chain.id, address, (err as Error).message)
-        row.increment('skipped', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+      summaryRow.incrementTotal(
+        terminalCounterTypes.TOKEN,
+        utils.mapToSet.token(
+          this.networkData.flatMap((n) => n.tokens.map((t) => [n.chainId, t.address] as [number, string])),
+          (t) => t,
+        ),
+      )
+
+      // Store network icons
+      const networkLimiter = promiseLimit<NetworkInfo>(CONCURRENT_TOKENS)
+      await networkLimiter.map(this.networkData, async (network) => {
+        if (signal.aborted) return
+        summaryRow.increment(terminalCounterTypes.NETWORK, network.chainId.toString())
+        const row = tasksSection.task(network.chainId.toString(), {
+          type: terminalRowTypes.STORAGE,
+          id: providerKey,
+          kv: {
+            chainId: network.chainId,
+          },
+        })
+        const networkList = this.networkListByNetwork.get(network)!
+
+        // Store network icon
+        await db.transaction(async (tx) => {
+          await db.fetchImageAndStoreForList(
+            {
+              listId: networkList.listId,
+              uri: network.icon,
+              originalUri: network.icon,
+              providerKey: this.provider.key,
+              signal,
+            },
+            tx,
+          )
+        })
         row.unmount()
-        return
+      })
+
+      // Process tokens
+      type NetworkAndToken = {
+        network: NetworkInfo
+        token: TokenInfo
+        globalOrderId: number
+        scopedOrderId: number
       }
-    }
+      const limit = promiseLimit<NetworkAndToken>(CONCURRENT_TOKENS)
 
-    const networkList = networkListByNetwork.get(network)!
-    await db
-      .transaction(async (tx) => {
-        const insertion = {
-          uri: token.icon,
-          originalUri: token.icon,
-          providerKey: provider.key,
-          token: {
-            symbol,
-            name,
-            decimals,
-            networkId,
-            providedId: address,
-          },
-        }
-        await db.fetchImageAndStoreForToken(
-          {
-            ...insertion,
-            listId: networkList.listId,
-            listTokenOrderId: scopedOrderId,
-            signal,
-          },
-          tx,
-        )
-        await db.fetchImageAndStoreForToken(
-          {
-            ...insertion,
-            listId: insertedList.listId,
-            listTokenOrderId: globalOrderId,
-            signal,
-          },
-          tx,
-        )
+      let globalOrderId = 0
+      const allTokens = _.flatMap(this.networkData, (network) => {
+        return network.tokens.map((tkn, i) => {
+          return {
+            network,
+            token: tkn,
+            globalOrderId: globalOrderId++,
+            scopedOrderId: i,
+          }
+        })
       })
-      .catch((err) => {
-        if (err.message?.toLowerCase()?.includes('timeout')) {
-          row.increment('timeout', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+
+      await limit.map(allTokens, async ({ network, token, globalOrderId, scopedOrderId }) => {
+        if (signal.aborted) return
+        summaryRow.increment(terminalCounterTypes.TOKEN, `${network.chainId}-${token.address}`.toLowerCase())
+        const row = tasksSection.task(`${network.chainId}-${token.address}`.toLowerCase(), {
+          type: terminalRowTypes.STORAGE,
+          id: providerKey,
+          kv: {
+            chainId: network.chainId,
+            address: token.address,
+          },
+        })
+        const address = viem.getAddress(token.address)
+        const chain = networkToChain(network)
+        const networkId = utils.chainIdToNetworkId(chain.id)
+
+        // Check if token already has metadata in DB -- skip RPC if so
+        const { getDrizzle } = await import('../db/drizzle')
+        const { eq: eqOp, and: andOp, ne: neOp } = await import('drizzle-orm')
+        const schemaMod = await import('../db/schema')
+        const [existingToken] = await getDrizzle()
+          .select({
+            name: schemaMod.token.name,
+            symbol: schemaMod.token.symbol,
+            decimals: schemaMod.token.decimals,
+          })
+          .from(schemaMod.token)
+          .where(
+            andOp(
+              eqOp(schemaMod.token.providedId, address),
+              eqOp(schemaMod.token.networkId, networkId),
+              neOp(schemaMod.token.name, ''),
+              neOp(schemaMod.token.symbol, ''),
+            ),
+          )
+          .limit(1)
+
+        let name: string, symbol: string, decimals: number
+        if (existingToken) {
+          ;({ name, symbol, decimals } = existingToken)
         } else {
-          row.increment('error', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+          try {
+            const client = utils.chainToPublicClient(chain)
+            const result = await erc20Read(chain, client, address)
+            ;[name, symbol, decimals] = result
+          } catch (err) {
+            failureLog(`${providerKey} rpc failed %o %o: %o`, chain.id, address, (err as Error).message)
+            row.increment('skipped', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+            row.unmount()
+            return
+          }
         }
-        failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
+
+        const networkList = this.networkListByNetwork.get(network)!
+        await db
+          .transaction(async (tx) => {
+            const insertion = {
+              uri: token.icon,
+              originalUri: token.icon,
+              providerKey: this.provider.key,
+              token: {
+                symbol,
+                name,
+                decimals,
+                networkId,
+                providedId: address,
+              },
+            }
+            await db.fetchImageAndStoreForToken(
+              {
+                ...insertion,
+                listId: networkList.listId,
+                listTokenOrderId: scopedOrderId,
+                signal,
+              },
+              tx,
+            )
+            await db.fetchImageAndStoreForToken(
+              {
+                ...insertion,
+                listId: this.insertedList.listId,
+                listTokenOrderId: globalOrderId,
+                signal,
+              },
+              tx,
+            )
+          })
+          .catch((err) => {
+            if (err.message?.toLowerCase()?.includes('timeout')) {
+              row.increment('timeout', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+            } else {
+              row.increment('error', `${providerKey}-${network.chainId}-${token.address}`.toLowerCase())
+            }
+            failureLog(`${providerKey} ${chain.id} ${address} ${err.message}`)
+          })
+          .finally(() => {
+            row.unmount()
+          })
       })
-      .finally(() => {
-        row.unmount()
-      })
-  })
-  summaryRow.complete()
+    } finally {
+      summaryRow.complete()
+    }
+  }
+}
+
+export default InternetMoneyCollector
+
+/**
+ * Main collection function that processes Internet Money networks and tokens
+ */
+export const collect = async (signal: AbortSignal) => {
+  const collector = new InternetMoneyCollector()
+  await collector.discover(signal)
+  await collector.collect(signal)
 }

@@ -1,5 +1,3 @@
-import type { Knex } from 'knex'
-
 export const tableNames = {
   network: 'network',
   provider: 'provider',
@@ -17,13 +15,13 @@ export const tableNames = {
   bridgeLink: 'bridge_link',
   headerLink: 'header_link',
   cacheRequest: 'cache_request',
+  imageVariant: 'image_variant',
+  listSubmission: 'list_submission',
 } as const
 
 const tn = Object.values(tableNames)
 
 export type TableNames = (typeof tn)[number]
-
-export type Tx = Knex | Knex.Transaction
 
 export const imageMode = {
   SAVE: 'save',

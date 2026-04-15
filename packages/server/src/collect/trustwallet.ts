@@ -9,59 +9,11 @@ import * as paths from '../paths'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy } from '@gibs/utils'
 import _ from 'lodash'
+import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'trustwallet'
 const blockchainsRoot = path.join(paths.submodules, providerKey, 'blockchains')
 const assetsFolder = 'assets'
-
-/**
- * Main collection function that processes all blockchain folders
- */
-export const collect = async (signal: AbortSignal) => {
-  const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
-  const row = utils.terminal.issue({
-    type: terminalRowTypes.SETUP,
-    id: providerKey,
-  })
-  blockchainFolders.sort()
-  // console.log(blockchainFolders)
-  await Promise.all(blockchainFolders.map(loadChainId)).catch((err) => {
-    failureLog('%o', (err as Error).message)
-    return null
-  })
-  // console.log(networkNameToChainId)
-  row.createCounter(terminalCounterTypes.NETWORK)
-  row.incrementTotal(
-    terminalCounterTypes.NETWORK,
-    utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
-  )
-  let globalCount = 0
-  const limit = limitBy<string>('blockchains', 1)
-  await limit.map(blockchainFolders, async (folder) => {
-    const chainId = networkNameToChainId.get(folder)
-    if (!chainId) {
-      // console.log('chain id not found', folder)
-      return
-    }
-    try {
-      const f = path.join(blockchainsRoot, folder, assetsFolder)
-      const assets = await fs.promises.readdir(f).catch(() => [])
-      await entriesFromAssets({
-        blockchainKey: folder,
-        assets: utils.removedUndesirable(assets),
-        signal,
-        globalCount,
-      })
-      globalCount += assets.length
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
-      row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
-    }
-    row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
-  })
-  row.complete()
-}
 
 /**
  * Loads and parses token info and logo path from a directory
@@ -101,12 +53,9 @@ const networkNameToChainId = new Map<string, number>([
 
 const getClient = _.memoize((url: string): PublicClient => {
   return createPublicClient({
-    transport: http(
-      url === 'https://rpc.ftm.tools' ? 'https://1rpc.io/ftm' : url,
-      {
-        timeout: 5_000,
-      },
-    ),
+    transport: http(url === 'https://rpc.ftm.tools' ? 'https://1rpc.io/ftm' : url, {
+      timeout: 5_000,
+    }),
     batch: { multicall: { batchSize: 32, wait: 0 } },
   })
 })
@@ -119,7 +68,7 @@ type ChainList = {
     url: string
     tracking: string
     isOpenSource?: boolean
-  }[],
+  }[]
   nativeCurrency: {
     name: string
     symbol: string
@@ -130,35 +79,57 @@ type ChainList = {
   chainId: number
   chainSlug: string
 }
-const getChainListResult = _.memoize(async (): Promise<ChainList[]> => {
-  const response = await fetch('https://chainlist.org/rpcs.json')
-  if (!response.ok) {
-    throw new Error(`Failed to fetch chain list: ${response.status} ${response.statusText}`)
-  }
-  const data = await response.json() as ChainList[]
-  return data
-})
-const sterilize = _.memoize((s: string | null = '') => s?.toLowerCase().split(' ').join('')
-  .split('-').join('')
-  .split('_').join('')
-  .split('.').join('')
-  .split('/').join('')
-  .split(':').join('')
-  .split('?').join('')
-  .split('&').join('')
-  .split('=').join('')
-  .split('evm').join('')
-  .split('chain').join('')
-  .split('network').join('')
-  .split('mainnet').join('')
-  .split('testnet').join('')
-  .split('devnet').join('')
-  .split('testnet').join('')
-  .split('net').join('')
+const getChainListResult = _.memoize(
+  async (signal?: AbortSignal): Promise<ChainList[]> => {
+    const response = await fetch('https://chainlist.org/rpcs.json', { signal })
+    if (!response.ok) {
+      throw new Error(`Failed to fetch chain list: ${response.status} ${response.statusText}`)
+    }
+    const data = (await response.json()) as ChainList[]
+    return data
+  },
+  () => 'chainlist',
 )
-const loadChainId = async (blockchainKey: string) => {
+const sterilize = _.memoize((s: string | null = '') =>
+  s
+    ?.toLowerCase()
+    .split(' ')
+    .join('')
+    .split('-')
+    .join('')
+    .split('_')
+    .join('')
+    .split('.')
+    .join('')
+    .split('/')
+    .join('')
+    .split(':')
+    .join('')
+    .split('?')
+    .join('')
+    .split('&')
+    .join('')
+    .split('=')
+    .join('')
+    .split('evm')
+    .join('')
+    .split('chain')
+    .join('')
+    .split('network')
+    .join('')
+    .split('mainnet')
+    .join('')
+    .split('testnet')
+    .join('')
+    .split('devnet')
+    .join('')
+    .split('testnet')
+    .join('')
+    .split('net')
+    .join(''),
+)
+const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
-  const shouldLog = blockchainKey === 'arbitrum'
   const [
     networkInfo,
     // networkLogoPath,
@@ -166,15 +137,43 @@ const loadChainId = async (blockchainKey: string) => {
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
   let chainId: number | null = null
 
-  const chainList = await getChainListResult()
+  const chainList = await getChainListResult(signal)
   const sterilizedBlockchainKey = sterilize(blockchainKey)
-  const chain = chainList.find((c) => (
-    sterilize(c.name) === sterilizedBlockchainKey
-    || sterilize(c.chainSlug) === sterilizedBlockchainKey
-    || sterilize(c.chain) === sterilizedBlockchainKey
-  ))
+  // Sterilize is aggressive (strips "chain", "net", etc.) which can create
+  // collisions — e.g. "smartchain" → "smart" matches "Smart Mainnet" (661898459)
+  // instead of BNB Smart Chain (56). When multiple chains match, prefer the one
+  // whose original name/slug contains the blockchain key as a substring.
+  // Match chainSlug and name first (more specific), chain field last
+  // (chain: "Solana" on Neon EVM would incorrectly match the solana folder)
+  const candidates = chainList.filter(
+    (c) => sterilize(c.chainSlug) === sterilizedBlockchainKey || sterilize(c.name) === sterilizedBlockchainKey,
+  )
+  // Only try the less-specific chain field if no slug/name matches found
+  if (candidates.length === 0) {
+    candidates.push(...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey))
+  }
+  const chain =
+    // Exact slug match first
+    candidates.find((c) => c.chainSlug === blockchainKey) ||
+    // Then prefer candidate whose name contains the key (ignoring spaces/separators)
+    candidates.find(
+      (c) =>
+        c.name
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey) ||
+        c.chainSlug
+          ?.toLowerCase()
+          .replace(/[\s-_]/g, '')
+          .includes(blockchainKey),
+    ) ||
+    // When ambiguous, prefer mainnet over testnet/devnet
+    candidates.find((c) => {
+      const n = c.name?.toLowerCase() ?? ''
+      return !n.includes('testnet') && !n.includes('devnet')
+    }) ||
+    candidates[0]
   const row = utils.terminal.get(providerKey)!
-  // chain id from chain list is more trustworthy
   if (chain) {
     chainId = chain.chainId
   }
@@ -188,7 +187,6 @@ const loadChainId = async (blockchainKey: string) => {
       parsed.tokens = []
       parsed.name = `Trust Wallet: ${blockchainKey}`
       list = Buffer.from(JSON.stringify(parsed))
-    } else {
     }
     if (!list) {
       row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
@@ -201,7 +199,9 @@ const loadChainId = async (blockchainKey: string) => {
 
   if (!chainId) {
     if (networkInfo.rpc_url) {
-      chainId = await getClient(networkInfo.rpc_url).getChainId().catch(() => null)
+      chainId = await getClient(networkInfo.rpc_url)
+        .getChainId()
+        .catch(() => null)
     }
   }
 
@@ -228,15 +228,7 @@ type EntriesFromAssetsArgs = {
 const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }: EntriesFromAssetsArgs) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [, networkLogoPath] = await load(info)
-  // const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
-  // const list = await fs.promises.readFile(tokenlistPath).catch(() => null)
   const row = utils.terminal.get(providerKey)!
-
-  // if (!list) {
-  // use the blockchain key if we error out here because we do not yet have the chain id
-  // row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
-  // return
-  // }
 
   const chainId = networkNameToChainId.get(blockchainKey)!
 
@@ -342,4 +334,114 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     ])
     row.increment(terminalCounterTypes.TOKEN, chainTokenId)
   })
+}
+
+/**
+ * Two-phase collector for Trust Wallet token assets.
+ * Phase 1 (discover): scans filesystem submodule to enumerate blockchains, creates provider + lists.
+ * Phase 2 (collect): processes token images from filesystem.
+ */
+class TrustWalletCollector extends BaseCollector {
+  readonly key = 'trustwallet'
+
+  private blockchainFolders: string[] = []
+
+  async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
+    const blockchainFolders = utils.removedUndesirable(await fs.promises.readdir(blockchainsRoot))
+
+    blockchainFolders.sort()
+    await Promise.all(blockchainFolders.map((folder) => loadChainId(folder, signal))).catch((err) => {
+      failureLog('%o', (err as Error).message)
+      return null
+    })
+
+    // Create provider
+    const [provider] = await db.insertProvider({
+      key: providerKey,
+      name: 'Trust Wallet',
+    })
+
+    // Create the default wallet list
+    await db.insertList({
+      key: 'wallet',
+      default: true,
+      providerId: provider.providerId,
+      patch: 1,
+    })
+
+    // Create per-blockchain lists and build manifest
+    const lists: { listKey: string; listId?: string }[] = [{ listKey: 'wallet' }]
+    for (const folder of blockchainFolders) {
+      const chainId = networkNameToChainId.get(folder)
+      if (!chainId) {
+        continue
+      }
+      const network = await db.insertNetworkFromChainId(chainId)
+      const key = `wallet-${folder}`
+      const [networkList] = await db.insertList({
+        providerId: provider.providerId,
+        networkId: network.networkId,
+        name: key,
+        key,
+        patch: 1,
+      })
+      lists.push({ listKey: key, listId: networkList.listId })
+    }
+
+    this.blockchainFolders = blockchainFolders
+
+    return [{ providerKey, lists }]
+  }
+
+  async collect(signal: AbortSignal): Promise<void> {
+    const row = utils.terminal.issue({
+      type: terminalRowTypes.SETUP,
+      id: providerKey,
+    })
+    try {
+      row.createCounter(terminalCounterTypes.NETWORK)
+      row.incrementTotal(
+        terminalCounterTypes.NETWORK,
+        utils.mapToSet.network([...networkNameToChainId.values()], (chainId) => chainId),
+      )
+      let globalCount = 0
+      const limit = limitBy<string>('blockchains', 1)
+      await limit.map(this.blockchainFolders, async (folder) => {
+        if (signal.aborted) return
+        const chainId = networkNameToChainId.get(folder)
+        if (!chainId) {
+          return
+        }
+        try {
+          const f = path.join(blockchainsRoot, folder, assetsFolder)
+          const assets = await fs.promises.readdir(f).catch(() => [])
+          await entriesFromAssets({
+            blockchainKey: folder,
+            assets: utils.removedUndesirable(assets),
+            signal,
+            globalCount,
+          })
+          globalCount += assets.length
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          failureLog('provider=%o folder=%o error=%o', providerKey, folder, errorMessage)
+          row.increment(terminalLogTypes.EROR, `${providerKey}-${folder}`)
+        }
+        row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
+      })
+    } finally {
+      row.complete()
+    }
+  }
+}
+
+export default TrustWalletCollector
+
+/**
+ * Main collection function that processes all blockchain folders
+ */
+export const collect = async (signal: AbortSignal) => {
+  const collector = new TrustWalletCollector()
+  await collector.discover(signal)
+  await collector.collect(signal)
 }

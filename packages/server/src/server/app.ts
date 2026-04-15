@@ -14,11 +14,18 @@ app.use(compression())
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 
-/**
- * Simple endpoint for monitoring service health
- * @returns 200 OK with JSON response
- */
+/** Readiness flag — flipped to true after migrations + warm-up complete. */
+let ready = false
+
+export function setReady() {
+  ready = true
+}
+
 app.get('/health', (_req, res) => {
+  if (!ready) {
+    res.status(503).json({ status: 'starting' })
+    return
+  }
   res.json({ status: 'ok' })
 })
 

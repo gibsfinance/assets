@@ -1,6 +1,6 @@
-import * as remoteTokenList from './remote-tokenlist'
+import { RemoteTokenListCollector } from './remote-tokenlist'
 
-export const collect = remoteTokenList.collect({
+export default new RemoteTokenListCollector('uma', {
   providerKey: 'uma',
   listKey: 'exchange',
   tokenList:

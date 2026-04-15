@@ -1,171 +1,88 @@
-<div align="center">
+# Gibs Assets
 
-# 🎨 Gibs Assets Frontend
+Token data aggregation, image serving, and list management. Collects from 30+ providers, deduplicates, and serves prioritized token images and metadata via API.
 
-A powerful token list management and visualization platform built with Svelte 5.
+## Packages
 
-[![Built with Svelte](https://img.shields.io/badge/Built%20with-Svelte-FF3E00?style=flat-square&logo=svelte)](https://svelte.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+| Package | Description |
+|---------|-------------|
+| `packages/server` | Collection pipeline, PostgreSQL storage, Express API |
+| `packages/ui` | Frontend (being converted to React) |
+| `packages/utils` | Shared utilities (fetch, logging, ERC-20 reads) |
+| `packages/dexscreener` | DexScreener chain data scraper |
 
-<img src="https://raw.githubusercontent.com/gibsfinance/assets/main/docs/preview.png" alt="Gibs Assets Preview" width="600">
-
-</div>
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone & Setup
+## Setup
 
 ```bash
-# Clone with submodules
 git clone --recursive git@github.com:gibsfinance/assets.git
 cd assets
-
-# Configure environment
-cp .env.example .env
-
-# Install dependencies
 yarn
-```
-
-### 2. Development
-
-```sh
 yarn run setup
 ```
 
-### 3. Production
+Requires Docker (PostgreSQL) and Node.js 24+.
+
+## Collection
+
+Collects token data from 30+ providers in a two-phase pipeline: discover (register providers/lists) then collect (fetch tokens/images). Provider ordering in `collectables.ts` determines image priority.
 
 ```bash
-# Create production build
-yarn run build
+cd packages/server
 
-# Preview production build
-yarn run preview
+# Full collection
+yarn collect
+
+# Specific providers
+npx tsx src/bin/collect --providers=gibs,piteas,trustwallet --logger=raw
 ```
 
-> 📝 **Note:** You may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your deployment environment.
+## API
 
----
+Base URL: `https://gib.show`
 
-## 🔌 API Reference
+### Lists
 
-### Token Endpoints
+| Endpoint | Description |
+|----------|-------------|
+| `/list/` | All lists |
+| `/list/{provider}/{key}` | Specific list |
+| `/list/{provider}/{key}?chainId={id}` | Chain-filtered list |
 
-| Endpoint                             | Description                          |
-| ------------------------------------ | ------------------------------------ |
-| `/token/{chainId}/{tokenAddress}`    | Get specific token information       |
-| `/list/`                             | Get a list of all                    |
-| `/list/{listName}`                   | Get full token list (e.g., 9mm list) |
-| `/list/{listName}?chainId={chainId}` | Get chain-filtered token list        |
+### Images
 
-### Image Endpoints
+| Endpoint | Description |
+|----------|-------------|
+| `/image/{chainId}/{address}` | Token image (priority-ordered) |
+| `/image/{chainId}` | Network icon |
+| `/image/direct/{imageHash}` | Direct by hash |
+| `/image/fallback/{order}/{chainId}/{address}` | With explicit order + fallback |
+| `/image/?i={chainId}/{address}&i=...` | Multi-source fallback |
 
-| Endpoint                                           | Description           |
-| -------------------------------------------------- | --------------------- |
-| `/image/{chainId}`                                 | Network/chain images  |
-| `/image/{chainId}/{tokenAddress}`                  | Token images          |
-| `/image/fallback/default/{chainId}/{tokenAddress}` | Fallback token images |
+### Tokens
 
----
+| Endpoint | Description |
+|----------|-------------|
+| `/token/{chainId}/{address}` | Token metadata |
 
-## 🛠 Advanced Features
-
-### Backup Image System
-
-Load multiple image sources with fallbacks:
-
-```http
-https://gib.show/image/?i=1/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&i=369/0x02DcdD04e3F455D838cd1249292C58f3B79e3C3C
-```
-
-### Chain-Specific Lists
-
-Filter assets by chain:
-
-```http
-https://gib.show/list/9mm?chainId=369
-```
-
-### Multi-Source Resolution
-
-Resolve through prioritized lists:
-
-```http
-https://gib.show/list/merged/5ff74ffa222c6c435c9432ad937c5d95e3327ebbe3eb9ff9f62a4d940d5790f9?chainId=369
-```
-
----
-
-## 📦 Project Structure
-
-### Operation Indicators
-
-| Icon | Meaning            |
-| ---- | ------------------ |
-| 🔍   | Searching/Reading  |
-| ⚡   | Processing         |
-| 🔗   | RPC Operations     |
-| 🏗️   | Setup Operations   |
-| 🖼️   | Logo Operations    |
-| 📥   | Asset Processing   |
-| 💾   | Storage Operations |
-| ✨   | Completion         |
-
----
-
-## 🧪 Development
-
-### TypeScript Validation
+## Development
 
 ```bash
-npx tsc -p tsconfig.json
+# Server
+cd packages/server && yarn dev
+
+# Tests
+node --import tsx --test packages/server/test/
+
+# TypeScript check
+npx tsc --noEmit -p packages/server/tsconfig.json
 ```
 
-## ✨ Features
+## Data Sources
 
-- ⚡ Token list management
-- 🖼️ Token image serving & caching
-- 📊 Token statistics tracking
-- 🌐 Multi-network support
-- 🔄 Token data aggregation
-- 🚀 Comprehensive API endpoints
-- 💾 Backup lookups
-- 🔍 Sequenced filters
+Aggregates from: Trust Wallet, PulseX, CoinGecko, Uniswap token lists, Etherscan, RouteScan, OmniBridge, Smoldapp, PLS369, and 20+ more. Each provider is a `BaseCollector` class with `discover()` and `collect()` phases.
 
-## 🎯 Key Metrics
+## Submodules
 
-<div align="center">
-
-| Metric              | Count   |
-| ------------------- | ------- |
-| 🔗 Supported Chains | 50+     |
-| 🪙 Tracked Tokens   | 10,000+ |
-| 📋 Token Lists      | 140+    |
-| 🖼️ Cached Images    | 5,000+  |
-
-</div>
-
-## 🌟 Supported Networks
-
-<div align="center">
-
-| Network    | Chain ID | Status    |
-| ---------- | -------- | --------- |
-| Ethereum   | 1        | ✅ Active |
-| Pulse      | 369      | ✅ Active |
-| BSC        | 56       | ✅ Active |
-| Arbitrum   | 42161    | ✅ Active |
-| Optimism   | 10       | ✅ Active |
-| Base       | 8453     | ✅ Active |
-| zkSync Era | 324      | ✅ Active |
-
-</div>
-
-<div align="center">
-
-### Built with ❤️ by [Gibs Finance](https://github.com/gibsfinance/assets)
-
-</div>
+- `submodules/trustwallet` — Trust Wallet token assets
+- `submodules/pulsechain-assets` — PulseChain community assets
+- `submodules/smoldapp-tokenassets` — Smoldapp token images

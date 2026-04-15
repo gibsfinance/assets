@@ -14,8 +14,22 @@ failures.json
 .turbo
 packages/server/src/harvested/etherscan/
 
+# Knex backup (migrated to Drizzle)
+_backup/
+
+# Session / tool artifacts
+.serena/
+.claude/
+.remember/
+progress.txt
+docs/superpowers/
+
 # Yarn Berry
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
+.screenshots/
+.playwright-mcp/
+packages/ui/e2e/test-results/
+coverage/
