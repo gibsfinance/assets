@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { harvested } from '../paths'
 import * as db from '../db'
-import { limitBy } from 'packages/utils/src'
+import { limitBy } from '@gibs/utils'
 import * as utils from '../utils'
 import { terminalLogTypes, terminalRowTypes } from '../log/types'
 import { keccak256, stringToHex } from 'viem'
@@ -35,7 +35,7 @@ class CountriesCollector extends BaseCollector {
     ]
   }
 
-  async collect(signal?: AbortSignal): Promise<void> {
+  async collect(signal: AbortSignal): Promise<void> {
     const row = utils.terminal.issue({
       type: terminalRowTypes.SETUP,
       id: providerKey,
@@ -73,6 +73,7 @@ class CountriesCollector extends BaseCollector {
       await limit.map(
         countries.map((country, i) => [country, i]),
         async ([country, i]) => {
+          if (signal.aborted) return
           row.increment(providerKey, new Set([country.code]))
           if (!country.flag) {
             row.incrementTotal('skipped', new Set([country.code]))
@@ -129,4 +130,4 @@ class CountriesCollector extends BaseCollector {
 
 const instance = new CountriesCollector()
 export default instance
-export const collect = (signal?: AbortSignal) => instance.collect(signal as AbortSignal)
+export const collect = (signal: AbortSignal) => instance.collect(signal)

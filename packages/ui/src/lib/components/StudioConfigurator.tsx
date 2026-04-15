@@ -508,7 +508,7 @@ function InfiniteCanvas() {
   }, [selectedToken, selectedChainId, resolutionOrder])
 
   const networkUrl = useMemo(
-    () => getApiUrl(`/image/${selectedChainId ?? '1'}`),
+    () => selectedChainId ? getApiUrl(`/image/${selectedChainId}`) : '',
     [selectedChainId],
   )
 

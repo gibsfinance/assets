@@ -110,8 +110,13 @@ export const erc20Read = async (
   chain: Chain,
   client: PublicClient,
   target: Hex,
-  { skipBytes32 = false, mustExist = false }: { skipBytes32?: boolean; mustExist?: boolean } = {},
+  {
+    skipBytes32 = false,
+    mustExist = false,
+    signal,
+  }: { skipBytes32?: boolean; mustExist?: boolean; signal?: AbortSignal } = {},
 ) => {
+  if (signal?.aborted) throw signal.reason
   const calls = [{ functionName: 'name' }, { functionName: 'symbol' }, { functionName: 'decimals' }]
   const result = Promise.race([
     multicallRead<types.TokenChainInfo>({
@@ -139,11 +144,20 @@ export const erc20Read = async (
           ] as types.TokenChainInfo,
       )
     }),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`erc20Read timeout: ${chain.id} ${target}`)), erc20ReadTimeout),
-    ),
+    new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(`erc20Read timeout: ${chain.id} ${target}`)), erc20ReadTimeout)
+      signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          reject(signal.reason)
+        },
+        { once: true },
+      )
+    }),
   ])
-  return await result.catch(() => {
+  return await result.catch((err) => {
+    if (signal?.aborted) throw signal.reason
     if (mustExist) {
       throw new Error('unable to read token')
     }

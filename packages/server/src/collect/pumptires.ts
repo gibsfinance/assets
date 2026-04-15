@@ -307,6 +307,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
       (t, i) => [t, knownLaunchedList.length + i] as [TokenInfo, number],
     )
     await limitTokens.map(indexedLaunchedTokens, async ([token, i]) => {
+      if (signal.aborted) return
       const originalUri = toURI(token)
       const chainTokenId = utils.counterId.token([+network.chainId, token.address])
       await db
@@ -342,12 +343,13 @@ export const collectAttempt = async (signal: AbortSignal) => {
     const highCapTokens = await limitHighCapSorting.map(
       updatedKnownLaunchedList,
       async (token): Promise<InsertHighCapToken | null> => {
+        if (signal.aborted) return null
         const address = token.providedId as Hex
         const {
           token0,
           // token1,
           reserves: [rt0, rt1],
-        } = await getReserves(address, situation, wpls)
+        } = await getReserves(address, situation, wpls, signal)
         let result: null | InsertHighCapToken = null
         if (rt0 && rt1) {
           const wplsReserve = getAddress(token0) === getAddress(wpls) ? rt0 : rt1
@@ -392,6 +394,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
       utils.mapToSet.token(sortedInserts, ([t]) => [+network.networkId, t.token.providedId]),
     )
     await insertHighCapTokens.map(sortedInserts, async ([insert, index]) => {
+      if (signal.aborted) return
       await db.fetchImageAndStoreForToken({
         ...insert,
         listTokenOrderId: index,
@@ -410,7 +413,12 @@ const univ2Abi = parseAbi([
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
 ])
 
-const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex }[], wpls: Hex) => {
+const getReserves = async (
+  token: Hex,
+  situations: { factory: Hex; initCode: Hex }[],
+  wpls: Hex,
+  signal?: AbortSignal,
+) => {
   // the token pairs are the same for both situations so we can just use the first one
   const [situation] = situations
   const [, token0, token1] = tokenToPair(wpls, token, situation.factory, situation.initCode)
@@ -425,7 +433,17 @@ const getReserves = async (token: Hex, situations: { factory: Hex; initCode: Hex
   })
   const results = await Promise.race([
     client.multicall({ contracts: calls }),
-    new Promise<[]>((resolve) => setTimeout(() => resolve([]), 15_000)),
+    new Promise<[]>((resolve) => {
+      const timer = setTimeout(() => resolve([]), 15_000)
+      signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          resolve([])
+        },
+        { once: true },
+      )
+    }),
   ])
   // we can do this because the same rules govern the order of the tokens in the pair
   // the order of the tokens in the pair is the same for both situations

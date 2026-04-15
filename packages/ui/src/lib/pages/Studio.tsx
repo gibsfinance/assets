@@ -30,83 +30,45 @@ export default function Studio() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // ---------------------------------------------------------------------------
-  // URL → State: apply URL params on mount and when URL changes
+  // URL IS the state. Derive chain/token/editor from searchParams.
+  // Push URL values into context so child components can read them.
+  // No bidirectional sync — one direction only: URL → context.
   // ---------------------------------------------------------------------------
+  const urlChain = searchParams.get('chain') ?? null
+  const urlEditor = searchParams.get('editor') ?? null
+
+  // URL → context: keep context in sync with URL (context is a read cache)
   useEffect(() => {
-    const chain = searchParams.get('chain')
-    const editor = searchParams.get('editor')
-
-    // Sync chain from URL
-    if (chain && chain !== selectedChainId) {
-      selectChain(chain)
-    }
-
-    // Sync editor from URL
-    if (editor === 'new' && !editorOpen) {
-      openNewEditor()
-    } else if (editor && editor !== 'new' && !editorOpen) {
-      openEditor(editor)
-    } else if (!editor && editorOpen) {
-      closeEditor()
-    }
-  // Only run when URL changes, not when state changes
+    if (urlChain !== selectedChainId) selectChain(urlChain)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [urlChain])
 
-  // ---------------------------------------------------------------------------
-  // State → URL: update URL when navigational state changes
-  // ---------------------------------------------------------------------------
-  const updateUrl = useCallback(
-    (updates: Record<string, string | null>) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        for (const [key, value] of Object.entries(updates)) {
-          if (value === null) {
-            next.delete(key)
-          } else {
-            next.set(key, value)
-          }
-        }
-        return next
-      }, { replace: true })
-    },
-    [setSearchParams],
-  )
-
-  // Sync chain selection to URL
   useEffect(() => {
-    const urlChain = searchParams.get('chain')
-    if (selectedChainId && selectedChainId !== urlChain) {
-      updateUrl({ chain: selectedChainId })
-    } else if (!selectedChainId && urlChain) {
-      updateUrl({ chain: null })
-    }
+    if (urlEditor === 'new' && !editorOpen) openNewEditor()
+    else if (urlEditor && urlEditor !== 'new' && !editorOpen) openEditor(urlEditor)
+    else if (!urlEditor && editorOpen) closeEditor()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedChainId])
+  }, [urlEditor])
 
-  // Sync token selection to URL
-  useEffect(() => {
-    const urlToken = searchParams.get('token')
-    if (selectedToken && selectedToken.address !== urlToken) {
-      updateUrl({ token: selectedToken.address, chain: String(selectedToken.chainId) })
-    } else if (!selectedToken && urlToken) {
-      updateUrl({ token: null })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToken])
+  // URL-updating handlers passed to children — these are the primary actions
+  const urlSelectChain = useCallback((chainId: string | null) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (chainId) next.set('chain', chainId)
+      else { next.delete('chain'); next.delete('token') }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
-  // Sync editor state to URL
-  useEffect(() => {
-    const urlEditor = searchParams.get('editor')
-    if (editorOpen && activeList && activeList.id !== urlEditor) {
-      updateUrl({ editor: activeList.id })
-    } else if (editorOpen && !activeList && urlEditor !== 'new') {
-      updateUrl({ editor: 'new' })
-    } else if (!editorOpen && urlEditor) {
-      updateUrl({ editor: null })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorOpen, activeList])
+  const urlSelectToken = useCallback((token: Token) => {
+    selectToken(token) // update context immediately for configurator
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('chain', String(token.chainId))
+      next.set('token', token.address)
+      return next
+    }, { replace: true })
+  }, [setSearchParams, selectToken])
 
   return (
     <div className="h-screen">
@@ -164,7 +126,7 @@ export default function Studio() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <StudioBrowser onInspectToken={setInspectToken} />
+                <StudioBrowser onInspectToken={setInspectToken} selectChain={urlSelectChain} selectToken={urlSelectToken} />
               </div>
             </div>
           </div>
@@ -206,7 +168,7 @@ export default function Studio() {
           {editorOpen ? (
             <ListEditor />
           ) : (
-            <StudioBrowser onInspectToken={setInspectToken} />
+            <StudioBrowser onInspectToken={setInspectToken} selectChain={urlSelectChain} selectToken={urlSelectToken} />
           )}
         </div>
 

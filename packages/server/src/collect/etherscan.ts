@@ -28,6 +28,7 @@ import {
   blast,
 } from 'viem/chains'
 
+import { delay } from '../utils/delay'
 import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
@@ -39,11 +40,6 @@ import { BaseCollector, DiscoveryManifest } from './base-collector'
 const providerKey = 'etherscan'
 
 const pageDir = path.join(paths.harvested, providerKey)
-
-/**
- * Delay utility to add pauses between requests
- */
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Concurrency limiter for chain processing
@@ -133,7 +129,7 @@ class SequentialRpcProcessor {
   async processToken(
     chain: Chain,
     address: Address,
-    signal?: AbortSignal,
+    signal: AbortSignal,
   ): Promise<{ name: string; symbol: string; decimals: number } | null> {
     const chainId = chain.id
 
@@ -146,7 +142,7 @@ class SequentialRpcProcessor {
 
     // Create a promise for the actual RPC work (without delay)
     const rpcWork = currentChainProcessor.then(async () => {
-      if (signal?.aborted) throw new Error('Aborted')
+      if (signal.aborted) throw new Error('Aborted')
 
       const client = createChainClient(chain)
 
@@ -160,12 +156,12 @@ class SequentialRpcProcessor {
     const nextProcessor = rpcWork.then(
       async (_result) => {
         // Wait 500ms before allowing the next request on this chain
-        await delay(500)
+        await delay(500, signal).catch(() => {})
         return // Return void for the processor chain
       },
       async (error) => {
         // Wait 500ms even on error to maintain rate limiting
-        await delay(500)
+        await delay(500, signal).catch(() => {})
         throw error
       },
     )
@@ -204,7 +200,7 @@ type EtherscanChainInfo = {
 /**
  * Fetches the list of supported chains from Etherscan's chainlist API
  */
-async function fetchEtherscanChainList(signal?: AbortSignal): Promise<EtherscanChainInfo[]> {
+async function fetchEtherscanChainList(signal: AbortSignal): Promise<EtherscanChainInfo[]> {
   const response = await fetch('https://api.etherscan.io/v2/chainlist', { signal })
 
   if (!response.ok) {
@@ -278,7 +274,7 @@ function mapEtherscanChainToConfig(etherscanChain: EtherscanChainInfo): ChainCon
 /**
  * Gets supported chain configurations from Etherscan API
  */
-async function getSupportedChainConfigs(signal?: AbortSignal): Promise<ChainConfig[]> {
+async function getSupportedChainConfigs(signal: AbortSignal): Promise<ChainConfig[]> {
   const etherscanChains = await fetchEtherscanChainList(signal)
 
   return etherscanChains
@@ -310,13 +306,13 @@ async function fetchTopTokensViaPuppeteer({
 }: {
   explorerBaseUrl: string
   chainId: number
-  signal?: AbortSignal
+  signal: AbortSignal
   row: TerminalRowProxy
 }): Promise<{ address: Address; logoURI?: string }[]> {
   let page = null
 
   try {
-    if (signal?.aborted) throw new Error('Aborted')
+    if (signal.aborted) throw new Error('Aborted')
 
     // Use shared browser instance
     const browser = await getSharedBrowser()
@@ -347,7 +343,8 @@ async function fetchTopTokensViaPuppeteer({
       deviceScaleFactor: 1,
     })
 
-    await delay(3000)
+    await delay(3000, signal).catch(() => {})
+    if (signal.aborted) return []
     // Check if we're still on a Cloudflare page
     const isCloudflareChallenge = await page.evaluate(() => {
       return (
@@ -359,10 +356,12 @@ async function fetchTopTokensViaPuppeteer({
 
     if (isCloudflareChallenge) {
       // Wait for potential Cloudflare challenge to complete
-      await delay(3000)
+      await delay(3000, signal).catch(() => {})
+      if (signal.aborted) return []
 
       let count = 5
       while (count > 0) {
+        if (signal.aborted) return []
         // Check if we're still on a Cloudflare page
         const isCloudflareChallenge = await page.evaluate(() => {
           return (
@@ -373,7 +372,8 @@ async function fetchTopTokensViaPuppeteer({
         })
         if (isCloudflareChallenge) {
           // Wait longer for Cloudflare challenge to complete
-          await delay(10000)
+          await delay(10000, signal).catch(() => {})
+          if (signal.aborted) return []
           count--
           continue
         }
@@ -453,7 +453,7 @@ async function fetchTopTokens({
   chainId,
 }: {
   explorerBaseUrl: string
-  signal?: AbortSignal
+  signal: AbortSignal
   row: TerminalRowProxy
   chainId: number
 }): Promise<{ address: Address; logoURI?: string }[]> {
@@ -478,7 +478,7 @@ async function fetchTokenMetadata({
 }: {
   chain: Chain
   address: Address
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<{ name: string; symbol: string; decimals: number } | null> {
   return rpcProcessor.processToken(chain, address, signal)
 }
@@ -496,7 +496,7 @@ async function processChainTokens({
   row: TerminalRowProxy
   listId: string
   providerId: string
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<void> {
   const { chain, explorerBaseUrl } = chainConfig
   const chainKey = chain.name.toLowerCase().replace(/\s+/g, '-')
@@ -532,7 +532,7 @@ async function processChainTokens({
 
     for (const [index, { address, logoURI }] of tokenData.entries()) {
       const normalizedLogoURI = logoURI || null
-      if (signal?.aborted) break
+      if (signal.aborted) break
 
       const chainTokenId = utils.counterId.token([chain.id, address])
 
@@ -579,6 +579,7 @@ async function processChainTokens({
 
       // Create list associations for all inserted tokens
       for (const [batchIndex, token] of validTokens.entries()) {
+        if (signal.aborted) break
         const chainTokenId = utils.counterId.token([chain.id, token.address])
         const task = section.task(`token-${chainKey}-${token.address.toLowerCase()}`, {
           type: terminalRowTypes.STORAGE,
@@ -672,7 +673,7 @@ class EtherscanCollector extends BaseCollector {
     ]
   }
 
-  async collect(signal?: AbortSignal): Promise<void> {
+  async collect(signal: AbortSignal): Promise<void> {
     const row = utils.terminal.issue({
       type: terminalRowTypes.SETUP,
       id: providerKey,
@@ -718,7 +719,7 @@ class EtherscanCollector extends BaseCollector {
       // Process chains with limited concurrency (max 8 at a time)
       // Each chain handles its own rate limiting via SequentialRpcProcessor (500ms delays per chain)
       await chainLimiter.map(enabledChains, async (chainConfig) => {
-        if (signal?.aborted) return
+        if (signal.aborted) return
 
         return processChainTokens({
           chainConfig,
@@ -742,4 +743,4 @@ class EtherscanCollector extends BaseCollector {
 
 const instance = new EtherscanCollector()
 export default instance
-export const collect = (signal?: AbortSignal) => instance.collect(signal)
+export const collect = (signal: AbortSignal) => instance.collect(signal)

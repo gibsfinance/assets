@@ -1,6 +1,7 @@
 import _ from 'lodash'
 import * as viem from 'viem'
 import { erc20Read } from '@gibs/utils'
+import { delay } from '../utils/delay'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -221,141 +222,147 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
 
     const blocksSection = configRow.issue(providerKey, 1)
     configRow.createCounter(terminalCounterTypes.TOKEN)
-    await iterateOverRange(fromBlock, finalizedBlock.number, async (fromBlock, toBlock) => {
-      if (signal.aborted) {
-        return
-      }
-      const task = blocksSection.task(`${bridgeDirectionId}-${fromBlock}-${toBlock}`, {
-        id: '',
-        type: terminalRowTypes.SETUP,
-        kv: {
-          final: finalizedBlock.number,
-          from: fromBlock,
-          to: toBlock,
-        },
-      })
-      const events = await toOmnibridge.getEvents.NewTokenRegistered(
-        {},
-        {
-          fromBlock,
-          toBlock,
-        },
-      )
-      if (!events.length) {
-        task.unmount()
-        await db.updateBridgeBlockProgress(bridge.bridgeId, {
-          [bridgeBlockKey]: `${toBlock}`,
+    await iterateOverRange(
+      fromBlock,
+      finalizedBlock.number,
+      async (fromBlock, toBlock) => {
+        if (signal.aborted) {
+          return
+        }
+        const task = blocksSection.task(`${bridgeDirectionId}-${fromBlock}-${toBlock}`, {
+          id: '',
+          type: terminalRowTypes.SETUP,
+          kv: {
+            final: finalizedBlock.number,
+            from: fromBlock,
+            to: toBlock,
+          },
         })
-        return
-      }
-      if (signal.aborted) {
-        return
-      }
-      const collectedData = await Promise.all(
-        events.map(async (event) => {
-          if (signal.aborted) {
-            return
-          }
-          const native = event.args.native as viem.Hex
-          const bridged = event.args.bridged as viem.Hex
-          const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
-          const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
-          const [[name, symbol, decimals], [bridgedName, bridgedSymbol, bridgedDecimals]] = await Promise.all([
-            erc20Read(fromConfig.chain, fromClient, native),
-            erc20Read(toConfig.chain, toClient, bridged),
-          ])
+        const events = await toOmnibridge.getEvents.NewTokenRegistered(
+          {},
+          {
+            fromBlock,
+            toBlock,
+          },
+        )
+        if (!events.length) {
+          task.unmount()
+          await db.updateBridgeBlockProgress(bridge.bridgeId, {
+            [bridgeBlockKey]: `${toBlock}`,
+          })
+          return
+        }
+        if (signal.aborted) {
+          return
+        }
+        const collectedData = await Promise.all(
+          events.map(async (event) => {
+            if (signal.aborted) {
+              return
+            }
+            const native = event.args.native as viem.Hex
+            const bridged = event.args.bridged as viem.Hex
+            const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
+            const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
+            const [[name, symbol, decimals], [bridgedName, bridgedSymbol, bridgedDecimals]] = await Promise.all([
+              erc20Read(fromConfig.chain, fromClient, native, { signal }),
+              erc20Read(toConfig.chain, toClient, bridged, { signal }),
+            ])
 
-          const metadata = {
-            address: native,
-            chainId: fromConfig.chain.id,
-            name,
-            symbol,
-            decimals,
-          }
-          const bridgedMetadata = {
-            address: bridged,
-            chainId: toConfig.chain.id,
-            name: bridgedName,
-            symbol: bridgedSymbol,
-            decimals: bridgedDecimals,
-          }
-          return [
-            [nativeKey, metadata],
-            [bridgedKey, bridgedMetadata],
-          ] as const
-        }),
-      )
-      if (signal.aborted) {
-        return
-      }
-      const tokenData = _.flatten(_.compact(collectedData))
-      const collectedDataForTokens = new Map<string, MinimalTokenInfo>(tokenData)
-      await db.transaction(async (tx) => {
-        const toBridge = await db.getBridge(bridge.bridgeId, tx)
-        let count = toBridge.bridgeLinkOrderId
-        for (const event of events) {
-          const [native, bridged] = await Promise.all(
-            (
-              [
-                [fromConfig.chain.id, event.args.native],
-                [toConfig.chain.id, event.args.bridged],
-              ] as const
-            ).map(async ([chainId, addr]) => {
-              const providedId = viem.getAddress(addr as viem.Hex)
-              const networkId = chainIdToNetworkId(chainId)
-              const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
-              if (!metadata) {
-                return
-              }
-              // Use storeToken for efficient token insertion without image processing
-              const { token } = await db.storeToken(
-                {
-                  token: {
-                    networkId,
-                    providedId,
-                    name: metadata.name,
-                    symbol: metadata.symbol,
-                    decimals: metadata.decimals,
+            const metadata = {
+              address: native,
+              chainId: fromConfig.chain.id,
+              name,
+              symbol,
+              decimals,
+            }
+            const bridgedMetadata = {
+              address: bridged,
+              chainId: toConfig.chain.id,
+              name: bridgedName,
+              symbol: bridgedSymbol,
+              decimals: bridgedDecimals,
+            }
+            return [
+              [nativeKey, metadata],
+              [bridgedKey, bridgedMetadata],
+            ] as const
+          }),
+        )
+        if (signal.aborted) {
+          return
+        }
+        const tokenData = _.flatten(_.compact(collectedData))
+        const collectedDataForTokens = new Map<string, MinimalTokenInfo>(tokenData)
+        await db.transaction(async (tx) => {
+          const toBridge = await db.getBridge(bridge.bridgeId, tx)
+          let count = toBridge.bridgeLinkOrderId
+          for (const event of events) {
+            const [native, bridged] = await Promise.all(
+              (
+                [
+                  [fromConfig.chain.id, event.args.native],
+                  [toConfig.chain.id, event.args.bridged],
+                ] as const
+              ).map(async ([chainId, addr]) => {
+                const providedId = viem.getAddress(addr as viem.Hex)
+                const networkId = chainIdToNetworkId(chainId)
+                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
+                if (!metadata) {
+                  return
+                }
+                // Use storeToken for efficient token insertion without image processing
+                const { token } = await db.storeToken(
+                  {
+                    token: {
+                      networkId,
+                      providedId,
+                      name: metadata.name,
+                      symbol: metadata.symbol,
+                      decimals: metadata.decimals,
+                    },
+                    listId: toList.listId,
+                    listTokenOrderId: count++,
                   },
-                  listId: toList.listId,
-                  listTokenOrderId: count++,
-                },
-                tx,
-              )
-              configRow.increment(terminalCounterTypes.TOKEN, counterId.token([chainId, providedId]))
-              return token
-            }),
-          )
-          if (!native || !bridged) {
-            continue
+                  tx,
+                )
+                configRow.increment(terminalCounterTypes.TOKEN, counterId.token([chainId, providedId]))
+                return token
+              }),
+            )
+            if (!native || !bridged) {
+              continue
+            }
+            await db.insertBridgeLink(
+              {
+                bridgeId: bridge.bridgeId,
+                nativeTokenId: native.tokenId,
+                bridgedTokenId: bridged.tokenId,
+                transactionHash: event.transactionHash,
+              },
+              tx,
+            )
+            configRow.increment(
+              terminalCounterTypes.TOKEN,
+              counterId.token(
+                native ? [fromConfig.chain.id, native.providedId] : [toConfig.chain.id, bridged.providedId],
+              ),
+            )
           }
-          await db.insertBridgeLink(
+          await db.updateBridgeBlockProgress(
+            bridge.bridgeId,
             {
-              bridgeId: bridge.bridgeId,
-              nativeTokenId: native.tokenId,
-              bridgedTokenId: bridged.tokenId,
-              transactionHash: event.transactionHash,
+              [bridgeBlockKey]: `${toBlock}`,
+              bridgeLinkOrderId: count,
             },
             tx,
           )
-          configRow.increment(
-            terminalCounterTypes.TOKEN,
-            counterId.token(
-              native ? [fromConfig.chain.id, native.providedId] : [toConfig.chain.id, bridged.providedId],
-            ),
-          )
-        }
-        await db.updateBridgeBlockProgress(
-          bridge.bridgeId,
-          {
-            [bridgeBlockKey]: `${toBlock}`,
-            bridgeLinkOrderId: count,
-          },
-          tx,
-        )
-      })
-      task.unmount()
-    })
+        })
+        task.unmount()
+      },
+      10_000n,
+      signal,
+    )
     configRow.unmount()
   })
 
@@ -370,6 +377,7 @@ const iterateOverRange = async (
   end: bigint,
   iterator: (a: bigint, b: bigint) => Promise<void>,
   step = 10_000n,
+  signal?: AbortSignal,
 ) => {
   let fromBlock = start
   let consecutiveErrors = 0
@@ -379,6 +387,7 @@ const iterateOverRange = async (
   let currentStep = step
 
   do {
+    if (signal?.aborted) return
     try {
       if (currentStep > maxStep) {
         currentStep = maxStep
@@ -421,8 +430,9 @@ const iterateOverRange = async (
         fromBlock = fromBlock + currentStep
       }
 
-      const delay = isLimitError ? 200 : 5000
-      await new Promise((resolve) => setTimeout(resolve, delay))
+      const retryDelay = isLimitError ? 200 : 5000
+      await delay(retryDelay, signal).catch(() => {})
+      if (signal?.aborted) return
     }
   } while (fromBlock <= end)
 }

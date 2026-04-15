@@ -61,7 +61,7 @@ export const getListTokens = async ({
 
   const effectiveOrderId = listOrderId ?? getDefaultListOrderId()
   if (effectiveOrderId) {
-    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider')
+    const rows = await db.applyOrder(effectiveOrderId, whereClause, 'provider', undefined, { includeContent: true })
     return {
       filter: { networkId, providedId: address },
       img: rows[0] as
@@ -209,14 +209,14 @@ const getListImage =
     providerKey,
     listKey,
   }: {
-    chainId: number
+    chainId: ChainId
     address: string
     order?: string
     typeFilter?: string[]
     providerKey?: string[]
     listKey?: string[]
   }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
-    if (!+chainId) {
+    if (!chainId) {
       throw httpErrors.BadRequest('chainId')
     }
     const { filename: address, ext: requestedExt } = splitExt(addressParam)
@@ -226,7 +226,7 @@ const getListImage =
     const outputExt = requestedExt ?? null
     const listOrderId = parseOrder && orderParam ? await db.getListOrderId(orderParam as string) : null
     const { img } = await getListTokens({
-      chainId: +chainId,
+      chainId,
       address,
       listOrderId,
       exts: typeFilter,
@@ -268,7 +268,7 @@ export const getImage =
   (parseOrder: boolean): RequestHandler =>
   async (req, res, _next) => {
     const { img, outputExt } = await getListImage(parseOrder)({
-      chainId: Number(req.params.chainId),
+      chainId: req.params.chainId,
       address: req.params.address as viem.Hex,
       order: req.params.order,
       typeFilter: parseTypeFilter(req.query.only),
@@ -288,7 +288,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const listKey = queryStringToList(req.query.listKey)
   const typeFilter = parseTypeFilter(req.query.only)
   let result = await getListImage(true)({
-    chainId: Number(req.params.chainId),
+    chainId: req.params.chainId,
     address: req.params.address as viem.Hex,
     order: req.params.order,
     typeFilter,
@@ -297,7 +297,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   }).catch(ignoreNotFound)
   if (!result) {
     result = await getListImage(false)({
-      chainId: Number(req.params.chainId),
+      chainId: req.params.chainId,
       address: req.params.address as viem.Hex,
       typeFilter,
       providerKey,
@@ -330,10 +330,7 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {
   const { filename: chainId, exts } = splitExt(chainIdParam)
-  if (!+chainId) {
-    throw httpErrors.BadRequest('chainId')
-  }
-  const { img } = await getNetworkIcon(+chainId, exts)
+  const { img } = await getNetworkIcon(chainId, exts)
   if (!img) {
     throw httpErrors.NotFound('best guess network image not found')
   }

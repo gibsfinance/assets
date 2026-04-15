@@ -11,9 +11,7 @@ import { nextOnError } from './utils'
 
 export const router = Router() as Router
 
-router.use('/health', (_req, res) => {
-  res.send('ok')
-})
+// Health check handled in app.ts (before router) — removed duplicate here
 
 // gib.show/image
 router.use('/image', imageRouter)

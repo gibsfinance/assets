@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { useMetricsContext } from '../contexts/MetricsContext'
+import { useMetrics, useProviders } from '../hooks/useMetrics'
 import { getApiUrl } from '../utils'
 import { stepPhysics, createIcon } from '../physics/engine'
 import { computeEdgeOpacity } from '../physics/forces'
@@ -18,7 +18,8 @@ export default function PhysicsCanvas() {
   const scrollDeltaRef = useRef(0)
   const lastScrollY = useRef(0)
   const animFrameRef = useRef<number>(0)
-  const { metrics, providers: contextProviders, fetchProviders } = useMetricsContext()
+  const { metrics } = useMetrics()
+  const { data: contextProviders = [] } = useProviders()
 
   const prefersReducedMotion = useRef(
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -38,11 +39,10 @@ export default function PhysicsCanvas() {
   )
 
   const fetchTokenSources = useCallback(async (): Promise<string[]> => {
-    try {
-      const providersList = contextProviders.length ? contextProviders : await fetchProviders()
-      if (!providersList.length) return []
+    if (!contextProviders.length) return []
 
-      const firstProviders = providersList.slice(0, 3).map((p) => p.providerKey)
+    try {
+      const firstProviders = contextProviders.slice(0, 3).map((p) => p.providerKey)
 
       const tokenAddresses: string[] = []
       await Promise.all(
@@ -65,7 +65,7 @@ export default function PhysicsCanvas() {
     } catch {
       return []
     }
-  }, [])
+  }, [contextProviders])
 
   const initIcons = useCallback(async () => {
     if (!metrics) return

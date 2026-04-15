@@ -24,6 +24,10 @@ export function getDrizzle(): DrizzleDB {
   return db
 }
 
+export async function closeDb(): Promise<void> {
+  await (db as unknown as { $client: { end(): Promise<void> } }).$client.end()
+}
+
 /** Run pending Drizzle migrations from the drizzle/ directory. */
 export async function migrate(): Promise<void> {
   await drizzleMigrate(db, {

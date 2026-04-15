@@ -14,6 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
+import { toCAIP2 } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
@@ -299,7 +300,7 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
     .values({
       networkId: dsql`''`,
       type,
-      chainId: chainId.toString(),
+      chainId: toCAIP2(chainId.toString()),
     })
     .onConflictDoUpdate({
       target: s.network.networkId,
@@ -525,7 +526,7 @@ export const getImageByAddress = async (
   const [network] = await db
     .select()
     .from(s.network)
-    .where(eq(s.network.chainId, String(chainId)))
+    .where(eq(s.network.chainId, toCAIP2(String(chainId))))
     .limit(1)
   if (!network) return null
   const [token] = await db
@@ -1011,7 +1012,7 @@ export const getTokensUnderListId = () => {
       listKey: s.list.key,
     })
     .from(s.listToken)
-    .fullJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
+    .leftJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
     .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
     .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
@@ -1024,14 +1025,26 @@ export const getLists = async (providerKey: string, listKey: string) => {
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
     : and(eq(s.provider.key, providerKey), eq(s.list.default, true))
-  return db
+  const rows = await db
     .select()
     .from(s.provider)
     .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
     .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
-    .fullJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+    .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
     .where(whereClause)
     .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+  // Fall back to any list for this provider if no default exists
+  if (rows.length === 0 && !listKey) {
+    return db
+      .select()
+      .from(s.provider)
+      .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+      .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
+      .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+      .where(eq(s.provider.key, providerKey))
+      .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+  }
+  return rows
 }
 
 /**
@@ -1218,7 +1231,11 @@ export const applyOrder = async (
   whereClause: SQL,
   baseFrom: 'listToken' | 'provider' = 'listToken',
   formatPreference?: string[][],
-  { dedupe = true, sorted = false }: { dedupe?: boolean; sorted?: boolean } = {},
+  {
+    dedupe = true,
+    sorted = false,
+    includeContent = false,
+  }: { dedupe?: boolean; sorted?: boolean; includeContent?: boolean } = {},
 ) => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql(formatPreference)
@@ -1234,7 +1251,7 @@ export const applyOrder = async (
       `
       : dsql`
         ${s.listToken}
-        FULL OUTER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+        LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         INNER JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
         INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
         INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
@@ -1253,7 +1270,7 @@ export const applyOrder = async (
         ${s.image.ext},
         ${s.image.mode},
         ${s.image.uri},
-        ${s.image.content},
+        ${includeContent ? dsql`${s.image.content},` : dsql``}
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
@@ -1284,6 +1301,30 @@ export const applyOrder = async (
     ${sorted ? dsql`ORDER BY (ls."listRanking" / 1000) ASC, ls."listMajor" DESC, ls."listMinor" DESC, ls."listPatch" DESC, ls."listDefault" ASC, ls."listKey" ASC, ls."listTokenOrderId" ASC` : dsql``}
   `)
   return rows.rows
+}
+
+/**
+ * Lightweight sources query for /list/tokens/:chainId.
+ * Returns one row per (token, provider, list) membership — used to populate
+ * the `sources` field in token list responses without loading full token data.
+ * Paired with applyOrder(dedupe=true) which handles the heavy dedup in the DB.
+ */
+export const getTokenSourcesByChain = async (
+  chainId: string,
+): Promise<{ providedId: string; providerKey: string; listKey: string }[]> => {
+  const db = getDrizzle()
+  return db
+    .selectDistinct({
+      providedId: s.token.providedId,
+      providerKey: s.provider.key,
+      listKey: s.list.key,
+    })
+    .from(s.token)
+    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .where(eq(s.network.chainId, chainId))
 }
 
 export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {
@@ -1426,6 +1467,11 @@ export const purgeExpiredCache = (tx?: DrizzleTx) => {
   return db.delete(s.cacheRequest).where(lt(s.cacheRequest.expiresAt, dsql`NOW()`))
 }
 
+export const clearCache = (tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return db.delete(s.cacheRequest)
+}
+
 export const insertCacheRequest = (cacheRequest: InsertableCacheRequest, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   // Knex InsertableCacheRequest has expiresAt: Date; Drizzle schema uses mode: 'string'.
@@ -1459,17 +1505,23 @@ export const cachedJSON = async <T extends object>(
   key: string,
   signal: AbortSignal,
   fn: (signal: AbortSignal) => Promise<T>,
-  { ttl = defaultTTL }: { ttl?: number } = {},
+  { ttl = defaultTTL, validate }: { ttl?: number; validate?: (result: unknown) => boolean } = {},
 ) => {
   const cached = await getCachedRequest(key)
   if (cached) {
-    return JSON.parse(cached.value) as T
+    const parsed = JSON.parse(cached.value) as T
+    // If a validator is provided and the cached value fails it, fall through to re-fetch.
+    // This handles previously-cached error responses (e.g. rate-limit JSON bodies).
+    if (!validate || validate(parsed)) return parsed
   }
   const result = (await fn(signal)) as T
-  await insertCacheRequest({
-    key,
-    value: JSON.stringify(result),
-    expiresAt: new Date(Date.now() + ttl).toISOString(),
-  })
+  // Only cache if the result passes validation
+  if (!validate || validate(result)) {
+    await insertCacheRequest({
+      key,
+      value: JSON.stringify(result),
+      expiresAt: new Date(Date.now() + ttl).toISOString(),
+    })
+  }
   return result
 }

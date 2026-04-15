@@ -16,9 +16,10 @@ import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, asc, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
+import { toCAIP2, fromCAIP2 } from '../../chain-id'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -28,8 +29,8 @@ export const merged: RequestHandler = async (req, res, next) => {
   }
   const chainId = req.query.chainId as string | undefined
   const whereClause = chainId
-    ? and(dsql`${s.network.chainId} != '0'`, eq(s.network.chainId, chainId))!
-    : dsql`${s.network.chainId} != '0'`
+    ? and(dsql`${s.network.chainId} != 'asset-0'`, eq(s.network.chainId, toCAIP2(chainId)))!
+    : dsql`${s.network.chainId} != 'asset-0'`
   const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
@@ -143,61 +144,131 @@ export const all: RequestHandler = async (req, res) => {
  * Server-side merge eliminates the need for N individual list fetches.
  * Supports ?limit=N (default 500, max 5000)
  */
-export const tokensByChain: RequestHandler = async (req, res, next) => {
-  const chainId = req.params.chainId
-  if (!chainId || !/^\d+$/.test(chainId)) return next(createError.BadRequest('valid numeric chainId required'))
+const FRESH_TTL_MS = 5 * 60 * 1000 // 5 minutes — serve without revalidation
+const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing in background
 
-  const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
-  const extensions = getExtensions(req)
-
-  const whereClause = eq(s.network.chainId, chainId)
+/** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
+ *
+ * Uses applyOrder(dedupe=true, sorted=true) so the DB returns one row per token
+ * (best-ranked provider wins via dense_rank CTE), then a separate lightweight
+ * selectDistinct query fetches all providerKey/listKey memberships for the sources field.
+ * This avoids loading N rows-per-token into Node heap for chains with many list memberships.
+ */
+const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
   const defaultOrderId = getDefaultListOrderId()
 
-  // Use applyOrder (dedupe: true) for ranked, one-row-per-token results
-  const tokens = defaultOrderId
-    ? await db.applyOrder(defaultOrderId, whereClause, 'listToken', undefined, { sorted: true })
-    : await db.getTokensUnderListId().where(whereClause).orderBy(asc(s.image.ext), asc(s.listToken.listTokenOrderId))
+  const [tokens, sourcesRows] = await Promise.all([
+    defaultOrderId
+      ? db.applyOrder(defaultOrderId, eq(s.network.chainId, chainId), 'listToken', undefined, {
+          dedupe: true,
+          sorted: true,
+        })
+      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)),
+    defaultOrderId ? db.getTokenSourcesByChain(chainId) : Promise.resolve([]),
+  ])
 
-  const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
-
-  // Lightweight query for sources — just providerKey/listKey per address
-  const drizzle = getDrizzle()
-  const sourceRows = await drizzle
-    .select({
-      providedId: s.token.providedId,
-      providerKey: s.provider.key,
-      listKey: s.list.key,
-    })
-    .from(s.listToken)
-    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
-    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
-    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
-    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-    .where(eq(s.network.chainId, chainId))
-
-  const sourcesByAddress = new Map<string, Set<string>>()
-  for (const row of sourceRows) {
-    const key = row.providedId.toLowerCase()
-    let set = sourcesByAddress.get(key)
-    if (!set) {
-      set = new Set()
-      sourcesByAddress.set(key, set)
+  // Build address → sources[] map to patch onto entries after normalizeTokens.
+  // normalizeTokens only sees one row per token (already deduped), so we populate
+  // sources from this separate query rather than from duplicate rows.
+  const sourcesMap = new Map<string, string[]>()
+  for (const { providedId, providerKey, listKey } of sourcesRows) {
+    const key = providedId.toLowerCase()
+    const source = `${providerKey}/${listKey}`
+    const existing = sourcesMap.get(key)
+    if (existing) {
+      existing.push(source)
+    } else {
+      sourcesMap.set(key, [source])
     }
-    set.add(`${row.providerKey}/${row.listKey}`)
   }
 
-  for (const entry of entries) {
-    const sources = sourcesByAddress.get(entry.address.toLowerCase())
-    if (sources) entry.sources = [...sources]
+  // applyOrder(sorted=true) already orders by provider ranking — no JS sort needed.
+  const filters = utils.tokenFilters({})
+  const allEntries = utils.normalizeTokens(tokens as any, filters, extensions)
+
+  // Patch full sources onto each entry (normalizeTokens would only see the winning row's source).
+  for (const entry of allEntries) {
+    const fullSources = sourcesMap.get(entry.address as string)
+    if (fullSources) entry.sources = fullSources
   }
 
+  // Only return tokens that have images — imageless tokens aren't useful to display
+  const entries = allEntries.filter((e) => e.logoURI)
   const limited = entries.slice(0, limit)
 
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json({
-    chainId: +chainId,
+  return JSON.stringify({
+    chainId: +fromCAIP2(chainId),
+    chainIdentifier: chainId,
     total: entries.length,
     tokens: limited,
   })
+}
+
+// In-flight revalidation tracker — prevents duplicate background refreshes
+const revalidating = new Set<string>()
+
+/**
+ * Pre-warm the tokensByChain cache for the top N chains by token count.
+ * Called at server startup so the first real request is served from cache.
+ */
+export const warmTokensByChainCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
+  const top = stats.slice(0, topN)
+  for (const { chainId: rawChainId } of top) {
+    try {
+      const chainId = toCAIP2(rawChainId)
+      const limit = 50_000
+      const extensions = new Set<string>()
+      const cacheKey = `tokens-by-chain:${chainId}:${limit}:`
+      const existing = await db.getCachedRequest(cacheKey)
+      if (existing) continue
+      const body = await buildTokensByChainResponse(chainId, limit, extensions)
+      const expiresAt = new Date(Date.now() + STALE_TTL_MS)
+      await db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
+    } catch {
+      // best-effort — startup must not fail if a chain is unavailable
+    }
+  }
+}
+
+export const tokensByChain: RequestHandler = async (req, res, next) => {
+  const rawChainId = req.params.chainId
+  if (!rawChainId) return next(createError.BadRequest('chainId required'))
+  // Accept both bare numbers (369) and CAIP-2 (eip155-369) — DB stores CAIP-2
+  const chainId = toCAIP2(rawChainId)
+
+  const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
+  const extensions = getExtensions(req)
+  const cacheKey = `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
+
+  // Check cache — expiresAt is the hard 1hr expiry
+  const cached = await db.getCachedRequest(cacheKey)
+  if (cached) {
+    res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    res.set('content-type', 'application/json')
+    res.send(cached.value)
+
+    // If stale (past 5min fresh window), revalidate in the background
+    const cacheAge = Date.now() - new Date(cached.expiresAt!).getTime() + STALE_TTL_MS
+    if (cacheAge > FRESH_TTL_MS && !revalidating.has(cacheKey)) {
+      revalidating.add(cacheKey)
+      buildTokensByChainResponse(chainId, limit, extensions)
+        .then((body) => {
+          const expiresAt = new Date(Date.now() + STALE_TTL_MS)
+          return db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
+        })
+        .catch(() => {})
+        .finally(() => revalidating.delete(cacheKey))
+    }
+    return
+  }
+
+  // No cache — build fresh (first request or after hard expiry)
+  const body = await buildTokensByChainResponse(chainId, limit, extensions)
+
+  const expiresAt = new Date(Date.now() + STALE_TTL_MS)
+  db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any }).catch(() => {})
+
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  res.set('content-type', 'application/json')
+  res.send(body)
 }

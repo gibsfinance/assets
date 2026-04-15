@@ -1,17 +1,24 @@
-import * as server from '../server'
 import * as db from '../db'
 import { cleanup } from '../cleanup'
 import { syncDefaultOrder, buildManifestsFromDB, startPeriodicRefresh } from '../db/sync-order'
 import { allCollectables } from '../collect/collectables'
 import { log } from '../logger'
+import { app, setReady } from '../server/app'
+import { listen } from '../server'
+import { getStats } from '../server/stats'
+import { warmTokensByChainCache } from '../server/list/handlers'
 
-db.migrate()
+// Start HTTP server immediately so the load balancer can probe /health (503 until ready).
+// Warm-up runs in the background; setReady() flips /health to 200 when done.
+listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
   .then(async () => {
+    await db.migrate()
+    await db.clearCache()
+    log('cache cleared')
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
     await syncDefaultOrder(keys, manifests)
     startPeriodicRefresh(keys, manifests, 60_000)
-    // Daily variant prune job
     const pruneTimer = setInterval(
       async () => {
         try {
@@ -26,9 +33,23 @@ db.migrate()
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
-    return server.main()
-  })
-  .catch((err) => {
-    console.error(err)
+    // Pre-warm stats cache so first request is instant
+    getStats()
+      .then((stats) => {
+        log('stats cache warmed')
+        return warmTokensByChainCache(stats)
+      })
+      .then(() => log('tokensByChain cache warmed for top chains'))
+      .catch(() => {})
+    setReady()
+    log('server ready')
+    // Wait for the server to close before running cleanup
+    return new Promise<void>((resolve, reject) => {
+      app.once('close', resolve).once('error', reject)
+    })
   })
   .then(cleanup)
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

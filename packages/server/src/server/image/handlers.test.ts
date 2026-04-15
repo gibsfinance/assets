@@ -393,7 +393,9 @@ describe('image handlers', () => {
         address: TEST_ADDRESS,
       })
 
-      expect(db.applyOrder).toHaveBeenCalledWith('0xdefault', expect.anything(), 'provider')
+      expect(db.applyOrder).toHaveBeenCalledWith('0xdefault', expect.anything(), 'provider', undefined, {
+        includeContent: true,
+      })
       expect(result.img).toBe(fakeRow)
       expect(result.filter.networkId).toBe('eip155:1')
     })
@@ -456,7 +458,9 @@ describe('image handlers', () => {
         listOrderId: '0xcustom',
       })
 
-      expect(db.applyOrder).toHaveBeenCalledWith('0xcustom', expect.anything(), 'provider')
+      expect(db.applyOrder).toHaveBeenCalledWith('0xcustom', expect.anything(), 'provider', undefined, {
+        includeContent: true,
+      })
     })
   })
 
@@ -816,7 +820,7 @@ describe('image handlers', () => {
       )
     })
 
-    it('throws BadRequest for invalid chainId', async () => {
+    it('throws NotFound for unknown chainId', async () => {
       const req = mockRequest({
         params: { chainId: 'abc' },
         query: {},
@@ -824,7 +828,7 @@ describe('image handlers', () => {
       const res = mockResponse()
       const next = vi.fn()
 
-      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, next)).rejects.toThrow(/chainId/)
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, next)).rejects.toThrow(/not found/)
     })
   })
 
@@ -1286,7 +1290,9 @@ describe('image handlers', () => {
   // getImage — bad chainId path
   // -----------------------------------------------------------------------
   describe('getImage bad chainId', () => {
-    it('throws BadRequest for chainId=0', async () => {
+    it('accepts chainId=0 (asset-0 namespace)', async () => {
+      vi.mocked(db.applyOrder).mockResolvedValue([makeImage()])
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
       const handler = getImage(false)
       const req = mockRequest({
         params: { chainId: '0', address: TEST_ADDRESS },
@@ -1294,18 +1300,22 @@ describe('image handlers', () => {
       })
       const res = mockResponse()
 
-      await expect(handler(req, res, vi.fn())).rejects.toThrow(/chainId/)
+      // Should not throw — chainId=0 is valid (asset-0)
+      await handler(req, res, vi.fn())
     })
 
-    it('throws BadRequest for non-numeric chainId', async () => {
+    it('accepts CAIP-2 chainId format', async () => {
+      vi.mocked(db.applyOrder).mockResolvedValue([makeImage()])
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
       const handler = getImage(false)
       const req = mockRequest({
-        params: { chainId: 'abc', address: TEST_ADDRESS },
+        params: { chainId: 'eip155-369', address: TEST_ADDRESS },
         query: {},
       })
       const res = mockResponse()
 
-      await expect(handler(req, res, vi.fn())).rejects.toThrow(/chainId/)
+      // Should not throw — CAIP-2 format is valid
+      await handler(req, res, vi.fn())
     })
   })
 })

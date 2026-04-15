@@ -10,7 +10,7 @@ export type Call = {
   args?: any[]
 }
 
-export type ChainId = number | bigint | Hex
+export type ChainId = number | bigint | string | Hex
 
 export type TokenChainInfo = [string, string, number]
 

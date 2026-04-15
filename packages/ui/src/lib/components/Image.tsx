@@ -150,7 +150,7 @@ export default function Image({
   return (
     <Tag
       ref={containerRef as React.Ref<HTMLAnchorElement & HTMLSpanElement>}
-      className={`shrink-0 relative inline-block ${skeleton ? '' : className || ''}`}
+      className={`shrink-0 relative flex ${skeleton ? '' : className || ''}`}
       style={{ width: w, height: h }}
       {...linkProps}
     >

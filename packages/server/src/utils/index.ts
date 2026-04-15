@@ -70,7 +70,12 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => toKeccakBytes(`${type}${chainId}`)
+/** Hash type + bare reference for network_id. Accepts both '369' and 'eip155-369'. */
+export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => {
+  const str = String(chainId)
+  const bare = str.includes('-') ? str.split('-').slice(1).join('-') : str
+  return toKeccakBytes(`${type}${bare}`)
+}
 
 const folderAccessLimit = promiseLimit<any>(256)
 

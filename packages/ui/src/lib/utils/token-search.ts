@@ -22,8 +22,8 @@ export function filterTokensBySearch(tokens: Token[], searchTerm: string): Token
 /** Sort tokens: mainnet (chainId 1) first, then alphabetical by name */
 export function sortTokensMainnetFirst(tokens: Token[]): Token[] {
   return [...tokens].sort((a, b) => {
-    const aIsMainnet = a.chainId.toString() === '1'
-    const bIsMainnet = b.chainId.toString() === '1'
+    const aIsMainnet = String(a.chainId ?? '') === '1'
+    const bIsMainnet = String(b.chainId ?? '') === '1'
     if (aIsMainnet && !bIsMainnet) return -1
     if (!aIsMainnet && bIsMainnet) return 1
     return a.name.localeCompare(b.name)

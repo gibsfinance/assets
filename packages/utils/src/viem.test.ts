@@ -21,7 +21,15 @@ vi.mock('viem', async (importOriginal) => {
   }
 })
 
-import { http, fallback, createPublicClient, getContract, encodeFunctionData, decodeFunctionResult, fromHex } from 'viem'
+import {
+  http,
+  fallback,
+  createPublicClient,
+  getContract,
+  encodeFunctionData,
+  decodeFunctionResult,
+  fromHex,
+} from 'viem'
 import { buildTransport, createChainClient, multicallRead, erc20Read } from './viem'
 
 // ---------------------------------------------------------------------------
@@ -49,10 +57,7 @@ const makeChainWithMulticall = (id: number, rpcUrls: string[]): Chain =>
   }) as unknown as Chain
 
 /** Minimal chain fixture with multiple default RPC URLs. */
-const chainWithMultipleRpcs = makeChain(999, [
-  'https://rpc1.example.com',
-  'https://rpc2.example.com',
-])
+const chainWithMultipleRpcs = makeChain(999, ['https://rpc1.example.com', 'https://rpc2.example.com'])
 
 const chainWithSingleRpc = makeChain(998, ['https://single.example.com'])
 
@@ -81,7 +86,10 @@ describe('buildTransport', () => {
   it('returns an http transport when the resolved URL list has a single entry', () => {
     buildTransport(chainWithSingleRpc)
     expect(http).toHaveBeenCalledTimes(1)
-    expect(http).toHaveBeenCalledWith('https://single.example.com', expect.objectContaining({ timeout: expect.any(Number) }))
+    expect(http).toHaveBeenCalledWith(
+      'https://single.example.com',
+      expect.objectContaining({ timeout: expect.any(Number) }),
+    )
     expect(fallback).not.toHaveBeenCalled()
   })
 
@@ -186,7 +194,9 @@ describe('multicallRead', () => {
 
   beforeEach(() => {
     aggregate3Mock = vi.fn()
-    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<typeof getContract>)
+    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<
+      typeof getContract
+    >)
     vi.mocked(encodeFunctionData).mockReturnValue('0xdeadbeef')
     vi.mocked(decodeFunctionResult).mockReturnValue('decoded-value' as unknown as never)
     aggregate3Mock.mockResolvedValue([{ returnData: '0xabc' }, { returnData: '0xdef' }])
@@ -199,10 +209,7 @@ describe('multicallRead', () => {
   })
 
   it('encodes each call and returns decoded results', async () => {
-    const calls = [
-      { functionName: 'name' },
-      { functionName: 'symbol' },
-    ]
+    const calls = [{ functionName: 'name' }, { functionName: 'symbol' }]
     const result = await multicallRead({
       chain: multicallChain,
       client: stubClient,
@@ -220,10 +227,7 @@ describe('multicallRead', () => {
 
   it('uses call.abi when provided, falling back to passed abi', async () => {
     const perCallAbi = [{ name: 'totalSupply', type: 'function' }] as unknown as import('viem').Abi
-    const calls = [
-      { functionName: 'name' },
-      { functionName: 'totalSupply', abi: perCallAbi },
-    ]
+    const calls = [{ functionName: 'name' }, { functionName: 'totalSupply', abi: perCallAbi }]
     aggregate3Mock.mockResolvedValue([{ returnData: '0x01' }, { returnData: '0x02' }])
 
     await multicallRead({
@@ -242,10 +246,7 @@ describe('multicallRead', () => {
 
   it('uses call.target when provided, falling back to passed target', async () => {
     const perCallTarget = '0xPerCallTarget' as import('viem').Hex
-    const calls = [
-      { functionName: 'name' },
-      { functionName: 'symbol', target: perCallTarget },
-    ]
+    const calls = [{ functionName: 'name' }, { functionName: 'symbol', target: perCallTarget }]
     aggregate3Mock.mockResolvedValue([{ returnData: '0x01' }, { returnData: '0x02' }])
 
     await multicallRead({
@@ -263,10 +264,7 @@ describe('multicallRead', () => {
   })
 
   it('passes allowFailure from each call, defaulting to false', async () => {
-    const calls = [
-      { functionName: 'name' },
-      { functionName: 'symbol', allowFailure: true },
-    ]
+    const calls = [{ functionName: 'name' }, { functionName: 'symbol', allowFailure: true }]
     aggregate3Mock.mockResolvedValue([{ returnData: '0x01' }, { returnData: '0x02' }])
 
     await multicallRead({
@@ -312,7 +310,9 @@ describe('erc20Read', () => {
   beforeEach(() => {
     // Default: getContract returns an aggregate3 mock that is configured per-test
     const aggregate3Mock = vi.fn()
-    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<typeof getContract>)
+    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<
+      typeof getContract
+    >)
   })
 
   afterEach(() => {
@@ -325,7 +325,9 @@ describe('erc20Read', () => {
   /** Helper: wire aggregate3 to resolve with fixed returnData for each field. */
   const wireAggregate3 = (values: string[]) => {
     const aggregate3Mock = vi.fn().mockResolvedValue(values.map((v) => ({ returnData: v })))
-    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<typeof getContract>)
+    vi.mocked(getContract).mockReturnValue({ read: { aggregate3: aggregate3Mock } } as unknown as ReturnType<
+      typeof getContract
+    >)
     // decodeFunctionResult returns successive values based on call index
     vi.mocked(decodeFunctionResult).mockImplementation(({ functionName }) => {
       const idx = ['name', 'symbol', 'decimals'].indexOf(functionName as string)
@@ -337,11 +339,7 @@ describe('erc20Read', () => {
   it('returns [name, symbol, decimals] when standard erc20Abi succeeds', async () => {
     wireAggregate3(['TokenName', 'TKN', '18'])
 
-    const result = await erc20Read(
-      multicallChain,
-      stubClient,
-      '0xTokenAddress',
-    )
+    const result = await erc20Read(multicallChain, stubClient, '0xTokenAddress')
 
     expect(result).toEqual(['TokenName', 'TKN', '18'])
   })
@@ -363,19 +361,19 @@ describe('erc20Read', () => {
       // Second getContract call → bytes32 abi → resolve
       return {
         read: {
-          aggregate3: vi.fn().mockResolvedValue([
-            { returnData: '0xname' },
-            { returnData: '0xsymbol' },
-            { returnData: '0x12' },
-          ]),
+          aggregate3: vi
+            .fn()
+            .mockResolvedValue([{ returnData: '0xname' }, { returnData: '0xsymbol' }, { returnData: '0x12' }]),
         },
       } as unknown as ReturnType<typeof getContract>
     })
 
     // decodeFunctionResult for the bytes32 call returns hex strings + decimals
     vi.mocked(decodeFunctionResult).mockImplementation(({ functionName }) => {
-      if (functionName === 'name') return '0x546f6b656e4e616d650000000000000000000000000000000000000000000000' as unknown as never
-      if (functionName === 'symbol') return '0x544b4e0000000000000000000000000000000000000000000000000000000000' as unknown as never
+      if (functionName === 'name')
+        return '0x546f6b656e4e616d650000000000000000000000000000000000000000000000' as unknown as never
+      if (functionName === 'symbol')
+        return '0x544b4e0000000000000000000000000000000000000000000000000000000000' as unknown as never
       return 18 as unknown as never
     })
 
@@ -430,9 +428,9 @@ describe('erc20Read', () => {
       },
     } as unknown as ReturnType<typeof getContract>)
 
-    await expect(
-      erc20Read(multicallChain, stubClient, '0xTokenAddress', { mustExist: true }),
-    ).rejects.toThrow('unable to read token')
+    await expect(erc20Read(multicallChain, stubClient, '0xTokenAddress', { mustExist: true })).rejects.toThrow(
+      'unable to read token',
+    )
   })
 
   it('rejects with timeout error if multicallRead never resolves', async () => {
@@ -456,5 +454,14 @@ describe('erc20Read', () => {
     expect(result).toEqual(['', '', 18])
 
     vi.useRealTimers()
+  })
+
+  it('rejects when signal is already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort(new Error('test abort'))
+    const chain = { id: 1, contracts: { multicall3: { address: '0x0' } } } as any
+    const client = {} as any
+    const target = '0x0000000000000000000000000000000000000001' as `0x${string}`
+    await expect(erc20Read(chain, client, target, { signal: controller.signal })).rejects.toThrow('test abort')
   })
 })

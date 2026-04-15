@@ -7,15 +7,11 @@ import { mainnet, arbitrum, optimism, boba, polynomial, pulsechain } from 'viem/
 import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
+import { delay } from '../utils/delay'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
 const providerKey = 'routescan'
-
-/**
- * Delay utility to add pauses between requests
- */
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Rate-limited chain processor for RouteScan
@@ -28,9 +24,9 @@ class RateLimitedChainProcessor {
   async processChain<T>(
     chain: Chain,
     processorFn: (chain: Chain) => Promise<T>,
-    signal?: AbortSignal,
+    signal: AbortSignal,
   ): Promise<T | null> {
-    if (signal?.aborted) {
+    if (signal.aborted) {
       return null
     }
 
@@ -38,10 +34,11 @@ class RateLimitedChainProcessor {
 
     if (timeSinceLastRequest < this.minDelayMs) {
       const delayMs = this.minDelayMs - timeSinceLastRequest
-      await delay(delayMs)
+      await delay(delayMs, signal).catch(() => {})
+      if (signal.aborted) return null
     }
 
-    if (signal?.aborted) {
+    if (signal.aborted) {
       return null
     }
 
@@ -110,7 +107,7 @@ async function fetchRouteScanTokens({
   nextToken,
 }: {
   chainId: number
-  signal?: AbortSignal
+  signal: AbortSignal
   limit?: number
   nextToken?: string
 }): Promise<RouteScanResponse> {
@@ -131,7 +128,7 @@ async function fetchRouteScanTokens({
 
   return db.cachedJSON<RouteScanResponse>(
     cacheKey,
-    signal!,
+    signal,
     async () => {
       const url = `https://api.routescan.io/v2/network/mainnet/evm/all/erc20?${qs.toString()}`
       const response = await fetch(url, { signal })
@@ -158,17 +155,28 @@ async function fetchRouteScanTokens({
 async function backfillTokenMetadata({
   chain,
   address,
+  signal,
 }: {
   chain: Chain
   address: Address
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<{ name: string; symbol: string; decimals: number } | null> {
   try {
     const client = createChainClient(chain)
 
     const result = await Promise.race([
-      erc20Read(chain, client, address),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+      erc20Read(chain, client, address, { signal }),
+      new Promise<null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 5_000)
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer)
+            resolve(null)
+          },
+          { once: true },
+        )
+      }),
     ])
 
     if (!result) return null
@@ -203,7 +211,7 @@ async function processToken({
   globalListId: string
   chainListId: string
   providerId: string
-  signal?: AbortSignal
+  signal: AbortSignal
   totalProcessed: number
   row: TerminalRowProxy
   chainKey: string
@@ -290,7 +298,7 @@ async function processChainTokens({
   row: TerminalRowProxy
   globalListId: string
   providerId: string
-  signal?: AbortSignal
+  signal: AbortSignal
 }): Promise<void> {
   const chainKey = chain.name.toLowerCase().replace(/\s+/g, '-')
 
@@ -313,7 +321,7 @@ async function processChainTokens({
     let nextToken: string | undefined
     const maxTokens = 500 // Limit total tokens per chain to avoid overwhelming the system
 
-    while (totalProcessed < maxTokens && !signal?.aborted) {
+    while (totalProcessed < maxTokens && !signal.aborted) {
       // Fetch tokens from RouteScan API
       const routeScanResponse = await fetchRouteScanTokens({
         chainId: chain.id,
@@ -331,7 +339,7 @@ async function processChainTokens({
 
       // Process tokens in parallel with concurrency limiting
       const tokenPromises = routeScanResponse.items.map((tokenItem, index) => {
-        if (signal?.aborted || totalProcessed + index >= maxTokens) return Promise.resolve(false)
+        if (signal.aborted || totalProcessed + index >= maxTokens) return Promise.resolve(false)
 
         const address = tokenItem.address as Address
         const chainTokenId = utils.counterId.token([chain.id, address])
@@ -439,10 +447,10 @@ type RouteScanBlockchainsResponse = {
 /**
  * Fetch supported blockchains from RouteScan API
  */
-async function fetchRouteScanBlockchains(signal?: AbortSignal): Promise<RouteScanBlockchain[]> {
+async function fetchRouteScanBlockchains(signal: AbortSignal): Promise<RouteScanBlockchain[]> {
   return db.cachedJSON<RouteScanBlockchain[]>(
     `${providerKey}-blockchains`,
-    signal!,
+    signal,
     async () => {
       const response = await fetch(
         `https://api.routescan.io/v2/network/mainnet/evm/all/blockchains?ecosystem=ethereum`,
@@ -503,7 +511,7 @@ function mapRouteScanBlockchainToConfig(blockchain: RouteScanBlockchain): Chain 
 /**
  * Get supported chain configurations from RouteScan API
  */
-async function getRouteScanChainConfigs(signal?: AbortSignal): Promise<Chain[]> {
+async function getRouteScanChainConfigs(signal: AbortSignal): Promise<Chain[]> {
   const blockchains = await fetchRouteScanBlockchains(signal)
 
   return _(blockchains).map(mapRouteScanBlockchainToConfig).compact().value()
@@ -534,7 +542,7 @@ class RoutescanCollector extends BaseCollector {
     ]
   }
 
-  async collect(signal?: AbortSignal): Promise<void> {
+  async collect(signal: AbortSignal): Promise<void> {
     const row = utils.terminal.issue({
       type: terminalRowTypes.SETUP,
       id: providerKey,
@@ -576,7 +584,7 @@ class RoutescanCollector extends BaseCollector {
 
       // Process chains with rate-limited concurrency
       await chainLimiter.map(enabledChains, async (chainConfig) => {
-        if (signal?.aborted) return
+        if (signal.aborted) return
 
         return chainProcessor.processChain(
           chainConfig,
@@ -604,4 +612,4 @@ class RoutescanCollector extends BaseCollector {
 
 const instance = new RoutescanCollector()
 export default instance
-export const collect = (signal?: AbortSignal) => instance.collect(signal)
+export const collect = (signal: AbortSignal) => instance.collect(signal)

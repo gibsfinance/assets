@@ -20,7 +20,7 @@
     "./log": "./src/log.ts"
   },
   "dependencies": {
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "promise-limit": "^2.7.0",
     "viem": "^2.47.5"
   },

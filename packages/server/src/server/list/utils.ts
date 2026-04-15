@@ -8,6 +8,7 @@
  *
  * `tokenFilters()` parses `?chainId=` and `?decimals=` query params into predicate functions.
  */
+import { fromCAIP2 } from '../../chain-id'
 import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
@@ -76,7 +77,7 @@ export const normalizeTokens = (
       .reduce((collected, tkns) => {
         const tkn = tkns[0]
         const baseline: TokenEntryMetadataOptional = {
-          chainId: +tkn.chainId,
+          chainId: +fromCAIP2(tkn.chainId),
           address: tkn.providedId.toLowerCase() as viem.Hex,
           logoURI: utils.directUri(tkn),
         }
