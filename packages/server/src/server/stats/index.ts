@@ -24,6 +24,7 @@ export const getStats = cacheResult<Result[]>(async () => {
     .from(s.network)
     .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
     .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     // Only count tokens that would appear in the token browser
     // This matches the filtering done in buildTokensByChainResponse() and the UI
     .where(dsql`(${s.listToken.imageHash} IS NOT NULL OR ${s.list.default} = true)`)
