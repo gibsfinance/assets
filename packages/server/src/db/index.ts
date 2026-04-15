@@ -1326,43 +1326,42 @@ export const getTokensByChainRanked = async (
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
   const formatOrder = buildFormatOrderSql(formatPreference)
+
+  // Optimized query using CTE + ROW_NUMBER() instead of LATERAL JOIN
+  // This is much faster for large datasets and avoids statement timeouts
   const rows = await db.execute<Record<string, unknown>>(dsql`
-    SELECT
-      ${s.network.chainId} AS "chainId",
-      ${s.token.providedId} AS "providedId",
-      ${s.token.decimals},
-      ${s.token.symbol},
-      ${s.token.name},
-      ${s.token.tokenId} AS "tokenId",
-      best.image_hash AS "imageHash",
-      best.ext,
-      best.mode,
-      best.uri,
-      best.provider_key AS "providerKey",
-      best.list_key AS "listKey",
-      best.list_token_order_id AS "listTokenOrderId",
-      best.list_major AS "listMajor",
-      best.list_minor AS "listMinor",
-      best.list_patch AS "listPatch",
-      best.list_default AS "listDefault",
-      best.list_ranking AS "listRanking"
-    FROM ${s.token}
-    INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
-    CROSS JOIN LATERAL (
+    WITH ranked_tokens AS (
       SELECT
-        ${s.image.imageHash} AS image_hash,
+        ${s.network.chainId} AS "chainId",
+        ${s.token.providedId} AS "providedId",
+        ${s.token.decimals},
+        ${s.token.symbol},
+        ${s.token.name},
+        ${s.token.tokenId} AS "tokenId",
+        ${s.image.imageHash} AS "imageHash",
         ${s.image.ext},
         ${s.image.mode},
         ${s.image.uri},
-        ${s.provider.key} AS provider_key,
-        ${s.list.key} AS list_key,
-        ${s.listToken.listTokenOrderId} AS list_token_order_id,
-        ${s.list.major} AS list_major,
-        ${s.list.minor} AS list_minor,
-        ${s.list.patch} AS list_patch,
-        ${s.list.default} AS list_default,
-        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS list_ranking
-      FROM ${s.listToken}
+        ${s.provider.key} AS "providerKey",
+        ${s.list.key} AS "listKey",
+        ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+        ${s.list.major} AS "listMajor",
+        ${s.list.minor} AS "listMinor",
+        ${s.list.patch} AS "listPatch",
+        ${s.list.default} AS "listDefault",
+        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking",
+        ROW_NUMBER() OVER (
+          PARTITION BY ${s.token.tokenId}
+          ORDER BY 
+            CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END,
+            (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000),
+            ${formatOrder},
+            ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
+            ${s.list.default} ASC, ${s.list.key} ASC, ${s.listToken.listTokenOrderId} ASC
+        ) as rn
+      FROM ${s.token}
+      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+      INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
       INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
       INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
       LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
@@ -1371,20 +1370,33 @@ export const getTokensByChainRanked = async (
         AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
         AND ${s.listOrderItem.listOrderId} = ${listOrderId}
       )
-      WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
-      ORDER BY
-        CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
-        (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-        ${formatOrder} ASC,
-        ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-        ${s.list.default} ASC, ${s.list.key} ASC, ${s.listToken.listTokenOrderId} ASC
-      LIMIT 1
-    ) best
-    WHERE ${eq(s.network.chainId, chainId)}
-    ORDER BY
-      (best.list_ranking / 1000) ASC,
-      best.list_major DESC, best.list_minor DESC, best.list_patch DESC,
-      best.list_default ASC, best.list_key ASC, best.list_token_order_id ASC
+      WHERE ${eq(s.network.chainId, chainId)}
+    )
+    SELECT 
+      "chainId",
+      "providedId",
+      decimals,
+      symbol,
+      name,
+      "tokenId",
+      "imageHash",
+      ext,
+      mode,
+      uri,
+      "providerKey",
+      "listKey",
+      "listTokenOrderId",
+      "listMajor",
+      "listMinor",
+      "listPatch",
+      "listDefault",
+      "listRanking"
+    FROM ranked_tokens
+    WHERE rn = 1
+    ORDER BY 
+      ("listRanking" / 1000) ASC,
+      "listMajor" DESC, "listMinor" DESC, "listPatch" DESC,
+      "listDefault" ASC, "listKey" ASC, "listTokenOrderId" ASC
   `)
   return rows.rows
 }
