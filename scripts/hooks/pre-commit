@@ -1,0 +1,48 @@
+#!/bin/sh
+# Pre-commit hook - runs lint, typecheck, and build before allowing commits
+# This file is version controlled in scripts/hooks/pre-commit
+# Install it by running: ./scripts/install-hooks.sh
+
+echo "Running pre-commit checks..."
+
+# Enable corepack for correct yarn version (Yarn 4 via packageManager field)
+corepack enable 2>/dev/null || true
+
+# Store the original directory
+original_dir=$(pwd)
+
+# Run lint from server package using corepack directly to ensure correct Yarn version
+echo "→ Running linter..."
+cd packages/server
+COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack yarn lint
+if [ $? -ne 0 ]; then
+  echo "❌ Lint failed. Please fix the issues before committing."
+  cd "$original_dir"
+  exit 1
+fi
+cd "$original_dir"
+if [ $? -ne 0 ]; then
+  echo "❌ Lint failed. Please fix the issues before committing."
+  cd "$original_dir"
+  exit 1
+fi
+cd "$original_dir"
+
+# Run typecheck from root
+echo "→ Running TypeScript type check..."
+npx tsc --noEmit -p tsconfig.json
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript errors found. Please fix them before committing."
+  exit 1
+fi
+
+# Run server build (tsc) - full root build (incl. UI) is too slow for pre-commit
+echo "→ Running build check..."
+COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack yarn workspace server run build
+if [ $? -ne 0 ]; then
+  echo "❌ Build failed. Please fix the issues before committing."
+  exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0

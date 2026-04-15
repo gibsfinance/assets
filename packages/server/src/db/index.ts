@@ -1413,21 +1413,23 @@ export const getTokenSourcesByChain = async (
   const db = getDrizzle()
   // Optimized to be much faster - limit to tokens that actually have list memberships
   // and use a more targeted query
-  return db
-    .select({
-      providedId: s.token.providedId,
-      providerKey: s.provider.key,
-      listKey: s.list.key,
-    })
-    .from(s.listToken)
-    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
-    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
-    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
-    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-    .where(eq(s.network.chainId, chainId))
-    // Only get sources for tokens that have images or are in default lists
-    // This dramatically reduces the result set
-    .limit(100000)
+  return (
+    db
+      .select({
+        providedId: s.token.providedId,
+        providerKey: s.provider.key,
+        listKey: s.list.key,
+      })
+      .from(s.listToken)
+      .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+      .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+      .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+      .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+      .where(eq(s.network.chainId, chainId))
+      // Only get sources for tokens that have images or are in default lists
+      // This dramatically reduces the result set
+      .limit(100000)
+  )
 }
 
 export const getVariant = async (imageHash: string, width: number, height: number, format: string, tx?: DrizzleTx) => {

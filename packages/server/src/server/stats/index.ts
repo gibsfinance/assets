@@ -30,7 +30,7 @@ export const getStats = cacheResult<Result[]>(async () => {
         chainId: rawChainId,
         count: parsed.total,
       }
-    })
+    }),
   )
 
   return counts.sort((a, b) => b.count - a.count) as Result[]
