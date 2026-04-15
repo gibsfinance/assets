@@ -157,7 +157,7 @@ const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing i
  * A separate lightweight selectDistinct query fetches all providerKey/listKey memberships
  * for the sources field.
  */
-const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
+export const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
   const defaultOrderId = getDefaultListOrderId()
 
   const [tokens, sourcesRows] = await Promise.all([

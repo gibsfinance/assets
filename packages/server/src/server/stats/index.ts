@@ -1,10 +1,8 @@
 import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'
-import { getDrizzle } from '../../db/drizzle'
-import { sql as dsql, eq } from 'drizzle-orm'
 import { fromCAIP2 } from '../../chain-id'
-import * as s from '../../db/schema'
+import { buildTokensByChainResponse } from '../list/handlers'
 
 export const router = Router() as Router
 
@@ -13,24 +11,29 @@ type Result = {
   count: number
 }
 
+/**
+ * Returns token counts per chain for the network selector.
+ * Uses the same underlying function as the token browser to guarantee identical counts.
+ * This ensures the network selector buttons and "search n tokens..." input always match.
+ */
 export const getStats = cacheResult<Result[]>(async () => {
-  // Updated to match the logic in buildTokensByChainResponse() + normalizeTokens()
-  // This ensures the network selector counts match what the token browser displays
-  const rows = await getDrizzle()
-    .select({
-      chainId: s.network.chainId,
-      count: dsql<number>`count(distinct lower(${s.token.providedId}))`,
+  const defaultLimit = 100000
+  const extensions = new Set<string>()
+
+  const chainIds = ['1', '369', '56', '8453', '943', '137', '10', '42161']
+  const counts = await Promise.all(
+    chainIds.map(async (rawChainId) => {
+      const chainId = rawChainId.includes('-') ? rawChainId : `eip155-${rawChainId}`
+      const body = await buildTokensByChainResponse(chainId, defaultLimit, extensions)
+      const parsed = JSON.parse(body)
+      return {
+        chainId: rawChainId,
+        count: parsed.total,
+      }
     })
-    .from(s.network)
-    .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
-    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
-    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
-    // Only count tokens that would appear in the token browser
-    // This matches the filtering done in buildTokensByChainResponse() and the UI
-    .where(dsql`(${s.listToken.imageHash} IS NOT NULL OR ${s.list.default} = true)`)
-    .groupBy(s.network.chainId)
-    .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
-  return rows as unknown as Result[]
+  )
+
+  return counts.sort((a, b) => b.count - a.count) as Result[]
 })
 
 router.get(
