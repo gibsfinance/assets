@@ -1201,14 +1201,18 @@ export const getListOrderId = async (orderParam: string) => {
  */
 const buildFormatOrderSql = (formatPreference?: string[][]): SQL => {
   if (!formatPreference?.length) {
-    return dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 ELSE 2 END`
+    // NULL ext (no image) ranks worst (3); other formats rank 2; WebP 1; SVG 0.
+    return dsql`CASE WHEN ${s.image.ext} IN ('.svg', '.svg+xml') THEN 0 WHEN ${s.image.ext} = '.webp' THEN 1 WHEN ${s.image.ext} IS NOT NULL THEN 2 ELSE 3 END`
   }
   const chunks: SQL[] = [dsql`CASE`]
   for (let i = 0; i < formatPreference.length; i++) {
     const group = formatPreference[i]
     chunks.push(dsql` WHEN ${inArray(s.image.ext, group)} THEN ${i}`)
   }
-  chunks.push(dsql` ELSE ${formatPreference.length} END`)
+  // NULL (no image) always ranks after every explicit group.
+  chunks.push(
+    dsql` WHEN ${s.image.ext} IS NOT NULL THEN ${formatPreference.length} ELSE ${formatPreference.length + 1} END`,
+  )
   return dsql.join(chunks, dsql``)
 }
 
@@ -1282,6 +1286,7 @@ export const applyOrder = async (
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
           ORDER BY
+            CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
             (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
             ${formatOrder} ASC,
             ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
@@ -1368,6 +1373,7 @@ export const getTokensByChainRanked = async (
       )
       WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
       ORDER BY
+        CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
         (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
         ${formatOrder} ASC,
         ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
