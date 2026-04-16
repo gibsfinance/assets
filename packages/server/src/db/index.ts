@@ -1319,72 +1319,92 @@ export const applyOrder = async (
  *
  * Returns one row per token (the best-ranked list entry), in provider-ranking order.
  */
-export const getTokensByChainRanked = async (
+const inflightRanked = new Map<string, Promise<Record<string, unknown>[]>>()
+
+export const getTokensByChainRanked = (
   chainId: string,
   listOrderId: viem.Hex,
   _formatPreference?: string[][],
 ): Promise<Record<string, unknown>[]> => {
+  const key = `${chainId}:${listOrderId}`
+  const existing = inflightRanked.get(key)
+  if (existing) return existing
+  const promise = getTokensByChainRankedQuery(chainId, listOrderId)
+  inflightRanked.set(key, promise)
+  return promise.finally(() => inflightRanked.delete(key))
+}
+
+const getTokensByChainRankedQuery = async (
+  chainId: string,
+  listOrderId: viem.Hex,
+): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
 
-  // LATERAL join: for each token in the chain, pick the single best list entry
-  // via a correlated subquery with LIMIT 1. Image and provider JOINs are deferred
-  // to outside the LATERAL so they execute once per token (14K) instead of once
-  // per list_token row (~490K), eliminating ~980K redundant index lookups.
+  // DISTINCT ON: join all list_token rows for the chain, sort by (token_id, ranking),
+  // and keep only the first (best-ranked) row per token. PostgreSQL handles this as a
+  // single sort + unique pass over ~500K rows — much faster than 14K correlated LATERAL
+  // subqueries. Image JOIN is deferred to the outer query so it runs on the ~14K
+  // deduplicated rows instead of all ~500K.
   const rows = await db.execute<Record<string, unknown>>(dsql`
     SELECT
-      ${s.network.chainId} AS "chainId",
-      ${s.token.providedId} AS "providedId",
-      ${s.token.decimals},
-      ${s.token.symbol},
-      ${s.token.name},
-      ${s.token.tokenId} AS "tokenId",
-      ${s.image.imageHash} AS "imageHash",
+      sub."chainId",
+      sub."providedId",
+      sub.decimals,
+      sub.symbol,
+      sub.name,
+      sub."tokenId",
+      sub."imageHash",
       ${s.image.ext},
       ${s.image.mode},
       ${s.image.uri},
-      ${s.provider.key} AS "providerKey",
-      best.list_key AS "listKey",
-      best.list_token_order_id AS "listTokenOrderId",
-      best.list_major AS "listMajor",
-      best.list_minor AS "listMinor",
-      best.list_patch AS "listPatch",
-      best.list_default AS "listDefault",
-      best.list_ranking AS "listRanking"
-    FROM ${s.token}
-    INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
-    CROSS JOIN LATERAL (
-      SELECT
-        ${s.listToken.imageHash} AS image_hash,
-        ${s.list.providerId} AS provider_id,
-        ${s.list.key} AS list_key,
-        ${s.listToken.listTokenOrderId} AS list_token_order_id,
-        ${s.list.major} AS list_major,
-        ${s.list.minor} AS list_minor,
-        ${s.list.patch} AS list_patch,
-        ${s.list.default} AS list_default,
-        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS list_ranking
+      sub."providerKey",
+      sub."listKey",
+      sub."listTokenOrderId",
+      sub."listMajor",
+      sub."listMinor",
+      sub."listPatch",
+      sub."listDefault",
+      sub."listRanking"
+    FROM (
+      SELECT DISTINCT ON (${s.token.tokenId})
+        ${s.network.chainId} AS "chainId",
+        ${s.token.providedId} AS "providedId",
+        ${s.token.decimals},
+        ${s.token.symbol},
+        ${s.token.name},
+        ${s.token.tokenId} AS "tokenId",
+        ${s.listToken.imageHash} AS "imageHash",
+        ${s.provider.key} AS "providerKey",
+        ${s.list.key} AS "listKey",
+        ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+        ${s.list.major} AS "listMajor",
+        ${s.list.minor} AS "listMinor",
+        ${s.list.patch} AS "listPatch",
+        ${s.list.default} AS "listDefault",
+        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
       FROM ${s.listToken}
+      INNER JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
+      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
       INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
+      INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
       LEFT JOIN ${s.listOrderItem} ON (
         ${eq(s.listOrderItem.listKey, s.list.key)}
         AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
         AND ${s.listOrderItem.listOrderId} = ${listOrderId}
       )
-      WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
+      WHERE ${eq(s.network.chainId, chainId)}
       ORDER BY
+        ${s.token.tokenId},
         CASE WHEN ${s.listToken.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
         (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
         ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
         ${s.list.default} ASC, ${s.list.key} ASC, ${s.listToken.listTokenOrderId} ASC
-      LIMIT 1
-    ) best
-    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, dsql.raw('best.image_hash'))}
-    INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('best.provider_id'))}
-    WHERE ${eq(s.network.chainId, chainId)}
+    ) sub
+    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, dsql.raw('sub."imageHash"'))}
     ORDER BY
-      (best.list_ranking / 1000) ASC,
-      best.list_major DESC, best.list_minor DESC, best.list_patch DESC,
-      best.list_default ASC, best.list_key ASC, best.list_token_order_id ASC
+      (sub."listRanking" / 1000) ASC,
+      sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
+      sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
   return rows.rows
 }
