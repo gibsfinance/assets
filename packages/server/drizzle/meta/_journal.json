@@ -29,6 +29,13 @@
       "when": 1776456000000,
       "tag": "0003_cleanup_smartchain_mismap",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776542400000,
+      "tag": "0004_remove_smart_mainnet",
+      "breakpoints": true
     }
   ]
 }
