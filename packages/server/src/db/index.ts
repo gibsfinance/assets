@@ -1407,6 +1407,7 @@ const getTokensByChainRankedQuery = async (
     LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, dsql.raw('sub."imageHash"'))}
     ORDER BY
       (sub."listRanking" / 1000) ASC,
+      CASE WHEN sub."imageHash" IS NOT NULL THEN 0 ELSE 1 END ASC,
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
@@ -1423,10 +1424,11 @@ export const getTokenSourcesByChain = async (
   chainId: string,
 ): Promise<{ providedId: string; providerKey: string; listKey: string }[]> => {
   const db = getDrizzle()
-  // Optimized to be much faster - limit to tokens that actually have list memberships
-  // and use a more targeted query
+  // SELECT DISTINCT dedupes (token, provider, list) triples — a token in multiple
+  // versions of the same list would otherwise produce duplicate rows. For Ethereum
+  // this drops ~1M rows to a fraction of that.
   return db
-    .select({
+    .selectDistinct({
       providedId: s.token.providedId,
       providerKey: s.provider.key,
       listKey: s.list.key,
