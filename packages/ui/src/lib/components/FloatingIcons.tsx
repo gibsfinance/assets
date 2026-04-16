@@ -4,7 +4,6 @@ import Image from './Image'
 
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
-const GAP = 12 // gap-3 = 12px
 const ROW_SPEEDS = [18, 22, 26] // pixels per second per row — top slowest, bottom fastest
 
 let keyframesInjected = false
@@ -446,7 +445,6 @@ const ICON_PATHS: string[] = [
   '/image/64',
   '/image/65357',
   '/image/66',
-  '/image/661898459',
   '/image/70',
   '/image/728126428',
   '/image/747',
@@ -468,6 +466,7 @@ const ICON_PATHS: string[] = [
   '/image/943',
   '/image/964',
   '/image/97',
+  '/image/146',
   '/image/9745',
   '/image/98866',
 ]
@@ -479,7 +478,6 @@ function ConveyorIcon({ src, href, size }: { src: string; href: string; size: nu
       size={size}
       href={href}
       skeleton
-      lazy
       shape="circle"
       className="rounded-full pointer-events-auto"
     />
