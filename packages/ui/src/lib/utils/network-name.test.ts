@@ -39,8 +39,8 @@ describe('getNetworkName', () => {
       expect(getNetworkName(7777777)).toBe('Zora')
     })
 
-    it('returns Sonic for chain 900', () => {
-      expect(getNetworkName(900)).toBe('Sonic')
+    it('returns Sonic for chain 146', () => {
+      expect(getNetworkName(146)).toBe('Sonic')
     })
 
     it('returns Tron Mainnet for chain 728126428', () => {

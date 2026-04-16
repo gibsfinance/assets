@@ -466,6 +466,7 @@ const ICON_PATHS: string[] = [
   '/image/943',
   '/image/964',
   '/image/97',
+  '/image/146',
   '/image/9745',
   '/image/98866',
 ]
