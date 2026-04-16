@@ -1467,7 +1467,7 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
           )
       )
     GROUP BY ${s.network.chainId}
-    ORDER BY count DESC
+    ORDER BY COUNT(DISTINCT ${s.token.tokenId}) DESC
   `)
   return rows.rows.map((r) => ({ chainId: r.chainId, count: Number(r.count) }))
 }
