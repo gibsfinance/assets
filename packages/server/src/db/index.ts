@@ -1340,12 +1340,18 @@ const getTokensByChainRankedQuery = async (
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
 
-  // DISTINCT ON: join all list_token rows for the chain, sort by (token_id, ranking),
-  // and keep only the first (best-ranked) row per token. PostgreSQL handles this as a
-  // single sort + unique pass over ~500K rows — much faster than 14K correlated LATERAL
-  // subqueries. Image JOIN is deferred to the outer query so it runs on the ~14K
-  // deduplicated rows instead of all ~500K.
+  // CTE pre-filters tokens for this chain so Postgres doesn't scan the full list_token
+  // table. DISTINCT ON then sorts (token_id, ranking) and keeps the best row per token
+  // in a single pass. Image JOIN is deferred to the outer query so it runs on the
+  // deduplicated rows instead of every list_token row.
   const rows = await db.execute<Record<string, unknown>>(dsql`
+    WITH chain_tokens AS MATERIALIZED (
+      SELECT ${s.token.tokenId}, ${s.token.providedId}, ${s.token.decimals},
+             ${s.token.symbol}, ${s.token.name}, ${s.network.chainId}
+      FROM ${s.token}
+      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+      WHERE ${eq(s.network.chainId, chainId)}
+    )
     SELECT
       sub."chainId",
       sub."providedId",
@@ -1366,13 +1372,13 @@ const getTokensByChainRankedQuery = async (
       sub."listDefault",
       sub."listRanking"
     FROM (
-      SELECT DISTINCT ON (${s.token.tokenId})
-        ${s.network.chainId} AS "chainId",
-        ${s.token.providedId} AS "providedId",
-        ${s.token.decimals},
-        ${s.token.symbol},
-        ${s.token.name},
-        ${s.token.tokenId} AS "tokenId",
+      SELECT DISTINCT ON (ct.${dsql.raw('"token_id"')})
+        ct.${dsql.raw('"chain_id"')} AS "chainId",
+        ct.${dsql.raw('"provided_id"')} AS "providedId",
+        ct.decimals,
+        ct.symbol,
+        ct.name,
+        ct.${dsql.raw('"token_id"')} AS "tokenId",
         ${s.listToken.imageHash} AS "imageHash",
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
@@ -1382,9 +1388,8 @@ const getTokensByChainRankedQuery = async (
         ${s.list.patch} AS "listPatch",
         ${s.list.default} AS "listDefault",
         COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking"
-      FROM ${s.listToken}
-      INNER JOIN ${s.token} ON ${eq(s.token.tokenId, s.listToken.tokenId)}
-      INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
+      FROM chain_tokens ct
+      INNER JOIN ${s.listToken} ON ${s.listToken.tokenId} = ct.${dsql.raw('"token_id"')}
       INNER JOIN ${s.list} ON ${eq(s.list.listId, s.listToken.listId)}
       INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
       LEFT JOIN ${s.listOrderItem} ON (
@@ -1392,9 +1397,8 @@ const getTokensByChainRankedQuery = async (
         AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
         AND ${s.listOrderItem.listOrderId} = ${listOrderId}
       )
-      WHERE ${eq(s.network.chainId, chainId)}
       ORDER BY
-        ${s.token.tokenId},
+        ct.${dsql.raw('"token_id"')},
         CASE WHEN ${s.listToken.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
         (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
         ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
@@ -1421,23 +1425,18 @@ export const getTokenSourcesByChain = async (
   const db = getDrizzle()
   // Optimized to be much faster - limit to tokens that actually have list memberships
   // and use a more targeted query
-  return (
-    db
-      .select({
-        providedId: s.token.providedId,
-        providerKey: s.provider.key,
-        listKey: s.list.key,
-      })
-      .from(s.listToken)
-      .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
-      .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
-      .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
-      .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-      .where(eq(s.network.chainId, chainId))
-      // Only get sources for tokens that have images or are in default lists
-      // This dramatically reduces the result set
-      .limit(100000)
-  )
+  return db
+    .select({
+      providedId: s.token.providedId,
+      providerKey: s.provider.key,
+      listKey: s.list.key,
+    })
+    .from(s.listToken)
+    .innerJoin(s.token, eq(s.token.tokenId, s.listToken.tokenId))
+    .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
+    .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
+    .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
+    .where(eq(s.network.chainId, chainId))
 }
 
 /**
