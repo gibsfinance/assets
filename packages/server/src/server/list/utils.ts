@@ -75,7 +75,10 @@ export const normalizeTokens = (
       .filter((a) => over(a))
       .groupBy((tkn) => `${tkn.chainId}-${tkn.providedId.toLowerCase()}`)
       .reduce((collected, tkns) => {
-        const tkn = tkns[0]
+        // When duplicate tokens share the same address (different token_ids), prefer
+        // the row that resolves to a usable logoURI so the address isn't dropped by
+        // the downstream logoURI filter just because tkns[0] happened to lack an image.
+        const tkn = tkns.find((t) => utils.directUri(t)) ?? tkns[0]
         const baseline: TokenEntryMetadataOptional = {
           chainId: +fromCAIP2(tkn.chainId),
           address: tkn.providedId.toLowerCase() as viem.Hex,
