@@ -11,26 +11,8 @@ import { toCAIP2 } from '../chain-id'
 const CHUNK_SIZE = 250
 const DAY_MS = 24 * 60 * 60 * 1000
 
-const apiKey = process.env.COINGECKO_API_KEY
-// Pro plan uses a different hostname; demo/anonymous use the public endpoint
-const API_BASE = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3'
-const keyParam = apiKey ? `&x_cg_pro_api_key=${apiKey}` : ''
-if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
-
-// Stable cache keys — no API key in them so cached data survives key rotation
-const PLATFORMS_CACHE_KEY = `${API_BASE}/asset_platforms`
-const COINS_LIST_CACHE_KEY = `${API_BASE}/coins/list?include_platform=true`
-
-// Actual fetch URLs — include key for auth
-const PLATFORMS_URL = apiKey ? `${PLATFORMS_CACHE_KEY}?x_cg_pro_api_key=${apiKey}` : PLATFORMS_CACHE_KEY
-const COINS_LIST_URL = `${COINS_LIST_CACHE_KEY}${keyParam}`
-const MARKETS_BASE = `${API_BASE}/coins/markets`
-
-// Pro key: 500 req/min → 150ms spacing with headroom. No key: 15s to stay under anonymous floor.
-const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
-const rateLimiter = limitByTime(apiKey ? 150 : 15_000)
-
 const providerKey = 'coingecko'
+const insertLimit = limitBy<ChainCoin>('coingecko-insert', 4)
 
 type AssetPlatform = {
   id: string
@@ -77,13 +59,37 @@ class CoinGeckoCollector extends BaseCollector {
 
   // All EVM coins discovered during discover(), keyed by coingecko platform id
   private platformCoins = new Map<string, ChainCoin[]>()
+  private _cfg?: ReturnType<CoinGeckoCollector['buildConfig']>
+
+  private buildConfig() {
+    const apiKey = process.env.COINGECKO_API_KEY
+    const apiBase = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3'
+    const keyParam = apiKey ? `&x_cg_pro_api_key=${apiKey}` : ''
+    if (!apiKey) console.warn('[coingecko] COINGECKO_API_KEY not set — using anonymous tier (5–15 req/min)')
+    const platformsCacheKey = `${apiBase}/asset_platforms`
+    const coinsListCacheKey = `${apiBase}/coins/list?include_platform=true`
+    return {
+      apiKey,
+      keyParam,
+      platformsCacheKey,
+      coinsListCacheKey,
+      platformsUrl: apiKey ? `${platformsCacheKey}?x_cg_pro_api_key=${apiKey}` : platformsCacheKey,
+      coinsListUrl: `${coinsListCacheKey}${keyParam}`,
+      marketsBase: `${apiBase}/coins/markets`,
+      rateLimiter: limitByTime(apiKey ? 150 : 15_000),
+    }
+  }
+
+  private get cfg() {
+    return (this._cfg ??= this.buildConfig())
+  }
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     // --- 1. Fetch platform → chain_id mapping ---
     const platforms = await db.cachedJSON<AssetPlatform[]>(
-      PLATFORMS_CACHE_KEY,
+      this.cfg.platformsCacheKey,
       signal,
-      async (sig) => fetch(PLATFORMS_URL, { signal: sig }).then((r) => r.json()),
+      async (sig) => fetch(this.cfg.platformsUrl, { signal: sig }).then((r) => r.json()),
       { validate: Array.isArray, ttl: DAY_MS },
     )
     if (!Array.isArray(platforms)) {
@@ -105,9 +111,9 @@ class CoinGeckoCollector extends BaseCollector {
 
     // --- 2. Fetch all coins with platform addresses ---
     const coinsList = await db.cachedJSON<CoinEntry[]>(
-      COINS_LIST_CACHE_KEY,
+      this.cfg.coinsListCacheKey,
       signal,
-      async (sig) => fetch(COINS_LIST_URL, { signal: sig }).then((r) => r.json()),
+      async (sig) => fetch(this.cfg.coinsListUrl, { signal: sig }).then((r) => r.json()),
       { validate: Array.isArray, ttl: DAY_MS },
     )
     if (!Array.isArray(coinsList)) {
@@ -195,8 +201,8 @@ class CoinGeckoCollector extends BaseCollector {
       for (let ci = 0; ci < chunks.length; ci++) {
         const chunk = chunks[ci]!
         if (signal.aborted) return
-        await rateLimiter()
-        const url = `${MARKETS_BASE}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}${keyParam}`
+        await this.cfg.rateLimiter()
+        const url = `${this.cfg.marketsBase}?ids=${chunk.join(',')}&vs_currency=usd&per_page=${CHUNK_SIZE}${this.cfg.keyParam}`
         let retries = 0
         for (;;) {
           if (signal.aborted) return

@@ -1,10 +1,8 @@
 import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'
-import { getDrizzle } from '../../db/drizzle'
-import { sql as dsql, eq } from 'drizzle-orm'
 import { fromCAIP2 } from '../../chain-id'
-import * as s from '../../db/schema'
+import * as db from '../../db'
 
 export const router = Router() as Router
 
@@ -13,19 +11,12 @@ type Result = {
   count: number
 }
 
+/**
+ * Returns token counts per chain for the network selector.
+ * Uses a lightweight COUNT(DISTINCT) query instead of loading all tokens.
+ */
 export const getStats = cacheResult<Result[]>(async () => {
-  const rows = await getDrizzle()
-    .select({
-      chainId: s.network.chainId,
-      count: dsql<number>`count(distinct lower(${s.token.providedId}))`,
-    })
-    .from(s.network)
-    .innerJoin(s.token, eq(s.token.networkId, s.network.networkId))
-    .innerJoin(s.listToken, eq(s.listToken.tokenId, s.token.tokenId))
-    .innerJoin(s.image, eq(s.image.imageHash, s.listToken.imageHash))
-    .groupBy(s.network.chainId)
-    .orderBy(dsql`count(distinct lower(${s.token.providedId})) DESC`)
-  return rows as unknown as Result[]
+  return db.getTokenCountsByChain()
 })
 
 router.get(

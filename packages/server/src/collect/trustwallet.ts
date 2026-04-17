@@ -128,6 +128,30 @@ const sterilize = _.memoize((s: string | null = '') =>
     .split('net')
     .join(''),
 )
+// TrustWallet folder names that sterilize() misresolves or could misresolve.
+// sterilize strips "chain"/"network"/"evm"/"net" which creates collisions:
+//   "smartchain" → "smart" → matched "Smart Mainnet" (661898459) instead of BSC (56)
+// Preventive overrides for all lossy folders to avoid future regressions.
+const TRUSTWALLET_CHAIN_OVERRIDES: Record<string, number> = {
+  smartchain: 56, // BNB Smart Chain
+  thorchain: 931, // THORChain EVM co-chain
+  okxchain: 66, // OKX Chain (OKC)
+  tomochain: 88, // TomoChain / Viction
+  gochain: 60, // GoChain
+  vechain: 100009, // VeChain
+  wanchain: 888, // Wanchain
+  zetachain: 7000, // ZetaChain
+  zetaevm: 7000, // ZetaChain EVM (same chain)
+  acalaevm: 787, // Acala EVM+
+  kavaevm: 2222, // Kava EVM
+  iotexevm: 4689, // IoTeX EVM
+  cfxevm: 1030, // Conflux eSpace
+  evmos: 9001, // Evmos
+  nativeevmos: 9001, // Evmos (native)
+  xrplevm: 1440002, // XRPL EVM Sidechain
+  polygonzkevm: 1101, // Polygon zkEVM
+}
+
 const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
   const info = path.join(blockchainsRoot, blockchainKey, 'info')
   const [
@@ -137,46 +161,50 @@ const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
   const tokenlistPath = path.join(blockchainsRoot, blockchainKey, 'tokenlist.json')
   let chainId: number | null = null
 
-  const chainList = await getChainListResult(signal)
-  const sterilizedBlockchainKey = sterilize(blockchainKey)
-  // Sterilize is aggressive (strips "chain", "net", etc.) which can create
-  // collisions — e.g. "smartchain" → "smart" matches "Smart Mainnet" (661898459)
-  // instead of BNB Smart Chain (56). When multiple chains match, prefer the one
-  // whose original name/slug contains the blockchain key as a substring.
-  // Match chainSlug and name first (more specific), chain field last
-  // (chain: "Solana" on Neon EVM would incorrectly match the solana folder)
-  const candidates = chainList.filter(
-    (c) => sterilize(c.chainSlug) === sterilizedBlockchainKey || sterilize(c.name) === sterilizedBlockchainKey,
-  )
-  // Only try the less-specific chain field if no slug/name matches found
-  if (candidates.length === 0) {
-    candidates.push(...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey))
+  // Check hardcoded overrides first — sterilize() is lossy and can misresolve
+  const override = TRUSTWALLET_CHAIN_OVERRIDES[blockchainKey]
+  if (override) {
+    chainId = override
   }
-  const chain =
-    // Exact slug match first
-    candidates.find((c) => c.chainSlug === blockchainKey) ||
-    // Then prefer candidate whose name contains the key (ignoring spaces/separators)
-    candidates.find(
-      (c) =>
-        c.name
-          ?.toLowerCase()
-          .replace(/[\s-_]/g, '')
-          .includes(blockchainKey) ||
-        c.chainSlug
-          ?.toLowerCase()
-          .replace(/[\s-_]/g, '')
-          .includes(blockchainKey),
-    ) ||
-    // When ambiguous, prefer mainnet over testnet/devnet
-    candidates.find((c) => {
-      const n = c.name?.toLowerCase() ?? ''
-      return !n.includes('testnet') && !n.includes('devnet')
-    }) ||
-    candidates[0]
+
+  if (!chainId) {
+    const chainList = await getChainListResult(signal)
+    const sterilizedBlockchainKey = sterilize(blockchainKey)
+    // Match chainSlug and name first (more specific), chain field last
+    // (chain: "Solana" on Neon EVM would incorrectly match the solana folder)
+    const candidates = chainList.filter(
+      (c) => sterilize(c.chainSlug) === sterilizedBlockchainKey || sterilize(c.name) === sterilizedBlockchainKey,
+    )
+    // Only try the less-specific chain field if no slug/name matches found
+    if (candidates.length === 0) {
+      candidates.push(...chainList.filter((c) => sterilize(c.chain) === sterilizedBlockchainKey))
+    }
+    const chain =
+      // Exact slug match first
+      candidates.find((c) => c.chainSlug === blockchainKey) ||
+      // Then prefer candidate whose name contains the key (ignoring spaces/separators)
+      candidates.find(
+        (c) =>
+          c.name
+            ?.toLowerCase()
+            .replace(/[\s-_]/g, '')
+            .includes(blockchainKey) ||
+          c.chainSlug
+            ?.toLowerCase()
+            .replace(/[\s-_]/g, '')
+            .includes(blockchainKey),
+      ) ||
+      // When ambiguous, prefer mainnet over testnet/devnet
+      candidates.find((c) => {
+        const n = c.name?.toLowerCase() ?? ''
+        return !n.includes('testnet') && !n.includes('devnet')
+      }) ||
+      candidates[0]
+    if (chain) {
+      chainId = chain.chainId
+    }
+  }
   const row = utils.terminal.get(providerKey)!
-  if (chain) {
-    chainId = chain.chainId
-  }
 
   if (!chainId) {
     let list = await fs.promises.readFile(tokenlistPath).catch(() => null)

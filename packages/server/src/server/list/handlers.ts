@@ -149,22 +149,34 @@ const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing i
 
 /** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
  *
- * Uses applyOrder(dedupe=true, sorted=true) so the DB returns one row per token
- * (best-ranked provider wins via dense_rank CTE), then a separate lightweight
- * selectDistinct query fetches all providerKey/listKey memberships for the sources field.
- * This avoids loading N rows-per-token into Node heap for chains with many list memberships.
+ * Uses getTokensByChainRanked() — a LATERAL-join query — to return one row per token
+ * (best-ranked provider wins per-token via LATERAL LIMIT 1). This replaces the prior
+ * dense_rank() CTE which materialized all list_token rows for the chain and sorted them
+ * globally — too slow for large chains like Ethereum mainnet.
+ *
+ * A separate lightweight selectDistinct query fetches all providerKey/listKey memberships
+ * for the sources field.
  */
-const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
+export const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
   const defaultOrderId = getDefaultListOrderId()
 
+  const t0 = performance.now()
   const [tokens, sourcesRows] = await Promise.all([
-    defaultOrderId
-      ? db.applyOrder(defaultOrderId, eq(s.network.chainId, chainId), 'listToken', undefined, {
-          dedupe: true,
-          sorted: true,
-        })
-      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)),
-    defaultOrderId ? db.getTokenSourcesByChain(chainId) : Promise.resolve([]),
+    (defaultOrderId
+      ? db.getTokensByChainRanked(chainId, defaultOrderId)
+      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId))
+    ).then((r) => {
+      console.log(
+        `[tokensByChain] ranked query for ${chainId}: ${(performance.now() - t0).toFixed(0)}ms, ${r.length} rows`,
+      )
+      return r
+    }),
+    (defaultOrderId ? db.getTokenSourcesByChain(chainId) : Promise.resolve([])).then((r) => {
+      console.log(
+        `[tokensByChain] sources query for ${chainId}: ${(performance.now() - t0).toFixed(0)}ms, ${r.length} rows`,
+      )
+      return r
+    }),
   ])
 
   // Build address → sources[] map to patch onto entries after normalizeTokens.
@@ -182,7 +194,7 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
     }
   }
 
-  // applyOrder(sorted=true) already orders by provider ranking — no JS sort needed.
+  // getTokensByChainRanked() already orders by provider ranking — no JS sort needed.
   const filters = utils.tokenFilters({})
   const allEntries = utils.normalizeTokens(tokens as any, filters, extensions)
 

@@ -33,16 +33,19 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
-    // Pre-warm stats cache so first request is instant
+    // Warmup runs in the background. /health stays 503 until it completes so the
+    // load balancer doesn't route traffic until tokensByChain is cached.
     getStats()
       .then((stats) => {
         log('stats cache warmed')
         return warmTokensByChainCache(stats)
       })
       .then(() => log('tokensByChain cache warmed for top chains'))
-      .catch(() => {})
-    setReady()
-    log('server ready')
+      .catch((err) => log('warmup failed: %o', err))
+      .finally(() => {
+        setReady()
+        log('server ready')
+      })
     // Wait for the server to close before running cleanup
     return new Promise<void>((resolve, reject) => {
       app.once('close', resolve).once('error', reject)
