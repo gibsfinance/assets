@@ -4,6 +4,7 @@ import * as types from '../types'
 import * as utils from '../utils'
 import type { List, Network, Provider } from '../db/schema-types'
 import { failureLog } from '@gibs/utils'
+import { isAddress } from 'viem'
 
 type CollectInput = {
   providerKey: string
@@ -156,6 +157,9 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
       utils.mapToSet.token(tokenList.tokens, (t) => [t.chainId, t.address]),
     )
     for (const [i, entry] of tokenList.tokens.entries()) {
+      if (isAddress(entry.address)) {
+        entry.address = entry.address.toLowerCase() as typeof entry.address
+      }
       const chainTokenId = utils.counterId.token([entry.chainId, entry.address])
       if (signal.aborted) return
       const network = networks.get(entry.chainId)!

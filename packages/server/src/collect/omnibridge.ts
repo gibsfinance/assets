@@ -82,9 +82,9 @@ class OmnibridgeCollector extends BaseCollector {
         type: c.type ?? 'omnibridge',
         providerId: provider.providerId,
         homeNetworkId: chainIdToNetworkId(c.home.chain.id),
-        homeAddress: viem.getAddress(c.home.address),
+        homeAddress: c.home.address.toLowerCase(),
         foreignNetworkId: chainIdToNetworkId(c.foreign.chain.id),
-        foreignAddress: viem.getAddress(c.foreign.address),
+        foreignAddress: c.foreign.address.toLowerCase(),
       })
 
       manifest.push({
@@ -191,9 +191,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           type: config.type ?? 'omnibridge',
           providerId: provider.providerId,
           homeNetworkId: chainIdToNetworkId(config.home.chain.id),
-          homeAddress: viem.getAddress(config.home.address),
+          homeAddress: config.home.address.toLowerCase(),
           foreignNetworkId: chainIdToNetworkId(config.foreign.chain.id),
-          foreignAddress: viem.getAddress(config.foreign.address),
+          foreignAddress: config.foreign.address.toLowerCase(),
         },
         tx,
       )
@@ -262,8 +262,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
             }
             const native = event.args.native as viem.Hex
             const bridged = event.args.bridged as viem.Hex
-            const nativeKey = `${fromConfig.chain.id}-${viem.getAddress(native)}`
-            const bridgedKey = `${toConfig.chain.id}-${viem.getAddress(bridged)}`
+            const nativeKey = `${fromConfig.chain.id}-${native.toLowerCase()}`
+            const bridgedKey = `${toConfig.chain.id}-${bridged.toLowerCase()}`
             const [[name, symbol, decimals], [bridgedName, bridgedSymbol, bridgedDecimals]] = await Promise.all([
               erc20Read(fromConfig.chain, fromClient, native, { signal }),
               erc20Read(toConfig.chain, toClient, bridged, { signal }),
@@ -305,7 +305,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                   [toConfig.chain.id, event.args.bridged],
                 ] as const
               ).map(async ([chainId, addr]) => {
-                const providedId = viem.getAddress(addr as viem.Hex)
+                const providedId = (addr as viem.Hex).toLowerCase() as viem.Hex
                 const networkId = chainIdToNetworkId(chainId)
                 const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
                 if (!metadata) {

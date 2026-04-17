@@ -1,5 +1,5 @@
 import * as path from 'path'
-import { type Hex, isAddress, getAddress } from 'viem'
+import { type Hex, isAddress } from 'viem'
 import { type Chain } from 'viem/chains'
 import * as fs from 'fs'
 import _ from 'lodash'
@@ -137,7 +137,7 @@ class Pls369Collector extends BaseCollector {
           }
           return [
             {
-              address: getAddress(addr),
+              address: addr.toLowerCase() as Hex,
               path: p,
               fullPath: path.join(walkPath, p),
             },

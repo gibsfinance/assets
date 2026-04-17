@@ -1,4 +1,4 @@
-import { isAddress, getAddress } from 'viem'
+import { isAddress } from 'viem'
 import { delay } from '../utils/delay'
 import * as db from '../db'
 import * as utils from '../utils'
@@ -132,7 +132,7 @@ class CoinGeckoCollector extends BaseCollector {
         const chainId = platformToChain.get(platformId)
         if (!chainId) continue
         if (!isAddress(rawAddress)) continue
-        const address = getAddress(rawAddress)
+        const address = rawAddress.toLowerCase()
         const existing = platformCoinsTmp.get(platformId) ?? []
         existing.push({ coinId: coin.id, symbol: coin.symbol, name: coin.name, address, chainId })
         platformCoinsTmp.set(platformId, existing)
