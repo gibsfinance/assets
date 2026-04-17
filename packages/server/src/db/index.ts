@@ -315,6 +315,15 @@ export const getNetworks = (tx?: DrizzleTx) => {
   return db.select().from(s.network)
 }
 
+/**
+ * Lowercase an EVM address to a canonical form. Non-EVM providedIds (Solana base58,
+ * synthetic hashes, etc.) pass through unchanged. The DB column is `citext` so this
+ * isn't required for correctness, but storing a consistent form prevents duplicate
+ * rows with different casing from accumulating when collectors disagree.
+ */
+const normalizeProvidedId = (providedId: string): string =>
+  viem.isAddress(providedId) ? providedId.toLowerCase() : providedId
+
 export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   // Target the (network_id, provided_id) unique constraint rather than the PK so
@@ -326,6 +335,7 @@ export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
       tokenId: dsql`''`,
       type: 'erc20',
       ...token,
+      providedId: normalizeProvidedId(token.providedId),
       name: token.name.split('\x00').join(''),
       symbol: token.symbol.split('\x00').join(''),
     })
@@ -391,20 +401,14 @@ export const resolveImage = async (
 export const insertTokenBatch = async (tokens: InsertableToken[], tx?: DrizzleTx) => {
   if (!tokens.length) return []
   const db = tx ?? getDrizzle()
-  const cleaned = tokens.map((token) => {
-    let providedId = token.providedId
-    if (viem.isAddress(providedId)) {
-      providedId = viem.getAddress(providedId)
-    }
-    return {
-      tokenId: dsql`''` as unknown as string,
-      type: 'erc20' as const,
-      ...token,
-      providedId,
-      name: token.name.split('\x00').join(''),
-      symbol: token.symbol.split('\x00').join(''),
-    }
-  })
+  const cleaned = tokens.map((token) => ({
+    tokenId: dsql`''` as unknown as string,
+    type: 'erc20' as const,
+    ...token,
+    providedId: normalizeProvidedId(token.providedId),
+    name: token.name.split('\x00').join(''),
+    symbol: token.symbol.split('\x00').join(''),
+  }))
   // PG has a ~65535 parameter limit; 7 columns per row → max ~500 rows per batch
   const chunkSize = 500
   const results: (typeof s.token.$inferSelect)[] = []
