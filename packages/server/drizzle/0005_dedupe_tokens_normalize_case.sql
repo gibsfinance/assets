@@ -78,14 +78,11 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
--- 6. Normalize existing mixed-case provided_id values to lowercase, and recompute
---    token_id from the new canonical form. list_token and bridge_link FKs have
---    ON UPDATE CASCADE so references follow automatically.
-UPDATE token SET
-  provided_id = lower(provided_id::text),
-  token_id = keccak256(network_id::text || lower(provided_id::text))
-WHERE provided_id::text != lower(provided_id::text);--> statement-breakpoint
-
--- 7. Add unique constraint on (network_id, provided_id). Enforced by citext, this
---    prevents future case-only duplicates regardless of trigger logic.
-ALTER TABLE token ADD CONSTRAINT token_network_provided_unique UNIQUE (network_id, provided_id);
+-- 6. Add unique constraint on (network_id, provided_id). Enforced by citext, this
+--    prevents future case-only duplicates regardless of trigger logic. Wrapped in
+--    a DO block so re-running the migration against an already-fixed database is
+--    a no-op rather than an error.
+DO $do$ BEGIN
+  ALTER TABLE token ADD CONSTRAINT token_network_provided_unique UNIQUE (network_id, provided_id);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN NULL;
+END $do$;

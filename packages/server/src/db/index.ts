@@ -317,6 +317,9 @@ export const getNetworks = (tx?: DrizzleTx) => {
 
 export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
+  // Target the (network_id, provided_id) unique constraint rather than the PK so
+  // citext case-insensitive equality catches duplicates with different casing
+  // (e.g. existing "0xABC" row vs new "0xabc" insert).
   const [inserted] = await db
     .insert(s.token)
     .values({
@@ -327,8 +330,8 @@ export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
       symbol: token.symbol.split('\x00').join(''),
     })
     .onConflictDoUpdate({
-      target: s.token.tokenId,
-      set: { tokenId: dsql`excluded.token_id` },
+      target: [s.token.networkId, s.token.providedId],
+      set: { tokenId: dsql`token.token_id` },
     })
     .returning()
   return inserted
@@ -411,8 +414,8 @@ export const insertTokenBatch = async (tokens: InsertableToken[], tx?: DrizzleTx
       .insert(s.token)
       .values(chunk)
       .onConflictDoUpdate({
-        target: s.token.tokenId,
-        set: { tokenId: dsql`excluded.token_id` },
+        target: [s.token.networkId, s.token.providedId],
+        set: { tokenId: dsql`token.token_id` },
       })
       .returning()
     results.push(...rows)
