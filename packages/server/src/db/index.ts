@@ -1372,9 +1372,9 @@ const getTokensByChainRankedQuery = async (
       sub.name,
       sub."tokenId",
       sub."imageHash",
-      ${s.image.ext},
-      ${s.image.mode},
-      ${s.image.uri},
+      sub.ext,
+      sub.mode,
+      sub.uri,
       ${s.provider.key} AS "providerKey",
       sub."listKey",
       sub."listTokenOrderId",
@@ -1392,6 +1392,9 @@ const getTokensByChainRankedQuery = async (
         ${s.token.name},
         ${s.token.tokenId} AS "tokenId",
         ${s.listToken.imageHash} AS "imageHash",
+        ${s.image.ext} AS ext,
+        ${s.image.mode} AS mode,
+        ${s.image.uri} AS uri,
         lr.provider_id AS "providerId",
         lr.key AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
@@ -1404,19 +1407,30 @@ const getTokensByChainRankedQuery = async (
       INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
       INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
       INNER JOIN list_ranks lr ON lr.list_id = ${s.listToken.listId}
+      LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
       WHERE ${eq(s.network.chainId, chainId)}
       ORDER BY
         ${s.token.tokenId},
-        CASE WHEN ${s.listToken.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
+        -- Prefer list_tokens whose image resolves via directUri(). Matches the stats
+        -- count semantics: empty uri/ext (present but empty string) are falsy in JS
+        -- and would be dropped by the downstream .filter(e => e.logoURI).
+        CASE
+          WHEN (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
+            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
+          THEN 0 ELSE 1
+        END ASC,
         (lr.ranking / 1000) ASC,
         lr.major DESC, lr.minor DESC, lr.patch DESC,
         lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
     ) sub
-    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, dsql.raw('sub."imageHash"'))}
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('sub."providerId"'))}
     ORDER BY
       (sub."listRanking" / 1000) ASC,
-      CASE WHEN sub."imageHash" IS NOT NULL THEN 0 ELSE 1 END ASC,
+      CASE
+        WHEN (sub.mode = 'link' AND COALESCE(sub.uri, '') <> '')
+          OR (sub.mode <> 'link' AND COALESCE(sub.ext, '') <> '')
+        THEN 0 ELSE 1
+      END ASC,
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
@@ -1453,12 +1467,14 @@ export const getTokenSourcesByChain = async (
 /**
  * Count distinct tokens per chain that have a usable image (matching directUri logic).
  * A token counts if it has at least one list_token entry where:
- *   - image.mode = 'link' AND image.uri IS NOT NULL, OR
- *   - image.image_hash IS NOT NULL AND image.ext IS NOT NULL
- * This mirrors the filter in buildTokensByChainResponse: `.filter(e => e.logoURI)`.
+ *   - image.mode = 'link' AND image.uri is non-empty, OR
+ *   - image.mode <> 'link' AND image.ext is non-empty
+ * Mirrors the JS `directUri()` truthy-check: empty strings for uri/ext are falsy in
+ * `imageHash && ext ? ...` (or the link-mode branch returning `uri`) and make
+ * `.filter(e => e.logoURI)` drop the row, so SQL must drop them too or the count
+ * drifts above the list total.
  * Dedup is by `provided_id` to match normalizeTokens' groupBy of
- * `${chainId}-${providedId.toLowerCase()}`. Using DISTINCT on token_id would
- * overcount when duplicate tokens exist with the same address but different token_ids.
+ * `${chainId}-${providedId.toLowerCase()}`.
  */
 export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
   const db = getDrizzle()
@@ -1472,8 +1488,8 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
         INNER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
           AND (
-            (${s.image.mode} = 'link' AND ${s.image.uri} IS NOT NULL)
-            OR (${s.image.imageHash} IS NOT NULL AND ${s.image.ext} IS NOT NULL)
+            (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
+            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
           )
       )
     GROUP BY ${s.network.chainId}
