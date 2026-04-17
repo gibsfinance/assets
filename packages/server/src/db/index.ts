@@ -1449,13 +1449,14 @@ export const getTokenSourcesByChain = async (
  *   - image.mode = 'link' AND image.uri IS NOT NULL, OR
  *   - image.image_hash IS NOT NULL AND image.ext IS NOT NULL
  * This mirrors the filter in buildTokensByChainResponse: `.filter(e => e.logoURI)`.
- * Dedup is by (chain_id, provided_id) via COUNT(DISTINCT token_id), matching
- * normalizeTokens' groupBy of `${chainId}-${providedId.toLowerCase()}`.
+ * Dedup is by `provided_id` to match normalizeTokens' groupBy of
+ * `${chainId}-${providedId.toLowerCase()}`. Using DISTINCT on token_id would
+ * overcount when duplicate tokens exist with the same address but different token_ids.
  */
 export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
   const db = getDrizzle()
   const rows = await db.execute<{ chainId: string; count: string }>(dsql`
-    SELECT ${s.network.chainId} AS "chainId", COUNT(DISTINCT ${s.token.tokenId})::text AS count
+    SELECT ${s.network.chainId} AS "chainId", COUNT(DISTINCT ${s.token.providedId})::text AS count
     FROM ${s.token}
     INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
     WHERE ${s.network.chainId} != 'asset-0'
@@ -1469,7 +1470,7 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
           )
       )
     GROUP BY ${s.network.chainId}
-    ORDER BY COUNT(DISTINCT ${s.token.tokenId}) DESC
+    ORDER BY COUNT(DISTINCT ${s.token.providedId}) DESC
   `)
   return rows.rows.map((r) => ({ chainId: r.chainId, count: Number(r.count) }))
 }
