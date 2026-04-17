@@ -252,10 +252,16 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
   const cacheKey = `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
 
+  // CDN cache-control: fresh window matches FRESH_TTL_MS; stale-while-revalidate
+  // allows CDN to serve stale for STALE_TTL_MS while we rebuild in background.
+  // Don't let CDN cache for the server's cacheSeconds (24h in prod) — stats change
+  // as new tokens are collected and the CDN would serve stale counts for a day.
+  const tokenListCacheControl = `public, max-age=${Math.floor(FRESH_TTL_MS / 1000)}, stale-while-revalidate=${Math.floor(STALE_TTL_MS / 1000)}`
+
   // Check cache — expiresAt is the hard 1hr expiry
   const cached = await db.getCachedRequest(cacheKey)
   if (cached) {
-    res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    res.set('cache-control', tokenListCacheControl)
     res.set('content-type', 'application/json')
     res.send(cached.value)
 
@@ -280,7 +286,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const expiresAt = new Date(Date.now() + STALE_TTL_MS)
   db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any }).catch(() => {})
 
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  res.set('cache-control', tokenListCacheControl)
   res.set('content-type', 'application/json')
   res.send(body)
 }
