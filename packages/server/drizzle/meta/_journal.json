@@ -36,6 +36,13 @@
       "when": 1776542400000,
       "tag": "0004_remove_smart_mainnet",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776974400000,
+      "tag": "0005_dedupe_tokens_normalize_case",
+      "breakpoints": true
     }
   ]
 }
