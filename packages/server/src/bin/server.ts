@@ -46,6 +46,22 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
         setReady()
         log('server ready')
       })
+    // Keep the top-N chain cache warm — hourly check, 12h staleness threshold inside.
+    // Without this, a quiet 24h on any top chain drops the row from cache and the next
+    // user pays the full cold-build cost (~19s for ETH).
+    const warmTimer = setInterval(
+      async () => {
+        try {
+          const stats = await getStats()
+          await warmTokensByChainCache(stats)
+          log('periodic tokensByChain warm complete')
+        } catch (err) {
+          log('periodic warm failed: %o', err)
+        }
+      },
+      60 * 60 * 1000,
+    )
+    warmTimer.unref()
     // Wait for the server to close before running cleanup
     return new Promise<void>((resolve, reject) => {
       app.once('close', resolve).once('error', reject)
