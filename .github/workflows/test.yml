@@ -50,6 +50,19 @@ jobs:
       - run: yarn install --immutable
       - run: node --import tsx --test packages/server/test/sync-order.test.ts packages/server/test/db-batch.test.ts
 
+  browser-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn workspace ui exec playwright install --with-deps chromium
+      - run: yarn workspace ui run test:browser
+
   integration-test:
     runs-on: ubuntu-latest
     steps:
