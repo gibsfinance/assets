@@ -144,8 +144,9 @@ export const all: RequestHandler = async (req, res) => {
  * Server-side merge eliminates the need for N individual list fetches.
  * Supports ?limit=N (default 500, max 5000)
  */
-const FRESH_TTL_MS = 5 * 60 * 1000 // 5 minutes — serve without revalidation
-const STALE_TTL_MS = 60 * 60 * 1000 // 1 hour — serve stale while refreshing in background
+const FRESH_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — serve without revalidation
+const STALE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours — serve stale while refreshing in background
+const WARM_STALE_MS = 12 * 60 * 60 * 1000 // 12 hours — periodic warmer re-builds cache rows older than this
 
 /** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
  *
@@ -221,7 +222,10 @@ const revalidating = new Set<string>()
 
 /**
  * Pre-warm the tokensByChain cache for the top N chains by token count.
- * Called at server startup so the first real request is served from cache.
+ *
+ * Called at startup (before /health flips to 200) and then periodically. Rebuilds
+ * any top-N chain whose cache row is missing or older than WARM_STALE_MS, so the
+ * cache row never ages past the stale threshold even without user traffic.
  */
 export const warmTokensByChainCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
   const top = stats.slice(0, topN)
@@ -232,7 +236,11 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
       const extensions = new Set<string>()
       const cacheKey = `tokens-by-chain:${chainId}:${limit}:`
       const existing = await db.getCachedRequest(cacheKey)
-      if (existing) continue
+      if (existing) {
+        // expiresAt = createdAt + STALE_TTL_MS, so cache age = now - (expiresAt - STALE_TTL_MS)
+        const age = Date.now() - (new Date(existing.expiresAt!).getTime() - STALE_TTL_MS)
+        if (age < WARM_STALE_MS) continue
+      }
       const body = await buildTokensByChainResponse(chainId, limit, extensions)
       const expiresAt = new Date(Date.now() + STALE_TTL_MS)
       await db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
