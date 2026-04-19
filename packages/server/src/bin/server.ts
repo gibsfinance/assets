@@ -41,7 +41,7 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
         return warmTokensByChainCache(stats)
       })
       .then(() => log('tokensByChain cache warmed for top chains'))
-      .catch((err) => log('warmup failed: %o', err))
+      .catch((err: unknown) => log('warmup failed: %o', err))
       .finally(() => {
         setReady()
         log('server ready')
@@ -68,7 +68,7 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
     })
   })
   .then(cleanup)
-  .catch((err) => {
+  .catch((err: unknown) => {
     console.error(err)
     process.exit(1)
   })

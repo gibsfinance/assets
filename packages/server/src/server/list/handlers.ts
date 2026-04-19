@@ -172,7 +172,10 @@ export const buildTokensByChainResponse = async (chainId: string, limit: number,
       )
       return r
     }),
-    (defaultOrderId ? db.getTokenSourcesByChain(chainId) : Promise.resolve([])).then((r) => {
+    (defaultOrderId
+      ? db.getTokenSourcesByChain(chainId)
+      : Promise.resolve([] as Awaited<ReturnType<typeof db.getTokenSourcesByChain>>)
+    ).then((r) => {
       console.log(
         `[tokensByChain] sources query for ${chainId}: ${(performance.now() - t0).toFixed(0)}ms, ${r.length} rows`,
       )
@@ -206,7 +209,7 @@ export const buildTokensByChainResponse = async (chainId: string, limit: number,
   }
 
   // Only return tokens that have images — imageless tokens aren't useful to display
-  const entries = allEntries.filter((e) => e.logoURI)
+  const entries = allEntries.filter((e: (typeof allEntries)[number]) => e.logoURI)
   const limited = entries.slice(0, limit)
 
   return JSON.stringify({
