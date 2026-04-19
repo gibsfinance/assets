@@ -315,20 +315,33 @@ export const getNetworks = (tx?: DrizzleTx) => {
   return db.select().from(s.network)
 }
 
+/**
+ * Lowercase an EVM address to a canonical form. Non-EVM providedIds (Solana base58,
+ * synthetic hashes, etc.) pass through unchanged. The DB column is `citext` so this
+ * isn't required for correctness, but storing a consistent form prevents duplicate
+ * rows with different casing from accumulating when collectors disagree.
+ */
+const normalizeProvidedId = (providedId: string): string =>
+  viem.isAddress(providedId) ? providedId.toLowerCase() : providedId
+
 export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
+  // Target the (network_id, provided_id) unique constraint rather than the PK so
+  // citext case-insensitive equality catches duplicates with different casing
+  // (e.g. existing "0xABC" row vs new "0xabc" insert).
   const [inserted] = await db
     .insert(s.token)
     .values({
       tokenId: dsql`''`,
       type: 'erc20',
       ...token,
+      providedId: normalizeProvidedId(token.providedId),
       name: token.name.split('\x00').join(''),
       symbol: token.symbol.split('\x00').join(''),
     })
     .onConflictDoUpdate({
-      target: s.token.tokenId,
-      set: { tokenId: dsql`excluded.token_id` },
+      target: [s.token.networkId, s.token.providedId],
+      set: { tokenId: dsql`token.token_id` },
     })
     .returning()
   return inserted
@@ -388,20 +401,14 @@ export const resolveImage = async (
 export const insertTokenBatch = async (tokens: InsertableToken[], tx?: DrizzleTx) => {
   if (!tokens.length) return []
   const db = tx ?? getDrizzle()
-  const cleaned = tokens.map((token) => {
-    let providedId = token.providedId
-    if (viem.isAddress(providedId)) {
-      providedId = viem.getAddress(providedId)
-    }
-    return {
-      tokenId: dsql`''` as unknown as string,
-      type: 'erc20' as const,
-      ...token,
-      providedId,
-      name: token.name.split('\x00').join(''),
-      symbol: token.symbol.split('\x00').join(''),
-    }
-  })
+  const cleaned = tokens.map((token) => ({
+    tokenId: dsql`''` as unknown as string,
+    type: 'erc20' as const,
+    ...token,
+    providedId: normalizeProvidedId(token.providedId),
+    name: token.name.split('\x00').join(''),
+    symbol: token.symbol.split('\x00').join(''),
+  }))
   // PG has a ~65535 parameter limit; 7 columns per row → max ~500 rows per batch
   const chunkSize = 500
   const results: (typeof s.token.$inferSelect)[] = []
@@ -411,8 +418,8 @@ export const insertTokenBatch = async (tokens: InsertableToken[], tx?: DrizzleTx
       .insert(s.token)
       .values(chunk)
       .onConflictDoUpdate({
-        target: s.token.tokenId,
-        set: { tokenId: dsql`excluded.token_id` },
+        target: [s.token.networkId, s.token.providedId],
+        set: { tokenId: dsql`token.token_id` },
       })
       .returning()
     results.push(...rows)
@@ -1365,9 +1372,9 @@ const getTokensByChainRankedQuery = async (
       sub.name,
       sub."tokenId",
       sub."imageHash",
-      ${s.image.ext},
-      ${s.image.mode},
-      ${s.image.uri},
+      sub.ext,
+      sub.mode,
+      sub.uri,
       ${s.provider.key} AS "providerKey",
       sub."listKey",
       sub."listTokenOrderId",
@@ -1385,6 +1392,9 @@ const getTokensByChainRankedQuery = async (
         ${s.token.name},
         ${s.token.tokenId} AS "tokenId",
         ${s.listToken.imageHash} AS "imageHash",
+        ${s.image.ext} AS ext,
+        ${s.image.mode} AS mode,
+        ${s.image.uri} AS uri,
         lr.provider_id AS "providerId",
         lr.key AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
@@ -1397,19 +1407,30 @@ const getTokensByChainRankedQuery = async (
       INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
       INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, s.token.tokenId)}
       INNER JOIN list_ranks lr ON lr.list_id = ${s.listToken.listId}
+      LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
       WHERE ${eq(s.network.chainId, chainId)}
       ORDER BY
         ${s.token.tokenId},
-        CASE WHEN ${s.listToken.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
+        -- Prefer list_tokens whose image resolves via directUri(). Matches the stats
+        -- count semantics: empty uri/ext (present but empty string) are falsy in JS
+        -- and would be dropped by the downstream .filter(e => e.logoURI).
+        CASE
+          WHEN (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
+            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
+          THEN 0 ELSE 1
+        END ASC,
         (lr.ranking / 1000) ASC,
         lr.major DESC, lr.minor DESC, lr.patch DESC,
         lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
     ) sub
-    LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, dsql.raw('sub."imageHash"'))}
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('sub."providerId"'))}
     ORDER BY
       (sub."listRanking" / 1000) ASC,
-      CASE WHEN sub."imageHash" IS NOT NULL THEN 0 ELSE 1 END ASC,
+      CASE
+        WHEN (sub.mode = 'link' AND COALESCE(sub.uri, '') <> '')
+          OR (sub.mode <> 'link' AND COALESCE(sub.ext, '') <> '')
+        THEN 0 ELSE 1
+      END ASC,
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
@@ -1446,16 +1467,19 @@ export const getTokenSourcesByChain = async (
 /**
  * Count distinct tokens per chain that have a usable image (matching directUri logic).
  * A token counts if it has at least one list_token entry where:
- *   - image.mode = 'link' AND image.uri IS NOT NULL, OR
- *   - image.image_hash IS NOT NULL AND image.ext IS NOT NULL
- * This mirrors the filter in buildTokensByChainResponse: `.filter(e => e.logoURI)`.
- * Dedup is by (chain_id, provided_id) via COUNT(DISTINCT token_id), matching
- * normalizeTokens' groupBy of `${chainId}-${providedId.toLowerCase()}`.
+ *   - image.mode = 'link' AND image.uri is non-empty, OR
+ *   - image.mode <> 'link' AND image.ext is non-empty
+ * Mirrors the JS `directUri()` truthy-check: empty strings for uri/ext are falsy in
+ * `imageHash && ext ? ...` (or the link-mode branch returning `uri`) and make
+ * `.filter(e => e.logoURI)` drop the row, so SQL must drop them too or the count
+ * drifts above the list total.
+ * Dedup is by `provided_id` to match normalizeTokens' groupBy of
+ * `${chainId}-${providedId.toLowerCase()}`.
  */
 export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
   const db = getDrizzle()
   const rows = await db.execute<{ chainId: string; count: string }>(dsql`
-    SELECT ${s.network.chainId} AS "chainId", COUNT(DISTINCT ${s.token.tokenId})::text AS count
+    SELECT ${s.network.chainId} AS "chainId", COUNT(DISTINCT ${s.token.providedId})::text AS count
     FROM ${s.token}
     INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)}
     WHERE ${s.network.chainId} != 'asset-0'
@@ -1464,12 +1488,12 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
         INNER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
           AND (
-            (${s.image.mode} = 'link' AND ${s.image.uri} IS NOT NULL)
-            OR (${s.image.imageHash} IS NOT NULL AND ${s.image.ext} IS NOT NULL)
+            (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
+            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
           )
       )
     GROUP BY ${s.network.chainId}
-    ORDER BY COUNT(DISTINCT ${s.token.tokenId}) DESC
+    ORDER BY COUNT(DISTINCT ${s.token.providedId}) DESC
   `)
   return rows.rows.map((r) => ({ chainId: r.chainId, count: Number(r.count) }))
 }

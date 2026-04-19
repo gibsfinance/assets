@@ -321,7 +321,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     }
 
     const [info, logoPath] = assetData
-    const address = asset as Hex
+    const address = asset.toLowerCase() as Hex
     const stat = await fs.promises.stat(logoPath).catch(() => false)
     if (!stat) {
       row.increment('skipped', chainTokenId)

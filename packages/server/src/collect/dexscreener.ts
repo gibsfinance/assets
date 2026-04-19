@@ -242,7 +242,7 @@ class DexscreenerCollector extends BaseCollector {
             name: token.name,
             decimals: token.decimals,
             networkId: network.networkId,
-            providedId: token.address,
+            providedId: token.address.toLowerCase(),
             index: i, // Keep track of original index for listTokenOrderId
           }))
 

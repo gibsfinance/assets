@@ -24,22 +24,22 @@ const pulsexConfig = new Map<
       domain: 'tokens.app.pulsex.com',
       isDefault: false,
       targets: new Set([
-        '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-        '0x2fa878Ab3F87CC1C9737Fc071108F904c0B0C95d',
-        '0x2b591e99afE9f32eAA6214f7B7629768c40Eeb39',
-        '0xefD766cCb38EaF1dfd701853BFCe31359239F305',
-        '0x15D38573d2feeb82e7ad5187aB8c1D52810B1f07',
-        '0x0Cb6F5a34ad42ec934882A05265A7d5F59b51A2f',
-        '0x57fde0a71132198BBeC939B98976993d8D89D225',
-        '0x02DcdD04e3F455D838cd1249292C58f3B79e3C3C',
-        '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-        '0xb17D901469B9208B17d916112988A3FeD19b5cA1',
-        '0x4d3AeA379b7689E0Cb722826C909Fab39E54123d',
-        '0x6982508145454Ce325dDbE47a25d4ec3d2311933',
-        '0x514910771AF9Ca656af840dff83E8264EcF986CA',
-        '0xEe2D275Dbb79c7871F8C6eB2A4D0687dD85409D1',
-        '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984',
-        '0x3f105121A10247DE9a92e818554DD5Fcd2063AE7',
+        '0xa1077a294dde1b09bb078844df40758a5d0f9a27',
+        '0x2fa878ab3f87cc1c9737fc071108f904c0b0c95d',
+        '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39',
+        '0xefd766ccb38eaf1dfd701853bfce31359239f305',
+        '0x15d38573d2feeb82e7ad5187ab8c1d52810b1f07',
+        '0x0cb6f5a34ad42ec934882a05265a7d5f59b51a2f',
+        '0x57fde0a71132198bbec939b98976993d8d89d225',
+        '0x02dcdd04e3f455d838cd1249292c58f3b79e3c3c',
+        '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599',
+        '0xb17d901469b9208b17d916112988a3fed19b5ca1',
+        '0x4d3aea379b7689e0cb722826c909fab39e54123d',
+        '0x6982508145454ce325ddbe47a25d4ec3d2311933',
+        '0x514910771af9ca656af840dff83e8264ecf986ca',
+        '0xee2d275dbb79c7871f8c6eb2a4d0687dd85409d1',
+        '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984',
+        '0x3f105121a10247de9a92e818554dd5fcd2063ae7',
       ]),
     },
   ],
@@ -49,12 +49,12 @@ const pulsexConfig = new Map<
       domain: 'tokens.app.v4.testnet.pulsex.com',
       isDefault: false,
       targets: new Set([
-        '0x70499adEBB11Efd915E3b69E700c331778628707',
-        '0x8a810ea8B121d08342E9e7696f4a9915cBE494B7',
-        '0x6eFAfcb715F385c71d8AF763E8478FeEA6faDF63',
-        '0x826e4e896CC2f5B371Cd7Bb0bd929DB3e3DB67c0',
-        '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-        '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        '0x70499adebb11efd915e3b69e700c331778628707',
+        '0x8a810ea8b121d08342e9e7696f4a9915cbe494b7',
+        '0x6efafcb715f385c71d8af763e8478feea6fadf63',
+        '0x826e4e896cc2f5b371cd7bb0bd929db3e3db67c0',
+        '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        '0xdac17f958d2ee523a2206206994597c13d831ec7',
       ]),
     },
   ],
@@ -69,6 +69,12 @@ const listKeys = [
   'v4-v0.1.2-composite',
   'inline',
 ] as const
+
+// Keep upstream EIP-55 casing for logo URL paths (matches the tokenlist JSON);
+// lowercase casing for the address flowing to the DB as providedId.
+const plsMainImg = '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
+const plsMainAddress = plsMainImg.toLowerCase() as viem.Hex
+const plsV4Address = '0x70499adebb11efd915e3b69e700c331778628707' as viem.Hex
 
 class PulsexCollector extends BaseCollector {
   readonly key = 'pulsex'
@@ -122,8 +128,8 @@ class PulsexCollector extends BaseCollector {
       isDefault: false,
       extension: [
         {
-          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsMainAddress,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: 369,
             isNetworkImage: true,
@@ -138,14 +144,14 @@ class PulsexCollector extends BaseCollector {
       isDefault: false,
       extension: [
         {
-          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsMainAddress,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: 369,
             isNetworkImage: true,
           },
         },
-        ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+        ...inlineTokensMainnet.filter((token) => token.address !== plsMainAddress),
       ],
     })
 
@@ -156,8 +162,8 @@ class PulsexCollector extends BaseCollector {
       isDefault: false,
       extension: [
         {
-          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsMainAddress,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: pulsechain.id,
             isNetworkImage: true,
@@ -173,7 +179,7 @@ class PulsexCollector extends BaseCollector {
       extension: [
         {
           address: viem.zeroAddress,
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           name: 'Pulse',
           symbol: 'PLS',
           decimals: 18,
@@ -183,14 +189,14 @@ class PulsexCollector extends BaseCollector {
           },
         },
         {
-          address: '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsMainAddress,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: pulsechain.id,
             isNetworkImage: false,
           },
         },
-        ...inlineTokensMainnet.filter((token) => token.address !== '0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+        ...inlineTokensMainnet.filter((token) => token.address !== plsMainAddress),
       ],
     })
     const remoteListV1_0_2V4 = remoteTokenList.collect({
@@ -200,8 +206,8 @@ class PulsexCollector extends BaseCollector {
       isDefault: false,
       extension: [
         {
-          address: '0x70499adEBB11Efd915E3b69E700c331778628707',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsV4Address,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: pulsechainV4.id,
             isNetworkImage: true,
@@ -220,21 +226,21 @@ class PulsexCollector extends BaseCollector {
           name: 'V4 Pulse',
           symbol: 'V4PLS',
           decimals: 18,
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: pulsechainV4.id,
             isNetworkImage: true,
           },
         },
         {
-          address: '0x70499adEBB11Efd915E3b69E700c331778628707',
-          logoURI: 'https://tokens.app.pulsex.com/images/tokens/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.png',
+          address: plsV4Address,
+          logoURI: `https://tokens.app.pulsex.com/images/tokens/${plsMainImg}.png`,
           network: {
             id: pulsechainV4.id,
             isNetworkImage: false,
           },
         },
-        ...inlineTokensV4.filter((token) => token.address !== '0x70499adEBB11Efd915E3b69E700c331778628707'),
+        ...inlineTokensV4.filter((token) => token.address !== plsV4Address),
       ],
     })
 

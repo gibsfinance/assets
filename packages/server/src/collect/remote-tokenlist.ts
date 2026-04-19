@@ -120,7 +120,8 @@ export const collect =
         return
       }
       tokenList.tokens.forEach((token) => {
-        if (blacked.has(token.address.toLowerCase())) {
+        token.address = token.address.toLowerCase() as viem.Hex
+        if (blacked.has(token.address)) {
           token.logoURI = ''
         }
         if (rewriteLogoURI && token.logoURI) {
@@ -147,7 +148,8 @@ export const collect =
           if (signal.aborted) {
             return
           }
-          if (blacked.has(item.address.toLowerCase())) {
+          item.address = item.address.toLowerCase() as viem.Hex
+          if (blacked.has(item.address)) {
             item.logoURI = ''
           }
           try {

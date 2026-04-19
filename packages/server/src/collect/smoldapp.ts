@@ -4,7 +4,7 @@ import * as db from '../db'
 import * as utils from '../utils'
 import type { List } from '../db/schema-types'
 import * as paths from '../paths'
-import { zeroAddress, getAddress, type Hex, stringToHex } from 'viem'
+import { zeroAddress, type Hex, stringToHex } from 'viem'
 import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
@@ -363,7 +363,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     globalOrderId,
   } = params
   const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
-  const address = getAddress(utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token)
+  const address = (utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token).toLowerCase() as Hex
   let metadata: [string, string, number] | null = null
   if (chainIdIsNumber) {
     const chain = utils.findChain(+chainIdString)

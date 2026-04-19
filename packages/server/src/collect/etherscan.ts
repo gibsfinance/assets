@@ -406,7 +406,7 @@ async function fetchTopTokensViaPuppeteer({
       if (href) {
         const match = href.match(/\/token\/(0x[a-fA-F0-9]{40})/)
         if (match && match[1]) {
-          const address = match[1] as Address
+          const address = match[1].toLowerCase() as Address
 
           // Find token logo image in the same row
           const logoImg = $row.find('img').first()
