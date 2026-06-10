@@ -18,3 +18,19 @@ import * as viem from 'viem'
  */
 export const normalizeProvidedId = <T extends string>(providedId: T): T =>
   (viem.isAddress(providedId) ? providedId.toLowerCase() : providedId) as T
+
+/**
+ * Canonical casing for bridge home/foreign addresses: EIP-55 checksummed.
+ *
+ * NOTE the deliberate asymmetry with normalizeProvidedId (token ids are
+ * lowercased): the bridge_id trigger hashes the stored address text
+ * case-sensitively and was never migrated, and every existing bridge row was
+ * inserted checksummed. Changing the canonical form would orphan those rows —
+ * new inserts would hash to fresh bridge_ids with zeroed block checkpoints,
+ * forcing full event-history re-scans. Non-EVM inputs pass through unchanged.
+ *
+ * @param address - A bridge contract address (EVM hex expected today).
+ * @returns The EIP-55 checksummed form for EVM addresses, the input otherwise.
+ */
+export const canonicalBridgeAddress = <T extends string>(address: T): T =>
+  (viem.isAddress(address) ? viem.getAddress(address) : address) as T

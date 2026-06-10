@@ -40,7 +40,7 @@ import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
 import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
-import { normalizeProvidedId } from './provided-id'
+import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
 export { normalizeProvidedId }
@@ -841,12 +841,14 @@ export const fetchImageAndStoreForToken = async (
   if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
+      // Deliberate: a failed image fetch records the miss but still stores the token
+      // (image-less) below — list endpoints filter imageless tokens server-side, and
+      // a later collection can attach the image without re-discovering the token.
       await writeMissing({
         providerKey,
         originalUri,
         listId,
       })
-      // return null
     } else {
       img = await insertImage(
         {
@@ -1329,20 +1331,10 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * chain. For Ethereum mainnet this is ~10–50x faster.
  *
  * Returns one row per token (the best-ranked list entry), in provider-ranking order.
- * Concurrent calls for the same (chainId, listOrderId) share one in-flight query.
+ * Concurrency dedup lives in the caller (buildAndCacheTokensByChain single-flights
+ * the whole build: this query, the sources query, and the JSON serialization).
  */
-const inflightRanked = new Map<string, Promise<Record<string, unknown>[]>>()
-
-export const getTokensByChainRanked = (chainId: string, listOrderId: viem.Hex): Promise<Record<string, unknown>[]> => {
-  const key = `${chainId}:${listOrderId}`
-  const existing = inflightRanked.get(key)
-  if (existing) return existing
-  const promise = getTokensByChainRankedQuery(chainId, listOrderId)
-  inflightRanked.set(key, promise)
-  return promise.finally(() => inflightRanked.delete(key))
-}
-
-const getTokensByChainRankedQuery = async (
+export const getTokensByChainRanked = async (
   chainId: string,
   listOrderId: viem.Hex,
 ): Promise<Record<string, unknown>[]> => {
@@ -1551,7 +1543,14 @@ export const insertBridge = async (bridge: InsertableBridge, tx?: DrizzleTx) => 
   const db = tx ?? getDrizzle()
   // Knex InsertableBridge has block numbers as string; Drizzle schema uses bigint mode: 'number'.
   // The pg driver handles both at runtime — cast to satisfy Drizzle's type system during transition.
-  const values = { bridgeId: dsql`''`, ...bridge } as unknown as typeof s.bridge.$inferInsert
+  // Addresses are canonicalized here, at the funnel, so no caller can recreate the
+  // casing-duplication bug (see canonicalBridgeAddress for why checksummed, not lowercase).
+  const values = {
+    bridgeId: dsql`''`,
+    ...bridge,
+    homeAddress: canonicalBridgeAddress(bridge.homeAddress),
+    foreignAddress: canonicalBridgeAddress(bridge.foreignAddress),
+  } as unknown as typeof s.bridge.$inferInsert
   const [b] = await db
     .insert(s.bridge)
     .values(values)

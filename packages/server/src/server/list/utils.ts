@@ -78,6 +78,10 @@ export const normalizeTokens = (
         // When duplicate tokens share the same address (different token_ids), prefer
         // the row that resolves to a usable logoURI so the address isn't dropped by
         // the downstream logoURI filter just because tkns[0] happened to lack an image.
+        // Counterpart of the image-first ORDER BY in getTokensByChainRanked (db/index.ts,
+        // usableImageSql): rows arrive in each path's ranking order, so "first usable
+        // image" here and "image-first, then ranking" there pick the same winner. If
+        // the SQL preference changes, revisit this pick.
         const tkn = tkns.find((t) => utils.directUri(t)) ?? tkns[0]
         const baseline: TokenEntryMetadataOptional = {
           chainId: +fromCAIP2(tkn.chainId),
