@@ -58,7 +58,13 @@ const buildAppearance = (options: {
 })
 
 /** Build a badge config from a small config. */
-const buildBadge = (options: { enabled: boolean; ringEnabled: boolean }): BadgeConfig => ({
+const buildBadge = (options: {
+  enabled: boolean
+  ringEnabled: boolean
+  badgeShape?: 'circle' | 'square'
+  badgePadding?: number
+  badgeBackground?: string
+}): BadgeConfig => ({
   enabled: options.enabled,
   angleDeg: 135,
   sizeRatio: 0.4,
@@ -66,6 +72,9 @@ const buildBadge = (options: { enabled: boolean; ringEnabled: boolean }): BadgeC
   ringEnabled: options.ringEnabled,
   ringColor: '#ffffff',
   ringThickness: 2,
+  ...(options.badgeShape !== undefined && { badgeShape: options.badgeShape }),
+  ...(options.badgePadding !== undefined && { badgePadding: options.badgePadding }),
+  ...(options.badgeBackground !== undefined && { badgeBackground: options.badgeBackground }),
 })
 
 /** Parse a JSX snippet by wrapping it in an assignment. */
@@ -170,13 +179,7 @@ describe('generateSdkSnippet', () => {
 describe('generateReactSnippet', () => {
   for (const combo of allCombos) {
     it(`parses as valid JSX: ${combo.label}`, () => {
-      const code = generateReactSnippet(
-        TOKEN_NAME,
-        IMAGE_URL,
-        NETWORK_URL,
-        combo.appearance,
-        combo.badge,
-      )
+      const code = generateReactSnippet(TOKEN_NAME, IMAGE_URL, NETWORK_URL, combo.appearance, combo.badge)
       expect(() => parseJsxSnippet(code)).not.toThrow()
       expect(code).toContain(IMAGE_URL)
       expect(code).toContain(`alt="${TOKEN_NAME}"`)
@@ -239,13 +242,7 @@ describe('generateReactSnippet', () => {
 describe('generateReactComponent', () => {
   for (const combo of allCombos) {
     it(`parses as a valid module: ${combo.label}`, () => {
-      const code = generateReactComponent(
-        TOKEN_NAME,
-        IMAGE_URL,
-        NETWORK_URL,
-        combo.appearance,
-        combo.badge,
-      )
+      const code = generateReactComponent(TOKEN_NAME, IMAGE_URL, NETWORK_URL, combo.appearance, combo.badge)
       expect(() => parseModule(code)).not.toThrow()
       expect(code).toContain('export default function GibToken')
       expect(code).toContain(`src = '${IMAGE_URL}'`)
@@ -278,7 +275,7 @@ describe('generateReactComponent', () => {
       buildBadge({ enabled: false, ringEnabled: false }),
     )
     expect(withShadow).toContain('shadow?: boolean')
-    expect(withShadow).toContain("boxShadow:")
+    expect(withShadow).toContain('boxShadow:')
 
     const withoutShadow = generateReactComponent(
       TOKEN_NAME,
@@ -299,13 +296,7 @@ describe('generateReactComponent', () => {
 describe('generateHtmlSnippet', () => {
   for (const combo of allCombos) {
     it(`produces valid HTML: ${combo.label}`, () => {
-      const html = generateHtmlSnippet(
-        TOKEN_NAME,
-        IMAGE_URL,
-        NETWORK_URL,
-        combo.appearance,
-        combo.badge,
-      )
+      const html = generateHtmlSnippet(TOKEN_NAME, IMAGE_URL, NETWORK_URL, combo.appearance, combo.badge)
       const doc = parseHtml(html)
 
       const imgs = doc.querySelectorAll('img')
@@ -400,5 +391,148 @@ describe('generateImgTag', () => {
       buildAppearance({ shape: 'square', shadow: 'none', padding: 0, background: 'transparent' }),
     )
     expect(html).toContain('border-radius: 0')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Escaping — token names come from external lists and must not be able to
+// break out of attributes or corrupt the generated module syntax.
+// ---------------------------------------------------------------------------
+
+describe('escaping of user-influenced values', () => {
+  const HOSTILE_NAME = `Foo "Bar" <Token> & 'Friends' \\ end`
+  const appearance = buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' })
+  const badged = buildBadge({ enabled: true, ringEnabled: false })
+  const plain = buildBadge({ enabled: false, ringEnabled: false })
+
+  it('generateHtmlSnippet round-trips a hostile name through the alt attribute', () => {
+    const html = generateHtmlSnippet(HOSTILE_NAME, IMAGE_URL, NETWORK_URL, appearance, plain)
+    const doc = parseHtml(html)
+    const img = doc.querySelector('img')!
+    // jsdom decodes entities — equality proves the escaping is lossless
+    expect(img.getAttribute('alt')).toBe(HOSTILE_NAME)
+    // exactly one img means the name could not inject extra elements
+    expect(doc.querySelectorAll('img, div, script').length).toBe(1)
+  })
+
+  it('generateImgTag round-trips a hostile name', () => {
+    const html = generateImgTag(HOSTILE_NAME, IMAGE_URL, appearance)
+    const img = parseHtml(html).querySelector('img')!
+    expect(img.getAttribute('alt')).toBe(HOSTILE_NAME)
+  })
+
+  it('generateReactSnippet still parses with a hostile name (bare and badged)', () => {
+    parseJsxSnippet(generateReactSnippet(HOSTILE_NAME, IMAGE_URL, NETWORK_URL, appearance, plain))
+    parseJsxSnippet(generateReactSnippet(HOSTILE_NAME, IMAGE_URL, NETWORK_URL, appearance, badged))
+  })
+
+  it('generateReactComponent still parses with quotes and backslashes in the name', () => {
+    const code = generateReactComponent(HOSTILE_NAME, IMAGE_URL, NETWORK_URL, appearance, badged)
+    parseModule(code)
+    // the single-quoted default keeps the escaped, not raw, quote
+    expect(code).toContain("\\'Friends\\'")
+    expect(code).not.toContain("alt = 'Foo \"Bar\" <Token> & 'Friends'")
+  })
+
+  it('generateSdkSnippet escapes a hostile address attribute', () => {
+    const code = generateSdkSnippet('1', `0xabc" onload="alert(1)`, appearance)
+    parseModule(code)
+    expect(code).toContain('&quot;')
+  })
+
+  it('generateReactComponent uses the src prop instead of hardcoding the URL', () => {
+    const code = generateReactComponent(TOKEN_NAME, IMAGE_URL, NETWORK_URL, appearance, plain)
+    expect(code).toContain('src={src}')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Badge wrapper fields — badgeShape / badgePadding / badgeBackground must be
+// reflected in generated code exactly as the live preview renders them.
+// ---------------------------------------------------------------------------
+
+describe('badge wrapper styling fields', () => {
+  const appearance = buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' })
+
+  it('default badge fields keep the single badge <img> form (no wrapper div)', () => {
+    const html = generateHtmlSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: true }),
+    )
+    const doc = parseHtml(html)
+    expect(doc.querySelectorAll('div').length).toBe(1) // container only
+    const badgeImg = doc.querySelectorAll('img')[1]
+    expect(badgeImg.getAttribute('style')).toContain('border-radius: 50%')
+  })
+
+  it('square badge shape flows into the badge border-radius', () => {
+    const html = generateHtmlSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgeShape: 'square' }),
+    )
+    const badgeImg = parseHtml(html).querySelectorAll('img')[1]
+    expect(badgeImg.getAttribute('style')).toContain('border-radius: 0')
+  })
+
+  it('badge padding and background produce a styled wrapper matching the preview', () => {
+    const html = generateHtmlSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: true, badgePadding: 4, badgeBackground: '#112233' }),
+    )
+    const doc = parseHtml(html)
+    const wrappers = doc.querySelectorAll('div')
+    expect(wrappers.length).toBe(2) // container + badge wrapper
+    const badgeWrapper = wrappers[1]
+    const style = badgeWrapper.getAttribute('style')!
+    expect(style).toContain('padding: 4px')
+    expect(style).toContain('background: #112233')
+    expect(style).toContain('border: 2px solid #ffffff')
+    // offset includes ring (2) + padding (4)
+    expect(style).toMatch(/top: -?\d+px/)
+    const badgeImg = badgeWrapper.querySelector('img')!
+    expect(badgeImg.getAttribute('style')).toContain('display: block')
+  })
+
+  it('react snippet with badge fields still parses and contains the wrapper styles', () => {
+    const code = generateReactSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({
+        enabled: true,
+        ringEnabled: false,
+        badgePadding: 6,
+        badgeBackground: '#ffffff',
+        badgeShape: 'square',
+      }),
+    )
+    parseJsxSnippet(code)
+    expect(code).toContain('padding: 6')
+    expect(code).toContain("backgroundColor: '#ffffff'")
+    expect(code).toContain("borderRadius: '0'")
+  })
+
+  it('react component with badge fields still parses and offsets by ring + padding', () => {
+    const code = generateReactComponent(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: true, badgePadding: 4, badgeBackground: '#112233' }),
+    )
+    parseModule(code)
+    expect(code).toContain('top: badgeTop - 6')
+    expect(code).toContain('left: badgeLeft - 6')
+    expect(code).toContain("backgroundColor: '#112233'")
   })
 })

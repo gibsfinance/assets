@@ -46,7 +46,8 @@ export interface NetworkInfo {
 export interface PlatformMetrics {
   tokenList: {
     total: number
-    byChain: Record<number, number>
+    // string keys: built from /stats bare chain-id strings in useMetrics
+    byChain: Record<string, number>
   }
   networks: {
     supported: NetworkInfo[]
