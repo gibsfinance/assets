@@ -150,7 +150,7 @@ export const collect =
           if (signal.aborted) {
             return
           }
-          item.address = item.address.toLowerCase() as viem.Hex
+          item.address = db.normalizeProvidedId(item.address)
           if (blacked.has(item.address)) {
             item.logoURI = ''
           }
