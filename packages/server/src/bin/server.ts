@@ -62,9 +62,12 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
       setReady()
       log('server ready')
     })
-    // Keep the top-N chain cache warm — hourly check, 12h staleness threshold inside.
-    // Without this, a quiet 24h on any top chain drops the row from cache and the next
-    // user pays the full cold-build cost (~19s for ETH).
+    // Keep the top-N chain cache warm — 12h staleness threshold inside. Without this,
+    // a quiet 24h on any top chain drops the row from cache and the next user pays the
+    // full cold-build cost (~19s for ETH). The 6h interval is half the staleness
+    // threshold: rows go stale at 12h, get rebuilt within 6h of that, and never reach
+    // the 24h hard expiry — checking hourly just re-ran the stats query 11 times per
+    // rebuild for nothing (its cache TTL is 1h, so every tick recomputed it).
     const warmTimer = setInterval(
       async () => {
         try {
@@ -75,7 +78,7 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
           log('periodic warm failed: %o', err)
         }
       },
-      60 * 60 * 1000,
+      6 * 60 * 60 * 1000,
     )
     warmTimer.unref()
     // Wait for the server to close before running cleanup
