@@ -72,10 +72,11 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      # No --with-deps: its apt phase hangs on hosted runners (observed: download
+      # completes in 41s, then 14.5 minutes of silence until the timeout kills it),
+      # and GitHub's ubuntu images already ship every Chromium system dependency.
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: yarn workspace ui exec playwright install --with-deps chromium
-      - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: yarn workspace ui exec playwright install-deps chromium
+        run: yarn workspace ui exec playwright install chromium
       - run: yarn workspace ui run test:browser
 
   integration-test:
