@@ -52,6 +52,10 @@ jobs:
 
   browser-test:
     runs-on: ubuntu-latest
+    # The playwright browser download can wedge indefinitely (observed: a job stuck
+    # 2+ hours on `playwright install`). Bound the job and cache the browsers so the
+    # download only happens when the playwright version changes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - run: corepack enable
@@ -60,7 +64,18 @@ jobs:
           node-version: 24
           cache: 'yarn'
       - run: yarn install --immutable
-      - run: yarn workspace ui exec playwright install --with-deps chromium
+      - name: Resolve playwright version for cache key
+        id: playwright-version
+        run: echo "version=$(yarn workspace ui exec playwright --version | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: yarn workspace ui exec playwright install --with-deps chromium
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: yarn workspace ui exec playwright install-deps chromium
       - run: yarn workspace ui run test:browser
 
   integration-test:
