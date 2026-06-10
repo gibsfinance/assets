@@ -101,10 +101,12 @@ class PulsexCollector extends BaseCollector {
       description: 'the pulsex token list hosted in their code',
     })
 
+    // Logo URL paths must use EIP-55 checksummed casing — the upstream host is
+    // case-sensitive (checksummed → 200, lowercase → 404). Identity stays lowercase.
     const inlineTokensMainnet = Array.from(pulsexConfig.get(pulsechain)!.targets).map((address) => {
       return {
         address,
-        logoURI: `https://tokens.app.pulsex.com/images/tokens/${address}.png`,
+        logoURI: `https://tokens.app.pulsex.com/images/tokens/${viem.getAddress(address)}.png`,
         network: {
           id: pulsechain.id,
           isNetworkImage: false,
@@ -114,7 +116,7 @@ class PulsexCollector extends BaseCollector {
     const inlineTokensV4 = Array.from(pulsexConfig.get(pulsechainV4)!.targets).map((address) => {
       return {
         address,
-        logoURI: `https://tokens.app.v4.testnet.pulsex.com/images/tokens/${address}.png`,
+        logoURI: `https://tokens.app.v4.testnet.pulsex.com/images/tokens/${viem.getAddress(address)}.png`,
         network: {
           id: pulsechainV4.id,
           isNetworkImage: false,
@@ -265,7 +267,8 @@ class PulsexCollector extends BaseCollector {
             decimals,
             chainId: chain.id,
             address: targets[index],
-            logoURI: `https://${config.domain}/images/tokens/${targets[index]}.png`,
+            // Checksummed casing for the URL path only — the upstream host is case-sensitive.
+            logoURI: `https://${config.domain}/images/tokens/${viem.getAddress(targets[index])}.png`,
           }
         })
         await inmemory.collect({
