@@ -154,15 +154,15 @@ const DEFAULT_TOKENS_BY_CHAIN_LIMIT = 50_000 // shared by the request handler an
  * Cache key for a tokensByChain response. The warmer and the request handler must
  * produce byte-identical keys or warmed rows are never read — build keys only here.
  */
-const tokensByChainCacheKey = (chainId: string, limit: number, extensions: Set<string>) =>
+export const tokensByChainCacheKey = (chainId: string, limit: number, extensions: Set<string>) =>
   `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
 
 /** Cache rows only store expiresAt (= createdAt + STALE_TTL_MS), so age is derived from it. */
-const cacheRowAge = (row: { expiresAt: Date | string | null }) =>
+export const cacheRowAge = (row: { expiresAt: Date | string | null }) =>
   Date.now() - (new Date(row.expiresAt!).getTime() - STALE_TTL_MS)
 
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
-const writeTokensByChainCache = (cacheKey: string, body: string) =>
+export const writeTokensByChainCache = (cacheKey: string, body: string) =>
   db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: new Date(Date.now() + STALE_TTL_MS) as any })
 
 /** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
@@ -237,7 +237,11 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
 // cache write — this is the only place a tokensByChain body is built or persisted.
 const inflightBuilds = new Map<string, Promise<string>>()
 
-const buildAndCacheTokensByChain = (chainId: string, limit: number, extensions: Set<string>): Promise<string> => {
+export const buildAndCacheTokensByChain = (
+  chainId: string,
+  limit: number,
+  extensions: Set<string>,
+): Promise<string> => {
   const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
   const existing = inflightBuilds.get(cacheKey)
   if (existing) return existing
