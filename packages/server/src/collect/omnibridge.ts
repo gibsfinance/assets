@@ -78,13 +78,15 @@ class OmnibridgeCollector extends BaseCollector {
       })
 
       // Also create bridge record during discover
+      // Checksummed casing required: the bridge_id trigger hashes the stored address
+      // text case-sensitively, so casing must stay stable with existing rows.
       await db.insertBridge({
         type: c.type ?? 'omnibridge',
         providerId: provider.providerId,
         homeNetworkId: chainIdToNetworkId(c.home.chain.id),
-        homeAddress: c.home.address.toLowerCase(),
+        homeAddress: viem.getAddress(c.home.address),
         foreignNetworkId: chainIdToNetworkId(c.foreign.chain.id),
-        foreignAddress: c.foreign.address.toLowerCase(),
+        foreignAddress: viem.getAddress(c.foreign.address),
       })
 
       manifest.push({
@@ -186,14 +188,16 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         },
         tx,
       )
+      // Checksummed casing required: the bridge_id trigger hashes the stored address
+      // text case-sensitively, so casing must stay stable with existing rows.
       const bridge = await db.insertBridge(
         {
           type: config.type ?? 'omnibridge',
           providerId: provider.providerId,
           homeNetworkId: chainIdToNetworkId(config.home.chain.id),
-          homeAddress: config.home.address.toLowerCase(),
+          homeAddress: viem.getAddress(config.home.address),
           foreignNetworkId: chainIdToNetworkId(config.foreign.chain.id),
-          foreignAddress: config.foreign.address.toLowerCase(),
+          foreignAddress: viem.getAddress(config.foreign.address),
         },
         tx,
       )
