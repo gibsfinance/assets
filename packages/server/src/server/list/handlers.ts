@@ -20,7 +20,7 @@ import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { toCAIP2, fromCAIP2 } from '../../chain-id'
-import { timerLog } from '../../logger'
+import { log, timerLog } from '../../logger'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -241,9 +241,10 @@ const buildAndCacheTokensByChain = (chainId: string, limit: number, extensions: 
   const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
   const existing = inflightBuilds.get(cacheKey)
   if (existing) return existing
-  const promise = buildTokensByChainResponse(chainId, limit, extensions).then(async (body) => {
-    // A cache-write failure must not fail the response — the body is still servable.
-    await writeTokensByChainCache(cacheKey, body).catch(() => {})
+  const promise = buildTokensByChainResponse(chainId, limit, extensions).then((body) => {
+    // Fire-and-forget: a cold request must not wait on the multi-megabyte cache INSERT,
+    // and a cache-write failure must not fail the response — the body is still servable.
+    writeTokensByChainCache(cacheKey, body).catch((err: unknown) => log('cache write failed for %s: %o', cacheKey, err))
     return body
   })
   inflightBuilds.set(cacheKey, promise)
@@ -300,7 +301,9 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     // If stale (past the fresh window), revalidate in the background — concurrent
     // stale hits share the same in-flight build via buildAndCacheTokensByChain.
     if (cacheRowAge(cached) > FRESH_TTL_MS) {
-      buildAndCacheTokensByChain(chainId, limit, extensions).catch(() => {})
+      buildAndCacheTokensByChain(chainId, limit, extensions).catch((err: unknown) =>
+        log('background revalidate failed for %s: %o', cacheKey, err),
+      )
     }
     return
   }

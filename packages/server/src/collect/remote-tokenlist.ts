@@ -114,7 +114,10 @@ export const collect =
 
       if (signal.aborted) return
 
-      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
+      // Canonicalize with the same function applied to token.address below — a plain
+      // .toLowerCase() here would miss non-EVM blacklist entries, whose addresses
+      // pass through normalizeProvidedId with their original casing intact.
+      const blacked = new Set<string>([...blacklist.values()].map((a) => db.normalizeProvidedId(a)))
       if (!tokenList.tokens) {
         failureLog('%o %o', tokenListUrl, tokenList)
         return
