@@ -20,6 +20,7 @@ import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { toCAIP2, fromCAIP2 } from '../../chain-id'
+import { timerLog } from '../../logger'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const extensions = getExtensions(req)
@@ -147,13 +148,29 @@ export const all: RequestHandler = async (req, res) => {
 const FRESH_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — serve without revalidation
 const STALE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours — serve stale while refreshing in background
 const WARM_STALE_MS = 12 * 60 * 60 * 1000 // 12 hours — periodic warmer re-builds cache rows older than this
+const DEFAULT_TOKENS_BY_CHAIN_LIMIT = 50_000 // shared by the request handler and the cache warmer
+
+/**
+ * Cache key for a tokensByChain response. The warmer and the request handler must
+ * produce byte-identical keys or warmed rows are never read — build keys only here.
+ */
+const tokensByChainCacheKey = (chainId: string, limit: number, extensions: Set<string>) =>
+  `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
+
+/** Cache rows only store expiresAt (= createdAt + STALE_TTL_MS), so age is derived from it. */
+const cacheRowAge = (row: { expiresAt: Date | string | null }) =>
+  Date.now() - (new Date(row.expiresAt!).getTime() - STALE_TTL_MS)
+
+/** Persist a built tokensByChain body with the standard stale-TTL expiry. */
+const writeTokensByChainCache = (cacheKey: string, body: string) =>
+  db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: new Date(Date.now() + STALE_TTL_MS) as any })
 
 /** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
  *
- * Uses getTokensByChainRanked() — a LATERAL-join query — to return one row per token
- * (best-ranked provider wins per-token via LATERAL LIMIT 1). This replaces the prior
- * dense_rank() CTE which materialized all list_token rows for the chain and sorted them
- * globally — too slow for large chains like Ethereum mainnet.
+ * Uses getTokensByChainRanked() — DISTINCT ON over a flat join with pre-aggregated
+ * list rankings — to return one row per token (best-ranked provider wins). This
+ * replaces the prior dense_rank() CTE which materialized all list_token rows for the
+ * chain and sorted them globally — too slow for large chains like Ethereum mainnet.
  *
  * A separate lightweight selectDistinct query fetches all providerKey/listKey memberships
  * for the sources field.
@@ -163,25 +180,20 @@ export const buildTokensByChainResponse = async (chainId: string, limit: number,
 
   const t0 = performance.now()
   const [tokens, sourcesRows] = await Promise.all([
-    (defaultOrderId
+    defaultOrderId
       ? db.getTokensByChainRanked(chainId, defaultOrderId)
-      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId))
-    ).then((r) => {
-      console.log(
-        `[tokensByChain] ranked query for ${chainId}: ${(performance.now() - t0).toFixed(0)}ms, ${r.length} rows`,
-      )
-      return r
-    }),
-    (defaultOrderId
+      : db.getTokensUnderListId().where(eq(s.network.chainId, chainId)),
+    defaultOrderId
       ? db.getTokenSourcesByChain(chainId)
-      : Promise.resolve([] as Awaited<ReturnType<typeof db.getTokenSourcesByChain>>)
-    ).then((r) => {
-      console.log(
-        `[tokensByChain] sources query for ${chainId}: ${(performance.now() - t0).toFixed(0)}ms, ${r.length} rows`,
-      )
-      return r
-    }),
+      : Promise.resolve([] as Awaited<ReturnType<typeof db.getTokenSourcesByChain>>),
   ])
+  timerLog(
+    'tokensByChain %s: %d token rows + %d source rows in %dms',
+    chainId,
+    tokens.length,
+    sourcesRows.length,
+    Math.round(performance.now() - t0),
+  )
 
   // Build address → sources[] map to patch onto entries after normalizeTokens.
   // normalizeTokens only sees one row per token (already deduped), so we populate
@@ -235,18 +247,13 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
   for (const { chainId: rawChainId } of top) {
     try {
       const chainId = toCAIP2(rawChainId)
-      const limit = 50_000
+      const limit = DEFAULT_TOKENS_BY_CHAIN_LIMIT
       const extensions = new Set<string>()
-      const cacheKey = `tokens-by-chain:${chainId}:${limit}:`
+      const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
       const existing = await db.getCachedRequest(cacheKey)
-      if (existing) {
-        // expiresAt = createdAt + STALE_TTL_MS, so cache age = now - (expiresAt - STALE_TTL_MS)
-        const age = Date.now() - (new Date(existing.expiresAt!).getTime() - STALE_TTL_MS)
-        if (age < WARM_STALE_MS) continue
-      }
+      if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
       const body = await buildTokensByChainResponse(chainId, limit, extensions)
-      const expiresAt = new Date(Date.now() + STALE_TTL_MS)
-      await db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
+      await writeTokensByChainCache(cacheKey, body)
     } catch {
       // best-effort — startup must not fail if a chain is unavailable
     }
@@ -259,9 +266,9 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // Accept both bare numbers (369) and CAIP-2 (eip155-369) — DB stores CAIP-2
   const chainId = toCAIP2(rawChainId)
 
-  const limit = Math.min(Number(req.query.limit) || 50_000, 100_000)
+  const limit = Math.min(Number(req.query.limit) || DEFAULT_TOKENS_BY_CHAIN_LIMIT, 100_000)
   const extensions = getExtensions(req)
-  const cacheKey = `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
+  const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
 
   // CDN cache-control: fresh window matches FRESH_TTL_MS; stale-while-revalidate
   // allows CDN to serve stale for STALE_TTL_MS while we rebuild in background.
@@ -276,15 +283,11 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     res.set('content-type', 'application/json')
     res.send(cached.value)
 
-    // If stale (past 5min fresh window), revalidate in the background
-    const cacheAge = Date.now() - new Date(cached.expiresAt!).getTime() + STALE_TTL_MS
-    if (cacheAge > FRESH_TTL_MS && !revalidating.has(cacheKey)) {
+    // If stale (past the fresh window), revalidate in the background
+    if (cacheRowAge(cached) > FRESH_TTL_MS && !revalidating.has(cacheKey)) {
       revalidating.add(cacheKey)
       buildTokensByChainResponse(chainId, limit, extensions)
-        .then((body) => {
-          const expiresAt = new Date(Date.now() + STALE_TTL_MS)
-          return db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any })
-        })
+        .then((body) => writeTokensByChainCache(cacheKey, body))
         .catch(() => {})
         .finally(() => revalidating.delete(cacheKey))
     }
@@ -294,8 +297,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // No cache — build fresh (first request or after hard expiry)
   const body = await buildTokensByChainResponse(chainId, limit, extensions)
 
-  const expiresAt = new Date(Date.now() + STALE_TTL_MS)
-  db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: expiresAt as any }).catch(() => {})
+  writeTokensByChainCache(cacheKey, body).catch(() => {})
 
   res.set('cache-control', tokenListCacheControl)
   res.set('content-type', 'application/json')
