@@ -40,7 +40,7 @@ import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
 import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
-import { normalizeProvidedId } from './provided-id'
+import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
 export { normalizeProvidedId }
@@ -1551,7 +1551,14 @@ export const insertBridge = async (bridge: InsertableBridge, tx?: DrizzleTx) => 
   const db = tx ?? getDrizzle()
   // Knex InsertableBridge has block numbers as string; Drizzle schema uses bigint mode: 'number'.
   // The pg driver handles both at runtime — cast to satisfy Drizzle's type system during transition.
-  const values = { bridgeId: dsql`''`, ...bridge } as unknown as typeof s.bridge.$inferInsert
+  // Addresses are canonicalized here, at the funnel, so no caller can recreate the
+  // casing-duplication bug (see canonicalBridgeAddress for why checksummed, not lowercase).
+  const values = {
+    bridgeId: dsql`''`,
+    ...bridge,
+    homeAddress: canonicalBridgeAddress(bridge.homeAddress),
+    foreignAddress: canonicalBridgeAddress(bridge.foreignAddress),
+  } as unknown as typeof s.bridge.$inferInsert
   const [b] = await db
     .insert(s.bridge)
     .values(values)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeProvidedId } from './provided-id'
+import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 
 /**
  * normalizeProvidedId must lowercase EVM addresses (so case variants collapse to one
@@ -31,5 +31,30 @@ describe('normalizeProvidedId', () => {
 
   it('passes arbitrary non-address strings through unchanged', () => {
     expect(normalizeProvidedId('Not-An-Address')).toBe('Not-An-Address')
+  })
+})
+
+/**
+ * canonicalBridgeAddress must produce EIP-55 checksummed casing — the bridge_id
+ * trigger hashes the stored text case-sensitively and every existing bridge row was
+ * inserted checksummed, so any other casing orphans those rows and resets their
+ * block-progress checkpoints.
+ */
+describe('canonicalBridgeAddress', () => {
+  it('checksums lowercase EVM addresses', () => {
+    expect(canonicalBridgeAddress('0xa1077a294dde1b09bb078844df40758a5d0f9a27')).toBe(
+      '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+    )
+  })
+
+  it('keeps already-checksummed EVM addresses unchanged', () => {
+    expect(canonicalBridgeAddress('0xA1077a294dDE1B09bB078844df40758a5D0f9a27')).toBe(
+      '0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
+    )
+  })
+
+  it('passes non-EVM identifiers through unchanged', () => {
+    const usdcOnSolana = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    expect(canonicalBridgeAddress(usdcOnSolana)).toBe(usdcOnSolana)
   })
 })
