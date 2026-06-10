@@ -841,12 +841,14 @@ export const fetchImageAndStoreForToken = async (
   if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
+      // Deliberate: a failed image fetch records the miss but still stores the token
+      // (image-less) below — list endpoints filter imageless tokens server-side, and
+      // a later collection can attach the image without re-discovering the token.
       await writeMissing({
         providerKey,
         originalUri,
         listId,
       })
-      // return null
     } else {
       img = await insertImage(
         {
