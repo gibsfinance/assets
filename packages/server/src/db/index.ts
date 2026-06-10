@@ -1329,20 +1329,10 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * chain. For Ethereum mainnet this is ~10–50x faster.
  *
  * Returns one row per token (the best-ranked list entry), in provider-ranking order.
- * Concurrent calls for the same (chainId, listOrderId) share one in-flight query.
+ * Concurrency dedup lives in the caller (buildAndCacheTokensByChain single-flights
+ * the whole build: this query, the sources query, and the JSON serialization).
  */
-const inflightRanked = new Map<string, Promise<Record<string, unknown>[]>>()
-
-export const getTokensByChainRanked = (chainId: string, listOrderId: viem.Hex): Promise<Record<string, unknown>[]> => {
-  const key = `${chainId}:${listOrderId}`
-  const existing = inflightRanked.get(key)
-  if (existing) return existing
-  const promise = getTokensByChainRankedQuery(chainId, listOrderId)
-  inflightRanked.set(key, promise)
-  return promise.finally(() => inflightRanked.delete(key))
-}
-
-const getTokensByChainRankedQuery = async (
+export const getTokensByChainRanked = async (
   chainId: string,
   listOrderId: viem.Hex,
 ): Promise<Record<string, unknown>[]> => {

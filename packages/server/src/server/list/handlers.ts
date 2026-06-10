@@ -175,7 +175,7 @@ const writeTokensByChainCache = (cacheKey: string, body: string) =>
  * A separate lightweight selectDistinct query fetches all providerKey/listKey memberships
  * for the sources field.
  */
-export const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
+const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
   const defaultOrderId = getDefaultListOrderId()
 
   const t0 = performance.now()
@@ -232,8 +232,23 @@ export const buildTokensByChainResponse = async (chainId: string, limit: number,
   })
 }
 
-// In-flight revalidation tracker — prevents duplicate background refreshes
-const revalidating = new Set<string>()
+// Single-flight build + cache write: concurrent cold requests, stale revalidations,
+// and warmer ticks for the same key share one query pass, one serialization, and one
+// cache write — this is the only place a tokensByChain body is built or persisted.
+const inflightBuilds = new Map<string, Promise<string>>()
+
+const buildAndCacheTokensByChain = (chainId: string, limit: number, extensions: Set<string>): Promise<string> => {
+  const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
+  const existing = inflightBuilds.get(cacheKey)
+  if (existing) return existing
+  const promise = buildTokensByChainResponse(chainId, limit, extensions).then(async (body) => {
+    // A cache-write failure must not fail the response — the body is still servable.
+    await writeTokensByChainCache(cacheKey, body).catch(() => {})
+    return body
+  })
+  inflightBuilds.set(cacheKey, promise)
+  return promise.finally(() => inflightBuilds.delete(cacheKey))
+}
 
 /**
  * Pre-warm the tokensByChain cache for the top N chains by token count.
@@ -252,8 +267,7 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
       const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
       const existing = await db.getCachedRequest(cacheKey)
       if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
-      const body = await buildTokensByChainResponse(chainId, limit, extensions)
-      await writeTokensByChainCache(cacheKey, body)
+      await buildAndCacheTokensByChain(chainId, limit, extensions)
     } catch {
       // best-effort — startup must not fail if a chain is unavailable
     }
@@ -283,21 +297,16 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     res.set('content-type', 'application/json')
     res.send(cached.value)
 
-    // If stale (past the fresh window), revalidate in the background
-    if (cacheRowAge(cached) > FRESH_TTL_MS && !revalidating.has(cacheKey)) {
-      revalidating.add(cacheKey)
-      buildTokensByChainResponse(chainId, limit, extensions)
-        .then((body) => writeTokensByChainCache(cacheKey, body))
-        .catch(() => {})
-        .finally(() => revalidating.delete(cacheKey))
+    // If stale (past the fresh window), revalidate in the background — concurrent
+    // stale hits share the same in-flight build via buildAndCacheTokensByChain.
+    if (cacheRowAge(cached) > FRESH_TTL_MS) {
+      buildAndCacheTokensByChain(chainId, limit, extensions).catch(() => {})
     }
     return
   }
 
   // No cache — build fresh (first request or after hard expiry)
-  const body = await buildTokensByChainResponse(chainId, limit, extensions)
-
-  writeTokensByChainCache(cacheKey, body).catch(() => {})
+  const body = await buildAndCacheTokensByChain(chainId, limit, extensions)
 
   res.set('cache-control', tokenListCacheControl)
   res.set('content-type', 'application/json')
