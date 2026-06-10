@@ -209,16 +209,27 @@ const main = async () => {
     }
   }
 
-  // 5. For each chain, hit /list/tokens and compare total to stats count
+  // 5. For each chain, hit /list/tokens and compare total to stats count.
+  // The list body is served from a stale-while-revalidate cache (up to 6h fresh)
+  // while /stats refreshes hourly, so on actively-collected chains the two
+  // legitimately drift by a handful of tokens. Tiny drift warns; real divergence
+  // (the predicate-mismatch bug class this check exists for) still fails.
+  const DRIFT_TOLERANCE = 0.005 // 0.5%
   for (const s of toTest) {
     const label = `/list/tokens/${s.chainId}`
     const url = args.limit ? `${args.url}${label}?limit=${args.limit}` : `${args.url}${label}`
     try {
       const { data, elapsed } = await fetchJson<TokenListResponse>(url, args.timeoutMs)
-      const mismatch = data.total !== s.count
-      const tag = mismatch ? `❌ MISMATCH (stats=${s.count} vs total=${data.total})` : '✓'
+      const drift = Math.abs(data.total - s.count)
+      const withinTolerance = drift <= Math.max(1, Math.round(s.count * DRIFT_TOLERANCE))
+      const tag =
+        drift === 0
+          ? '✓'
+          : withinTolerance
+            ? `⚠ drift ${drift} (stats=${s.count} vs total=${data.total} — cache windows, not a logic mismatch)`
+            : `❌ MISMATCH (stats=${s.count} vs total=${data.total})`
       console.log(`  ${pad(label, 20)} ${pad(Math.round(elapsed) + 'ms', 10)} total=${data.total}  ${tag}`)
-      if (mismatch) failures++
+      if (drift > 0 && !withinTolerance) failures++
     } catch (err) {
       console.error(`  ${pad(label, 20)} FAIL  ${(err as Error).message}`)
       failures++
