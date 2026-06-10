@@ -34,18 +34,34 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
     )
     pruneTimer.unref()
     // Warmup runs in the background. /health stays 503 until it completes so the
-    // load balancer doesn't route traffic until tokensByChain is cached.
-    getStats()
+    // load balancer doesn't route traffic until tokensByChain is cached. A hung
+    // warm query must not hold /health at 503 forever, so readiness is bounded:
+    // setReady() flips by the deadline even if the warm is still running, and the
+    // warm continues in the background.
+    const readinessDeadlineMs = 120_000
+    const warmup = getStats()
       .then((stats) => {
         log('stats cache warmed')
         return warmTokensByChainCache(stats)
       })
       .then(() => log('tokensByChain cache warmed for top chains'))
       .catch((err: unknown) => log('warmup failed: %o', err))
-      .finally(() => {
-        setReady()
-        log('server ready')
-      })
+    let readinessTimer: NodeJS.Timeout | undefined
+    const deadline = new Promise<'timeout'>((resolve) => {
+      readinessTimer = setTimeout(() => resolve('timeout'), readinessDeadlineMs)
+      readinessTimer.unref()
+    })
+    Promise.race([warmup, deadline]).then((outcome) => {
+      clearTimeout(readinessTimer)
+      if (outcome === 'timeout') {
+        log(
+          'readiness deadline (%dms) reached before warmup completed; warmup continues in background',
+          readinessDeadlineMs,
+        )
+      }
+      setReady()
+      log('server ready')
+    })
     // Keep the top-N chain cache warm — hourly check, 12h staleness threshold inside.
     // Without this, a quiet 24h on any top chain drops the row from cache and the next
     // user pays the full cold-build cost (~19s for ETH).

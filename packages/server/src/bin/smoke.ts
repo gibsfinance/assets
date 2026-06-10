@@ -26,8 +26,11 @@ type Args = {
 const parseArgs = (argv: string[]): Args => {
   const args: Partial<Args> = { top: 10, timeoutMs: 30_000 }
   for (let i = 0; i < argv.length; i++) {
-    const [key, val] = argv[i].includes('=') ? argv[i].split('=', 2) : [argv[i], argv[i + 1]]
-    if (!argv[i].includes('=')) i++
+    // Split at the FIRST '=' only — String.split's limit truncates and would discard
+    // the remainder of values containing '=' (e.g. --url with a query string).
+    const eqIndex = argv[i].indexOf('=')
+    const [key, val] = eqIndex === -1 ? [argv[i], argv[i + 1]] : [argv[i].slice(0, eqIndex), argv[i].slice(eqIndex + 1)]
+    if (eqIndex === -1) i++
     switch (key) {
       case '--url':
         args.url = val?.replace(/\/$/, '')
