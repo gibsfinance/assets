@@ -120,7 +120,9 @@ export const collect =
         return
       }
       tokenList.tokens.forEach((token) => {
-        token.address = token.address.toLowerCase() as viem.Hex
+        // User-submitted lists may carry non-EVM (base58, case-sensitive) addresses —
+        // only EVM addresses are lowercased; everything else passes through unchanged.
+        token.address = db.normalizeProvidedId(token.address)
         if (blacked.has(token.address)) {
           token.logoURI = ''
         }

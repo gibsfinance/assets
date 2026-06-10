@@ -1,6 +1,6 @@
 import * as path from 'path'
 import * as fs from 'fs'
-import { createPublicClient, Hex, http, PublicClient } from 'viem'
+import { createPublicClient, http, PublicClient } from 'viem'
 
 import * as db from '../db'
 import * as types from '../types'
@@ -321,7 +321,8 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     }
 
     const [info, logoPath] = assetData
-    const address = asset.toLowerCase() as Hex
+    // Solana/Tron folders carry case-sensitive base58 ids — only EVM addresses lowercase.
+    const address = db.normalizeProvidedId(asset)
     const stat = await fs.promises.stat(logoPath).catch(() => false)
     if (!stat) {
       row.increment('skipped', chainTokenId)

@@ -242,7 +242,8 @@ class DexscreenerCollector extends BaseCollector {
             name: token.name,
             decimals: token.decimals,
             networkId: network.networkId,
-            providedId: token.address.toLowerCase(),
+            // Non-EVM chains carry case-sensitive base58 ids — only EVM addresses lowercase.
+            providedId: db.normalizeProvidedId(token.address),
             index: i, // Keep track of original index for listTokenOrderId
           }))
 
