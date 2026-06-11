@@ -1,5 +1,420 @@
 # Gib.Show — Progress
 
+## Session: June 11, 2026
+
+### Part 12 — OpenAPI commits landing (1Password unlocked)
+
+Signing works again. All three commits landed signed:
+- c44b211f fix(image): accept prefixed chain ids in batch lookup
+- d273ba77 feat(server): serve OpenAPI definition at /openapi.json
+  (openapi.ts, openapi.test.ts, routes.ts, smoke.ts)
+- e7b6605a feat(ui): render docs from the OpenAPI definition
+  (openapi-docs.ts + test, Docs.tsx, vite.config.ts proxy)
+Plus a chore commit for this progress file.
+
+GOTCHA: each commit takes ~1–2 min because the pre-commit hook runs
+lint + typecheck + build; the 1Password prompt appears only AFTER the
+hook finishes — don't assume signing is stuck until the hook output
+shows "All pre-commit checks passed!".
+
+NEXT (unchanged from Part 11): finish commits 2+3 → push staging →
+watch CI + Railway → yarn smoke (now includes the spec probes) →
+browser-check staging /#/docs.
+
+### Part 11 — OpenAPI definition + spec-rendered docs page (built + verified; commits landing in Part 12)
+
+User: "gib.show should also have an openapi definition … link to it from the
+docs page, but also use it to render so that all we have to do is update the
+definition to get a new ui. we should also update the table of contents."
+
+BUILT AND FULLY VERIFIED, awaiting touch ID to commit (three commits):
+1. fix(image): batch ?i= lookup rejected prefixed chain ids —
+   tryMultiple did Number(chainId) → NaN → 400 on eip155-369/0x….
+   Now passes the raw segment like the path handlers (chainIdToNetworkId
+   owns conversion). Found by probing every x-example against staging.
+   FILE: packages/server/src/server/image/handlers.ts
+2. feat(server): OpenAPI 3.1 definition served at /openapi.json —
+   packages/server/src/server/openapi.ts (23 paths, 5 tags: Token
+   Endpoints / Image Endpoints / Networks & Stats / Submissions /
+   Service; x-example extension carries live example URLs, all
+   eip155-prefixed, all verified 200 against staging). Route mounted in
+   routes.ts with cache-control. openapi.test.ts: 9 structural
+   invariants (tags declared, summaries, x-example consistency +
+   prefixed-id enforcement, $ref resolution). smoke.ts section 5 now
+   fetches /openapi.json and probes every GET x-example (broken example
+   = failed smoke).
+3. feat(ui): docs page renders from the definition —
+   packages/ui/src/lib/utils/openapi-docs.ts (specToSections /
+   sectionIdForTag, pure + 5 tests); Docs.tsx fetches /openapi.json via
+   TanStack Query, sections + table of contents derive from tags
+   (STATIC_SECTIONS keeps Features/Code Examples), header links to the
+   raw definition; hardcoded TOKEN_ENDPOINTS/IMAGE_ENDPOINTS deleted
+   (~150 lines); vite dev proxy gains /openapi.json,/networks,/stats,/sprite.
+   NOTE: the deleted hardcoded docs FALSELY claimed ?decimals= works on
+   /list/tokens/{chainId} (verified: handler reads only limit+extensions)
+   — the spec documents the truth.
+
+Verified: 335 server tests, 889 UI tests, tsc, lint, build all green.
+END-TO-END: booted local server (port 3000, serves ui/dist statically) —
+/openapi.json returns 23 paths/5 tags; headless-Chromium drive of
+/#/docs shows the table of contents with all 7 sections (5 spec-driven +
+2 static), 33 endpoint cards, the openapi.json header link, zero console
+errors.
+
+NEXT: touch ID → three commits (messages in session history) → push
+staging → watch CI + Railway → yarn smoke (now includes the spec
+probes) → browser-check staging /#/docs.
+
+### Part 10 — PRODUCTION IS LIVE + staging perf/prefix round (commits pending signing)
+
+**Production deployed and verified.**
+- KEY DISCOVERY: Railway's "gib.show / production" environment deploys from
+  the MASTER branch, not `production`. Merging pull request #86 (staging →
+  production) deployed NOTHING — the production branch is vestigial (every
+  deployment ref in the GitHub deployments API is a master commit). Saved to
+  memory as project_railway_deploys_from_master.md.
+- Opened + admin-merged pull request #87 (staging → master) = c078c3e9.
+  Both Railway services deployed green (~7 min). Server healthcheck passing
+  means migration 0005 (collision-guarded dedupe) ran clean on production.
+- `yarn smoke --url https://gib.show`: ALL PASSED — endpoints, image pipeline
+  (webp/png/vector), parity on all 10 top chains (369: 36,741 tokens; 1:
+  14,136). Production now runs the fully audited code.
+- Consider deleting/re-pointing the `production` branch to end the confusion.
+
+**Staging round (user: "do both, but also add the eip155- prefix where we can").**
+Committed on staging (not yet pushed):
+- aeba42ba feat(ui): emit eip155-prefixed chain identifiers — new
+  packages/ui/src/lib/utils/chain-identifier.ts (toChainIdentifier /
+  fromChainIdentifier / prefixImagePath, mirrors server chain-id.ts: 369 →
+  eip155-369, 0 → asset-0, prefixed passthrough) + tests. Adopted at EVERY
+  URL boundary: buildImageUrl/buildNetworkUrl, tokenImageUri, StudioBrowser,
+  Studio (?chain= written prefixed, bare accepted on read — context keeps
+  bare form), CodeOutput fallback, NetworkSelect, TokenDetailModal,
+  TokenImageManager, StudioConfigurator, ListTokenRow, PhysicsCanvas,
+  utils/index GET, Docs + Home examples. SDK snippet chainId={1} stays
+  numeric (component prop contract). Server accepts both forms (toCAIP2 at
+  every handler); origin cache keys already CAIP-2 → no cache fork. Image
+  variant cache keys on imageHash, not URL → no server-side rework.
+- 9fbf89fa perf(ui): cap and idle-defer the FloatingIcons conveyor —
+  30-icon sample per row (180 imgs vs 2,658), requestIdleCallback defer
+  (setTimeout fallback), prefixImagePath applied to conveyor paths.
+
+Committed after 1Password unlock (signing recovered on its own once the
+desktop app was unlocked — agent socket + desktop IPC both verified healthy
+with `SSH_AUTH_SOCK=<1p socket> ssh-add -l` and `op account list`):
+- 7dc1249a perf(ui): split route and shiki chunks out of first load —
+  App.tsx (React.lazy Studio + Docs, Suspense fallback=null, Home eager),
+  vite.config.ts (manualChunks: undefined REMOVED — Svelte-era boilerplate
+  per git history), CodeBlock.tsx (shiki via dynamic import +
+  useSyncExternalStore module store; plain <pre> fallback until loaded).
+  Landing chunk: 1.8MB/488KB-gz → 373KB/125KB-gz.
+- dad7f2e8 perf(ui): self-host font-awesome through the bundle —
+  @fortawesome/fontawesome-free in ui deps, imported in main.tsx, cdnjs
+  <link> removed from index.html. Webfonts hashed into dist/assets.
+PUSHED staging 6cba69ba..dad7f2e8 (4 commits: prefix, conveyor, splitting,
+font-awesome). Background watch polling CI (6 jobs) + Railway staging
+deploys on dad7f2e8; smoke staging.gib.show when green.
+
+Verified for ALL the above: 884 UI tests (jsdom), 2 browser tests (system
+Chrome), 326 server tests, tsc, lint, build. Real-browser check on the
+production build (vite preview + dev-browser): home/studio/docs all render,
+no module errors (lone 500 = preview has no API backend, expected).
+GOTCHA: `yarn preview | head -5` SIGPIPE-kills the server mid-test — run
+preview with output redirected to a file, never through head.
+
+DONE: CI (all 6 jobs) + both Railway staging deploys GREEN on dad7f2e8.
+Staging smoke: all passed (drift ≤4 on 4 chains, labeled cache-window
+warnings, within tolerance). staging.gib.show serves the split bundle
+(assets/index-CWliELsg.js) with no cdnjs link. Session complete.
+
+NEXT STEPS (in order):
+2. Remaining perf options not yet done: post-deploy icon-variant warm,
+   Cloudflare Tiered Cache toggle (user dashboard action).
+3. Still open from before: Cloudflare CSAM Scanning Tool (dashboard),
+   Railway → own-server migration (plan in Part 3), cleanup of merged
+   worktree agent-ae021b393a4fa9140 + gap-audit-builder-test docker image.
+4. Consider deleting/re-pointing the vestigial `production` branch (Railway
+   deploys from master — memory: project_railway_deploys_from_master.md).
+
+## Session: June 10, 2026
+
+### Part 1 — Production-gap audit (merged: db19420d, pushed)
+
+Audited origin/production...origin/staging (24 commits / ~4,600 lines) with a
+multi-agent review (7 finder angles, per-candidate verification), fixed on
+`fix/production-gap-audit`, merged to staging, pushed. Opened pull request #86
+(staging → production) — DO NOT merge it until staging deploy is verified.
+
+Confirmed and fixed:
+- Migration 0005 primary-key collisions in list_token/bridge_link reparenting
+  (would abort the first production run; guards added — production has NOT run
+  0005 yet, staging skips by journal timestamp)
+- Omnibridge lowercasing would orphan every production bridge row (bridge_id
+  trigger hashes case-sensitively) → restored checksummed casing
+- Trust Wallet/DexScreener/remote-tokenlist lowercasing corrupted Solana/Tron
+  base58 ids → shared normalizeProvidedId (packages/server/src/db/provided-id.ts)
+- PulseX logo URLs 404'd lowercased (upstream host case-sensitive) → re-checksummed
+- /health readiness unbounded → 120s deadline race in bin/server.ts
+- smoke.ts split('=', 2) truncation → indexOf/slice
+- Cleanup: usableImageSql single owner; tokensByChainCacheKey/cacheRowAge/
+  writeTokensByChainCache shared; console.log → timerLog; dead param dropped
+
+Refuted (no action): citext "merges distinct Solana mints" (impossible; citext
+already in production), counter-id case mismatch (counterId.token lowercases
+internally), warm-timer shutdown leak (unref'd).
+
+### Part 6 — browser-test re-diagnosed: CDN downloads are the wedge (head: 91759642)
+
+- Dropping --with-deps (6aae83f6) did NOT fix the hang — same 15-min timeout,
+  same log shape: first artifact downloads in ~40s, then a FOLLOW-UP browser
+  artifact download (playwright fetches chromium + headless-shell + ffmpeg)
+  stalls silently. Conclusion: browser-binary CDN downloads hang on GitHub
+  hosted runners — the same failure class as puppeteer's Chrome download in
+  the Docker builds. Two packages, one root cause.
+- Real fix (91759642): CI downloads NO browsers. PLAYWRIGHT_CHROME_CHANNEL=
+  chrome env (read by packages/ui/vitest.browser.config.ts) routes the vitest
+  playwright provider to the runner image's preinstalled Google Chrome.
+  Validated locally on the same channel (2 tests pass on system Chrome).
+  Local dev keeps bundled Chromium. Cache/install steps removed from the job.
+- The Collector "error" on 6aae83f6 was Railway AUTO-CANCELLING a superseded
+  build when fac4fb5c landed — not a failure ("Deployment cancelled").
+- Pushes this part: 6aae83f6 → fac4fb5c → 91759642.
+
+### Part 9 — Mutation audit: pure transforms in collectors (head: 6cba69ba)
+
+- User flagged heavy in-place mutation. Verdict per site:
+  - REAL RISK (fixed): remote-tokenlist extension items are MODULE-LEVEL
+    collector config shared across collect runs — in-place address/logoURI
+    edits persisted normalization into static config; behaved only because
+    normalizeProvidedId is idempotent. Now: local copy, config untouched.
+  - SAFE BUT FIXED FOR STYLE: tokenList.tokens mutation — verified cachedJSON
+    re-parses JSON.parse(cached.value) per call, so every caller gets a fresh
+    object graph (no shared-cache corruption possible). Now maps to new
+    entries and forwards { ...tokenList, tokens: mergedTokens }.
+  - inmemory-tokenlist entry edits → locals (callers can pass shared arrays).
+  - DELIBERATELY KEPT: inflightBuilds Map (encapsulated single-flight state,
+    tested) and the migration's SQL UPDATEs.
+- KEY FACT for future reasoning: db.cachedJSON re-parses from the stored
+  string on every call — cached JSON objects are NEVER shared references.
+- CI fully green on 10ee47e9 (all six jobs incl. browser-test).
+  6cba69ba pushed; verified locally first (tsc, 326 unit, 23 integration —
+  integration exercises both refactored collectors against real Postgres).
+- Pull request #86 continues to track everything; still ready to merge.
+
+### Part 8 — Cache-contract unit tests (head: 10ee47e9)
+
+- Added packages/server/src/server/list/tokens-by-chain-cache.test.ts —
+  11 tests pinning the tokensByChain cache contract: byte-identical
+  warmer/handler keys (incl. empty-extensions trailing colon), extension-
+  order-independent keys, cacheRowAge arithmetic, single-flight (one query +
+  one cache write per concurrent demand, no sharing across keys, map clears
+  after settle, rejected builds not cached), and fire-and-forget cache writes
+  (body resolves while INSERT pending; write failure logged, never thrown).
+- Exported tokensByChainCacheKey/cacheRowAge/writeTokensByChainCache/
+  buildAndCacheTokensByChain from handlers.ts for the tests.
+- Test mocks: '../../db' (+drizzle, sync-order, user-submissions) AND
+  '../../log/App' — src/utils instantiates the Ink terminal at module load,
+  which crashes under vitest (patch-console); a chainable-Proxy no-op
+  createTerminal stands in. Reuse this mock for future handler tests.
+- Browser tests run locally two ways (both verified): `yarn workspace ui run
+  test:browser` (bundled Chromium, needs one-time playwright install
+  chromium) or PLAYWRIGHT_CHROME_CHANNEL=chrome prefix (system Chrome — the
+  CI mode, zero downloads).
+- Server suite 315 → 326. Pushed fe8aa814..10ee47e9; CI watch running
+  (task b86tep361). Note: a pre-existing handlers.test.ts (April, tests
+  rankTokenRows) already existed — new tests live in their own file.
+- 1Password signing latency note: authorization expires between work
+  sessions; commits need a fresh touch ID after ~1h idle.
+
+### Part 7 — Migration 0005 now has an executed test (head: fe8aa814)
+
+- User asked "how do you know the dedupe migration works — cite the tests."
+  Honest answer: nothing executed it against duplicates (CI ran it on an
+  EMPTY database; staging ran the unguarded version; guards were verified by
+  reading trigger definitions only). Wrote the missing test:
+  packages/server/test/dedupe-migration.test.ts (registered in test/index.ts).
+- The test recreates the pre-migration world (old case-preserving trigger,
+  constraint dropped), seeds every guard's shape (loser sharing winner's
+  list = 2a; two losers in a winnerless list = 2b; bridge links colliding on
+  both columns = 3a/3b; winner by reference count), executes the REAL
+  migration file statement-by-statement in ONE transaction (temp table is
+  session-scoped — matches drizzle's migrator), asserts the collapsed state.
+- NEGATIVE CONTROL verified: against the pre-guard file from git history
+  (git show 58fda0fe^:...0005...) the test fails with the exact
+  list_token_pkey duplicate-key violation the audit predicted. Guarded: pass.
+- Gotcha hit and fixed: test cleanup must delete fixtures BEFORE re-adding
+  the unique constraint (unique_violation is not caught by the DO block) —
+  wrong order left the local test database polluted (missing constraint +
+  duplicate rows → every later ON CONFLICT failed with infer_arbiter_indexes
+  errors). Repaired the local database; cleanup order now fixture-deletes
+  first, trigger/constraint restore last.
+- Local integration suite: 23/23 pass (docker compose postgres on :5876,
+  NODE_ENV=test yarn test from packages/server). 315 unit tests, tsc, lint
+  green. Pushed 91759642..fe8aa814; CI runs the new test on real Postgres.
+- ALSO PENDING from earlier: first-load performance findings for
+  staging.gib.show (user asked; assessment delivered, NOT yet implemented):
+  (1) FloatingIcons mounts 2,658 imgs / 443 unique cold-resize URLs eagerly —
+  cap ~25-30/row + requestIdleCallback defer; (2) single 1.8MB/488KB-gz
+  bundle, manualChunks: undefined disables splitting — React.lazy routes;
+  (3) Cloudflare Tiered Cache toggle (user dashboard action); (4) post-deploy
+  icon-variant warm; (5) self-host the few font-awesome icons (render-
+  blocking cdnjs CSS). User has not yet said which to implement.
+
+### FINAL STATE — everything green, pull request #86 READY TO MERGE
+- 91759642: ALL six CI jobs success (incl. browser-test for the first time
+  since the wedge) + BOTH Railway deploys success.
+- Final smoke against live staging.gib.show: all checks passed
+  (10 chains parity + endpoint/image probes).
+- NEXT: merge pull request #86 (staging → production) — user's call. First
+  production boot runs collision-guarded migration 0005; watch the deploy
+  statuses (gh api repos/gibsfinance/assets/commits/<sha>/status) and run
+  `yarn smoke --url https://gib.show` after.
+- Then: enable Cloudflare CSAM Scanning Tool (dashboard); plan the
+  Railway → own-server migration (pg_dump physical copy; see Part 3 notes).
+
+### Part 5 — Staging fully verified; browser-test root-caused (head: fac4fb5c)
+
+- Railway deploys + CI integration test GREEN on e8b9cba4 — Docker fix
+  validated in local build, CI, and Railway.
+- Smoke tester fully green against live staging.gib.show: endpoints, image
+  pipeline (webp/png/vector), parity on all 10 top chains.
+- browser-test hang ROOT-CAUSED from the timed-out job's log: Chromium
+  download completes in 41s, then the --with-deps apt phase sits silent for
+  14.5 min until the 15-min timeout kills it. Fix (6aae83f6): drop
+  --with-deps — hosted ubuntu runners already ship all Chromium system
+  dependencies. Background watch (task bog2ek7pj) confirming the job goes
+  green on 6aae83f6; the fac4fb5c push runs it again too.
+- Smoke parity check now tolerates ≤0.5% drift with a labeled warning
+  (fac4fb5c) — list body (6h fresh cache) vs hourly /stats legitimately
+  drift by a few tokens on actively-collected chains; PulseChain showed
+  drift=3. Real divergence still fails.
+- Pushes this part: e8b9cba4 → 6aae83f6 (ci: drop --with-deps) →
+  fac4fb5c (test: smoke drift tolerance). Pull request #86 tracks all of it.
+- NEXT: confirm browser-test green (watch bog2ek7pj / the fac4fb5c run),
+  then pull request #86 (staging → production) is ready to merge — first
+  production boot runs the collision-guarded migration 0005.
+
+### Part 4 — Deploy green; endpoint + UI review round (pushed: e8b9cba4)
+
+- Railway deploys for 54cea2f2 SUCCEEDED (both server + Collector) — the
+  PUPPETEER_SKIP_DOWNLOAD fix works; staging now runs the audited code.
+- User asked for a full endpoint + UI review of the query changes. Two review
+  agents ran; their fixes are committed and pushed (54cea2f2..e8b9cba4):
+  - d9241ed0 refactor(collect): ALL persisted providedIds now go through
+    db.normalizeProvidedId (swept inmemory-tokenlist, pls369, internetmoney,
+    etherscan, remote-tokenlist; in-memory progress keys keep plain lowercase).
+    Casing convention: token identity = lowercase (normalizeProvidedId),
+    bridge identity = checksummed (canonicalBridgeAddress), external image
+    URLs = host's casing, in-memory keys = free.
+  - 8d426fd9 fix(server): cold tokensByChain no longer awaits the cache
+    INSERT (review caught the regression my single-flight introduced);
+    revalidate/cache-write failures now logged; remote-tokenlist blacklist
+    canonicalized with normalizeProvidedId on both sides.
+  - e8b9cba4 fix(ui): snippet generators escape token names/URLs per context
+    (escapeHtmlAttribute / escapeJsSingleQuoted + adversarial parse tests);
+    generated GibToken now uses src={src} (was hardcoded, prop ignored);
+    badgeShape/badgePadding/badgeBackground flow into snippets with a
+    preview-matching wrapper (default configs byte-stable); deleted dead
+    types/metrics.ts; byChain keys string; getNetworkName for network names.
+- Verified: 875 jsdom + 2 Chromium UI tests, 315 server tests, tsc, lint,
+  build all green. UI fixes done INLINE — two subagent attempts both died at
+  exactly 20 tool calls with API socket errors (pattern, not task).
+- Background watch (task bb43x4azg) polling Railway + CI on e8b9cba4 —
+  includes first exercise of the hardened browser-test job (15min timeout +
+  playwright browser cache; previous job hung 2+ hours and was cancelled).
+- ci(browser-test) hardening committed earlier as 54cea2f2.
+
+### Part 3 — Pushed; deploy verification in flight (superseded by Part 4)
+
+- Pushed staging db19420d..54cea2f2 (includes everything below plus
+  54cea2f2 ci(browser-test): 15-minute timeout + playwright browser cache —
+  the browser-test job on the previous push hung 2+ hours on
+  `playwright install`; that stuck run (27290561194) was cancelled).
+- Local Dockerfile validation PASSED: builder stage incl. the previously
+  failing production-prune step builds clean with PUPPETEER_SKIP_DOWNLOAD=true
+  (test image: gap-audit-builder-test — safe to `docker rmi`).
+- Browser tests pass locally (2 tests, real Chromium, ~2s).
+- Background watch polling Railway deployment statuses on 54cea2f2; when both
+  services conclude, run `yarn smoke --url https://staging.gib.show`.
+
+**Railway → own-server migration (discussed, not started).** Identity in this
+schema is content-derived keccak (triggers), so the rule is: move bytes, never
+recompute identities. Plan agreed in principle: pg_dump/pg_restore physical
+copy (triggers are post-data, so nothing re-fires); destination Postgres must
+be built from Dockerfile.postgres FIRST (PL/Python + safe-pysha3 provide
+keccak256, citext, PG 16); image blobs + migration journal + bridge
+checkpoints all ride in the dump; freeze the Collector for final sync; DNS
+origin swap behind Cloudflare (Origin Cert + Full Strict); verify with the
+0005 dedupe query as SELECT (expect zero) + row counts + yarn smoke. NEVER
+migrate by re-running collectors into an empty database.
+
+### Part 2 — Deploy failure discovery + follow-up fixes (now pushed)
+
+**Critical finding: staging is NOT running the audited code.** Railway deploys
+for db19420d FAILED for both services (server + Collector) at 16:32Z; staging
+still runs the April 19 build (52e151f7). Root cause: Docker image build dies
+in `yarn workspaces focus --all --production` — puppeteer's Chrome download
+exits 1 on node:24-alpine (moving-tag drift since April; no code change
+involved). Bundled Chrome can't run on alpine/musl anyway (collectors use
+BROWSER_WS_ENDPOINT). Fix: PUPPETEER_SKIP_DOWNLOAD=true in Dockerfile +
+Dockerfile.worker. CI integration-test failed the same way (it builds the same
+images); unit/lint/typecheck/build passed.
+
+Six commits on `fix/audit-followups`, merged into local staging (NOT yet
+pushed — push blocked on 1Password SSH authorization for
+github_gibs_id_ed25519):
+1. 5458a6c5 fix(db): insertBridge canonicalizes address casing at the funnel
+   (canonicalBridgeAddress + tests; omnibridge caller-side normalization removed)
+2. 3f223e7e refactor(list): single-flight buildAndCacheTokensByChain — one
+   query pass/serialization/cache-write shared by cold requests, revalidations,
+   warmer; deleted inflightRanked + revalidating set
+3. 89720185 perf(server): warm interval hourly → 6h (half the 12h staleness
+   threshold; hourly re-ran the stats query ~11x per rebuild)
+4. cf50a3ab docs(server): image-fallback + winner-pick contracts documented
+5. (smoke) test(smoke): consolidated harnesses — yarn smoke now covers
+   /networks, /list, image pipeline (webp/png/vector); scripts/smoke-test.ts deleted
+6. 5e89cc2a fix(docker): PUPPETEER_SKIP_DOWNLOAD=true in both Dockerfiles
+
+All verified locally: 315 server tests, typecheck, lint, build green.
+
+### Next Steps (in order)
+1. PUSH staging to origin (needs 1Password touch ID for the SSH key) —
+   triggers CI (integration-test validates the Docker fix) + Railway redeploy.
+2. Watch Railway deployment statuses on the new commit (gh api
+   repos/gibsfinance/assets/deployments + commits/<sha>/status).
+3. After deploy goes green: `yarn smoke --url https://staging.gib.show`
+   (expect parity on all chains; note CDN may serve stale bodies up to 6h —
+   cache-bust with ?cb= when comparing).
+4. Only then merge pull request #86 (staging → production). First production
+   boot runs migration 0005 (now collision-guarded).
+5. User wants to enable Cloudflare CSAM Scanning Tool (dashboard action; zone
+   is already orange-clouded — gib.show/staging.gib.show on Cloudflare
+   nameservers penny/pete, Railway origin behind it).
+6. User wants to migrate hosting off Railway to own servers — not started;
+   discuss target (Hetzner per existing skills/patterns, blue-green deploy).
+7. Leftover: local docker build validation task may still be running
+   (gap-audit-builder-test, started 12:06); kill or inspect when convenient.
+
+### Gotchas discovered
+- Railway deploy + CI integration-test were broken since April by base-image
+  drift, NOT by code — always check `gh api .../commits/<sha>/status` after
+  pushing staging; a green unit-test job does not mean deployed.
+- Cloudflare Browser Cache TTL (zone-level, 1 day) REWRITES max-age on
+  responses, masking origin cache-control as a version fingerprint; use
+  stale-while-revalidate presence (origin-controlled) or deployment statuses
+  to identify the running build.
+- 1Password authorizations are per-key: approving the commit-signing key does
+  not authorize the network SSH key (github_gibs_id_ed25519) — pushes can
+  fail right after commits succeed ("communication with agent failed").
+- bridge.home_address/foreign_address feed a case-sensitive keccak trigger;
+  insertBridge now canonicalizes (checksummed — deliberately different from
+  token lowercase; see provided-id.ts doc).
+- The warmer's cache key must stay byte-identical with the handler's — both
+  funnel through tokensByChainCacheKey; build/cache writes go only through
+  buildAndCacheTokensByChain.
+- The merged fix worktree (.claude/worktrees/agent-ae021b393a4fa9140) is safe
+  to remove.
+
 ## Session: April 12, 2026
 
 ### Completed
