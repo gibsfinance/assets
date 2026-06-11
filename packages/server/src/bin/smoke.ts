@@ -209,7 +209,37 @@ const main = async () => {
     }
   }
 
-  // 5. For each chain, hit /list/tokens and compare total to stats count.
+  // 5. OpenAPI definition + every GET x-example it documents.
+  // The docs page renders from this document and probes these exact URLs, so
+  // a broken example here means a broken "try it" card in the docs.
+  try {
+    const { data: spec, elapsed } = await fetchJson<{
+      openapi: string
+      paths: Record<string, Record<string, { 'x-example'?: string }>>
+    }>(`${args.url}/openapi.json`, args.timeoutMs)
+    console.log(`  /openapi.json        ${pad(Math.round(elapsed) + 'ms', 10)} openapi=${spec.openapi}`)
+    const examples = Object.values(spec.paths)
+      .flatMap((methods) => (methods.get?.['x-example'] ? [methods.get['x-example']] : []))
+      .filter((example) => example !== '/openapi.json')
+    for (const example of examples) {
+      try {
+        const { status, elapsed } = await fetchStatus(`${args.url}${example}`, args.timeoutMs)
+        const ok = status === 200 || status === 204
+        console.log(
+          `  ${pad(`example ${example.split('?')[0]}`, 20)} ${pad(Math.round(elapsed) + 'ms', 10)} ${ok ? '✓' : `❌ status ${status}`}`,
+        )
+        if (!ok) failures++
+      } catch (err) {
+        console.error(`  ${pad(`example ${example.split('?')[0]}`, 20)} FAIL  ${(err as Error).message}`)
+        failures++
+      }
+    }
+  } catch (err) {
+    console.error(`  /openapi.json        FAIL  ${(err as Error).message}`)
+    failures++
+  }
+
+  // 6. For each chain, hit /list/tokens and compare total to stats count.
   // The list body is served from a stale-while-revalidate cache (up to 6h fresh)
   // while /stats refreshes hourly, so on actively-collected chains the two
   // legitimately drift by a handful of tokens. Tiny drift warns; real divergence
