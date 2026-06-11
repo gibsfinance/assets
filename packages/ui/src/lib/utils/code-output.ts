@@ -4,6 +4,7 @@
  * Extracted from CodeOutput.tsx to enable testing without React rendering.
  */
 import type { StudioAppearance } from '../types'
+import { toChainIdentifier } from './chain-identifier'
 
 export function shadowToCSS(shadow: StudioAppearance['shadow']): string {
   switch (shadow) {
@@ -35,12 +36,13 @@ export function buildImageUrl(
   resolutionOrder: string[] | null,
   apiBase: string,
 ): string {
+  const chain = toChainIdentifier(chainId)
   if (resolutionOrder && resolutionOrder.length > 0) {
-    return `${apiBase}/image/fallback/${resolutionOrder.join(',')}/${chainId}/${address}`
+    return `${apiBase}/image/fallback/${resolutionOrder.join(',')}/${chain}/${address}`
   }
-  return `${apiBase}/image/${chainId}/${address}`
+  return `${apiBase}/image/${chain}/${address}`
 }
 
 export function buildNetworkUrl(chainId: string, apiBase: string): string {
-  return `${apiBase}/image/${chainId}`
+  return `${apiBase}/image/${toChainIdentifier(chainId)}`
 }

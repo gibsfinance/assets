@@ -4,6 +4,7 @@ import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
+import { toChainIdentifier } from '../utils/chain-identifier'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
@@ -35,16 +36,16 @@ const examples = [
     icon: 'fa-image',
     title: 'Token Images',
     description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
-    code: getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-    displayUrl: `/image/1/0x2260...`,
+    code: getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
+    displayUrl: `/image/eip155-1/0x2260...`,
   },
   {
     type: 'network-image',
     icon: 'fa-network-wired',
     title: 'Network Logos',
     description: 'Get chain/network logos and metadata. Perfect for network selectors.',
-    code: getApiUrl('/image/1'),
-    displayUrl: `/image/1`,
+    code: getApiUrl('/image/eip155-1'),
+    displayUrl: `/image/eip155-1`,
   },
   {
     type: 'token-list',
@@ -69,7 +70,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
           <Image
-            src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
             alt="WBTC Token"
             skeleton
             shape="circle"
@@ -87,7 +88,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
     return (
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
-          <Image src={getApiUrl('/image/1')} alt="Ethereum" size={48} skeleton lazy shape="circle" className="rounded-full" />
+          <Image src={getApiUrl('/image/eip155-1')} alt="Ethereum" size={48} skeleton lazy shape="circle" className="rounded-full" />
           <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
         </div>
         <CodeBlock code={displayUrl} />
@@ -101,7 +102,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
         <div className="flex flex-row items-center gap-3">
           <div className="flex -space-x-4">
             <Image
-              src={getApiUrl('/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+              src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
               alt="Token 1"
               skeleton
               shape="circle"
@@ -109,7 +110,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
               className="rounded-full border-2 border-surface-2"
             />
             <Image
-              src={getApiUrl('/image/1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
+              src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
               alt="Token 2"
               skeleton
               shape="circle"
@@ -117,7 +118,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
               className="rounded-full border-2 border-surface-2"
             />
             <Image
-              src={getApiUrl('/image/1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
+              src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
               alt="Token 3"
               skeleton
               shape="circle"
@@ -380,7 +381,7 @@ export default function Home() {
                       <div className="glass-card relative flex h-[160px] flex-col items-center justify-between p-3 transition-all duration-200 hover:border-accent-500/40 hover:shadow-glow-green-subtle">
                         <div className="flex flex-1 flex-col items-center">
                           <Image
-                            src={getApiUrl(`/image/${network.chainId}`)}
+                            src={getApiUrl(`/image/${toChainIdentifier(network.chainId)}`)}
                             alt={network.name}
                             size={40}
                             skeleton

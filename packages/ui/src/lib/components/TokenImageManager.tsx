@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import Image from './Image'
 import { getApiUrl } from '../utils'
 import { detectImageFormat, buildImageUrlWithSize } from '../utils/formatting'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface TokenImageManagerProps {
   chainId: number
@@ -21,7 +22,7 @@ export default function TokenImageManager({
   onClose,
 }: TokenImageManagerProps) {
   const [previewUri, setPreviewUri] = useState(
-    currentImageUri || getApiUrl(`/image/${chainId}/${address}`),
+    currentImageUri || getApiUrl(`/image/${toChainIdentifier(chainId)}/${address}`),
   )
   const [customUrl, setCustomUrl] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -49,7 +50,7 @@ export default function TokenImageManager({
   }, [customUrl, onImageChange])
 
   const handleReset = useCallback(() => {
-    const defaultUri = getApiUrl(`/image/${chainId}/${address}`)
+    const defaultUri = getApiUrl(`/image/${toChainIdentifier(chainId)}/${address}`)
     setPreviewUri(defaultUri)
     onImageChange(defaultUri)
   }, [chainId, address, onImageChange])

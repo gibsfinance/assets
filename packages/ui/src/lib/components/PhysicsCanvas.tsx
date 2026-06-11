@@ -5,6 +5,7 @@ import { stepPhysics, createIcon } from '../physics/engine'
 import { computeEdgeOpacity } from '../physics/forces'
 import type { PhysicsIcon, PhysicsConfig, Vector2D } from '../physics/types'
 import { DEFAULT_CONFIG } from '../physics/types'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 const ICON_COUNT = 70
 const MONSTER_CHANCE = 0.04
@@ -31,7 +32,7 @@ export default function PhysicsCanvas() {
 
       const networkSources = metrics.networks.supported
         .slice(0, 25)
-        .map((net) => getApiUrl(`/image/${net.chainId}`))
+        .map((net) => getApiUrl(`/image/${toChainIdentifier(net.chainId)}`))
 
       return [...networkSources, ...tokenSources]
     },
@@ -53,7 +54,7 @@ export default function PhysicsCanvas() {
             const data = (await listResponse.json()) as { tokens: Array<{ chainId: number; address: string }> }
             const tokens = data.tokens ?? []
             for (const token of tokens.slice(0, 10)) {
-              tokenAddresses.push(getApiUrl(`/image/${token.chainId}/${token.address}`))
+              tokenAddresses.push(getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`))
             }
           } catch {
             // skip failed provider

@@ -18,6 +18,7 @@ import ListResolutionOrder from './ListResolutionOrder'
 import CodeOutput from './CodeOutput'
 import Image from './Image'
 import NumberStepper from './NumberStepper'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 // ---------------------------------------------------------------------------
 // Shadow + shape helpers
@@ -504,11 +505,11 @@ function InfiniteCanvas() {
         `/image/fallback/${resolutionOrder.join(',')}/${selectedChainId}/${selectedToken.address}`,
       )
     }
-    return getApiUrl(`/image/${selectedChainId}/${selectedToken.address}`)
+    return getApiUrl(`/image/${toChainIdentifier(selectedChainId)}/${selectedToken.address}`)
   }, [selectedToken, selectedChainId, resolutionOrder])
 
   const networkUrl = useMemo(
-    () => selectedChainId ? getApiUrl(`/image/${selectedChainId}`) : '',
+    () => selectedChainId ? getApiUrl(`/image/${toChainIdentifier(selectedChainId)}`) : '',
     [selectedChainId],
   )
 

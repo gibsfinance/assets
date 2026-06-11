@@ -6,6 +6,7 @@ import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import Image from './Image'
 import type { Token } from '../types'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface TokenDetailModalProps {
   token: Token | null
@@ -58,7 +59,7 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
 export default function TokenDetailModal({ token, onClose }: TokenDetailModalProps) {
   const { selectToken } = useStudio()
 
-  const imageUrl = token ? getApiUrl(`/image/${token.chainId}/${token.address}`) : null
+  const imageUrl = token ? getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`) : null
   const { metadata, isLoading } = useImageMetadata(imageUrl)
 
   const handleConfigureInStudio = useCallback(() => {
@@ -158,7 +159,7 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
                 </p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 truncate rounded-lg bg-white dark:bg-surface-base px-3 py-2 font-mono text-xs text-accent-500 border border-border-light dark:border-border-dark">
-                    {`/image/${token.chainId}/${token.address}`}
+                    {`/image/${toChainIdentifier(token.chainId)}/${token.address}`}
                   </code>
                   <CopyButton text={imageUrl!} />
                 </div>

@@ -30,19 +30,19 @@ const TOKEN_ENDPOINTS = [
     method: 'GET',
     path: '/list/tokens/{chainId}',
     description: 'All deduplicated tokens for a chain, ranked by list priority. Supports ?limit= (default 50k, max 100k), ?extensions=bridgeInfo, ?decimals=',
-    example: getApiUrl('/list/tokens/369'),
+    example: getApiUrl('/list/tokens/eip155-369'),
   },
   {
     method: 'GET',
     path: '/list/tokens/{chainId}?limit={limit}',
     description: 'Limit the number of tokens returned',
-    example: getApiUrl('/list/tokens/369?limit=20'),
+    example: getApiUrl('/list/tokens/eip155-369?limit=20'),
   },
   {
     method: 'GET',
     path: '/list/tokens/{chainId}?decimals={decimals}',
     description: 'Filter tokens by decimals (can be comma-separated)',
-    example: getApiUrl('/list/tokens/369?decimals=18'),
+    example: getApiUrl('/list/tokens/eip155-369?decimals=18'),
   },
   {
     method: 'GET',
@@ -60,7 +60,7 @@ const TOKEN_ENDPOINTS = [
     method: 'GET',
     path: '/list/{providerKey}/{listKey}?chainId={chainId}',
     description: 'Filter a token list to a specific chain',
-    example: getApiUrl('/list/pulsex/extended?chainId=369'),
+    example: getApiUrl('/list/pulsex/extended?chainId=eip155-369'),
   },
   {
     method: 'GET',
@@ -87,61 +87,61 @@ const IMAGE_ENDPOINTS = [
     method: 'GET',
     path: '/image/{chainId}',
     description: 'Network/chain icon. Supports ?only=vector|raster to filter source format',
-    example: getApiUrl('/image/369'),
+    example: getApiUrl('/image/eip155-369'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}',
     description: 'Token image — priority-ordered by list ranking. Supports ?as=, ?only=, ?mode=, ?providerKey=, ?listKey=, ?w=, ?h=',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}.{ext}',
     description: 'Convert to a specific output format: .png, .webp, .jpg, .avif. SVG source required for .svg output',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?only={type}',
     description: 'Filter source by type: vector (SVG/XML only) or raster (PNG/JPG/WebP/GIF only)',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?as={format}',
     description: 'Convert output to a specific format: webp, png, jpg, avif',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?w={width}&h={height}',
     description: 'Resize image on the fly (1-2048px). Combine with ?as= for output conversion',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?mode=link',
     description: 'Redirect to the original image URI instead of serving content',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?mode=link'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?mode=link'),
   },
   {
     method: 'GET',
     path: '/image/{chainId}/{address}?providerKey={key}&listKey={key}',
     description: 'Filter to images from specific providers or lists',
-    example: getApiUrl('/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?providerKey=pulsex'),
+    example: getApiUrl('/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?providerKey=pulsex'),
   },
   {
     method: 'GET',
     path: '/image/{order}/{chainId}/{address}',
     description: 'Token image with explicit provider ordering',
-    example: getApiUrl('/image/default/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+    example: getApiUrl('/image/default/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
     path: '/image/fallback/{order}/{chainId}/{address}',
     description: 'Tries ordered lookup first, falls back to unordered',
-    example: getApiUrl('/image/fallback/default/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+    example: getApiUrl('/image/fallback/default/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
@@ -152,7 +152,7 @@ const IMAGE_ENDPOINTS = [
     method: 'GET',
     path: '/image/?i={chainId}/{address}',
     description: 'Batch lookup — try multiple tokens, return first match. Accepts repeated i= params',
-    example: getApiUrl('/image/?i=369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
+    example: getApiUrl('/image/?i=eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'),
   },
   {
     method: 'GET',
@@ -202,36 +202,36 @@ const CODE_EXAMPLES: Record<string, { code: string; lang: 'html' | 'js' | 'conso
   html: {
     lang: 'html',
     code: `<!-- Token image — WPLS on PulseChain (original format) -->
-<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27" alt="WPLS" />
+<img src="${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27" alt="WPLS" />
 
 <!-- Same image converted to WebP (smaller file) -->
-<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp" alt="WPLS" />
+<img src="${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp" alt="WPLS" />
 
 <!-- Resized to 64x64 as WebP -->
-<img src="${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp" alt="WPLS" />
+<img src="${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp" alt="WPLS" />
 
 <!-- Network icon — PulseChain -->
-<img src="${apiBase}/image/369" alt="PulseChain" />`,
+<img src="${apiBase}/image/eip155-369" alt="PulseChain" />`,
   },
   javascript: {
     lang: 'js',
     code: `// Get all tokens for PulseChain, ranked by list priority
-const res = await fetch('${apiBase}/list/tokens/369?limit=100')
+const res = await fetch('${apiBase}/list/tokens/eip155-369?limit=100')
 const { tokens, total } = await res.json()
 // tokens[0] = highest priority token (from PulseX list)
 // each token has .sources[] showing which lists include it
 
 // Get a token image as WebP
-const img = await fetch('${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp')
+const img = await fetch('${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp')
 const blob = await img.blob()
 const url = URL.createObjectURL(blob)
 
 // Filter to only vector (SVG) sources
-const svg = await fetch('${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector')
+const svg = await fetch('${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector')
 // 404 if no SVG exists, 200 with SVG content if it does
 
 // Get tokens from a specific provider list
-const list = await fetch('${apiBase}/list/pulsex/extended?chainId=369')
+const list = await fetch('${apiBase}/list/pulsex/extended?chainId=eip155-369')
 const data = await list.json()
 console.log(data.tokens.length, 'tokens')`,
   },
@@ -266,7 +266,7 @@ function useChainTokens(chainId) {
 }
 
 function App() {
-  const tokens = useChainTokens(369)
+  const tokens = useChainTokens('eip155-369')
   return (
     <ul>
       {tokens.map(t => (
@@ -282,25 +282,25 @@ function App() {
   curl: {
     lang: 'console',
     code: `# Token image — original format
-curl -o wpls.png "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27"
+curl -o wpls.png "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27"
 
 # Same image converted to WebP
-curl -o wpls.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp"
+curl -o wpls.webp "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp"
 
 # Convert via query param
-curl -o wpls.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp"
+curl -o wpls.webp "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?as=webp"
 
 # Resize to 64x64 as WebP
-curl -o wpls-64.webp "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp"
+curl -o wpls-64.webp "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?w=64&h=64&as=webp"
 
 # Only vector sources (returns 404 if no SVG exists)
-curl "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector"
+curl "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?only=vector"
 
 # Redirect to original source URL
-curl -L "${apiBase}/image/369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?mode=link"
+curl -L "${apiBase}/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27?mode=link"
 
 # Ranked tokens for PulseChain
-curl "${apiBase}/list/tokens/369?limit=20" | jq '.tokens[:5][] | {symbol, sources}'
+curl "${apiBase}/list/tokens/eip155-369?limit=20" | jq '.tokens[:5][] | {symbol, sources}'
 
 # Per-chain token counts
 curl "${apiBase}/stats" | jq '.[:5]'`,

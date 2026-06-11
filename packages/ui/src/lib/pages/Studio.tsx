@@ -11,14 +11,18 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useStudio } from '../contexts/StudioContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
+import { toChainIdentifier, fromChainIdentifier } from '../utils/chain-identifier'
 import type { Token } from '../types'
 
 /**
  * Studio page — URL hash params drive navigational state:
- *   ?chain=1           — browsing Ethereum
- *   ?chain=1&token=0x  — token selected for configurator
- *   ?editor=new        — list editor creation menu
- *   ?editor=<listId>   — editing a specific list
+ *   ?chain=eip155-1           — browsing Ethereum
+ *   ?chain=eip155-1&token=0x  — token selected for configurator
+ *   ?editor=new               — list editor creation menu
+ *   ?editor=<listId>          — editing a specific list
+ *
+ * The chain param is written in prefixed identifier form; bare numeric values
+ * from old URLs are still accepted (normalized on read).
  *
  * Appearance/badge/code preferences stay in localStorage (via StudioContext).
  */
@@ -34,7 +38,9 @@ export default function Studio() {
   // Push URL values into context so child components can read them.
   // No bidirectional sync — one direction only: URL → context.
   // ---------------------------------------------------------------------------
-  const urlChain = searchParams.get('chain') ?? null
+  // Context holds the bare numeric form — normalize whichever form the URL carries
+  const rawUrlChain = searchParams.get('chain')
+  const urlChain = rawUrlChain ? fromChainIdentifier(rawUrlChain) : null
   const urlEditor = searchParams.get('editor') ?? null
 
   // URL → context: keep context in sync with URL (context is a read cache)
@@ -54,7 +60,7 @@ export default function Studio() {
   const urlSelectChain = useCallback((chainId: string | null) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      if (chainId) next.set('chain', chainId)
+      if (chainId) next.set('chain', toChainIdentifier(chainId))
       else { next.delete('chain'); next.delete('token') }
       return next
     }, { replace: true })
@@ -64,7 +70,7 @@ export default function Studio() {
     selectToken(token) // update context immediately for configurator
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      next.set('chain', String(token.chainId))
+      next.set('chain', toChainIdentifier(token.chainId))
       next.set('token', token.address)
       return next
     }, { replace: true })
@@ -180,7 +186,7 @@ export default function Studio() {
               <div className="flex items-center gap-2">
                 {selectedToken.hasIcon && (
                   <Image
-                    src={getApiUrl(`/image/${selectedToken.chainId}/${selectedToken.address}`)}
+                    src={getApiUrl(`/image/${toChainIdentifier(selectedToken.chainId)}/${selectedToken.address}`)}
                     alt={selectedToken.symbol}
                     size={20}
                     skeleton

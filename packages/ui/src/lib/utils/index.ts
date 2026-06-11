@@ -1,4 +1,5 @@
 import { root } from '../config'
+import { toChainIdentifier } from './chain-identifier'
 
 let apiBase: string | null = null
 
@@ -17,7 +18,7 @@ export function getApiUrl(path: string): string {
 export async function GET(params: Record<string, string>) {
   const chainId = params.chainId
   try {
-    const apiUrl = getApiUrl(`/list/default${chainId ? `?chainId=${chainId}` : ''}`)
+    const apiUrl = getApiUrl(`/list/default${chainId ? `?chainId=${toChainIdentifier(chainId)}` : ''}`)
     const response = await fetch(apiUrl)
     if (!response.ok) throw new Error(`API request failed: ${response.status}`)
     return await response.json()
