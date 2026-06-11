@@ -33,3 +33,15 @@ export function fromChainIdentifier(input: string): string {
   if (dashIndex === -1) return input
   return input.slice(dashIndex + 1)
 }
+
+/**
+ * Rewrite an /image/… path so its chain segment carries the prefixed
+ * identifier: /image/1/0xabc → /image/eip155-1/0xabc, /image/369 →
+ * /image/eip155-369. Non-image paths pass through untouched.
+ */
+export function prefixImagePath(path: string): string {
+  const match = path.match(/^\/image\/([^/]+)(\/.*)?$/)
+  if (!match) return path
+  const [, chain, rest] = match
+  return `/image/${toChainIdentifier(chain)}${rest ?? ''}`
+}

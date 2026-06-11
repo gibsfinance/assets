@@ -4,7 +4,7 @@
  * entries and produce copyable URLs the docs don't match.
  */
 import { describe, it, expect } from 'vitest'
-import { toChainIdentifier, fromChainIdentifier } from './chain-identifier'
+import { toChainIdentifier, fromChainIdentifier, prefixImagePath } from './chain-identifier'
 
 describe('toChainIdentifier', () => {
   it('prefixes bare EVM chain ids', () => {
@@ -36,5 +36,20 @@ describe('fromChainIdentifier', () => {
 
   it('round-trips with toChainIdentifier', () => {
     expect(fromChainIdentifier(toChainIdentifier('943'))).toBe('943')
+  })
+})
+
+describe('prefixImagePath', () => {
+  it('prefixes the chain segment of a token image path', () => {
+    expect(prefixImagePath('/image/1/0xabc')).toBe('/image/eip155-1/0xabc')
+  })
+
+  it('prefixes a network-only image path', () => {
+    expect(prefixImagePath('/image/369')).toBe('/image/eip155-369')
+  })
+
+  it('leaves already-prefixed and non-image paths untouched', () => {
+    expect(prefixImagePath('/image/eip155-1/0xabc')).toBe('/image/eip155-1/0xabc')
+    expect(prefixImagePath('/list/tokens/369')).toBe('/list/tokens/369')
   })
 })
