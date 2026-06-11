@@ -198,7 +198,7 @@ class InternetMoneyCollector extends BaseCollector {
             address: token.address,
           },
         })
-        const address = viem.getAddress(token.address)
+        const address = db.normalizeProvidedId(token.address as viem.Hex)
         const chain = networkToChain(network)
         const networkId = utils.chainIdToNetworkId(chain.id)
 

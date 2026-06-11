@@ -64,7 +64,7 @@ class GibsCollector extends BaseCollector {
         symbol: 'V4PLS',
         decimals: 18,
         networkId: network.networkId,
-        providedId: '0x70499adEBB11Efd915E3b69E700c331778628707',
+        providedId: '0x70499adebb11efd915e3b69e700c331778628707',
       },
     })
   }

@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['src/**/*.browser.test.{ts,tsx}', 'node_modules/**'],
     environment: 'jsdom',
     coverage: {
       exclude: ['src/lib/networks.json'],

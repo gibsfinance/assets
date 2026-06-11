@@ -8,6 +8,10 @@ RUN corepack enable && \
 
 WORKDIR /usr/src/app
 
+# Bundled Chrome can't run on alpine/musl (collectors use BROWSER_WS_ENDPOINT instead),
+# and the download step breaks the production-prune rebuild — skip it entirely.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 # Copy dependency files and submodule setup
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
 COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./

@@ -126,7 +126,7 @@ const collectTokens = async (
   section: TerminalSectionProxy,
   signal: AbortSignal,
 ) => {
-  const knownAddresses = new Set(knownList.map((t) => getAddress(t.providedId)))
+  const knownAddresses = new Set(knownList.map((t) => t.providedId.toLowerCase()))
   const relevantData: TokenInfo[] = []
   let cursor: string | null = null
 
@@ -138,7 +138,7 @@ const collectTokens = async (
 
     let hitKnown = false
     for (const token of response.tokens) {
-      if (knownAddresses.has(getAddress(token.address))) {
+      if (knownAddresses.has(token.address.toLowerCase())) {
         hitKnown = true
         break
       }
@@ -149,7 +149,7 @@ const collectTokens = async (
     cursor = response.nextCursor
   }
 
-  return _.uniqBy(relevantData, (t) => getAddress(t.address))
+  return _.uniqBy(relevantData, (t) => t.address.toLowerCase())
 }
 
 class PumptiresCollector extends BaseCollector {

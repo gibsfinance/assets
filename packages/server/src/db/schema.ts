@@ -135,6 +135,7 @@ export const token = pgTable(
     index().using('btree', table.symbol.asc().nullsLast().op('text_ops')),
     index('token_tokenid_index').using('btree', table.tokenId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
+    unique('token_network_provided_unique').on(table.networkId, table.providedId),
     foreignKey({
       columns: [table.networkId],
       foreignColumns: [network.networkId],

@@ -33,23 +33,61 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
       24 * 60 * 60 * 1000,
     )
     pruneTimer.unref()
-    // Pre-warm stats cache so first request is instant
-    getStats()
+    // Warmup runs in the background. /health stays 503 until it completes so the
+    // load balancer doesn't route traffic until tokensByChain is cached. A hung
+    // warm query must not hold /health at 503 forever, so readiness is bounded:
+    // setReady() flips by the deadline even if the warm is still running, and the
+    // warm continues in the background.
+    const readinessDeadlineMs = 120_000
+    const warmup = getStats()
       .then((stats) => {
         log('stats cache warmed')
         return warmTokensByChainCache(stats)
       })
       .then(() => log('tokensByChain cache warmed for top chains'))
-      .catch(() => {})
-    setReady()
-    log('server ready')
+      .catch((err: unknown) => log('warmup failed: %o', err))
+    let readinessTimer: NodeJS.Timeout | undefined
+    const deadline = new Promise<'timeout'>((resolve) => {
+      readinessTimer = setTimeout(() => resolve('timeout'), readinessDeadlineMs)
+      readinessTimer.unref()
+    })
+    Promise.race([warmup, deadline]).then((outcome) => {
+      clearTimeout(readinessTimer)
+      if (outcome === 'timeout') {
+        log(
+          'readiness deadline (%dms) reached before warmup completed; warmup continues in background',
+          readinessDeadlineMs,
+        )
+      }
+      setReady()
+      log('server ready')
+    })
+    // Keep the top-N chain cache warm — 12h staleness threshold inside. Without this,
+    // a quiet 24h on any top chain drops the row from cache and the next user pays the
+    // full cold-build cost (~19s for ETH). The 6h interval is half the staleness
+    // threshold: rows go stale at 12h, get rebuilt within 6h of that, and never reach
+    // the 24h hard expiry — checking hourly just re-ran the stats query 11 times per
+    // rebuild for nothing (its cache TTL is 1h, so every tick recomputed it).
+    const warmTimer = setInterval(
+      async () => {
+        try {
+          const stats = await getStats()
+          await warmTokensByChainCache(stats)
+          log('periodic tokensByChain warm complete')
+        } catch (err) {
+          log('periodic warm failed: %o', err)
+        }
+      },
+      6 * 60 * 60 * 1000,
+    )
+    warmTimer.unref()
     // Wait for the server to close before running cleanup
     return new Promise<void>((resolve, reject) => {
       app.once('close', resolve).once('error', reject)
     })
   })
   .then(cleanup)
-  .catch((err) => {
+  .catch((err: unknown) => {
     console.error(err)
     process.exit(1)
   })

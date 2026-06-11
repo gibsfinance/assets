@@ -50,6 +50,26 @@ jobs:
       - run: yarn install --immutable
       - run: node --import tsx --test packages/server/test/sync-order.test.ts packages/server/test/db-batch.test.ts
 
+  browser-test:
+    runs-on: ubuntu-latest
+    # No `playwright install` at all: the browser-binary CDN downloads hang on
+    # hosted runners (observed twice — the first artifact downloads in ~40s, then a
+    # follow-up download stalls silently until the job times out). The runner image
+    # ships Google Chrome preinstalled; PLAYWRIGHT_CHROME_CHANNEL routes the
+    # playwright provider to it (see packages/ui/vitest.browser.config.ts).
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_CHROME_CHANNEL: chrome
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn workspace ui run test:browser
+
   integration-test:
     runs-on: ubuntu-latest
     steps:

@@ -341,7 +341,7 @@ async function processChainTokens({
       const tokenPromises = routeScanResponse.items.map((tokenItem, index) => {
         if (signal.aborted || totalProcessed + index >= maxTokens) return Promise.resolve(false)
 
-        const address = tokenItem.address as Address
+        const address = tokenItem.address.toLowerCase() as Address
         const chainTokenId = utils.counterId.token([chain.id, address])
 
         const task = section.task(`token-${chainKey}-${address.toLowerCase()}`, {
