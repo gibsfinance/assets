@@ -40,11 +40,6 @@ export default defineConfig({
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
-      },
-    },
     target: 'esnext',
   },
   resolve: {
