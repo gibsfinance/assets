@@ -38,6 +38,11 @@ VERIFIED ON STAGING (all green):
   "Couldn't find a script" — root yarn workspace invocation is broken
   for this script name, cd works.
 
+FINAL STATE: verification chore commit 6ad003d7 pushed
+(13af98ba..6ad003d7); working tree clean apart from this trailing
+note, which intentionally rides into the next session's checkpoint
+commit — committing it now would just trigger another checkpoint loop.
+
 OPENAPI ROUND COMPLETE. The definition is the single source of truth:
 edit packages/server/src/server/openapi.ts → docs page + table of
 contents reshape themselves; smoke probes every example on every run.
