@@ -114,19 +114,27 @@ export const collect =
 
       if (signal.aborted) return
 
-      const blacked = new Set<string>([...blacklist.values()].map((a) => a.toLowerCase()))
+      // Canonicalize with the same function applied to token.address below — a plain
+      // .toLowerCase() here would miss non-EVM blacklist entries, whose addresses
+      // pass through normalizeProvidedId with their original casing intact.
+      const blacked = new Set<string>([...blacklist.values()].map((a) => db.normalizeProvidedId(a)))
       if (!tokenList.tokens) {
         failureLog('%o %o', tokenListUrl, tokenList)
         return
       }
-      tokenList.tokens.forEach((token) => {
-        token.address = token.address.toLowerCase() as viem.Hex
-        if (blacked.has(token.address)) {
-          token.logoURI = ''
-        }
-        if (rewriteLogoURI && token.logoURI) {
-          token.logoURI = rewriteLogoURI(token.logoURI)
-        }
+      // tokenList is parsed fresh per call (cachedJSON re-parses the stored
+      // string), but keep the transformation pure anyway: build new entries
+      // rather than editing the parse in place. normalizeProvidedId lowercases
+      // only EVM addresses — user-submitted lists may carry case-sensitive
+      // non-EVM (base58) addresses, which pass through unchanged.
+      const normalizedTokens = tokenList.tokens.map((token) => {
+        const address = db.normalizeProvidedId(token.address)
+        const logoURI = blacked.has(address)
+          ? ''
+          : rewriteLogoURI && token.logoURI
+            ? rewriteLogoURI(token.logoURI)
+            : token.logoURI
+        return { ...token, address, logoURI }
       })
       const kv: KV = {}
       if (blacked.size) {
@@ -144,14 +152,14 @@ export const collect =
       }
       row.createCounter(terminalCounterTypes.NETWORK)
       const extras = await Promise.all(
-        extra.map(async (item) => {
+        extra.map(async (configItem) => {
           if (signal.aborted) {
             return
           }
-          item.address = item.address.toLowerCase() as viem.Hex
-          if (blacked.has(item.address)) {
-            item.logoURI = ''
-          }
+          // configItem is module-level collector config shared across collect
+          // runs — never mutate it. Normalize into a local copy instead.
+          const address = db.normalizeProvidedId(configItem.address)
+          const item = { ...configItem, address, logoURI: blacked.has(address) ? '' : configItem.logoURI }
           try {
             const chain = utils.findChain(item.network.id) as viem.Chain
             const client = utils.chainToPublicClient(chain)
@@ -212,16 +220,16 @@ export const collect =
       if (signal.aborted) return
 
       const validExtras = _.compact(extras)
-      tokenList.tokens = _.uniqBy([...validExtras, ...tokenList.tokens], 'address')
+      const mergedTokens = _.uniqBy([...validExtras, ...normalizedTokens], 'address')
       row.createCounter(terminalCounterTypes.TOKEN)
       row.incrementTotal(
         terminalCounterTypes.TOKEN,
-        new Set(tokenList.tokens.map((token) => utils.counterId.token([token.chainId, token.address]))),
+        new Set(mergedTokens.map((token) => utils.counterId.token([token.chainId, token.address]))),
       )
       const result = await inmemoryTokenlist.collect({
         providerKey,
         listKey,
-        tokenList,
+        tokenList: { ...tokenList, tokens: mergedTokens },
         isDefault,
         row,
         signal,

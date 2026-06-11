@@ -4,7 +4,6 @@ import * as types from '../types'
 import * as utils from '../utils'
 import type { List, Network, Provider } from '../db/schema-types'
 import { failureLog } from '@gibs/utils'
-import { isAddress } from 'viem'
 
 type CollectInput = {
   providerKey: string
@@ -157,10 +156,10 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
       utils.mapToSet.token(tokenList.tokens, (t) => [t.chainId, t.address]),
     )
     for (const [i, entry] of tokenList.tokens.entries()) {
-      if (isAddress(entry.address)) {
-        entry.address = entry.address.toLowerCase() as typeof entry.address
-      }
-      const chainTokenId = utils.counterId.token([entry.chainId, entry.address])
+      // Callers may pass module-level token arrays shared across collect runs —
+      // never mutate the entries; normalize into locals instead.
+      const address = db.normalizeProvidedId(entry.address)
+      const chainTokenId = utils.counterId.token([entry.chainId, address])
       if (signal.aborted) return
       const network = networks.get(entry.chainId)!
       if (!network) {
@@ -174,16 +173,14 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
             symbol: entry.symbol,
             decimals: entry.decimals,
             networkId: network.networkId,
-            providedId: entry.address,
+            providedId: address,
           }
 
           // Skip blacklisted images
-          if (blacklist.has(entry.logoURI as string)) {
-            entry.logoURI = ''
-          }
+          const logoURI = blacklist.has(entry.logoURI as string) ? '' : entry.logoURI
 
           // Fix malformed URLs and store token image
-          const path = entry.logoURI?.replace('hhttps://', 'https://') || null
+          const path = logoURI?.replace('hhttps://', 'https://') || null
           await db.fetchImageAndStoreForToken(
             {
               listId: list.listId,

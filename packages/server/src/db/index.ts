@@ -38,8 +38,12 @@ import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
-import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL } from 'drizzle-orm'
+import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
+import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
+
+// Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
+export { normalizeProvidedId }
 
 export const ids = {
   provider: (key: string) => viem.keccak256(viem.toBytes(key)).slice(2),
@@ -314,15 +318,6 @@ export const getNetworks = (tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   return db.select().from(s.network)
 }
-
-/**
- * Lowercase an EVM address to a canonical form. Non-EVM providedIds (Solana base58,
- * synthetic hashes, etc.) pass through unchanged. The DB column is `citext` so this
- * isn't required for correctness, but storing a consistent form prevents duplicate
- * rows with different casing from accumulating when collectors disagree.
- */
-const normalizeProvidedId = (providedId: string): string =>
-  viem.isAddress(providedId) ? providedId.toLowerCase() : providedId
 
 export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
@@ -846,12 +841,14 @@ export const fetchImageAndStoreForToken = async (
   if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
+      // Deliberate: a failed image fetch records the miss but still stores the token
+      // (image-less) below — list endpoints filter imageless tokens server-side, and
+      // a later collection can attach the image without re-discovering the token.
       await writeMissing({
         providerKey,
         originalUri,
         listId,
       })
-      // return null
     } else {
       img = await insertImage(
         {
@@ -1316,32 +1313,28 @@ export const applyOrder = async (
 }
 
 /**
+ * SQL twin of the JS `directUri()` truthiness check in utils: a usable image is
+ * link-mode with a non-empty uri, or any other mode with a non-empty ext. Every SQL
+ * site must stay in lockstep with directUri() — empty strings are falsy in JS and
+ * make `.filter(e => e.logoURI)` drop the row — or stats counts drift from list
+ * totals. Build the predicate only here.
+ */
+const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | AnyColumn): SQL =>
+  dsql`((${mode} = 'link' AND COALESCE(${uri}, '') <> '') OR (${mode} <> 'link' AND COALESCE(${ext}, '') <> ''))`
+
+/**
  * High-performance ranked token query for /list/tokens/:chainId.
  *
- * Uses a LATERAL join instead of a dense_rank() window function.
- * For each token on the chain, the LATERAL subquery does a tiny correlated
- * index scan on list_token(token_id) — sorting only 1–10 rows per token —
- * rather than materializing every list_token row for the chain and sorting them
- * all at once. For Ethereum mainnet this is ~10–50x faster.
+ * Uses DISTINCT ON (token_id) over a flat join, with list rankings pre-aggregated
+ * in a materialized CTE (one row per list), instead of a dense_rank() window
+ * function that materialized and globally sorted every list_token row for the
+ * chain. For Ethereum mainnet this is ~10–50x faster.
  *
  * Returns one row per token (the best-ranked list entry), in provider-ranking order.
+ * Concurrency dedup lives in the caller (buildAndCacheTokensByChain single-flights
+ * the whole build: this query, the sources query, and the JSON serialization).
  */
-const inflightRanked = new Map<string, Promise<Record<string, unknown>[]>>()
-
-export const getTokensByChainRanked = (
-  chainId: string,
-  listOrderId: viem.Hex,
-  _formatPreference?: string[][],
-): Promise<Record<string, unknown>[]> => {
-  const key = `${chainId}:${listOrderId}`
-  const existing = inflightRanked.get(key)
-  if (existing) return existing
-  const promise = getTokensByChainRankedQuery(chainId, listOrderId)
-  inflightRanked.set(key, promise)
-  return promise.finally(() => inflightRanked.delete(key))
-}
-
-const getTokensByChainRankedQuery = async (
+export const getTokensByChainRanked = async (
   chainId: string,
   listOrderId: viem.Hex,
 ): Promise<Record<string, unknown>[]> => {
@@ -1411,14 +1404,8 @@ const getTokensByChainRankedQuery = async (
       WHERE ${eq(s.network.chainId, chainId)}
       ORDER BY
         ${s.token.tokenId},
-        -- Prefer list_tokens whose image resolves via directUri(). Matches the stats
-        -- count semantics: empty uri/ext (present but empty string) are falsy in JS
-        -- and would be dropped by the downstream .filter(e => e.logoURI).
-        CASE
-          WHEN (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
-            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
-          THEN 0 ELSE 1
-        END ASC,
+        -- Prefer list_tokens whose image resolves via directUri() (see usableImageSql).
+        CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
         (lr.ranking / 1000) ASC,
         lr.major DESC, lr.minor DESC, lr.patch DESC,
         lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
@@ -1426,11 +1413,7 @@ const getTokensByChainRankedQuery = async (
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('sub."providerId"'))}
     ORDER BY
       (sub."listRanking" / 1000) ASC,
-      CASE
-        WHEN (sub.mode = 'link' AND COALESCE(sub.uri, '') <> '')
-          OR (sub.mode <> 'link' AND COALESCE(sub.ext, '') <> '')
-        THEN 0 ELSE 1
-      END ASC,
+      CASE WHEN ${usableImageSql(dsql.raw('sub.mode'), dsql.raw('sub.uri'), dsql.raw('sub.ext'))} THEN 0 ELSE 1 END ASC,
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
@@ -1441,7 +1424,7 @@ const getTokensByChainRankedQuery = async (
  * Lightweight sources query for /list/tokens/:chainId.
  * Returns one row per (token, provider, list) membership — used to populate
  * the `sources` field in token list responses without loading full token data.
- * Paired with getTokensByChainRanked() which handles token dedup via LATERAL join.
+ * Paired with getTokensByChainRanked() which handles token dedup via DISTINCT ON.
  */
 export const getTokenSourcesByChain = async (
   chainId: string,
@@ -1465,14 +1448,8 @@ export const getTokenSourcesByChain = async (
 }
 
 /**
- * Count distinct tokens per chain that have a usable image (matching directUri logic).
- * A token counts if it has at least one list_token entry where:
- *   - image.mode = 'link' AND image.uri is non-empty, OR
- *   - image.mode <> 'link' AND image.ext is non-empty
- * Mirrors the JS `directUri()` truthy-check: empty strings for uri/ext are falsy in
- * `imageHash && ext ? ...` (or the link-mode branch returning `uri`) and make
- * `.filter(e => e.logoURI)` drop the row, so SQL must drop them too or the count
- * drifts above the list total.
+ * Count distinct tokens per chain that have a usable image. A token counts if it has
+ * at least one list_token entry passing usableImageSql (the SQL twin of directUri()).
  * Dedup is by `provided_id` to match normalizeTokens' groupBy of
  * `${chainId}-${providedId.toLowerCase()}`.
  */
@@ -1487,10 +1464,7 @@ export const getTokenCountsByChain = async (): Promise<{ chainId: string; count:
         SELECT 1 FROM ${s.listToken}
         INNER JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
         WHERE ${eq(s.listToken.tokenId, s.token.tokenId)}
-          AND (
-            (${s.image.mode} = 'link' AND COALESCE(${s.image.uri}, '') <> '')
-            OR (${s.image.mode} <> 'link' AND COALESCE(${s.image.ext}, '') <> '')
-          )
+          AND ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)}
       )
     GROUP BY ${s.network.chainId}
     ORDER BY COUNT(DISTINCT ${s.token.providedId}) DESC
@@ -1569,7 +1543,14 @@ export const insertBridge = async (bridge: InsertableBridge, tx?: DrizzleTx) => 
   const db = tx ?? getDrizzle()
   // Knex InsertableBridge has block numbers as string; Drizzle schema uses bigint mode: 'number'.
   // The pg driver handles both at runtime — cast to satisfy Drizzle's type system during transition.
-  const values = { bridgeId: dsql`''`, ...bridge } as unknown as typeof s.bridge.$inferInsert
+  // Addresses are canonicalized here, at the funnel, so no caller can recreate the
+  // casing-duplication bug (see canonicalBridgeAddress for why checksummed, not lowercase).
+  const values = {
+    bridgeId: dsql`''`,
+    ...bridge,
+    homeAddress: canonicalBridgeAddress(bridge.homeAddress),
+    foreignAddress: canonicalBridgeAddress(bridge.foreignAddress),
+  } as unknown as typeof s.bridge.$inferInsert
   const [b] = await db
     .insert(s.bridge)
     .values(values)

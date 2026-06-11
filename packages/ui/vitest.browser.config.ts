@@ -10,9 +10,17 @@
  *
  * Requires Playwright's browser binaries — install once with:
  *   yarn playwright install chromium
+ *
+ * In CI set PLAYWRIGHT_CHROME_CHANNEL=chrome to use the runner's
+ * preinstalled system Chrome instead — Playwright's browser-binary CDN
+ * downloads hang on GitHub-hosted runners (observed: the first artifact
+ * completes, then a follow-up download stalls silently until the job
+ * timeout), and the system browser needs no download at all.
  */
 import { defineConfig } from 'vitest/config'
 import { playwright } from '@vitest/browser-playwright'
+
+const chromeChannel = process.env.PLAYWRIGHT_CHROME_CHANNEL
 
 export default defineConfig({
   optimizeDeps: {
@@ -22,7 +30,9 @@ export default defineConfig({
     include: ['src/**/*.browser.test.{ts,tsx}'],
     browser: {
       enabled: true,
-      provider: playwright(),
+      provider: playwright({
+        ...(chromeChannel ? { launchOptions: { channel: chromeChannel } } : {}),
+      }),
       headless: true,
       instances: [{ browser: 'chromium' }],
     },

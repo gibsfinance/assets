@@ -4,6 +4,9 @@ FROM node:24-alpine AS builder
 WORKDIR /usr/src/app
 
 ENV COREPACK_ENABLE_AUTO_PIN=0
+# Bundled Chrome can't run on alpine/musl (collectors use BROWSER_WS_ENDPOINT instead),
+# and the download step breaks the production-prune rebuild — skip it entirely.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json ./
 RUN corepack enable && corepack install
 

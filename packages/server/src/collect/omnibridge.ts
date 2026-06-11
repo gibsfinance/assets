@@ -77,14 +77,14 @@ class OmnibridgeCollector extends BaseCollector {
         networkId: chainIdToNetworkId(c.foreign.chain.id),
       })
 
-      // Also create bridge record during discover
+      // Also create bridge record during discover (insertBridge canonicalizes casing)
       await db.insertBridge({
         type: c.type ?? 'omnibridge',
         providerId: provider.providerId,
         homeNetworkId: chainIdToNetworkId(c.home.chain.id),
-        homeAddress: c.home.address.toLowerCase(),
+        homeAddress: c.home.address,
         foreignNetworkId: chainIdToNetworkId(c.foreign.chain.id),
-        foreignAddress: c.foreign.address.toLowerCase(),
+        foreignAddress: c.foreign.address,
       })
 
       manifest.push({
@@ -191,9 +191,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
           type: config.type ?? 'omnibridge',
           providerId: provider.providerId,
           homeNetworkId: chainIdToNetworkId(config.home.chain.id),
-          homeAddress: config.home.address.toLowerCase(),
+          homeAddress: config.home.address,
           foreignNetworkId: chainIdToNetworkId(config.foreign.chain.id),
-          foreignAddress: config.foreign.address.toLowerCase(),
+          foreignAddress: config.foreign.address,
         },
         tx,
       )

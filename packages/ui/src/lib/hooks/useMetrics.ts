@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ListDescription, Network, PlatformMetrics, Token } from '../types'
 import { getApiUrl } from '../utils'
+import { getNetworkName } from '../utils/network-name'
 
 // ---------------------------------------------------------------------------
 // Fetch functions (exported for testing)
@@ -98,7 +99,7 @@ export function useMetrics(): {
   }
 
   // Extract bare numeric reference from either "369" or "eip155-369"
-  const bare = (id: string) => id.includes('-') ? id.split('-').pop()! : id
+  const bare = (id: string) => (id.includes('-') ? id.split('-').pop()! : id)
 
   const evmNetworks = networks.filter((n) => n.type === 'evm')
 
@@ -114,7 +115,7 @@ export function useMetrics(): {
       const id = bare(n.chainId)
       return {
         chainId: Number(id),
-        name: `Chain ${id}`,
+        name: getNetworkName(id),
       }
     })
 

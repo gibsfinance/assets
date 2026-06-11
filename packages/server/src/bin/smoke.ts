@@ -1,6 +1,9 @@
 #!/usr/bin/env tsx
 /**
  * HTTP smoke tester for a running server (local, staging, or production).
+ * Covers health, stats ordering, stats-vs-list-total parity per chain, core
+ * endpoints (/networks, /list), and the image pipeline (format conversion +
+ * vector filtering against a known token).
  *
  * Usage:
  *   yarn smoke --url https://staging.gib.show
@@ -26,8 +29,11 @@ type Args = {
 const parseArgs = (argv: string[]): Args => {
   const args: Partial<Args> = { top: 10, timeoutMs: 30_000 }
   for (let i = 0; i < argv.length; i++) {
-    const [key, val] = argv[i].includes('=') ? argv[i].split('=', 2) : [argv[i], argv[i + 1]]
-    if (!argv[i].includes('=')) i++
+    // Split at the FIRST '=' only — String.split's limit truncates and would discard
+    // the remainder of values containing '=' (e.g. --url with a query string).
+    const eqIndex = argv[i].indexOf('=')
+    const [key, val] = eqIndex === -1 ? [argv[i], argv[i + 1]] : [argv[i].slice(0, eqIndex), argv[i].slice(eqIndex + 1)]
+    if (eqIndex === -1) i++
     switch (key) {
       case '--url':
         args.url = val?.replace(/\/$/, '')
@@ -76,6 +82,56 @@ const fetchJson = async <T>(url: string, timeoutMs: number): Promise<{ data: T; 
     clearTimeout(timer)
   }
 }
+
+const fetchStatus = async (
+  url: string,
+  timeoutMs: number,
+): Promise<{ status: number; contentType: string; elapsed: number }> => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const start = performance.now()
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    // Drain the body so keep-alive sockets are reusable
+    await res.arrayBuffer()
+    return {
+      status: res.status,
+      contentType: res.headers.get('content-type') ?? '',
+      elapsed: performance.now() - start,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// A token expected to exist with an image on any populated deployment — used to
+// exercise the image pipeline (default, format conversion, vector filter).
+const IMAGE_PROBE_CHAIN = '1'
+const IMAGE_PROBE_TOKEN = '0xdAC17F958D2ee523a2206206994597C13D831ec7' // USDT on Ethereum
+
+type EndpointCase = { label: string; path: string; expectContentType?: string }
+
+const endpointCases = (haveEthereum: boolean): EndpointCase[] => [
+  { label: '/networks', path: '/networks' },
+  { label: '/list', path: '/list' },
+  ...(haveEthereum
+    ? [
+        { label: 'image (default)', path: `/image/${IMAGE_PROBE_CHAIN}/${IMAGE_PROBE_TOKEN}` },
+        {
+          label: 'image (as=webp)',
+          path: `/image/${IMAGE_PROBE_CHAIN}/${IMAGE_PROBE_TOKEN}?as=webp`,
+          expectContentType: 'image/webp',
+        },
+        {
+          label: 'image (as=png)',
+          path: `/image/${IMAGE_PROBE_CHAIN}/${IMAGE_PROBE_TOKEN}?as=png`,
+          expectContentType: 'image/png',
+        },
+        { label: 'image (only=vector)', path: `/image/${IMAGE_PROBE_CHAIN}/${IMAGE_PROBE_TOKEN}?only=vector` },
+        { label: 'chain image', path: `/image/${IMAGE_PROBE_CHAIN}` },
+      ]
+    : []),
+]
 
 const pad = (s: string | number, n: number) => String(s).padEnd(n)
 
@@ -130,17 +186,50 @@ const main = async () => {
     toTest = stats.slice(0, args.top)
   }
 
-  // 4. For each chain, hit /list/tokens and compare total to stats count
+  // 4. Endpoint + image-pipeline checks (image probes need Ethereum data to exist)
   let failures = 0
+  const haveEthereum = stats.some((s) => s.chainId === IMAGE_PROBE_CHAIN)
+  if (!haveEthereum) {
+    console.log(`  image checks         SKIP (chain ${IMAGE_PROBE_CHAIN} not in /stats)`)
+  }
+  for (const c of endpointCases(haveEthereum)) {
+    try {
+      const { status, contentType, elapsed } = await fetchStatus(`${args.url}${c.path}`, args.timeoutMs)
+      const problems: string[] = []
+      if (status !== 200) problems.push(`status ${status}`)
+      if (c.expectContentType && !contentType.startsWith(c.expectContentType)) {
+        problems.push(`content-type "${contentType}" (expected ${c.expectContentType})`)
+      }
+      const tag = problems.length ? `❌ ${problems.join(', ')}` : '✓'
+      console.log(`  ${pad(c.label, 20)} ${pad(Math.round(elapsed) + 'ms', 10)} ${tag}`)
+      if (problems.length) failures++
+    } catch (err) {
+      console.error(`  ${pad(c.label, 20)} FAIL  ${(err as Error).message}`)
+      failures++
+    }
+  }
+
+  // 5. For each chain, hit /list/tokens and compare total to stats count.
+  // The list body is served from a stale-while-revalidate cache (up to 6h fresh)
+  // while /stats refreshes hourly, so on actively-collected chains the two
+  // legitimately drift by a handful of tokens. Tiny drift warns; real divergence
+  // (the predicate-mismatch bug class this check exists for) still fails.
+  const DRIFT_TOLERANCE = 0.005 // 0.5%
   for (const s of toTest) {
     const label = `/list/tokens/${s.chainId}`
     const url = args.limit ? `${args.url}${label}?limit=${args.limit}` : `${args.url}${label}`
     try {
       const { data, elapsed } = await fetchJson<TokenListResponse>(url, args.timeoutMs)
-      const mismatch = data.total !== s.count
-      const tag = mismatch ? `❌ MISMATCH (stats=${s.count} vs total=${data.total})` : '✓'
+      const drift = Math.abs(data.total - s.count)
+      const withinTolerance = drift <= Math.max(1, Math.round(s.count * DRIFT_TOLERANCE))
+      const tag =
+        drift === 0
+          ? '✓'
+          : withinTolerance
+            ? `⚠ drift ${drift} (stats=${s.count} vs total=${data.total} — cache windows, not a logic mismatch)`
+            : `❌ MISMATCH (stats=${s.count} vs total=${data.total})`
       console.log(`  ${pad(label, 20)} ${pad(Math.round(elapsed) + 'ms', 10)} total=${data.total}  ${tag}`)
-      if (mismatch) failures++
+      if (drift > 0 && !withinTolerance) failures++
     } catch (err) {
       console.error(`  ${pad(label, 20)} FAIL  ${(err as Error).message}`)
       failures++
@@ -152,7 +241,7 @@ const main = async () => {
     console.error(`❌ ${failures} check(s) failed`)
     process.exit(1)
   }
-  console.log(`✅ all ${toTest.length} chain(s) passed`)
+  console.log(`✅ all checks passed (${toTest.length} chain(s) + endpoint/image probes)`)
 }
 
 main().catch((err) => {

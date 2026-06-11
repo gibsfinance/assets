@@ -137,7 +137,7 @@ class Pls369Collector extends BaseCollector {
           }
           return [
             {
-              address: addr.toLowerCase() as Hex,
+              address: db.normalizeProvidedId(addr as Hex),
               path: p,
               fullPath: path.join(walkPath, p),
             },
