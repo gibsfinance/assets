@@ -17,9 +17,35 @@ lint + typecheck + build; the 1Password prompt appears only AFTER the
 hook finishes — don't assume signing is stuck until the hook output
 shows "All pre-commit checks passed!".
 
-NEXT (unchanged from Part 11): finish commits 2+3 → push staging →
-watch CI + Railway → yarn smoke (now includes the spec probes) →
-browser-check staging /#/docs.
+PUSHED: staging dad7f2e8..13af98ba (chore commit amended to fold the
+final progress note in before push).
+
+VERIFIED ON STAGING (all green):
+- CI run 27365388171 passed; Railway staging deploy of 13af98ba success.
+- yarn smoke --url https://staging.gib.show: ALL PASSED — endpoints,
+  image pipeline, /openapi.json (3.1.0), all 17 spec example probes
+  (including example /image/?i= — the batch prefixed-id fix confirmed
+  live), 10-chain token parity.
+- Headless Chromium dump of https://staging.gib.show/#/docs: all 7
+  table-of-contents sections (token-endpoints, image-endpoints,
+  networks-stats, submissions, service, features, code-examples),
+  22 endpoint cards = exactly the spec's 22 operations (19 GET +
+  3 POST), openapi.json header link present, zero loading/error
+  remnants. (Earlier "33 cards" local note overcounted — spec has 22
+  operations; DOM matches 1:1.)
+- Smoke gotcha: run from packages/server (yarn smoke); the root
+  workspace alias "yarn workspace server run smoke" reported
+  "Couldn't find a script" — root yarn workspace invocation is broken
+  for this script name, cd works.
+
+OPENAPI ROUND COMPLETE. The definition is the single source of truth:
+edit packages/server/src/server/openapi.ts → docs page + table of
+contents reshape themselves; smoke probes every example on every run.
+
+NEXT (older open items, user not yet directed): Cloudflare Tiered
+Cache + CSAM Scanning toggles (dashboard, user action); Railway →
+own-server migration plan (Part 3); delete/re-point vestigial
+production branch; post-deploy icon-variant warm.
 
 ### Part 11 — OpenAPI definition + spec-rendered docs page (built + verified; commits landing in Part 12)
 
