@@ -24,7 +24,12 @@ vi.mock('../../utils', () => ({
 vi.mock('../../paths', () => ({ submodules: '/submodules' }))
 vi.mock('../../types', () => ({}))
 vi.mock('../../../config', () => ({ default: { cacheSeconds: 86400 } }))
-vi.mock('./resize', () => ({ maybeResize: vi.fn() }))
+// Keep the real parseResizeParams (handlers call it to build explicit options)
+// but stub the resize pipeline itself.
+vi.mock('./resize', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./resize')>()),
+  maybeResize: vi.fn(),
+}))
 vi.mock('sharp', () => ({ default: vi.fn() }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => ({ op: 'eq', args })),
@@ -56,6 +61,7 @@ import {
 } from './handlers'
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
+import { inArray } from 'drizzle-orm'
 import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { maybeResize } from './resize'
@@ -538,7 +544,10 @@ describe('image handlers', () => {
       expect(res.send).toHaveBeenCalled()
     })
 
-    it('sets query.as from path extension', async () => {
+    it('passes the path-extension format to maybeResize without mutating req.query', async () => {
+      // Regression: the handler used to write `req.query.as = 'webp'`, but
+      // Express 5 re-parses query on every access, so the mutation was
+      // discarded and path-extension conversion was a silent no-op.
       const img = makeImage()
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
@@ -562,10 +571,13 @@ describe('image handlers', () => {
 
       await handler(req, res, vi.fn())
 
-      expect(req.query).toHaveProperty('as', 'webp')
+      expect(req.query.as).toBeUndefined()
+      expect(maybeResize).toHaveBeenCalledWith(
+        expect.objectContaining({ params: expect.objectContaining({ format: 'webp' }) }),
+      )
     })
 
-    it('does not override existing query.as', async () => {
+    it('lets an explicit query.as win over the path extension', async () => {
       const img = makeImage()
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([
@@ -589,7 +601,9 @@ describe('image handlers', () => {
 
       await handler(req, res, vi.fn())
 
-      expect(req.query.as).toBe('png')
+      expect(maybeResize).toHaveBeenCalledWith(
+        expect.objectContaining({ params: expect.objectContaining({ format: 'png' }) }),
+      )
     })
 
     it('returns early when maybeResize handles the response', async () => {
@@ -744,7 +758,7 @@ describe('image handlers', () => {
   // getImageByHash handler
   // -----------------------------------------------------------------------
   describe('getImageByHash', () => {
-    it('serves image found by hash', async () => {
+    it('serves image found by hash with an extension filter', async () => {
       const img = makeImage()
       const chain = makeDrizzleChain([img])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
@@ -760,6 +774,30 @@ describe('image handlers', () => {
       await getImageByHash(req, res, next)
 
       expect(res.contentType).toHaveBeenCalledWith('.png')
+      // hash.png keeps source-extension filtering
+      expect(inArray).toHaveBeenCalledWith(expect.anything(), ['.png'])
+    })
+
+    it('serves a bare hash without building an extension filter', async () => {
+      // Regression: the documented bare-hash form passed `exts: undefined`
+      // into inArray, producing invalid SQL — a 500 that leaked the query.
+      const img = makeImage()
+      const chain = makeDrizzleChain([img])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({
+        params: { imageHash: 'abc123' },
+        query: {},
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(inArray).not.toHaveBeenCalled()
+      expect(res.contentType).toHaveBeenCalledWith('.png')
+      expect(res.send).toHaveBeenCalled()
     })
 
     it('calls next with 404 when hash not found', async () => {
@@ -836,7 +874,10 @@ describe('image handlers', () => {
   // getImageAndFallback handler
   // -----------------------------------------------------------------------
   describe('getImageAndFallback', () => {
-    it('sets req.query.format from outputExt when present', async () => {
+    it('passes the path-extension format to maybeResize without mutating req.query', async () => {
+      // Regression: this handler wrote `req.query.format` — both the wrong key
+      // (resize reads `as`) and a discarded mutation under Express 5 — so the
+      // fallback route never honored path-extension conversion.
       const img = makeImage()
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
@@ -862,10 +903,14 @@ describe('image handlers', () => {
 
       await getImageAndFallback(req, res, next)
 
-      expect(req.query).toHaveProperty('format', 'webp')
+      expect(req.query.format).toBeUndefined()
+      expect(req.query.as).toBeUndefined()
+      expect(maybeResize).toHaveBeenCalledWith(
+        expect.objectContaining({ params: expect.objectContaining({ format: 'webp' }) }),
+      )
     })
 
-    it('does not override existing req.query.format', async () => {
+    it('lets an explicit query.as win over the path extension', async () => {
       const img = makeImage()
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
@@ -883,14 +928,16 @@ describe('image handlers', () => {
 
       const req = mockRequest({
         params: { chainId: '1', address: `${TEST_ADDRESS}.webp`, order: 'someorder' },
-        query: { format: 'png' },
+        query: { as: 'png' },
       })
       const res = mockResponse()
       const next = vi.fn()
 
       await getImageAndFallback(req, res, next)
 
-      expect(req.query.format).toBe('png')
+      expect(maybeResize).toHaveBeenCalledWith(
+        expect.objectContaining({ params: expect.objectContaining({ format: 'png' }) }),
+      )
     })
 
     it('throws when both ordered and unordered queries find nothing', async () => {

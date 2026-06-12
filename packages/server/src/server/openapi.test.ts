@@ -54,11 +54,9 @@ describe('openapi document', () => {
     }
   })
 
-  it('gives every GET operation except direct-hash an x-example the docs page can probe', () => {
-    // /image/direct/{imageHash} has no stable example — hashes are data-dependent
-    const exempt = new Set(['/image/direct/{imageHash}'])
+  it('gives every GET operation an x-example the docs page can probe', () => {
     for (const { path, method, op } of operations) {
-      if (method !== 'get' || exempt.has(path)) continue
+      if (method !== 'get') continue
       expect(op['x-example'], `GET ${path} has no x-example`).toBeTruthy()
     }
   })

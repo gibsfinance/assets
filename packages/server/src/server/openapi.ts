@@ -53,8 +53,8 @@ const RESIZE_PARAMS = [
   {
     name: 'as',
     in: 'query' as const,
-    description: 'Convert output format.',
-    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'gif', 'avif'] },
+    description: 'Convert output format. Invalid values are silently ignored and the original format is served.',
+    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
   },
   {
     name: 'w',
@@ -69,6 +69,13 @@ const RESIZE_PARAMS = [
     schema: { type: 'integer' as const, minimum: 1, maximum: 2048 },
   },
 ]
+
+const MODE_PARAM = {
+  name: 'mode',
+  in: 'query' as const,
+  description: 'mode=link responds 302 to the original source URI instead of serving content.',
+  schema: { type: 'string' as const, enum: ['link'] },
+}
 
 const IMAGE_FILTER_PARAMS = [
   {
@@ -89,13 +96,12 @@ const IMAGE_FILTER_PARAMS = [
     description: 'Comma-separated list slugs to restrict image sources.',
     schema: { type: 'string' as const },
   },
-  {
-    name: 'mode',
-    in: 'query' as const,
-    description: 'mode=link responds 301 to the original source URI instead of serving content.',
-    schema: { type: 'string' as const, enum: ['link'] },
-  },
+  MODE_PARAM,
 ]
+
+const REDIRECT_RESPONSE = {
+  '302': { description: 'Redirect to the original source URI (mode=link).' },
+}
 
 const EXTENSIONS_PARAM = {
   name: 'extensions',
@@ -350,9 +356,17 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Network / chain icon',
+        description:
+          'Resize and format-conversion query parameters work here too. A path extension on this route ' +
+          'is a SOURCE filter, not a conversion: /image/eip155-369.png serves only a png source, and ' +
+          '/image/eip155-369.webp responds 404 when no webp source exists — the opposite of the token ' +
+          '.{ext} route, where the extension converts the output.',
         'x-example': '/image/eip155-369',
-        parameters: [CHAIN_ID_PARAM],
-        responses: IMAGE_RESPONSE,
+        parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
+        responses: {
+          ...IMAGE_RESPONSE,
+          ...REDIRECT_RESPONSE,
+        },
       },
     },
     '/image/{chainId}/{address}': {
@@ -363,11 +377,7 @@ export const openapi = {
         parameters: [CHAIN_ID_PARAM, ADDRESS_PARAM, ...IMAGE_FILTER_PARAMS, ...RESIZE_PARAMS],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
-          '406': {
-            description: 'Unsupported output format.',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-          },
+          ...REDIRECT_RESPONSE,
         },
       },
     },
@@ -375,6 +385,9 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Token image converted to a specific format via path extension',
+        description:
+          'The extension converts the output, equivalent to ?as=. Requesting .svg when the token has ' +
+          'no SVG source responds 404; extensions outside the supported set (e.g. .bmp) respond 406.',
         'x-example': '/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp',
         parameters: [
           CHAIN_ID_PARAM,
@@ -387,13 +400,20 @@ export const openapi = {
             schema: { type: 'string', enum: ['png', 'webp', 'jpg', 'avif', 'svg'] },
           },
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          '406': {
+            description: 'Unsupported output extension (e.g. .bmp).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
       },
     },
     '/image/{order}/{chainId}/{address}': {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Token image with an explicit provider ordering',
+        description: 'An unknown order name silently falls back to the default ordering.',
         'x-example': '/image/default/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
         parameters: [
           {
@@ -408,7 +428,10 @@ export const openapi = {
           ...IMAGE_FILTER_PARAMS,
           ...RESIZE_PARAMS,
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          ...REDIRECT_RESPONSE,
+        },
       },
     },
     '/image/fallback/{order}/{chainId}/{address}': {
@@ -431,7 +454,7 @@ export const openapi = {
         ],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
+          ...REDIRECT_RESPONSE,
         },
       },
     },
@@ -439,12 +462,16 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Image by content hash — content-addressed access',
+        'x-example': '/image/direct/048d63e01bc0c7079394113db00275c0001b679cd7b8749d17ee87c2efb32a78',
         parameters: [
           {
             name: 'imageHash',
             in: 'path',
             required: true,
-            description: 'Content hash from list/token logoURI fields.',
+            description:
+              'Content hash from list/token logoURI fields. A bare hash serves the stored image; ' +
+              'an extension suffix (e.g. {hash}.svg) is a source filter — 404 when the stored ' +
+              'image is not of that type.',
             schema: { type: 'string' },
           },
           ...RESIZE_PARAMS,
@@ -462,7 +489,11 @@ export const openapi = {
             name: 'i',
             in: 'query',
             required: true,
-            description: 'Candidate as chainId/address (optionally chainId/address/order). Repeatable; first hit wins.',
+            description:
+              'Candidate as chainId/address, optionally chainId/address/{orderId} where the third ' +
+              'segment must be a 64-character hex order id — named orders (e.g. default) are ' +
+              'rejected with 406. A bare chainId candidate (no address) serves that network icon. ' +
+              'Repeatable; first hit wins.',
             schema: { type: 'string' },
           },
           ...IMAGE_FILTER_PARAMS,
@@ -470,7 +501,11 @@ export const openapi = {
         ],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
+          ...REDIRECT_RESPONSE,
+          '406': {
+            description: 'Invalid candidate, or a third segment that is not a 64-character hex order id.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
         },
       },
     },

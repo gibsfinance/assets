@@ -23,7 +23,7 @@ import { ParsedQs } from 'qs'
 import { submodules } from '../../paths'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
-import { maybeResize } from './resize'
+import { maybeResize, parseResizeParams } from './resize'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
@@ -275,11 +275,11 @@ export const getImage =
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
     })
-    // Path extension (.webp, .png) = output format conversion
-    if (outputExt && !req.query.as) {
-      ;(req.query as Record<string, string>).as = outputExt.replace('.', '')
-    }
-    if (await maybeResize(req, res, img)) return
+    // Path extension (.webp, .png) = output format conversion. Parsed once and
+    // passed explicitly — Express 5 re-parses req.query on every access, so a
+    // mutation written into it never reaches maybeResize.
+    const params = parseResizeParams({ query: req.query, pathExt: outputExt })
+    if (await maybeResize({ res, img, params })) return
     sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
   }
 
@@ -306,26 +306,36 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   }
   if (!result) return next(httpErrors.NotFound('image not found'))
   const { img, outputExt } = result
-  if (outputExt && !req.query.format) {
-    ;(req.query as Record<string, string>).format = outputExt.replace('.', '')
-  }
-  if (await maybeResize(req, res, img)) return
+  // Same explicit-options path as getImage — this handler used to write the
+  // wrong query key (`format` instead of `as`), so the conversion never fired.
+  const params = parseResizeParams({ query: req.query, pathExt: outputExt })
+  if (await maybeResize({ res, img, params })) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
+  // The path extension here is a SOURCE filter (hash.svg → serve only if the
+  // stored image is an SVG), not an output conversion.
   const { filename, exts } = splitExt(req.params.imageHash)
+  const conditions: SQL[] = [eq(s.image.imageHash, filename)]
+  // Bare hashes have no extension — guard here at the funnel: inArray with an
+  // undefined list built invalid SQL and turned the documented form into a 500.
+  if (exts?.length) {
+    conditions.push(inArray(s.image.ext, exts))
+  }
   const drizzle = getDrizzle()
   const [img] = await drizzle
     .select()
     .from(s.image)
-    .where(and(eq(s.image.imageHash, filename), inArray(s.image.ext, exts as string[])))
+    .where(and(...conditions))
     .limit(1)
   if (!img) {
     return next(httpErrors.NotFound('image not found'))
   }
-  if (await maybeResize(req, res, img as any)) return
-  sendImage(res, img as any, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  const image = img as Image
+  const params = parseResizeParams({ query: req.query })
+  if (await maybeResize({ res, img: image, params })) return
+  sendImage(res, image, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
 const bestGuessNeworkImage = async (chainIdParam: string) => {
@@ -339,7 +349,10 @@ const bestGuessNeworkImage = async (chainIdParam: string) => {
 
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
   const img = await bestGuessNeworkImage(req.params.chainId)
-  if (await maybeResize(req, res, img)) return
+  // Note: a path extension on the network route is a source filter (handled in
+  // bestGuessNeworkImage), not an output conversion — so no pathExt here.
+  const params = parseResizeParams({ query: req.query })
+  if (await maybeResize({ res, img, params })) return
   sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
@@ -368,6 +381,7 @@ export const tryMultiple: RequestHandler<
   else if (i) {
     images = [i.toString()]
   }
+  const params = parseResizeParams({ query: req.query })
   for (const i of images) {
     if (!_.isString(i)) {
       return next(httpErrors.NotAcceptable('invalid i'))
@@ -376,7 +390,7 @@ export const tryMultiple: RequestHandler<
     if (!address) {
       const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
       if (!img) continue
-      if (await maybeResize(req, res, img)) return
+      if (await maybeResize({ res, img, params })) return
       return sendImage(res, img, resolveImageMode(req.query.mode))
     }
     if (order && order.length !== 64 /* check if hex */) {
@@ -406,7 +420,7 @@ export const tryMultiple: RequestHandler<
       }).catch(ignoreNotFound)
     }
     if (result) {
-      if (await maybeResize(req, res, result.img)) return
+      if (await maybeResize({ res, img: result.img, params })) return
       return sendImage(res, result.img, resolveImageMode(req.query.mode))
     }
   }

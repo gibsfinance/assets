@@ -2,13 +2,14 @@
  * @module image/resize
  * On-the-fly image resize and format conversion using sharp.
  *
- * `maybeResize()` is the entry point — checks for `?w=`, `?h=`, `?as=` query params,
+ * `maybeResize()` is the entry point — handlers parse `?w=`, `?h=`, `?as=` (and any
+ * path-extension format) once via `parseResizeParams` and pass the result in. It then
  * looks up cached variants in `image_variant` table, or creates new ones via sharp pipeline.
  * Per-image and global rate limits prevent cache pollution from enumeration attacks.
  * SVGs with viewBox are served as-is unless explicit format conversion is requested.
  */
 import sharp from 'sharp'
-import type { Request, Response } from 'express'
+import type { Response } from 'express'
 import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'
 import * as db from '../../db'
 import config from '../../../config'
@@ -31,11 +32,24 @@ export interface ResizeParams {
   format: string | null
 }
 
-/** Parse and validate w/h/as from Express query string */
-export function parseResizeParams(query: Request['query']): ResizeParams | null {
+export interface ResizeParamsInput {
+  /** Express request query (?w=, ?h=, ?as=) */
+  query: Record<string, unknown>
+  /** Output extension from the URL path (e.g. '.webp'); applies when ?as= is absent */
+  pathExt?: string | null
+}
+
+/**
+ * Parse and validate output format and dimensions from the query string and
+ * optional path extension. Handlers call this once and pass the result into
+ * `maybeResize` — Express 5 re-parses `req.query` on every access, so writing
+ * a derived format back into it is silently discarded.
+ */
+export function parseResizeParams({ query, pathExt }: ResizeParamsInput): ResizeParams | null {
   const wRaw = typeof query.w === 'string' ? parseInt(query.w, 10) : NaN
   const hRaw = typeof query.h === 'string' ? parseInt(query.h, 10) : NaN
-  const fRaw = typeof query.as === 'string' ? query.as.toLowerCase() : null
+  const queryFormat = typeof query.as === 'string' ? query.as.toLowerCase() : null
+  const fRaw = queryFormat ?? (pathExt ? pathExt.replace('.', '').toLowerCase() : null)
 
   const w = !isNaN(wRaw) && wRaw >= 1 && wRaw <= MAX_DIM ? wRaw : null
   const h = !isNaN(hRaw) && hRaw >= 1 && hRaw <= MAX_DIM ? hRaw : null
@@ -133,12 +147,20 @@ export function checkRateLimit(imageHash: string): boolean {
 // Section 3: Main maybeResize function + sendVariant
 // ---------------------------------------------------------------------------
 
+export interface MaybeResizeOptions {
+  res: Response
+  img: Image
+  /** Pre-parsed resize/format options from `parseResizeParams`; null = no resize requested */
+  params: ResizeParams | null
+}
+
 /**
  * Attempt to serve a resized/transcoded variant of the image.
  * Returns true if a variant was served, false if caller should use default sendImage.
+ * Takes pre-parsed params instead of reading `req.query` so path-extension
+ * conversion and query conversion flow through one explicit code path.
  */
-export async function maybeResize(req: Request, res: Response, img: Image): Promise<boolean> {
-  const params = parseResizeParams(req.query)
+export async function maybeResize({ res, img, params }: MaybeResizeOptions): Promise<boolean> {
   if (!params) return false
 
   const { w, h, format } = params
