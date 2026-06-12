@@ -4,6 +4,7 @@ import Image from './Image'
 import ImageUpload from './ImageUpload'
 import { getApiUrl } from '../utils'
 import type { LocalToken } from '../hooks/useLocalLists'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface ListTokenRowProps {
   token: LocalToken
@@ -59,7 +60,7 @@ export default function ListTokenRow({
           title="Edit image"
         >
           <Image
-            src={token.imageUri || getApiUrl(`/image/${token.chainId}/${token.address}`)}
+            src={token.imageUri || getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`)}
             size={24}
             skeleton
             lazy

@@ -1,10 +1,14 @@
-import { useEffect, useRef, useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import { getApiUrl } from '../utils'
+import { prefixImagePath } from '../utils/chain-identifier'
 import Image from './Image'
 
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const ROW_SPEEDS = [18, 22, 26] // pixels per second per row — top slowest, bottom fastest
+// Each row shows a fresh random sample instead of the whole catalog: 3 rows ×
+// 30 icons × 2 (loop copy) = 180 mounted images instead of 2,658.
+const ICONS_PER_ROW = 30
 
 let keyframesInjected = false
 function ensureKeyframes() {
@@ -490,21 +494,38 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const row0 = useRef<HTMLDivElement>(null)
   const row1 = useRef<HTMLDivElement>(null)
   const row2 = useRef<HTMLDivElement>(null)
-  const rowRefs = [row0, row1, row2]
+  // Stable identity so the animation effect can list it as a dependency
+  const rowRefs = useMemo(() => [row0, row1, row2], [])
 
-  const allIcons = useMemo(() => ICON_PATHS.map((p) => ({
-    src: getApiUrl(`${p}?w=72&h=72&format=webp`),
-    href: getApiUrl(p),
-  })), [])
+  // The conveyor is decoration — defer its image mounts to idle time so the
+  // first paint and the metrics fetch are never competing with it. The outer
+  // container keeps its fixed height, so nothing shifts when rows appear.
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'function') {
+      const timer = setTimeout(() => setReady(true), 200)
+      return () => clearTimeout(timer)
+    }
+    const handle = requestIdleCallback(() => setReady(true), { timeout: 2000 })
+    return () => cancelIdleCallback(handle)
+  }, [])
 
-  const rowIcons = useMemo(() =>
-    [0, 1, 2].map(() => {
-      const half = shuffle(allIcons)
-      return [...half, ...half]
-    }),
-  [allIcons])
+  const rowIcons = useMemo(() => {
+    if (!ready) return []
+    return [0, 1, 2].map(() => {
+      const sample = shuffle(ICON_PATHS).slice(0, ICONS_PER_ROW).map((p) => {
+        const path = prefixImagePath(p)
+        return {
+          src: getApiUrl(`${path}?w=72&h=72&format=webp`),
+          href: getApiUrl(path),
+        }
+      })
+      return [...sample, ...sample]
+    })
+  }, [ready])
 
   useEffect(() => {
+    if (!ready) return
     ensureKeyframes()
     requestAnimationFrame(() => {
       for (let i = 0; i < rowRefs.length; i++) {
@@ -516,7 +537,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
         el.style.setProperty('animation', `conveyor ${duration}s linear infinite ${DIRECTIONS[i]}`, 'important')
       }
     })
-  }, [])
+  }, [ready, rowRefs])
 
   return (
     <div className={`overflow-hidden space-y-1 ${className ?? ''}`} style={{ height: TOTAL_HEIGHT }} aria-hidden="true">

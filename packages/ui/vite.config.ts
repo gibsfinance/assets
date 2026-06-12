@@ -34,17 +34,16 @@ export default defineConfig({
       '/list': { target: 'http://localhost:3456', changeOrigin: true },
       '/token': { target: 'http://localhost:3456', changeOrigin: true },
       '/api': { target: 'http://localhost:3456', changeOrigin: true },
+      '/openapi.json': { target: 'http://localhost:3456', changeOrigin: true },
+      '/networks': { target: 'http://localhost:3456', changeOrigin: true },
+      '/stats': { target: 'http://localhost:3456', changeOrigin: true },
+      '/sprite': { target: 'http://localhost:3456', changeOrigin: true },
     },
   },
   preview: {
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
-      },
-    },
     target: 'esnext',
   },
   resolve: {

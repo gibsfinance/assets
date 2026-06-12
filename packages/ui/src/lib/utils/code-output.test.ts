@@ -38,29 +38,29 @@ describe('buildImageUrl', () => {
   const base = 'https://gib.show'
 
   it('builds simple image URL without resolution order', () => {
-    expect(buildImageUrl('1', '0xabc', null, base)).toBe('https://gib.show/image/1/0xabc')
+    expect(buildImageUrl('1', '0xabc', null, base)).toBe('https://gib.show/image/eip155-1/0xabc')
   })
 
   it('builds simple image URL with empty resolution order', () => {
-    expect(buildImageUrl('1', '0xabc', [], base)).toBe('https://gib.show/image/1/0xabc')
+    expect(buildImageUrl('1', '0xabc', [], base)).toBe('https://gib.show/image/eip155-1/0xabc')
   })
 
   it('builds fallback URL with resolution order', () => {
     expect(buildImageUrl('1', '0xabc', ['pulsex', 'coingecko'], base)).toBe(
-      'https://gib.show/image/fallback/pulsex,coingecko/1/0xabc',
+      'https://gib.show/image/fallback/pulsex,coingecko/eip155-1/0xabc',
     )
   })
 
   it('builds fallback URL with single provider', () => {
     expect(buildImageUrl('369', '0xdef', ['pulsex'], base)).toBe(
-      'https://gib.show/image/fallback/pulsex/369/0xdef',
+      'https://gib.show/image/fallback/pulsex/eip155-369/0xdef',
     )
   })
 })
 
 describe('buildNetworkUrl', () => {
   it('builds network icon URL', () => {
-    expect(buildNetworkUrl('1', 'https://gib.show')).toBe('https://gib.show/image/1')
-    expect(buildNetworkUrl('369', 'https://gib.show')).toBe('https://gib.show/image/369')
+    expect(buildNetworkUrl('1', 'https://gib.show')).toBe('https://gib.show/image/eip155-1')
+    expect(buildNetworkUrl('369', 'https://gib.show')).toBe('https://gib.show/image/eip155-369')
   })
 })

@@ -385,8 +385,11 @@ export const tryMultiple: RequestHandler<
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
     const typeFilter = parseTypeFilter(req.query.only)
+    // Pass the raw segment like the path handlers do — chainIdToNetworkId owns
+    // the conversion, so prefixed (eip155-369) and bare (369) forms both work.
+    // Number() here turned prefixed ids into NaN and 400'd the request.
     let result = await getListImage(true)({
-      chainId: Number(chainId),
+      chainId,
       address,
       order,
       typeFilter,
@@ -395,7 +398,7 @@ export const tryMultiple: RequestHandler<
     }).catch(ignoreNotFound)
     if (!result) {
       result = await getListImage(false)({
-        chainId: Number(chainId),
+        chainId,
         address,
         typeFilter,
         providerKey,

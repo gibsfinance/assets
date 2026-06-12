@@ -147,7 +147,7 @@ export default function CodeOutput() {
   const apiBase = root ?? ''
 
   const imageUrl = useMemo(() => {
-    if (!selectedToken || !selectedChainId) return `${apiBase}/image/1/0x0000000000000000000000000000000000000000`
+    if (!selectedToken || !selectedChainId) return `${apiBase}/image/eip155-1/0x0000000000000000000000000000000000000000`
     return buildImageUrl(
       selectedChainId,
       selectedToken.address,

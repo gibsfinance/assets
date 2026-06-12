@@ -8,10 +8,17 @@ import { router as githubRouter } from './github'
 import { router as submissionsRouter } from './submissions'
 import * as sprite from './image/sprite'
 import { nextOnError } from './utils'
+import { openapi } from './openapi'
+import config from '../../config'
 
 export const router = Router() as Router
 
 // Health check handled in app.ts (before router) — removed duplicate here
+
+// The OpenAPI definition — the docs page renders its endpoint sections from this
+router.get('/openapi.json', (_req, res) => {
+  res.set('cache-control', `public, max-age=${config.cacheSeconds}`).json(openapi)
+})
 
 // gib.show/image
 router.use('/image', imageRouter)

@@ -7,6 +7,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
+import { toChainIdentifier } from '../utils/chain-identifier'
 import { getNetworkName } from '../utils/network-name'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import { filterTokensBySearch, getPopularChains } from '../utils/token-search'
@@ -103,7 +104,7 @@ function VirtualTokenList({
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                   {hasIcon ? (
                     <Image
-                      src={getApiUrl(`/image/${token.chainId}/${token.address}`)}
+                      src={getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`)}
                       alt={token.symbol}
                       className="rounded-full object-contain"
                       size={28}
@@ -256,7 +257,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
         name: token.name,
         symbol: token.symbol,
         decimals: token.decimals ?? 18,
-        imageUri: token.hasIcon ? getApiUrl(`/image/${token.chainId}/${token.address}`) : undefined,
+        imageUri: token.hasIcon ? getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`) : undefined,
       }
 
       if (activeList) {
@@ -296,7 +297,8 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
   const { data: chainData, isLoading: isLoadingLists } = useQuery({
     queryKey: ['tokensByChain', selectedChainId],
     queryFn: async () => {
-      const response = await fetch(getApiUrl(`/list/tokens/${selectedChainId}`))
+      // enabled: !!selectedChainId below guarantees a chain is selected here
+      const response = await fetch(getApiUrl(`/list/tokens/${toChainIdentifier(selectedChainId!)}`))
       if (!response.ok) throw new Error(`${response.status}`)
       return response.json() as Promise<{
         chainId: number
@@ -316,7 +318,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
       const primarySource = sources[0] ?? 'merged'
       const listReferences = sources.map((src) => ({
         sourceList: src,
-        imageUri: getApiUrl(`/image/${token.chainId}/${token.address}`),
+        imageUri: getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`),
         imageFormat: '',
       }))
       return {
@@ -484,7 +486,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
                       onClick={() => handleChainSelect(chain.chainId)}
                     >
                       <Image
-                        src={getApiUrl(`/image/${chain.chainId}`)}
+                        src={getApiUrl(`/image/${toChainIdentifier(chain.chainId)}`)}
                         size={20}
                         skeleton
                         shape="circle"

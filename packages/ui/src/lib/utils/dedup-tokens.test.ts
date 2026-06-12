@@ -141,7 +141,7 @@ describe('deduplicateTokens', () => {
       ['listA', [makeToken('0xabc', 'provA/listA')]],
     ])
     const result = deduplicateTokens(tokensByList, new Set(['listA']), '1', 'https://api.example.com')
-    expect(result[0].listReferences![0].imageUri).toBe('https://api.example.com/image/1/0xabc')
+    expect(result[0].listReferences![0].imageUri).toBe('https://api.example.com/image/eip155-1/0xabc')
   })
 })
 
@@ -237,12 +237,12 @@ describe('mergeTokenIntoMap', () => {
     const stored = map.get('1-0xdef')!
     // The initialized entry should use the prefix in its imageUri
     const initializedRef = stored.listReferences!.find((r) => r.sourceList === 'provA/listA')
-    expect(initializedRef?.imageUri).toBe('https://api.example.com/image/1/0xdef')
+    expect(initializedRef?.imageUri).toBe('https://api.example.com/image/eip155-1/0xdef')
   })
 
   it('tokenImageUri uses prefix when provided', () => {
     const token = makeToken('0xabc', 'provA/listA')
-    expect(tokenImageUri(token)).toBe('/image/1/0xabc')
-    expect(tokenImageUri(token, 'https://api.example.com')).toBe('https://api.example.com/image/1/0xabc')
+    expect(tokenImageUri(token)).toBe('/image/eip155-1/0xabc')
+    expect(tokenImageUri(token, 'https://api.example.com')).toBe('https://api.example.com/image/eip155-1/0xabc')
   })
 })

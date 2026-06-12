@@ -1,11 +1,12 @@
 import type { Token, TokenListReference } from '../types'
+import { toChainIdentifier } from './chain-identifier'
 
 /**
  * Build an image URI for a token. Accepts an optional prefix so callers
  * can prepend the API base URL (or omit it in tests).
  */
 export function tokenImageUri(token: Token, prefix = ''): string {
-  return `${prefix}/image/${token.chainId}/${token.address}`
+  return `${prefix}/image/${toChainIdentifier(token.chainId)}/${token.address}`
 }
 
 /**

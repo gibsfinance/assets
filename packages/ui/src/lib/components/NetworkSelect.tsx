@@ -6,6 +6,7 @@ import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
+import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface NetworkSelectProps {
   selectedChainId: string | null
@@ -37,7 +38,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
         {selectedNetwork ? (
           <span className="flex items-center gap-2 truncate">
             <Image
-              src={getApiUrl(`/image/${selectedNetwork.chainId}`)}
+              src={getApiUrl(`/image/${toChainIdentifier(selectedNetwork.chainId)}`)}
               size={20}
               skeleton
               shape="circle"
@@ -171,7 +172,7 @@ function NetworkDialog({
                 >
                   <span className="mr-2 flex items-center gap-3 truncate">
                     <Image
-                      src={getApiUrl(`/image/${network.chainId}`)}
+                      src={getApiUrl(`/image/${toChainIdentifier(network.chainId)}`)}
                       size={24}
                       skeleton
                       lazy
