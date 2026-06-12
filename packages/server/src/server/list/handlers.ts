@@ -2,14 +2,14 @@
  * @module list/handlers
  * Express routes for token list endpoints: merged, by-provider, by-chain.
  *
- * `/list/merged/default` — all tokens across all providers, no specific order.
+ * `/list/merged/default` — tokens across all providers for one chain (chainId required).
  * `/list/{provider}/{key}` — single provider list in its native order.
  * `/list/tokensByChain/{chainId}` — all tokens for a chain, ordered by provider ranking
  * via `applyOrder(sorted: true)` with separate sources query for providerKey/listKey.
  */
 import createError from 'http-errors'
 import * as db from '../../db'
-import type { Request, RequestHandler } from 'express'
+import type { RequestHandler } from 'express'
 import * as utils from './utils'
 import _ from 'lodash'
 import config from '../../../config'
@@ -19,19 +19,23 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
-import { toCAIP2, fromCAIP2 } from '../../chain-id'
+import { toCAIP2, fromCAIP2, isValidChainId } from '../../chain-id'
 import { log, timerLog } from '../../logger'
 
 export const merged: RequestHandler = async (req, res, next) => {
-  const extensions = getExtensions(req)
+  const rawChainId = req.query.chainId as string | undefined
+  // Without a chain filter the dense_rank CTE materializes every chain's
+  // list_token rows and cannot complete inside production timeouts (~60s, then
+  // 500) — requiring the parameter is the honest contract.
+  if (!rawChainId) {
+    return next(createError.BadRequest('chainId query parameter is required'))
+  }
+  const extensions = utils.parseExtensions(req.query.extensions)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {
     return next(createError.NotFound('order id missing'))
   }
-  const chainId = req.query.chainId as string | undefined
-  const whereClause = chainId
-    ? and(dsql`${s.network.chainId} != 'asset-0'`, eq(s.network.chainId, toCAIP2(chainId)))!
-    : dsql`${s.network.chainId} != 'asset-0'`
+  const whereClause = and(dsql`${s.network.chainId} != 'asset-0'`, eq(s.network.chainId, toCAIP2(rawChainId)))!
   const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
@@ -39,15 +43,8 @@ export const merged: RequestHandler = async (req, res, next) => {
   res.json(utils.minimalList(entries))
 }
 
-const getExtensions = (req: Request) => {
-  const extensions = req.query.extensions
-  if (!extensions) return new Set<string>()
-  if (_.isArray(extensions)) return new Set(extensions as string[])
-  return new Set([extensions as string])
-}
-
 export const versioned: RequestHandler = async (req, res, next) => {
-  const extensions = getExtensions(req)
+  const extensions = utils.parseExtensions(req.query.extensions)
   const [major, minor, patch] = (req.params.version || '').split('.')
   const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
   const match = allLists.find(
@@ -63,7 +60,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
-  const extensions = getExtensions(req)
+  const extensions = utils.parseExtensions(req.query.extensions)
   const providerKey = req.params.providerKey
   const rows = await db.getLists(providerKey, req.params.listKey)
   const first = rows[0]
@@ -135,8 +132,11 @@ const getFilteredLists = async (filter: Record<string, unknown>) => {
 }
 
 export const all: RequestHandler = async (req, res) => {
+  // Validate at the boundary — unvalidated values against typed columns
+  // (boolean `default`, integer versions) surface as Postgres errors (500).
+  const filters = utils.parseListFilters(req.query as Record<string, unknown>)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json(await getFilteredLists(req.query as Record<string, unknown>))
+  res.json(await getFilteredLists(filters))
 }
 
 /**
@@ -149,13 +149,18 @@ const FRESH_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — serve without revalidatio
 const STALE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours — serve stale while refreshing in background
 const WARM_STALE_MS = 12 * 60 * 60 * 1000 // 12 hours — periodic warmer re-builds cache rows older than this
 const DEFAULT_TOKENS_BY_CHAIN_LIMIT = 50_000 // shared by the request handler and the cache warmer
+const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
 
 /**
  * Cache key for a tokensByChain response. The warmer and the request handler must
  * produce byte-identical keys or warmed rows are never read — build keys only here.
+ *
+ * Extensions are deliberately NOT part of the key: the ranked query selects no
+ * bridge/header columns, so `?extensions=` never changed the output and each
+ * distinct value needlessly forked the cache. The trailing colon is the legacy
+ * empty-extensions slot, kept so already-warmed rows stay readable.
  */
-export const tokensByChainCacheKey = (chainId: string, limit: number, extensions: Set<string>) =>
-  `tokens-by-chain:${chainId}:${limit}:${[...extensions].sort().join(',')}`
+export const tokensByChainCacheKey = (chainId: string, limit: number) => `tokens-by-chain:${chainId}:${limit}:`
 
 /** Cache rows only store expiresAt (= createdAt + STALE_TTL_MS), so age is derived from it. */
 export const cacheRowAge = (row: { expiresAt: Date | string | null }) =>
@@ -175,7 +180,7 @@ export const writeTokensByChainCache = (cacheKey: string, body: string) =>
  * A separate lightweight selectDistinct query fetches all providerKey/listKey memberships
  * for the sources field.
  */
-const buildTokensByChainResponse = async (chainId: string, limit: number, extensions: Set<string>) => {
+const buildTokensByChainResponse = async (chainId: string, limit: number) => {
   const defaultOrderId = getDefaultListOrderId()
 
   const t0 = performance.now()
@@ -211,8 +216,7 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
   }
 
   // getTokensByChainRanked() already orders by provider ranking — no JS sort needed.
-  const filters = utils.tokenFilters({})
-  const allEntries = utils.normalizeTokens(tokens as any, filters, extensions)
+  const allEntries = utils.normalizeTokens(tokens as any)
 
   // Patch full sources onto each entry (normalizeTokens would only see the winning row's source).
   for (const entry of allEntries) {
@@ -237,15 +241,11 @@ const buildTokensByChainResponse = async (chainId: string, limit: number, extens
 // cache write — this is the only place a tokensByChain body is built or persisted.
 const inflightBuilds = new Map<string, Promise<string>>()
 
-export const buildAndCacheTokensByChain = (
-  chainId: string,
-  limit: number,
-  extensions: Set<string>,
-): Promise<string> => {
-  const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
+export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> => {
+  const cacheKey = tokensByChainCacheKey(chainId, limit)
   const existing = inflightBuilds.get(cacheKey)
   if (existing) return existing
-  const promise = buildTokensByChainResponse(chainId, limit, extensions).then((body) => {
+  const promise = buildTokensByChainResponse(chainId, limit).then((body) => {
     // Fire-and-forget: a cold request must not wait on the multi-megabyte cache INSERT,
     // and a cache-write failure must not fail the response — the body is still servable.
     writeTokensByChainCache(cacheKey, body).catch((err: unknown) => log('cache write failed for %s: %o', cacheKey, err))
@@ -268,11 +268,10 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
     try {
       const chainId = toCAIP2(rawChainId)
       const limit = DEFAULT_TOKENS_BY_CHAIN_LIMIT
-      const extensions = new Set<string>()
-      const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
+      const cacheKey = tokensByChainCacheKey(chainId, limit)
       const existing = await db.getCachedRequest(cacheKey)
       if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
-      await buildAndCacheTokensByChain(chainId, limit, extensions)
+      await buildAndCacheTokensByChain(chainId, limit)
     } catch {
       // best-effort — startup must not fail if a chain is unavailable
     }
@@ -282,12 +281,23 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const rawChainId = req.params.chainId
   if (!rawChainId) return next(createError.BadRequest('chainId required'))
+  // Stored networks only carry eip155-<number> or asset-0 — anything else can
+  // never match a row, so reject it instead of answering 200 with zero tokens.
+  if (!isValidChainId(rawChainId)) {
+    return next(
+      createError.BadRequest(
+        `invalid chainId "${rawChainId}" — expected a numeric id (369) or a prefixed id (eip155-369)`,
+      ),
+    )
+  }
   // Accept both bare numbers (369) and CAIP-2 (eip155-369) — DB stores CAIP-2
   const chainId = toCAIP2(rawChainId)
 
-  const limit = Math.min(Number(req.query.limit) || DEFAULT_TOKENS_BY_CHAIN_LIMIT, 100_000)
-  const extensions = getExtensions(req)
-  const cacheKey = tokensByChainCacheKey(chainId, limit, extensions)
+  const limit = utils.parseTokenLimit(req.query.limit, {
+    fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
+    max: MAX_TOKENS_BY_CHAIN_LIMIT,
+  })
+  const cacheKey = tokensByChainCacheKey(chainId, limit)
 
   // CDN cache-control: fresh window matches FRESH_TTL_MS; stale-while-revalidate
   // allows CDN to serve stale for STALE_TTL_MS while we rebuild in background.
@@ -305,7 +315,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     // If stale (past the fresh window), revalidate in the background — concurrent
     // stale hits share the same in-flight build via buildAndCacheTokensByChain.
     if (cacheRowAge(cached) > FRESH_TTL_MS) {
-      buildAndCacheTokensByChain(chainId, limit, extensions).catch((err: unknown) =>
+      buildAndCacheTokensByChain(chainId, limit).catch((err: unknown) =>
         log('background revalidate failed for %s: %o', cacheKey, err),
       )
     }
@@ -313,7 +323,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   }
 
   // No cache — build fresh (first request or after hard expiry)
-  const body = await buildAndCacheTokensByChain(chainId, limit, extensions)
+  const body = await buildAndCacheTokensByChain(chainId, limit)
 
   res.set('cache-control', tokenListCacheControl)
   res.set('content-type', 'application/json')

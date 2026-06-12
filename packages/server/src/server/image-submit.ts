@@ -6,7 +6,7 @@
  * detects actual file type via magic bytes (with SVG XML fallback), then stores
  * through the existing image pipeline (`fetchImageAndStoreForToken`).
  */
-import { Router, json } from 'express'
+import { Router } from 'express'
 import * as fileType from 'file-type'
 import * as db from '../db'
 import { nextOnError } from './utils'
@@ -41,9 +41,10 @@ export function parseDataUri(dataUri: string): { mime: string; buffer: Buffer } 
  *   imageHash   – content-addressed hash of the stored image
  *   imageUrl    – relative URL to retrieve the image directly
  */
+// JSON parsing (1 MB limit) happens app-wide in app.ts (JSON_BODY_LIMIT) —
+// a route-level parser here would never run, the app-level one wins.
 router.post(
   '/submit',
-  json({ limit: '1mb' }),
   nextOnError(async (req, res) => {
     const { chainId, address, image, submittedBy } = req.body as Record<string, unknown>
 

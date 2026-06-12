@@ -74,46 +74,67 @@ function makeImage(
 
 describe('parseResizeParams', () => {
   it('returns null when no resize params', () => {
-    expect(parseResizeParams({})).toBeNull()
-    expect(parseResizeParams({ providerKey: 'test' })).toBeNull()
+    expect(parseResizeParams({ query: {} })).toBeNull()
+    expect(parseResizeParams({ query: { providerKey: 'test' } })).toBeNull()
   })
 
   it('parses w only', () => {
-    expect(parseResizeParams({ w: '72' })).toEqual({ w: 72, h: null, format: null })
+    expect(parseResizeParams({ query: { w: '72' } })).toEqual({ w: 72, h: null, format: null })
   })
 
   it('parses h only', () => {
-    expect(parseResizeParams({ h: '64' })).toEqual({ w: null, h: 64, format: null })
+    expect(parseResizeParams({ query: { h: '64' } })).toEqual({ w: null, h: 64, format: null })
   })
 
   it('parses w + h + format', () => {
-    expect(parseResizeParams({ w: '72', h: '72', as: 'webp' })).toEqual({ w: 72, h: 72, format: 'webp' })
+    expect(parseResizeParams({ query: { w: '72', h: '72', as: 'webp' } })).toEqual({ w: 72, h: 72, format: 'webp' })
   })
 
   it('normalizes jpeg to jpg', () => {
-    expect(parseResizeParams({ as: 'jpeg' })).toEqual({ w: null, h: null, format: 'jpg' })
+    expect(parseResizeParams({ query: { as: 'jpeg' } })).toEqual({ w: null, h: null, format: 'jpg' })
   })
 
   it('rejects invalid dimensions', () => {
-    expect(parseResizeParams({ w: '0' })).toBeNull()
-    expect(parseResizeParams({ w: '-1' })).toBeNull()
-    expect(parseResizeParams({ w: '9999' })).toBeNull()
-    expect(parseResizeParams({ w: 'abc' })).toBeNull()
+    expect(parseResizeParams({ query: { w: '0' } })).toBeNull()
+    expect(parseResizeParams({ query: { w: '-1' } })).toBeNull()
+    expect(parseResizeParams({ query: { w: '9999' } })).toBeNull()
+    expect(parseResizeParams({ query: { w: 'abc' } })).toBeNull()
   })
 
   it('rejects invalid formats', () => {
-    expect(parseResizeParams({ as: 'bmp' })).toBeNull()
-    expect(parseResizeParams({ as: 'tiff' })).toBeNull()
+    expect(parseResizeParams({ query: { as: 'bmp' } })).toBeNull()
+    expect(parseResizeParams({ query: { as: 'tiff' } })).toBeNull()
   })
 
   it('parses format only', () => {
-    expect(parseResizeParams({ as: 'webp' })).toEqual({ w: null, h: null, format: 'webp' })
+    expect(parseResizeParams({ query: { as: 'webp' } })).toEqual({ w: null, h: null, format: 'webp' })
   })
 
   it('accepts boundary dimensions', () => {
-    expect(parseResizeParams({ w: '1' })).toEqual({ w: 1, h: null, format: null })
-    expect(parseResizeParams({ w: '2048' })).toEqual({ w: 2048, h: null, format: null })
-    expect(parseResizeParams({ w: '2049' })).toBeNull()
+    expect(parseResizeParams({ query: { w: '1' } })).toEqual({ w: 1, h: null, format: null })
+    expect(parseResizeParams({ query: { w: '2048' } })).toEqual({ w: 2048, h: null, format: null })
+    expect(parseResizeParams({ query: { w: '2049' } })).toBeNull()
+  })
+
+  // Path-extension conversion flows through here explicitly — it used to be
+  // injected by mutating req.query, which Express 5 discards (non-memoized
+  // query getter), so /1/{address}.webp silently served the original format.
+  it('derives format from the path extension when ?as= is absent', () => {
+    expect(parseResizeParams({ query: {}, pathExt: '.webp' })).toEqual({ w: null, h: null, format: 'webp' })
+    expect(parseResizeParams({ query: {}, pathExt: '.jpeg' })).toEqual({ w: null, h: null, format: 'jpg' })
+  })
+
+  it('lets an explicit ?as= win over the path extension', () => {
+    expect(parseResizeParams({ query: { as: 'png' }, pathExt: '.webp' })).toEqual({
+      w: null,
+      h: null,
+      format: 'png',
+    })
+  })
+
+  it('ignores path extensions outside the convertible set (e.g. .svg served as-is)', () => {
+    expect(parseResizeParams({ query: {}, pathExt: '.svg' })).toBeNull()
+    expect(parseResizeParams({ query: {}, pathExt: '.gif' })).toBeNull()
   })
 })
 
@@ -305,7 +326,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage()
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
     expect(res.send).not.toHaveBeenCalled()
@@ -331,7 +352,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage()
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
     expect(db.getVariant).toHaveBeenCalledWith('abc123', 72, 72, 'webp')
@@ -350,7 +371,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage()
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
     expect(sharp).toHaveBeenCalledWith(img.content)
@@ -368,7 +389,7 @@ describe('maybeResize', () => {
       content: Buffer.from('<svg viewBox="0 0 24 24"><path/></svg>'),
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
     expect(res.send).not.toHaveBeenCalled()
@@ -385,7 +406,7 @@ describe('maybeResize', () => {
       content: Buffer.from('<svg width="24" height="24"><path/></svg>'),
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
     expect(sharp).toHaveBeenCalled()
@@ -400,7 +421,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage()
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
     expect(db.getVariant).toHaveBeenCalledWith('abc123', 0, 0, 'webp')
@@ -432,7 +453,7 @@ describe('maybeResize', () => {
       uri: 'https://cdn.example.com/token.png',
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
     expect(global.fetch).toHaveBeenCalledWith(
@@ -454,7 +475,7 @@ describe('maybeResize', () => {
       uri: 'ipfs://QmSomeCid',
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
     expect(res.send).not.toHaveBeenCalled()
@@ -476,7 +497,7 @@ describe('maybeResize', () => {
       uri: 'https://cdn.example.com/bad.png',
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
     expect(res.send).not.toHaveBeenCalled()
@@ -496,7 +517,7 @@ describe('maybeResize', () => {
       uri: 'https://cdn.example.com/timeout.png',
     })
 
-    const result = await maybeResize(req, res, img)
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
   })
@@ -510,7 +531,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage({ imageHash: 'insert-allowed-' + Date.now() })
 
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     // Give microtasks a chance to settle
     await vi.waitFor(() => expect(db.insertVariant).toHaveBeenCalled())
@@ -531,7 +552,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage({ imageHash: hash })
 
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     // insertVariant should NOT have been called (rate-limited)
     expect(db.insertVariant).not.toHaveBeenCalled()
@@ -545,7 +566,7 @@ describe('maybeResize', () => {
     const res = mockRes()
     const img = makeImage({ imageHash: 'normalize-jpg-' + Date.now() })
 
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     const pipeline = vi.mocked(sharp).mock.results[0].value
     expect(pipeline.toFormat).toHaveBeenCalledWith('jpeg')
@@ -558,7 +579,7 @@ describe('maybeResize', () => {
     vi.mocked(db.getVariant).mockResolvedValue(null as any)
     const req = mockReq({ h: '100' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     expect(sharp).toHaveBeenCalled()
     const pipeline = (sharp as unknown as ReturnType<typeof vi.fn>).mock.results[0].value
     expect(pipeline.resize).toHaveBeenCalledWith(undefined, 100, expect.any(Object))
@@ -571,7 +592,7 @@ describe('maybeResize', () => {
     vi.mocked(db.getVariant).mockResolvedValue(null as any)
     const req = mockReq({ w: '100' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     const pipeline = (sharp as unknown as ReturnType<typeof vi.fn>).mock.results[0].value
     expect(pipeline.resize).toHaveBeenCalledWith(100, undefined, expect.any(Object))
   })
@@ -623,7 +644,7 @@ describe('sendVariant (via maybeResize)', () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
     const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
   })
 
@@ -631,7 +652,7 @@ describe('sendVariant (via maybeResize)', () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 72, height: 72 }))
     const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     expect(res.set).toHaveBeenCalledWith('x-resize', '72x72')
   })
 
@@ -639,7 +660,7 @@ describe('sendVariant (via maybeResize)', () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 0, height: 0 }))
     const req = mockReq({ as: 'webp' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     expect(res.set).toHaveBeenCalledWith('x-resize', 'transcoded')
   })
 
@@ -648,7 +669,7 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'https://cdn.example.com/img.png' })
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
     expect(res.set).toHaveBeenCalledWith('x-uri', 'https://cdn.example.com/img.png')
   })
 
@@ -657,7 +678,7 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'ipfs://QmSomeCid' })
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
     expect(res.set).toHaveBeenCalledWith('x-uri', 'ipfs://QmSomeCid')
   })
 
@@ -666,7 +687,7 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: 'data:image/png;base64,abc' })
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
     const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
     expect(setCalls).not.toContain('x-uri')
   })
@@ -675,7 +696,7 @@ describe('sendVariant (via maybeResize)', () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ format: 'webp' }))
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
-    await maybeResize(req, res, makeImage())
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
     expect(res.contentType).toHaveBeenCalledWith('image/webp')
   })
 
@@ -687,7 +708,7 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     const img = makeImage({ uri: undefined })
-    await maybeResize(req, res, img)
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
     const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
     expect(setCalls).not.toContain('x-uri')
   })

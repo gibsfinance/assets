@@ -49,6 +49,27 @@ vi.mock('drizzle-orm', () => ({
   ),
 }))
 
+// Provide a deterministic admin token for the auth-guarded routes
+vi.mock('../../config', () => ({ default: { adminToken: 'test-admin-token' } }))
+
+/**
+ * Mock the URL guard so tests never resolve DNS. The default implementation
+ * mirrors the real syntax check ('Invalid URL') and accepts everything else;
+ * individual tests override it to exercise rejection paths.
+ */
+const urlGuard = vi.hoisted(() => ({
+  validateOutboundUrl: vi.fn(),
+}))
+vi.mock('./url-guard', () => urlGuard)
+const defaultValidateOutboundUrl = async (rawUrl: string) => {
+  try {
+    return { ok: true as const, url: new URL(rawUrl) }
+  } catch {
+    return { ok: false as const, reason: 'Invalid URL' }
+  }
+}
+urlGuard.validateOutboundUrl.mockImplementation(defaultValidateOutboundUrl)
+
 /**
  * Mock global fetch for the probe validation inside the submit handler.
  */
@@ -56,6 +77,9 @@ vi.stubGlobal('fetch', vi.fn())
 
 import express from 'express'
 import { router, resolveImageMode } from './submissions'
+import { errorMiddleware } from './middleware'
+
+const ADMIN_HEADERS = { authorization: 'Bearer test-admin-token' }
 
 /** Extracted slugify from source for local assertions */
 const slugify = (s: string) =>
@@ -73,6 +97,7 @@ function httpRequest(
   method: string,
   path: string,
   body?: unknown,
+  headers?: Record<string, string>,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const payload = body !== undefined ? JSON.stringify(body) : undefined
@@ -85,6 +110,7 @@ function httpRequest(
         headers: {
           'Content-Type': 'application/json',
           ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+          ...headers,
         },
       },
       (res) => {
@@ -111,6 +137,8 @@ function httpRequest(
 function startApp(): Promise<{ port: number; close: () => void }> {
   const app = express()
   app.use('/api/lists', router)
+  // Same error funnel as the real app — unexpected errors become generic 500s
+  app.use(errorMiddleware)
   return new Promise((resolve) => {
     const server = app.listen(0, () => {
       const addr = server.address() as { port: number }
@@ -189,7 +217,7 @@ describe('POST /submit -- probe validation', () => {
 
   afterEach(() => close())
 
-  it('rejects when probe returns non-OK status', async () => {
+  it('rejects when probe returns non-OK status, without echoing the upstream status code', async () => {
     const mockFetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -199,7 +227,8 @@ describe('POST /submit -- probe validation', () => {
       submittedBy: 'alice',
     })
     expect(res.status).toBe(400)
-    expect(res.body.error).toContain('503')
+    expect(res.body.error).toBe('URL did not return a valid token list')
+    expect(JSON.stringify(res.body)).not.toContain('503')
   })
 
   it('rejects when URL does not serve a token list (no tokens array)', async () => {
@@ -215,10 +244,10 @@ describe('POST /submit -- probe validation', () => {
       submittedBy: 'alice',
     })
     expect(res.status).toBe(400)
-    expect(res.body.error).toContain('missing tokens array')
+    expect(res.body.error).toBe('URL did not return a valid token list')
   })
 
-  it('rejects when fetch throws (network error)', async () => {
+  it('rejects when fetch throws (network error) with a generic message', async () => {
     const mockFetch = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'))
     vi.stubGlobal('fetch', mockFetch)
 
@@ -228,7 +257,26 @@ describe('POST /submit -- probe validation', () => {
       submittedBy: 'alice',
     })
     expect(res.status).toBe(400)
-    expect(res.body.error).toContain('ECONNREFUSED')
+    expect(res.body.error).toBe('URL did not return a valid token list')
+    expect(JSON.stringify(res.body)).not.toContain('ECONNREFUSED')
+  })
+
+  it('rejects URLs the outbound guard flags (server-side request forgery) and never fetches them', async () => {
+    urlGuard.validateOutboundUrl.mockResolvedValueOnce({
+      ok: false,
+      reason: 'URL resolves to a private or internal address',
+    })
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const res = await httpRequest(port, 'POST', '/api/lists/submit', {
+      url: 'http://169.254.169.254/latest/meta-data',
+      name: 'test',
+      submittedBy: 'alice',
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('URL resolves to a private or internal address')
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('succeeds and inserts when probe returns valid token list', async () => {
@@ -423,18 +471,39 @@ describe('PATCH /submissions/:id', () => {
 
   afterEach(() => close())
 
-  it('rejects empty updates (invalid status value)', async () => {
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      status: 'invalid-status',
-    })
+  it('responds 401 without a bearer token', async () => {
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', { status: 'approved' })
+    expect(res.status).toBe(401)
+    expect(res.body.error).toBe('unauthorized')
+  })
+
+  it('responds 401 with a mismatched bearer token', async () => {
+    const res = await httpRequest(
+      port,
+      'PATCH',
+      '/api/lists/submissions/uuid-1',
+      { status: 'approved' },
+      { authorization: 'Bearer wrong-token' },
+    )
+    expect(res.status).toBe(401)
+    expect(res.body.error).toBe('unauthorized')
+  })
+
+  it('rejects invalid status values with a message listing the allowed values', async () => {
+    const res = await httpRequest(
+      port,
+      'PATCH',
+      '/api/lists/submissions/uuid-1',
+      { status: 'invalid-status' },
+      ADMIN_HEADERS,
+    )
     expect(res.status).toBe(400)
-    expect(res.body.error).toBe('Nothing to update')
+    expect(res.body.error).toContain('Invalid status')
+    expect(res.body.error).toContain('pending, approved, rejected, stale')
   })
 
   it('rejects when no recognized fields provided', async () => {
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      foo: 'bar',
-    })
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', { foo: 'bar' }, ADMIN_HEADERS)
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Nothing to update')
   })
@@ -442,21 +511,60 @@ describe('PATCH /submissions/:id', () => {
   it('accepts status=approved', async () => {
     chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'approved', imageMode: 'auto' }])
 
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      status: 'approved',
-    })
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', { status: 'approved' }, ADMIN_HEADERS)
 
     expect(res.status).toBe(200)
     expect(res.body.status).toBe('approved')
     expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved' }))
   })
 
+  it('returns the full updated submission shape, not just id/status/imageMode', async () => {
+    const now = new Date().toISOString()
+    chain.returning.mockResolvedValueOnce([
+      {
+        id: 'uuid-1',
+        url: 'https://example.com/list.json',
+        name: 'My List',
+        description: 'A description',
+        submittedBy: 'alice',
+        status: 'approved',
+        providerKey: 'user-alice',
+        listKey: 'my-list',
+        imageMode: 'auto',
+        failCount: 0,
+        subscriberCount: 5,
+        lastFetchedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        lastAccessedAt: now,
+        lastContentHash: 'hash',
+      },
+    ])
+
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', { status: 'approved' }, ADMIN_HEADERS)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      id: 'uuid-1',
+      url: 'https://example.com/list.json',
+      name: 'My List',
+      description: 'A description',
+      submittedBy: 'alice',
+      status: 'approved',
+      providerKey: 'user-alice',
+      listKey: 'my-list',
+      imageMode: 'auto',
+      failCount: 0,
+      subscriberCount: 5,
+      lastFetchedAt: now,
+      createdAt: now,
+    })
+  })
+
   it('accepts imageMode=save', async () => {
     chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'pending', imageMode: 'save' }])
 
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      imageMode: 'save',
-    })
+    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', { imageMode: 'save' }, ADMIN_HEADERS)
 
     expect(res.status).toBe(200)
     expect(res.body.imageMode).toBe('save')
@@ -466,30 +574,42 @@ describe('PATCH /submissions/:id', () => {
   it('accepts both status and imageMode together', async () => {
     chain.returning.mockResolvedValueOnce([{ id: 'uuid-1', status: 'approved', imageMode: 'link' }])
 
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      status: 'approved',
-      imageMode: 'link',
-    })
+    const res = await httpRequest(
+      port,
+      'PATCH',
+      '/api/lists/submissions/uuid-1',
+      { status: 'approved', imageMode: 'link' },
+      ADMIN_HEADERS,
+    )
 
     expect(res.status).toBe(200)
     expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', imageMode: 'link' }))
   })
 
-  it('ignores invalid imageMode values', async () => {
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/uuid-1', {
-      imageMode: 'invalid',
-    })
+  it('rejects invalid imageMode values with a message listing the allowed values', async () => {
+    const res = await httpRequest(
+      port,
+      'PATCH',
+      '/api/lists/submissions/uuid-1',
+      { imageMode: 'invalid' },
+      ADMIN_HEADERS,
+    )
 
     expect(res.status).toBe(400)
-    expect(res.body.error).toBe('Nothing to update')
+    expect(res.body.error).toContain('Invalid imageMode')
+    expect(res.body.error).toContain('link, save, auto')
   })
 
   it('returns 404 when submission not found', async () => {
     chain.returning.mockResolvedValueOnce([])
 
-    const res = await httpRequest(port, 'PATCH', '/api/lists/submissions/nonexistent', {
-      status: 'rejected',
-    })
+    const res = await httpRequest(
+      port,
+      'PATCH',
+      '/api/lists/submissions/nonexistent',
+      { status: 'rejected' },
+      ADMIN_HEADERS,
+    )
 
     expect(res.status).toBe(404)
     expect(res.body.error).toBe('Submission not found')
@@ -516,6 +636,12 @@ describe('GET /submissions/approved', () => {
 
   afterEach(() => close())
 
+  it('responds 401 without the admin bearer token', async () => {
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+    expect(res.status).toBe(401)
+    expect(res.body.error).toBe('unauthorized')
+  })
+
   it('returns approved submissions mapped for collector', async () => {
     const rows = [
       {
@@ -532,7 +658,7 @@ describe('GET /submissions/approved', () => {
     ]
     chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(rows))
 
-    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved', undefined, ADMIN_HEADERS)
 
     expect(res.status).toBe(200)
     const items = res.body as unknown as unknown[]
@@ -561,7 +687,7 @@ describe('GET /submissions/approved', () => {
     ]
     chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(rows))
 
-    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved', undefined, ADMIN_HEADERS)
 
     expect(res.status).toBe(200)
     const items = res.body as unknown as unknown[]
@@ -576,7 +702,7 @@ describe('GET /submissions/approved', () => {
   it('returns empty array when no approved submissions', async () => {
     chain.then = vi.fn((resolve: (v: unknown) => void) => resolve([]))
 
-    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved')
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved', undefined, ADMIN_HEADERS)
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual([])
@@ -599,14 +725,15 @@ describe('POST /submit -- DB error path', () => {
 
   afterEach(() => close())
 
-  it('returns 500 when DB insert throws', async () => {
+  it('returns a generic 500 when DB insert throws — no internals leak to clients', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const mockFetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ tokens: [{ address: '0x1', name: 'Token' }] }),
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    chain.returning.mockRejectedValueOnce(new Error('DB connection lost'))
+    chain.returning.mockRejectedValueOnce(new Error('Failed query: insert into "list_submission" ...'))
 
     const res = await httpRequest(port, 'POST', '/api/lists/submit', {
       url: 'https://example.com/list.json',
@@ -615,7 +742,10 @@ describe('POST /submit -- DB error path', () => {
     })
 
     expect(res.status).toBe(500)
-    expect(res.body.error).toBe('DB connection lost')
+    expect(res.body.error).toBe('internal server error')
+    expect(JSON.stringify(res.body)).not.toContain('Failed query')
+    expect(consoleSpy).toHaveBeenCalled()
+    consoleSpy.mockRestore()
   })
 })
 

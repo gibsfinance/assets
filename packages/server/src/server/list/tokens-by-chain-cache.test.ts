@@ -55,21 +55,19 @@ const resetDbMocks = () => {
 }
 
 describe('tokensByChainCacheKey', () => {
-  it('produces the trailing-colon form for an empty extensions set (the warmer key)', () => {
-    expect(tokensByChainCacheKey('eip155-1', 50_000, new Set())).toBe('tokens-by-chain:eip155-1:50000:')
+  it('keeps the legacy trailing-colon shape so rows warmed before the extensions removal stay readable', () => {
+    // Extensions were dropped from the key (they never changed the output —
+    // the ranked query selects no bridge/header columns) but the empty
+    // extensions slot must keep its position or every warmed row goes cold.
+    expect(tokensByChainCacheKey('eip155-1', 50_000)).toBe('tokens-by-chain:eip155-1:50000:')
   })
 
-  it('sorts extensions so insertion order cannot fork the key', () => {
-    const a = tokensByChainCacheKey('eip155-1', 100, new Set(['headerUri', 'bridgeInfo']))
-    const b = tokensByChainCacheKey('eip155-1', 100, new Set(['bridgeInfo', 'headerUri']))
-    expect(a).toBe(b)
-    expect(a).toBe('tokens-by-chain:eip155-1:100:bridgeInfo,headerUri')
+  it('keys only on chainId and limit — ?extensions= can no longer fork the cache', () => {
+    expect(tokensByChainCacheKey('eip155-1', 100)).toBe('tokens-by-chain:eip155-1:100:')
   })
 
   it('keys on the limit, so different limits never share a cached body', () => {
-    expect(tokensByChainCacheKey('eip155-1', 100, new Set())).not.toBe(
-      tokensByChainCacheKey('eip155-1', 200, new Set()),
-    )
+    expect(tokensByChainCacheKey('eip155-1', 100)).not.toBe(tokensByChainCacheKey('eip155-1', 200))
   })
 })
 
@@ -118,8 +116,8 @@ describe('buildAndCacheTokensByChain', () => {
     const ranked = deferred<Record<string, unknown>[]>()
     vi.mocked(db.getTokensByChainRanked).mockReturnValue(ranked.promise)
 
-    const first = buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
-    const second = buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
+    const first = buildAndCacheTokensByChain('eip155-1', 50_000)
+    const second = buildAndCacheTokensByChain('eip155-1', 50_000)
 
     ranked.resolve([])
     const [bodyA, bodyB] = await Promise.all([first, second])
@@ -132,16 +130,16 @@ describe('buildAndCacheTokensByChain', () => {
   it('does not share builds across different cache keys', async () => {
     vi.mocked(db.getTokensByChainRanked).mockResolvedValue([])
     await Promise.all([
-      buildAndCacheTokensByChain('eip155-1', 50_000, new Set()),
-      buildAndCacheTokensByChain('eip155-369', 50_000, new Set()),
+      buildAndCacheTokensByChain('eip155-1', 50_000),
+      buildAndCacheTokensByChain('eip155-369', 50_000),
     ])
     expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
   })
 
   it('clears the in-flight entry after settling so the next caller rebuilds', async () => {
     vi.mocked(db.getTokensByChainRanked).mockResolvedValue([])
-    await buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
-    await buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
+    await buildAndCacheTokensByChain('eip155-1', 50_000)
+    await buildAndCacheTokensByChain('eip155-1', 50_000)
     expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
   })
 
@@ -149,14 +147,14 @@ describe('buildAndCacheTokensByChain', () => {
     const ranked = deferred<Record<string, unknown>[]>()
     vi.mocked(db.getTokensByChainRanked).mockReturnValueOnce(ranked.promise).mockResolvedValueOnce([])
 
-    const first = buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
-    const second = buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
+    const first = buildAndCacheTokensByChain('eip155-1', 50_000)
+    const second = buildAndCacheTokensByChain('eip155-1', 50_000)
     ranked.reject(new Error('query timeout'))
 
     await expect(first).rejects.toThrow('query timeout')
     await expect(second).rejects.toThrow('query timeout')
     // The failed promise must not be cached — the next demand re-queries.
-    await expect(buildAndCacheTokensByChain('eip155-1', 50_000, new Set())).resolves.toBeTypeOf('string')
+    await expect(buildAndCacheTokensByChain('eip155-1', 50_000)).resolves.toBeTypeOf('string')
     expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
   })
 
@@ -167,7 +165,7 @@ describe('buildAndCacheTokensByChain', () => {
 
     // The body must arrive while the INSERT is still pending (fire-and-forget) —
     // a cold request never waits on the multi-megabyte cache write.
-    const body = await buildAndCacheTokensByChain('eip155-1', 50_000, new Set())
+    const body = await buildAndCacheTokensByChain('eip155-1', 50_000)
     expect(JSON.parse(body)).toMatchObject({ chainIdentifier: 'eip155-1', total: 0, tokens: [] })
 
     // A failing write must not surface anywhere (logged, not thrown).

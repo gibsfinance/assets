@@ -50,6 +50,8 @@ router.post('/token', json(), async (req, res) => {
 
     res.json({ access_token: data.access_token })
   } catch (err) {
-    res.status(502).json({ error: 'Failed to exchange token', details: (err as Error).message })
+    // Log the failure server-side; never forward upstream error details to clients
+    console.error('GitHub token exchange failed', err)
+    res.status(502).json({ error: 'Failed to exchange token' })
   }
 })

@@ -11,11 +11,21 @@ const MAX_TOKENS = 2000
 
 interface SpriteToken {
   address: string
+  chainId: string
   imageHash: string
   content: Buffer
   ext: string
   mode: string
   uri: string
+}
+
+/**
+ * Grid key shared by the manifest and the sheet — chain-qualified so a list
+ * carrying the same address on several chains keeps one cell per chain and
+ * both endpoints agree on coordinates.
+ */
+function spriteKey(token: { chainId: string; address: string }): string {
+  return `${token.chainId}-${token.address.toLowerCase()}`
 }
 
 async function rasterize(image: SpriteToken, size: number): Promise<Buffer | null> {
@@ -84,10 +94,15 @@ function queryListTokens(listId: string) {
  * (default)     — all tokens in the sprite grid.
  * ?chainId=N    — filter to a specific chain within the list.
  */
-export const manifest: RequestHandler = async (req, res, next) => {
+export const manifest: RequestHandler = async (req, res, _next) => {
   const { providerKey, listKey } = req.params
   const listId = await resolveListId(providerKey, listKey)
-  if (!listId) return next()
+  // Respond with the documented JSON Error shape — `next()` here fell through
+  // to the framework's HTML 404, breaking JSON consumers.
+  if (!listId) {
+    res.status(404).json({ error: 'unknown provider or list' })
+    return
+  }
 
   const size = Math.min(Math.max(Number(req.query.size) || DEFAULT_SIZE, 16), 128)
   const cols = Math.min(Math.max(Number(req.query.cols) || DEFAULT_COLS, 5), 50)
@@ -105,7 +120,7 @@ export const manifest: RequestHandler = async (req, res, next) => {
   let rasterIdx = 0
 
   for (const t of tokens) {
-    const key = `${t.chainId}-${(t.address as string).toLowerCase()}`
+    const key = spriteKey({ chainId: String(t.chainId), address: t.address as string })
     if (seen.has(key)) continue
     seen.add(key)
 
@@ -143,10 +158,14 @@ export const manifest: RequestHandler = async (req, res, next) => {
 // Sheet: GET /image/sprite/:providerKey/:listKey/sheet
 // ---------------------------------------------------------------------------
 
-export const sheet: RequestHandler = async (req, res, next) => {
+export const sheet: RequestHandler = async (req, res, _next) => {
   const { providerKey, listKey } = req.params
   const listId = await resolveListId(providerKey, listKey)
-  if (!listId) return next()
+  // Same JSON 404 as the manifest — see the comment there.
+  if (!listId) {
+    res.status(404).json({ error: 'unknown provider or list' })
+    return
+  }
 
   const size = Math.min(Math.max(Number(req.query.size) || DEFAULT_SIZE, 16), 128)
   const cols = Math.min(Math.max(Number(req.query.cols) || DEFAULT_COLS, 5), 50)
@@ -162,9 +181,12 @@ export const sheet: RequestHandler = async (req, res, next) => {
   const seen = new Set<string>()
   const deduped: SpriteToken[] = []
   for (const t of tokens) {
-    const addr = t.address.toLowerCase()
-    if (seen.has(addr)) continue
-    seen.add(addr)
+    // Dedupe by the same chain-qualified key as the manifest — bare-address
+    // dedupe dropped same-address tokens on other chains, drifting every grid
+    // coordinate after the collision relative to the manifest.
+    const key = spriteKey(t)
+    if (seen.has(key)) continue
+    seen.add(key)
     if (mixed && t.ext === '.svg') continue
     deduped.push(t)
   }
@@ -196,10 +218,10 @@ export const sheet: RequestHandler = async (req, res, next) => {
     }
   }
 
-  // Build position manifest for headers
+  // Build position manifest for headers — keyed identically to the manifest endpoint
   const tokenMap: Record<string, [number, number]> = {}
   for (let i = 0; i < deduped.length; i++) {
-    tokenMap[deduped[i].address.toLowerCase()] = [i % cols, Math.floor(i / cols)]
+    tokenMap[spriteKey(deduped[i])] = [i % cols, Math.floor(i / cols)]
   }
 
   const sprite = await sharp({

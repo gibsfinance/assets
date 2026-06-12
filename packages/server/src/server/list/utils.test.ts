@@ -26,7 +26,15 @@ vi.mock('drizzle-orm', () => ({
   asc: vi.fn((...args: unknown[]) => args),
 }))
 
-import { normalizeTokens, tokenFilters, minimalList, respondWithList } from './utils'
+import {
+  normalizeTokens,
+  tokenFilters,
+  minimalList,
+  respondWithList,
+  parseExtensions,
+  parseTokenLimit,
+  parseListFilters,
+} from './utils'
 
 function makeToken(overrides: Record<string, unknown>) {
   return {
@@ -266,7 +274,7 @@ describe('normalizeTokens', () => {
     expect(result[0].extensions).toBeUndefined()
   })
 
-  it('adds headerUri extension when headerUri is in extensions set', () => {
+  it('attaches extensions for headerUri-only requests when header data exists', () => {
     const tokens = [
       makeToken({
         providedId: '0xaaa',
@@ -277,11 +285,65 @@ describe('normalizeTokens', () => {
 
     const result = normalizeTokens(tokens as any, [], new Set(['headerUri']))
 
-    // headerUri is always added (even without bridge extension), but extensions
-    // are only attached if everAddedExtension is true (which requires bridgeInfo).
-    // Since bridgeId is null, everAddedExtension stays false, so no extensions on output.
+    // Regression: extensions used to attach only when a bridgeInfo entry was
+    // added in the same group, so ?extensions=headerUri alone never emitted
+    // the header image even when it existed.
+    expect(result).toHaveLength(1)
+    expect(result[0].extensions).toBeDefined()
+    expect(result[0].extensions!.headerUri).toBe('/image/direct/header123.png')
+    // No bridgeInfo was requested or collected — the empty placeholder must not leak.
+    expect(result[0].extensions).not.toHaveProperty('bridgeInfo')
+  })
+
+  it('does not attach extensions for headerUri-only requests when no header image exists', () => {
+    const tokens = [
+      makeToken({
+        providedId: '0xaaa',
+        headerImageHash: null,
+        bridge: { bridgeId: null },
+      }),
+    ]
+
+    const result = normalizeTokens(tokens as any, [], new Set(['headerUri']))
+
     expect(result).toHaveLength(1)
     expect(result[0].extensions).toBeUndefined()
+  })
+
+  it('keys bridgeInfo by bare numeric chain id when row chain ids are prefixed', () => {
+    // Regression: production rows carry prefixed chain ids (eip155-1), and
+    // +'eip155-1' is NaN — bridgeInfo used to emit a literal "NaN" key and
+    // mis-pick the counterpart network.
+    const nativeAddr = '0x1111111111111111111111111111111111111111'
+    const bridgedAddr = '0x2222222222222222222222222222222222222222'
+    const homeAddr = '0x3333333333333333333333333333333333333333'
+    const foreignAddr = '0x4444444444444444444444444444444444444444'
+    const tokens = [
+      makeToken({
+        providedId: nativeAddr,
+        chainId: 'eip155-369',
+        bridge: {
+          bridgeId: 'bridge-1',
+          homeAddress: homeAddr,
+          foreignAddress: foreignAddr,
+        },
+        networkA: { chainId: 'eip155-369' },
+        networkB: { chainId: 'eip155-1' },
+        nativeToken: { providedId: nativeAddr },
+        bridgedToken: { providedId: bridgedAddr },
+      }),
+    ]
+
+    const result = normalizeTokens(tokens as any, [], new Set(['bridgeInfo']))
+
+    expect(result).toHaveLength(1)
+    expect(result[0].extensions!.bridgeInfo).not.toHaveProperty('NaN')
+    // Token chain is eip155-369 = networkA, so the counterpart is networkB (chain 1)
+    expect(result[0].extensions!.bridgeInfo![1]).toEqual({
+      tokenAddress: bridgedAddr,
+      originationBridgeAddress: homeAddr,
+      destinationBridgeAddress: foreignAddr,
+    })
   })
 
   it('adds headerUri alongside bridgeInfo when both are in extensions', () => {
@@ -461,6 +523,24 @@ describe('tokenFilters', () => {
     expect(filter({ chainId: '369', decimals: 6 } as any)).toBe(false)
   })
 
+  it('matches prefixed row chain ids when the query uses a bare id', () => {
+    // Regression: stored rows carry prefixed ids (eip155-369); the filter used
+    // to compare the raw query value, so ?chainId=369 silently returned zero
+    // tokens on /list/merged/{order} and /list/{providerKey}/{listKey}.
+    const filters = tokenFilters({ chainId: '369' })
+    expect(filters[0]({ chainId: 'eip155-369', decimals: 18 } as any)).toBe(true)
+    expect(filters[0]({ chainId: 'eip155-1', decimals: 18 } as any)).toBe(false)
+  })
+
+  it('returns identical results for bare and prefixed query values', () => {
+    const bare = tokenFilters({ chainId: '369' })[0]
+    const prefixed = tokenFilters({ chainId: 'eip155-369' })[0]
+    const rows = [{ chainId: 'eip155-369' }, { chainId: 'eip155-1' }, { chainId: '369' }]
+    for (const row of rows) {
+      expect(bare(row as any)).toBe(prefixed(row as any))
+    }
+  })
+
   it('creates both chainId and decimals filters when both are provided', () => {
     const filters = tokenFilters({ chainId: '369', decimals: ['18', '8'] })
     expect(filters).toHaveLength(2)
@@ -473,6 +553,111 @@ describe('tokenFilters', () => {
     expect(filters[1]({ chainId: '1', decimals: 18 } as any)).toBe(true)
     expect(filters[1]({ chainId: '369', decimals: 8 } as any)).toBe(true)
     expect(filters[1]({ chainId: '369', decimals: 6 } as any)).toBe(false)
+  })
+})
+
+describe('parseExtensions', () => {
+  it('splits the documented comma-separated form', () => {
+    // Regression: extensions=bridgeInfo,headerUri used to arrive as one literal
+    // name and silently match nothing.
+    expect(parseExtensions('bridgeInfo,headerUri')).toEqual(new Set(['bridgeInfo', 'headerUri']))
+  })
+
+  it('keeps supporting repeated parameters', () => {
+    expect(parseExtensions(['bridgeInfo', 'headerUri'])).toEqual(new Set(['bridgeInfo', 'headerUri']))
+  })
+
+  it('splits commas inside repeated parameters', () => {
+    expect(parseExtensions(['bridgeInfo,headerUri', 'sansMetadata'])).toEqual(
+      new Set(['bridgeInfo', 'headerUri', 'sansMetadata']),
+    )
+  })
+
+  it('drops empty segments and trims whitespace', () => {
+    expect(parseExtensions('bridgeInfo,, headerUri ,')).toEqual(new Set(['bridgeInfo', 'headerUri']))
+  })
+
+  it('returns an empty set for missing values', () => {
+    expect(parseExtensions(undefined)).toEqual(new Set())
+    expect(parseExtensions('')).toEqual(new Set())
+  })
+})
+
+describe('parseTokenLimit', () => {
+  const options = { fallback: 50_000, max: 100_000 }
+
+  it('passes valid limits through', () => {
+    expect(parseTokenLimit('20', options)).toBe(20)
+    expect(parseTokenLimit('1', options)).toBe(1)
+  })
+
+  it('clamps to the documented maximum', () => {
+    expect(parseTokenLimit('200000', options)).toBe(100_000)
+  })
+
+  it('falls back on negative and zero limits — a negative limit must never reach slice()', () => {
+    // Regression: slice(0, -5) silently drops tokens from the end of the list.
+    expect(parseTokenLimit('-5', options)).toBe(50_000)
+    expect(parseTokenLimit('0', options)).toBe(50_000)
+  })
+
+  it('falls back on non-numeric and missing limits', () => {
+    expect(parseTokenLimit('banana', options)).toBe(50_000)
+    expect(parseTokenLimit(undefined, options)).toBe(50_000)
+  })
+
+  it('floors fractional limits', () => {
+    expect(parseTokenLimit('10.9', options)).toBe(10)
+    // 0.5 floors to 0, which is below the minimum — fallback, not slice(0, 0)
+    expect(parseTokenLimit('0.5', options)).toBe(50_000)
+  })
+})
+
+describe('parseListFilters', () => {
+  it('rejects non-boolean default values with 400 — they used to 500 in Postgres', () => {
+    let caught: { status?: number } | undefined
+    try {
+      parseListFilters({ default: 'banana' })
+    } catch (err) {
+      caught = err as { status?: number }
+    }
+    expect(caught?.status).toBe(400)
+  })
+
+  it('converts default to a real boolean', () => {
+    expect(parseListFilters({ default: 'true' })).toEqual({ default: true })
+    expect(parseListFilters({ default: 'false' })).toEqual({ default: false })
+  })
+
+  it('normalizes bare chain ids to the prefixed form rows store', () => {
+    // Regression: ?chain_id=369 went to eq() raw and matched nothing because
+    // the network table stores eip155-369.
+    expect(parseListFilters({ chain_id: '369' })).toEqual({ chain_id: 'eip155-369' })
+    expect(parseListFilters({ chain_id: 'eip155-369' })).toEqual({ chain_id: 'eip155-369' })
+  })
+
+  it('normalizes each element of an array chain_id filter', () => {
+    expect(parseListFilters({ chain_id: ['369', 'eip155-1'] })).toEqual({ chain_id: ['eip155-369', 'eip155-1'] })
+  })
+
+  it('rejects empty values with 400', () => {
+    expect(() => parseListFilters({ key: '' })).toThrowError(/non-empty/)
+  })
+
+  it('rejects non-integer version filters with 400', () => {
+    expect(() => parseListFilters({ major: 'banana' })).toThrowError(/integer/)
+  })
+
+  it('converts version filters to numbers', () => {
+    expect(parseListFilters({ major: '1', minor: '0', patch: '2' })).toEqual({ major: 1, minor: 0, patch: 2 })
+  })
+
+  it('passes plain string filters through untouched', () => {
+    expect(parseListFilters({ key: 'extended', provider_key: 'pulsex', name: 'PulseX' })).toEqual({
+      key: 'extended',
+      provider_key: 'pulsex',
+      name: 'PulseX',
+    })
   })
 })
 

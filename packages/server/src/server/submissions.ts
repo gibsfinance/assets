@@ -2,16 +2,22 @@
  * @module submissions
  * User-submitted token list CRUD: submit, review, approve, and auto-mode resolution.
  *
- * `POST /submit` — validates URL (probes for JSON with `tokens` array), generates
- * providerKey/listKey via slugify, inserts into `list_submission` with upsert.
- * `GET /submissions/approved` — returns approved lists for the collector pipeline,
- * auto-upgrading image mode based on subscriber count and access recency.
+ * `POST /submit` — validates URL (scheme + private-address guard, then probes
+ * for JSON with `tokens` array), generates providerKey/listKey via slugify,
+ * inserts into `list_submission` with upsert.
+ * `PATCH /submissions/:id` — admin-only (bearer ADMIN_TOKEN) moderation.
+ * `GET /submissions/approved` — admin-only feed of approved lists for the
+ * collector pipeline, auto-upgrading image mode based on subscriber count and
+ * access recency (writes transitions back to the database).
  */
 import { Router, json } from 'express'
 import { nextOnError } from './utils'
+import { requireAdminToken } from './admin-auth'
+import { validateOutboundUrl } from './url-guard'
 import { getDrizzle } from '../db/drizzle'
 import { eq, desc, sql as dsql } from 'drizzle-orm'
 import * as s from '../db/schema'
+import type { ListSubmission } from '../db/schema-types'
 
 export const router = Router() as Router
 
@@ -22,9 +28,34 @@ const slugify = (str: string) =>
     .replace(/^-|-$/g, '')
     .slice(0, 64)
 
+/** Allowed submission statuses (mirrored in the OpenAPI Submission schema). */
+const SUBMISSION_STATUSES = ['pending', 'approved', 'rejected', 'stale']
+
+/** Allowed image modes (mirrored in the OpenAPI Submission schema). */
+const IMAGE_MODES = ['link', 'save', 'auto']
+
+/** Map a list_submission row to the public Submission response shape. */
+const toSubmission = (r: ListSubmission) => ({
+  id: r.id,
+  url: r.url,
+  name: r.name,
+  description: r.description,
+  submittedBy: r.submittedBy,
+  status: r.status,
+  providerKey: r.providerKey,
+  listKey: r.listKey,
+  imageMode: r.imageMode,
+  failCount: r.failCount,
+  subscriberCount: r.subscriberCount,
+  lastFetchedAt: r.lastFetchedAt,
+  createdAt: r.createdAt,
+})
+
 /**
  * POST /api/lists/submit
  * Submit a token list URL for inclusion in the collection pipeline.
+ * Resubmitting an existing URL updates name/description/submittedBy and
+ * returns the row's existing status (it is not reset to pending).
  */
 router.post(
   '/submit',
@@ -37,70 +68,64 @@ router.post(
       return
     }
 
-    // Validate URL format
-    try {
-      new URL(url)
-    } catch {
-      res.status(400).json({ error: 'Invalid URL' })
+    // Scheme allowlist + private-address guard (server-side request forgery)
+    const validation = await validateOutboundUrl(url)
+    if (!validation.ok) {
+      res.status(400).json({ error: validation.reason })
       return
     }
 
-    // Validate the URL actually serves a token list
+    // Probe the URL for token-list JSON. Upstream status codes and error
+    // details are intentionally not echoed back to the client.
+    let probed: { tokens?: unknown } | undefined
     try {
       const probe = await fetch(url, { signal: AbortSignal.timeout(10000) })
-      if (!probe.ok) {
-        res.status(400).json({ error: `URL returned ${probe.status}` })
-        return
+      if (probe.ok) {
+        probed = (await probe.json()) as { tokens?: unknown }
       }
-      const data = await probe.json()
-      if (!Array.isArray(data?.tokens)) {
-        res.status(400).json({ error: 'URL does not serve a valid token list (missing tokens array)' })
-        return
-      }
-    } catch (err) {
-      res.status(400).json({ error: `Failed to fetch URL: ${(err as Error).message}` })
+    } catch {
+      // network failure or non-JSON body — handled by the guard below
+    }
+    if (!Array.isArray(probed?.tokens)) {
+      res.status(400).json({ error: 'URL did not return a valid token list' })
       return
     }
 
     const providerKey = `user-${slugify(submittedBy)}`
     const listKey = slugify(name)
 
-    try {
-      const db = getDrizzle()
-      const [row] = await db
-        .insert(s.listSubmission)
-        .values({
-          url,
-          name,
-          description: description || '',
-          submittedBy,
-          status: 'pending',
-          providerKey,
-          listKey,
-          imageMode: 'auto',
-          failCount: 0,
-          subscriberCount: 0,
-        })
-        .onConflictDoUpdate({
-          target: s.listSubmission.url,
-          set: {
-            name: dsql`excluded.name`,
-            description: dsql`excluded.description`,
-            submittedBy: dsql`excluded.submitted_by`,
-            updatedAt: dsql`NOW()`,
-          },
-        })
-        .returning()
-
-      res.status(201).json({
-        id: row.id,
-        status: row.status,
-        providerKey: row.providerKey,
-        listKey: row.listKey,
+    const db = getDrizzle()
+    const [row] = await db
+      .insert(s.listSubmission)
+      .values({
+        url,
+        name,
+        description: description || '',
+        submittedBy,
+        status: 'pending',
+        providerKey,
+        listKey,
+        imageMode: 'auto',
+        failCount: 0,
+        subscriberCount: 0,
       })
-    } catch (err) {
-      res.status(500).json({ error: (err as Error).message })
-    }
+      .onConflictDoUpdate({
+        target: s.listSubmission.url,
+        set: {
+          name: dsql`excluded.name`,
+          description: dsql`excluded.description`,
+          submittedBy: dsql`excluded.submitted_by`,
+          updatedAt: dsql`NOW()`,
+        },
+      })
+      .returning()
+
+    res.status(201).json({
+      id: row.id,
+      status: row.status,
+      providerKey: row.providerKey,
+      listKey: row.listKey,
+    })
   }),
 )
 
@@ -121,44 +146,35 @@ router.get(
     }
 
     const rows = await q
-    res.json(
-      rows.map((r) => ({
-        id: r.id,
-        url: r.url,
-        name: r.name,
-        description: r.description,
-        submittedBy: r.submittedBy,
-        status: r.status,
-        providerKey: r.providerKey,
-        listKey: r.listKey,
-        imageMode: r.imageMode,
-        failCount: r.failCount,
-        subscriberCount: r.subscriberCount,
-        lastFetchedAt: r.lastFetchedAt,
-        createdAt: r.createdAt,
-      })),
-    )
+    res.json(rows.map(toSubmission))
   }),
 )
 
 /**
  * PATCH /api/lists/submissions/:id
- * Update a submission's status or image mode. Admin-only in practice.
+ * Update a submission's status or image mode.
+ * Admin-only: requires the ADMIN_TOKEN bearer token.
  */
 router.patch(
   '/submissions/:id',
+  requireAdminToken,
   json(),
   nextOnError(async (req, res) => {
     const { id } = req.params as Record<string, string>
-    const { status, imageMode } = req.body as Record<string, string>
+    const { status, imageMode } = req.body as Record<string, string | undefined>
+
+    if (status !== undefined && !SUBMISSION_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status — allowed values: ${SUBMISSION_STATUSES.join(', ')}` })
+      return
+    }
+    if (imageMode !== undefined && !IMAGE_MODES.includes(imageMode)) {
+      res.status(400).json({ error: `Invalid imageMode — allowed values: ${IMAGE_MODES.join(', ')}` })
+      return
+    }
 
     const updates: Record<string, unknown> = {}
-    if (status && ['pending', 'approved', 'rejected', 'stale'].includes(status)) {
-      updates.status = status
-    }
-    if (imageMode && ['link', 'save', 'auto'].includes(imageMode)) {
-      updates.imageMode = imageMode
-    }
+    if (status) updates.status = status
+    if (imageMode) updates.imageMode = imageMode
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: 'Nothing to update' })
@@ -173,7 +189,7 @@ router.patch(
       return
     }
 
-    res.json({ id: row.id, status: row.status, imageMode: row.imageMode })
+    res.json(toSubmission(row))
   }),
 )
 
@@ -210,11 +226,14 @@ export function resolveImageMode(row: SubmissionForAutoMode): string | null {
 
 /**
  * GET /api/lists/submissions/approved
- * Returns approved submissions for the collector to process.
- * Internal endpoint used by the collection pipeline.
+ * Returns approved submissions for the collector to process, persisting
+ * auto-mode image transitions back to the database as a side effect.
+ * Admin-only: requires the ADMIN_TOKEN bearer token (the in-process
+ * collector reads the database directly via collect/user-submissions.ts).
  */
 router.get(
   '/submissions/approved',
+  requireAdminToken,
   nextOnError(async (_req, res) => {
     const db = getDrizzle()
     const rows = await db

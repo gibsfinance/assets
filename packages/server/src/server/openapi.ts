@@ -53,8 +53,8 @@ const RESIZE_PARAMS = [
   {
     name: 'as',
     in: 'query' as const,
-    description: 'Convert output format.',
-    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'gif', 'avif'] },
+    description: 'Convert output format. Invalid values are silently ignored and the original format is served.',
+    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
   },
   {
     name: 'w',
@@ -69,6 +69,13 @@ const RESIZE_PARAMS = [
     schema: { type: 'integer' as const, minimum: 1, maximum: 2048 },
   },
 ]
+
+const MODE_PARAM = {
+  name: 'mode',
+  in: 'query' as const,
+  description: 'mode=link responds 302 to the original source URI instead of serving content.',
+  schema: { type: 'string' as const, enum: ['link'] },
+}
 
 const IMAGE_FILTER_PARAMS = [
   {
@@ -89,19 +96,32 @@ const IMAGE_FILTER_PARAMS = [
     description: 'Comma-separated list slugs to restrict image sources.',
     schema: { type: 'string' as const },
   },
-  {
-    name: 'mode',
-    in: 'query' as const,
-    description: 'mode=link responds 301 to the original source URI instead of serving content.',
-    schema: { type: 'string' as const, enum: ['link'] },
-  },
+  MODE_PARAM,
 ]
+
+const REDIRECT_RESPONSE = {
+  '302': { description: 'Redirect to the original source URI (mode=link).' },
+}
 
 const EXTENSIONS_PARAM = {
   name: 'extensions',
   in: 'query' as const,
-  description: 'Comma-separated optional token fields to include.',
+  description: 'Optional token fields to include — comma-separated or repeated.',
   schema: { type: 'string' as const, examples: ['bridgeInfo', 'headerUri', 'bridgeInfo,headerUri'] },
+}
+
+const CHAIN_ID_QUERY_PARAM = {
+  name: 'chainId',
+  in: 'query' as const,
+  description: 'Filter tokens to one chain — prefixed form (eip155-369) or bare numeric (369).',
+  schema: { type: 'string' as const },
+}
+
+const DECIMALS_QUERY_PARAM = {
+  name: 'decimals',
+  in: 'query' as const,
+  description: 'Filter by token decimals. Repeatable (decimals=18&decimals=8).',
+  schema: { type: 'string' as const },
 }
 
 const IMAGE_RESPONSE = {
@@ -202,7 +222,7 @@ export const openapi = {
     '/stats': {
       get: {
         tags: ['Networks & Stats'],
-        summary: 'Per-chain token counts (distinct addresses)',
+        summary: 'Per-chain counts of token addresses that have a usable image',
         'x-example': '/stats',
         responses: {
           '200': {
@@ -221,15 +241,24 @@ export const openapi = {
         'x-example': '/list/',
         parameters: [
           { name: 'key', in: 'query', description: 'Filter by list slug.', schema: { type: 'string' } },
+          { name: 'name', in: 'query', description: 'Filter by list name.', schema: { type: 'string' } },
           { name: 'provider_key', in: 'query', description: 'Filter by provider slug.', schema: { type: 'string' } },
           {
             name: 'chain_id',
             in: 'query',
-            description: 'Filter by chain (prefixed or bare).',
+            description: 'Filter by chain — prefixed form (eip155-369) or bare numeric (369).',
             schema: { type: 'string' },
           },
           { name: 'chain_type', in: 'query', description: 'Filter by chain type.', schema: { type: 'string' } },
-          { name: 'default', in: 'query', description: 'Filter to default lists.', schema: { type: 'boolean' } },
+          {
+            name: 'default',
+            in: 'query',
+            description: 'Filter to default (true) or non-default (false) lists.',
+            schema: { type: 'boolean' },
+          },
+          { name: 'major', in: 'query', description: 'Filter by major version.', schema: { type: 'integer' } },
+          { name: 'minor', in: 'query', description: 'Filter by minor version.', schema: { type: 'integer' } },
+          { name: 'patch', in: 'query', description: 'Filter by patch version.', schema: { type: 'integer' } },
         ],
         responses: {
           '200': {
@@ -237,6 +266,11 @@ export const openapi = {
             content: {
               'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/ListInfo' } } },
             },
+          },
+          '400': {
+            description:
+              'Invalid filter value — default must be true or false, version filters must be integers, values must be non-empty.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
       },
@@ -246,7 +280,8 @@ export const openapi = {
         tags: ['Token Endpoints'],
         summary: 'All deduplicated tokens for a chain, ranked by list priority',
         description:
-          'Cached with stale-while-revalidate (6h fresh / 24h stale); top chains are kept perpetually warm. ' +
+          'Responses carry cache-control: public, max-age=21600, stale-while-revalidate=86400 ' +
+          '(6 hours fresh, 24 hours stale); top chains are kept perpetually warm. ' +
           'Each token carries sources[] showing which lists include it.',
         'x-example': '/list/tokens/eip155-369?limit=20',
         parameters: [
@@ -254,10 +289,10 @@ export const openapi = {
           {
             name: 'limit',
             in: 'query',
-            description: 'Maximum tokens returned (default 50000, max 100000).',
+            description:
+              'Maximum tokens returned, clamped to [1, 100000]. Non-numeric, zero, and negative values fall back to the default.',
             schema: { type: 'integer', minimum: 1, maximum: 100000, default: 50000 },
           },
-          EXTENSIONS_PARAM,
         ],
         responses: {
           '200': {
@@ -265,7 +300,8 @@ export const openapi = {
             content: { 'application/json': { schema: { $ref: '#/components/schemas/TokensByChain' } } },
           },
           '400': {
-            description: 'Missing or invalid chainId.',
+            description:
+              'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -274,7 +310,7 @@ export const openapi = {
     '/list/merged/{order}': {
       get: {
         tags: ['Token Endpoints'],
-        summary: 'Merged token list across providers using a named ordering',
+        summary: 'Merged token list across providers for one chain, using a named ordering',
         'x-example': '/list/merged/default?chainId=eip155-369',
         parameters: [
           {
@@ -285,19 +321,29 @@ export const openapi = {
             schema: { type: 'string' },
           },
           {
-            name: 'chainId',
-            in: 'query',
-            description: 'Filter tokens to one chain (prefixed or bare).',
-            schema: { type: 'string' },
+            ...CHAIN_ID_QUERY_PARAM,
+            required: true,
+            description:
+              'Chain to merge tokens for — prefixed form (eip155-369) or bare numeric (369). ' +
+              'Required: the merged ordering query cannot complete across every chain at once.',
           },
-          {
-            name: 'decimals',
-            in: 'query',
-            description: 'Filter by token decimals (comma-separated).',
-            schema: { type: 'string' },
-          },
-          EXTENSIONS_PARAM,
+          DECIMALS_QUERY_PARAM,
         ],
+        responses: {
+          ...TOKEN_LIST_RESPONSE,
+          '400': {
+            description: 'Missing chainId query parameter.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+    '/list/{providerKey}': {
+      get: {
+        tags: ['Token Endpoints'],
+        summary: "A provider's default token list (listKey omitted)",
+        'x-example': '/list/pulsex',
+        parameters: [PROVIDER_KEY_PARAM, CHAIN_ID_QUERY_PARAM, DECIMALS_QUERY_PARAM, EXTENSIONS_PARAM],
         responses: TOKEN_LIST_RESPONSE,
       },
     },
@@ -305,25 +351,9 @@ export const openapi = {
       get: {
         tags: ['Token Endpoints'],
         summary: 'A specific provider token list',
-        description: 'The listKey segment may be omitted to get the provider default list.',
+        description: 'Omitting the listKey segment (/list/{providerKey}) returns the provider default list.',
         'x-example': '/list/pulsex/extended?chainId=eip155-369',
-        parameters: [
-          PROVIDER_KEY_PARAM,
-          LIST_KEY_PARAM,
-          {
-            name: 'chainId',
-            in: 'query',
-            description: 'Filter tokens to one chain (prefixed or bare).',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'decimals',
-            in: 'query',
-            description: 'Filter by token decimals (comma-separated).',
-            schema: { type: 'string' },
-          },
-          EXTENSIONS_PARAM,
-        ],
+        parameters: [PROVIDER_KEY_PARAM, LIST_KEY_PARAM, CHAIN_ID_QUERY_PARAM, DECIMALS_QUERY_PARAM, EXTENSIONS_PARAM],
         responses: TOKEN_LIST_RESPONSE,
       },
     },
@@ -342,6 +372,9 @@ export const openapi = {
             description: 'Semantic version (e.g. 1.0.0).',
             schema: { type: 'string' },
           },
+          CHAIN_ID_QUERY_PARAM,
+          DECIMALS_QUERY_PARAM,
+          EXTENSIONS_PARAM,
         ],
         responses: TOKEN_LIST_RESPONSE,
       },
@@ -350,9 +383,17 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Network / chain icon',
+        description:
+          'Resize and format-conversion query parameters work here too. A path extension on this route ' +
+          'is a SOURCE filter, not a conversion: /image/eip155-369.png serves only a png source, and ' +
+          '/image/eip155-369.webp responds 404 when no webp source exists — the opposite of the token ' +
+          '.{ext} route, where the extension converts the output.',
         'x-example': '/image/eip155-369',
-        parameters: [CHAIN_ID_PARAM],
-        responses: IMAGE_RESPONSE,
+        parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
+        responses: {
+          ...IMAGE_RESPONSE,
+          ...REDIRECT_RESPONSE,
+        },
       },
     },
     '/image/{chainId}/{address}': {
@@ -363,11 +404,7 @@ export const openapi = {
         parameters: [CHAIN_ID_PARAM, ADDRESS_PARAM, ...IMAGE_FILTER_PARAMS, ...RESIZE_PARAMS],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
-          '406': {
-            description: 'Unsupported output format.',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-          },
+          ...REDIRECT_RESPONSE,
         },
       },
     },
@@ -375,6 +412,9 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Token image converted to a specific format via path extension',
+        description:
+          'The extension converts the output, equivalent to ?as=. Requesting .svg when the token has ' +
+          'no SVG source responds 404; extensions outside the supported set (e.g. .bmp) respond 406.',
         'x-example': '/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27.webp',
         parameters: [
           CHAIN_ID_PARAM,
@@ -387,13 +427,20 @@ export const openapi = {
             schema: { type: 'string', enum: ['png', 'webp', 'jpg', 'avif', 'svg'] },
           },
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          '406': {
+            description: 'Unsupported output extension (e.g. .bmp).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
       },
     },
     '/image/{order}/{chainId}/{address}': {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Token image with an explicit provider ordering',
+        description: 'An unknown order name silently falls back to the default ordering.',
         'x-example': '/image/default/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27',
         parameters: [
           {
@@ -408,7 +455,10 @@ export const openapi = {
           ...IMAGE_FILTER_PARAMS,
           ...RESIZE_PARAMS,
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          ...REDIRECT_RESPONSE,
+        },
       },
     },
     '/image/fallback/{order}/{chainId}/{address}': {
@@ -431,7 +481,7 @@ export const openapi = {
         ],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
+          ...REDIRECT_RESPONSE,
         },
       },
     },
@@ -439,12 +489,16 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Image by content hash — content-addressed access',
+        'x-example': '/image/direct/048d63e01bc0c7079394113db00275c0001b679cd7b8749d17ee87c2efb32a78',
         parameters: [
           {
             name: 'imageHash',
             in: 'path',
             required: true,
-            description: 'Content hash from list/token logoURI fields.',
+            description:
+              'Content hash from list/token logoURI fields. A bare hash serves the stored image; ' +
+              'an extension suffix (e.g. {hash}.svg) is a source filter — 404 when the stored ' +
+              'image is not of that type.',
             schema: { type: 'string' },
           },
           ...RESIZE_PARAMS,
@@ -462,7 +516,11 @@ export const openapi = {
             name: 'i',
             in: 'query',
             required: true,
-            description: 'Candidate as chainId/address (optionally chainId/address/order). Repeatable; first hit wins.',
+            description:
+              'Candidate as chainId/address, optionally chainId/address/{orderId} where the third ' +
+              'segment must be a 64-character hex order id — named orders (e.g. default) are ' +
+              'rejected with 406. A bare chainId candidate (no address) serves that network icon. ' +
+              'Repeatable; first hit wins.',
             schema: { type: 'string' },
           },
           ...IMAGE_FILTER_PARAMS,
@@ -470,7 +528,11 @@ export const openapi = {
         ],
         responses: {
           ...IMAGE_RESPONSE,
-          '301': { description: 'Redirect to the original source URI (mode=link).' },
+          ...REDIRECT_RESPONSE,
+          '406': {
+            description: 'Invalid candidate, or a third segment that is not a 64-character hex order id.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
         },
       },
     },
@@ -583,7 +645,9 @@ export const openapi = {
         },
         responses: {
           '201': {
-            description: 'Submission accepted (pending review).',
+            description:
+              'Submission accepted (new submissions start pending). Resubmitting an existing URL updates ' +
+              'name/description/submittedBy and returns the existing status (it is not reset to pending).',
             content: {
               'application/json': {
                 schema: {
@@ -599,7 +663,7 @@ export const openapi = {
             },
           },
           '400': {
-            description: 'Missing fields, unreachable URL, or not a token list.',
+            description: 'Missing fields, disallowed URL (non-http(s) or private address), or not a token list.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -621,10 +685,49 @@ export const openapi = {
         },
       },
     },
+    '/api/lists/submissions/approved': {
+      get: {
+        tags: ['Submissions'],
+        summary: 'Approved submissions feed for the collector (admin token required)',
+        description:
+          'Returns approved submissions mapped for the collection pipeline. Side effect: auto-mode image ' +
+          'transitions (auto→save/link based on subscriber count and access recency) are persisted to the ' +
+          'database during this request.',
+        'x-example': '/api/lists/submissions/approved',
+        security: [{ adminBearer: [] }],
+        responses: {
+          '200': {
+            description: 'Approved submissions mapped for the collector.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      url: { type: 'string' },
+                      providerKey: { type: 'string' },
+                      listKey: { type: 'string' },
+                      imageMode: { type: 'string', enum: ['link', 'save'] },
+                      lastContentHash: { type: ['string', 'null'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid admin bearer token (401 also when ADMIN_TOKEN is unset).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
     '/api/lists/submissions/{id}': {
       patch: {
         tags: ['Submissions'],
-        summary: 'Update a submission (status / image mode)',
+        summary: 'Update a submission status / image mode (admin token required)',
+        security: [{ adminBearer: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -633,8 +736,8 @@ export const openapi = {
               schema: {
                 type: 'object',
                 properties: {
-                  status: { type: 'string' },
-                  imageMode: { type: 'string' },
+                  status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'stale'] },
+                  imageMode: { type: 'string', enum: ['link', 'save', 'auto'] },
                 },
               },
             },
@@ -644,6 +747,14 @@ export const openapi = {
           '200': {
             description: 'Updated submission.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Submission' } } },
+          },
+          '400': {
+            description: 'No recognized fields to update, or a status/imageMode value outside the allowed enums.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '401': {
+            description: 'Missing or invalid admin bearer token (401 also when ADMIN_TOKEN is unset).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '404': {
             description: 'Submission not found.',
@@ -686,7 +797,13 @@ export const openapi = {
             },
           },
           '400': {
-            description: 'Missing fields, invalid data URI, or oversized image.',
+            description: 'Missing fields, invalid data URI, or decoded image over the 512 KB limit.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '413': {
+            description:
+              'Request body exceeds the 1 MB JSON parser limit (the decoded image limit itself is 512 KB; ' +
+              'base64 encoding inflates payloads by about a third).',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -713,6 +830,12 @@ export const openapi = {
           },
           '400': {
             description: 'Missing code or exchange rejected.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '502': {
+            description:
+              'GitHub responded with a non-OK status, or the exchange request to GitHub failed ' +
+              '(network error). Details are logged server-side, not returned.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '503': {
@@ -750,7 +873,7 @@ export const openapi = {
         type: 'object',
         properties: {
           name: { type: 'string' },
-          logoURI: { type: 'string' },
+          logoURI: { type: ['string', 'null'], description: 'List logo; null for merged lists.' },
           timestamp: { type: 'string', format: 'date-time' },
           version: {
             type: 'object',
@@ -776,7 +899,8 @@ export const openapi = {
           description: { type: 'string' },
           default: { type: 'boolean' },
           providerKey: { type: 'string' },
-          chainId: { type: 'string' },
+          chainId: { type: 'string', description: 'Prefixed identifier (eip155-369).' },
+          chainType: { type: 'string', description: 'Chain family (e.g. evm).' },
           major: { type: 'integer' },
           minor: { type: 'integer' },
           patch: { type: 'integer' },
@@ -787,15 +911,15 @@ export const openapi = {
         properties: {
           networkId: { type: 'string' },
           type: { type: 'string' },
-          chainId: { type: ['integer', 'string'], description: 'Bare chain id.' },
+          chainId: { type: 'string', description: 'Bare chain id as a string.' },
           chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-1).' },
-          imageHash: { type: 'string' },
+          imageHash: { type: ['string', 'null'] },
         },
       },
       ChainStat: {
         type: 'object',
         properties: {
-          chainId: { type: ['integer', 'string'], description: 'Bare chain id.' },
+          chainId: { type: 'string', description: 'Bare chain id as a string.' },
           chainIdentifier: { type: 'string' },
           count: { type: 'integer' },
         },
@@ -824,15 +948,22 @@ export const openapi = {
           name: { type: 'string' },
           description: { type: 'string' },
           submittedBy: { type: 'string' },
-          status: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'stale'] },
           providerKey: { type: 'string' },
           listKey: { type: 'string' },
-          imageMode: { type: 'string' },
+          imageMode: { type: 'string', enum: ['link', 'save', 'auto'] },
           failCount: { type: 'integer' },
           subscriberCount: { type: 'integer' },
-          lastFetchedAt: { type: 'string', format: 'date-time' },
+          lastFetchedAt: { type: ['string', 'null'], format: 'date-time' },
           createdAt: { type: 'string', format: 'date-time' },
         },
+      },
+    },
+    securitySchemes: {
+      adminBearer: {
+        type: 'http',
+        scheme: 'bearer',
+        description: 'Admin token (ADMIN_TOKEN environment variable on the server) for moderation endpoints.',
       },
     },
   },
