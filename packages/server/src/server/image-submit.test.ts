@@ -31,10 +31,9 @@ import type { Request, Response, NextFunction } from 'express'
 function getSubmitHandler(): (req: Request, res: Response, next: NextFunction) => Promise<void> {
   const layer = (router as any).stack.find((l: any) => l.route && l.route.path === '/submit' && l.route.methods.post)
   if (!layer) throw new Error('POST /submit route not found on router')
-  // The route has two handlers: json() middleware and our nextOnError wrapper.
-  // We want the second one (the actual handler wrapped by nextOnError).
+  // JSON parsing happens app-wide (app.ts); the route stack ends with the
+  // actual handler wrapped by nextOnError — return that one.
   const handlers = layer.route.stack.map((s: any) => s.handle)
-  // Return the last handler (the one wrapped by nextOnError)
   return handlers[handlers.length - 1]
 }
 

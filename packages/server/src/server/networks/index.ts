@@ -13,18 +13,26 @@ const getNetworks = cacheResult<Network[]>(async () => {
   return await getDrizzle().select().from(s.network)
 })
 
+/**
+ * Map a network row to its public response shape. Fields are picked
+ * explicitly so internal columns (createdAt/updatedAt) never leak.
+ */
+export const toPublicNetwork = (n: Network) => ({
+  networkId: n.networkId,
+  type: n.type,
+  // Bare chainId (string) for backwards compat, chainIdentifier is prefixed
+  chainId: fromCAIP2(n.chainId),
+  chainIdentifier: n.chainId,
+  imageHash: n.imageHash,
+})
+
 router.get(
   '/',
   nextOnError(async (_req, res) => {
     const networks = await getNetworks()
     res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-    // Return bare chainId for backwards compat, add chainIdentifier
-    res.json(
-      networks.map((n) => ({
-        ...n,
-        chainId: fromCAIP2(n.chainId),
-        chainIdentifier: n.chainId,
-      })),
-    )
+    // The asset-0 sentinel row is internal bookkeeping — /stats already
+    // excludes it, so exclude it here too for consistency.
+    res.json(networks.filter((n) => n.chainId !== 'asset-0').map(toPublicNetwork))
   }),
 )

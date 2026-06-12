@@ -222,7 +222,7 @@ export const openapi = {
     '/stats': {
       get: {
         tags: ['Networks & Stats'],
-        summary: 'Per-chain token counts (distinct addresses)',
+        summary: 'Per-chain counts of token addresses that have a usable image',
         'x-example': '/stats',
         responses: {
           '200': {
@@ -645,7 +645,9 @@ export const openapi = {
         },
         responses: {
           '201': {
-            description: 'Submission accepted (pending review).',
+            description:
+              'Submission accepted (new submissions start pending). Resubmitting an existing URL updates ' +
+              'name/description/submittedBy and returns the existing status (it is not reset to pending).',
             content: {
               'application/json': {
                 schema: {
@@ -661,7 +663,7 @@ export const openapi = {
             },
           },
           '400': {
-            description: 'Missing fields, unreachable URL, or not a token list.',
+            description: 'Missing fields, disallowed URL (non-http(s) or private address), or not a token list.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -683,10 +685,49 @@ export const openapi = {
         },
       },
     },
+    '/api/lists/submissions/approved': {
+      get: {
+        tags: ['Submissions'],
+        summary: 'Approved submissions feed for the collector (admin token required)',
+        description:
+          'Returns approved submissions mapped for the collection pipeline. Side effect: auto-mode image ' +
+          'transitions (auto→save/link based on subscriber count and access recency) are persisted to the ' +
+          'database during this request.',
+        'x-example': '/api/lists/submissions/approved',
+        security: [{ adminBearer: [] }],
+        responses: {
+          '200': {
+            description: 'Approved submissions mapped for the collector.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      url: { type: 'string' },
+                      providerKey: { type: 'string' },
+                      listKey: { type: 'string' },
+                      imageMode: { type: 'string', enum: ['link', 'save'] },
+                      lastContentHash: { type: ['string', 'null'] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': {
+            description: 'Missing or invalid admin bearer token (401 also when ADMIN_TOKEN is unset).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
     '/api/lists/submissions/{id}': {
       patch: {
         tags: ['Submissions'],
-        summary: 'Update a submission (status / image mode)',
+        summary: 'Update a submission status / image mode (admin token required)',
+        security: [{ adminBearer: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -695,8 +736,8 @@ export const openapi = {
               schema: {
                 type: 'object',
                 properties: {
-                  status: { type: 'string' },
-                  imageMode: { type: 'string' },
+                  status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'stale'] },
+                  imageMode: { type: 'string', enum: ['link', 'save', 'auto'] },
                 },
               },
             },
@@ -706,6 +747,14 @@ export const openapi = {
           '200': {
             description: 'Updated submission.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Submission' } } },
+          },
+          '400': {
+            description: 'No recognized fields to update, or a status/imageMode value outside the allowed enums.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '401': {
+            description: 'Missing or invalid admin bearer token (401 also when ADMIN_TOKEN is unset).',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '404': {
             description: 'Submission not found.',
@@ -748,7 +797,13 @@ export const openapi = {
             },
           },
           '400': {
-            description: 'Missing fields, invalid data URI, or oversized image.',
+            description: 'Missing fields, invalid data URI, or decoded image over the 512 KB limit.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '413': {
+            description:
+              'Request body exceeds the 1 MB JSON parser limit (the decoded image limit itself is 512 KB; ' +
+              'base64 encoding inflates payloads by about a third).',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -775,6 +830,12 @@ export const openapi = {
           },
           '400': {
             description: 'Missing code or exchange rejected.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '502': {
+            description:
+              'GitHub responded with a non-OK status, or the exchange request to GitHub failed ' +
+              '(network error). Details are logged server-side, not returned.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '503': {
@@ -850,15 +911,15 @@ export const openapi = {
         properties: {
           networkId: { type: 'string' },
           type: { type: 'string' },
-          chainId: { type: ['integer', 'string'], description: 'Bare chain id.' },
+          chainId: { type: 'string', description: 'Bare chain id as a string.' },
           chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-1).' },
-          imageHash: { type: 'string' },
+          imageHash: { type: ['string', 'null'] },
         },
       },
       ChainStat: {
         type: 'object',
         properties: {
-          chainId: { type: ['integer', 'string'], description: 'Bare chain id.' },
+          chainId: { type: 'string', description: 'Bare chain id as a string.' },
           chainIdentifier: { type: 'string' },
           count: { type: 'integer' },
         },
@@ -887,15 +948,22 @@ export const openapi = {
           name: { type: 'string' },
           description: { type: 'string' },
           submittedBy: { type: 'string' },
-          status: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'stale'] },
           providerKey: { type: 'string' },
           listKey: { type: 'string' },
-          imageMode: { type: 'string' },
+          imageMode: { type: 'string', enum: ['link', 'save', 'auto'] },
           failCount: { type: 'integer' },
           subscriberCount: { type: 'integer' },
-          lastFetchedAt: { type: 'string', format: 'date-time' },
+          lastFetchedAt: { type: ['string', 'null'], format: 'date-time' },
           createdAt: { type: 'string', format: 'date-time' },
         },
+      },
+    },
+    securitySchemes: {
+      adminBearer: {
+        type: 'http',
+        scheme: 'bearer',
+        description: 'Admin token (ADMIN_TOKEN environment variable on the server) for moderation endpoints.',
       },
     },
   },
