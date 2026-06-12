@@ -106,8 +106,22 @@ const REDIRECT_RESPONSE = {
 const EXTENSIONS_PARAM = {
   name: 'extensions',
   in: 'query' as const,
-  description: 'Comma-separated optional token fields to include.',
+  description: 'Optional token fields to include — comma-separated or repeated.',
   schema: { type: 'string' as const, examples: ['bridgeInfo', 'headerUri', 'bridgeInfo,headerUri'] },
+}
+
+const CHAIN_ID_QUERY_PARAM = {
+  name: 'chainId',
+  in: 'query' as const,
+  description: 'Filter tokens to one chain — prefixed form (eip155-369) or bare numeric (369).',
+  schema: { type: 'string' as const },
+}
+
+const DECIMALS_QUERY_PARAM = {
+  name: 'decimals',
+  in: 'query' as const,
+  description: 'Filter by token decimals. Repeatable (decimals=18&decimals=8).',
+  schema: { type: 'string' as const },
 }
 
 const IMAGE_RESPONSE = {
@@ -227,15 +241,24 @@ export const openapi = {
         'x-example': '/list/',
         parameters: [
           { name: 'key', in: 'query', description: 'Filter by list slug.', schema: { type: 'string' } },
+          { name: 'name', in: 'query', description: 'Filter by list name.', schema: { type: 'string' } },
           { name: 'provider_key', in: 'query', description: 'Filter by provider slug.', schema: { type: 'string' } },
           {
             name: 'chain_id',
             in: 'query',
-            description: 'Filter by chain (prefixed or bare).',
+            description: 'Filter by chain — prefixed form (eip155-369) or bare numeric (369).',
             schema: { type: 'string' },
           },
           { name: 'chain_type', in: 'query', description: 'Filter by chain type.', schema: { type: 'string' } },
-          { name: 'default', in: 'query', description: 'Filter to default lists.', schema: { type: 'boolean' } },
+          {
+            name: 'default',
+            in: 'query',
+            description: 'Filter to default (true) or non-default (false) lists.',
+            schema: { type: 'boolean' },
+          },
+          { name: 'major', in: 'query', description: 'Filter by major version.', schema: { type: 'integer' } },
+          { name: 'minor', in: 'query', description: 'Filter by minor version.', schema: { type: 'integer' } },
+          { name: 'patch', in: 'query', description: 'Filter by patch version.', schema: { type: 'integer' } },
         ],
         responses: {
           '200': {
@@ -243,6 +266,11 @@ export const openapi = {
             content: {
               'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/ListInfo' } } },
             },
+          },
+          '400': {
+            description:
+              'Invalid filter value — default must be true or false, version filters must be integers, values must be non-empty.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
       },
@@ -252,7 +280,8 @@ export const openapi = {
         tags: ['Token Endpoints'],
         summary: 'All deduplicated tokens for a chain, ranked by list priority',
         description:
-          'Cached with stale-while-revalidate (6h fresh / 24h stale); top chains are kept perpetually warm. ' +
+          'Responses carry cache-control: public, max-age=21600, stale-while-revalidate=86400 ' +
+          '(6 hours fresh, 24 hours stale); top chains are kept perpetually warm. ' +
           'Each token carries sources[] showing which lists include it.',
         'x-example': '/list/tokens/eip155-369?limit=20',
         parameters: [
@@ -260,10 +289,10 @@ export const openapi = {
           {
             name: 'limit',
             in: 'query',
-            description: 'Maximum tokens returned (default 50000, max 100000).',
+            description:
+              'Maximum tokens returned, clamped to [1, 100000]. Non-numeric, zero, and negative values fall back to the default.',
             schema: { type: 'integer', minimum: 1, maximum: 100000, default: 50000 },
           },
-          EXTENSIONS_PARAM,
         ],
         responses: {
           '200': {
@@ -271,7 +300,8 @@ export const openapi = {
             content: { 'application/json': { schema: { $ref: '#/components/schemas/TokensByChain' } } },
           },
           '400': {
-            description: 'Missing or invalid chainId.',
+            description:
+              'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -280,7 +310,7 @@ export const openapi = {
     '/list/merged/{order}': {
       get: {
         tags: ['Token Endpoints'],
-        summary: 'Merged token list across providers using a named ordering',
+        summary: 'Merged token list across providers for one chain, using a named ordering',
         'x-example': '/list/merged/default?chainId=eip155-369',
         parameters: [
           {
@@ -291,19 +321,29 @@ export const openapi = {
             schema: { type: 'string' },
           },
           {
-            name: 'chainId',
-            in: 'query',
-            description: 'Filter tokens to one chain (prefixed or bare).',
-            schema: { type: 'string' },
+            ...CHAIN_ID_QUERY_PARAM,
+            required: true,
+            description:
+              'Chain to merge tokens for — prefixed form (eip155-369) or bare numeric (369). ' +
+              'Required: the merged ordering query cannot complete across every chain at once.',
           },
-          {
-            name: 'decimals',
-            in: 'query',
-            description: 'Filter by token decimals (comma-separated).',
-            schema: { type: 'string' },
-          },
-          EXTENSIONS_PARAM,
+          DECIMALS_QUERY_PARAM,
         ],
+        responses: {
+          ...TOKEN_LIST_RESPONSE,
+          '400': {
+            description: 'Missing chainId query parameter.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+    '/list/{providerKey}': {
+      get: {
+        tags: ['Token Endpoints'],
+        summary: "A provider's default token list (listKey omitted)",
+        'x-example': '/list/pulsex',
+        parameters: [PROVIDER_KEY_PARAM, CHAIN_ID_QUERY_PARAM, DECIMALS_QUERY_PARAM, EXTENSIONS_PARAM],
         responses: TOKEN_LIST_RESPONSE,
       },
     },
@@ -311,25 +351,9 @@ export const openapi = {
       get: {
         tags: ['Token Endpoints'],
         summary: 'A specific provider token list',
-        description: 'The listKey segment may be omitted to get the provider default list.',
+        description: 'Omitting the listKey segment (/list/{providerKey}) returns the provider default list.',
         'x-example': '/list/pulsex/extended?chainId=eip155-369',
-        parameters: [
-          PROVIDER_KEY_PARAM,
-          LIST_KEY_PARAM,
-          {
-            name: 'chainId',
-            in: 'query',
-            description: 'Filter tokens to one chain (prefixed or bare).',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'decimals',
-            in: 'query',
-            description: 'Filter by token decimals (comma-separated).',
-            schema: { type: 'string' },
-          },
-          EXTENSIONS_PARAM,
-        ],
+        parameters: [PROVIDER_KEY_PARAM, LIST_KEY_PARAM, CHAIN_ID_QUERY_PARAM, DECIMALS_QUERY_PARAM, EXTENSIONS_PARAM],
         responses: TOKEN_LIST_RESPONSE,
       },
     },
@@ -348,6 +372,9 @@ export const openapi = {
             description: 'Semantic version (e.g. 1.0.0).',
             schema: { type: 'string' },
           },
+          CHAIN_ID_QUERY_PARAM,
+          DECIMALS_QUERY_PARAM,
+          EXTENSIONS_PARAM,
         ],
         responses: TOKEN_LIST_RESPONSE,
       },
@@ -785,7 +812,7 @@ export const openapi = {
         type: 'object',
         properties: {
           name: { type: 'string' },
-          logoURI: { type: 'string' },
+          logoURI: { type: ['string', 'null'], description: 'List logo; null for merged lists.' },
           timestamp: { type: 'string', format: 'date-time' },
           version: {
             type: 'object',
@@ -811,7 +838,8 @@ export const openapi = {
           description: { type: 'string' },
           default: { type: 'boolean' },
           providerKey: { type: 'string' },
-          chainId: { type: 'string' },
+          chainId: { type: 'string', description: 'Prefixed identifier (eip155-369).' },
+          chainType: { type: 'string', description: 'Chain family (e.g. evm).' },
           major: { type: 'integer' },
           minor: { type: 'integer' },
           patch: { type: 'integer' },

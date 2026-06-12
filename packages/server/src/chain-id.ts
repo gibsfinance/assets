@@ -34,3 +34,16 @@ export function namespaceOf(input: string): string {
 export function isBareNumeric(input: string): boolean {
   return /^\d+$/.test(input)
 }
+
+/**
+ * Check whether a chain id (bare or prefixed) is syntactically servable.
+ * Stored networks only ever carry eip155-<number> or asset-0 identifiers
+ * (see insertNetworkFromChainId), so anything else can never match a row —
+ * callers should reject it with 400 instead of returning an empty 200.
+ */
+export function isValidChainId(input: string): boolean {
+  const canonical = toCAIP2(input)
+  if (canonical === `${ASSET_PREFIX}-${ASSET_CHAIN}`) return true
+  if (namespaceOf(canonical) !== EVM_PREFIX) return false
+  return isBareNumeric(fromCAIP2(canonical))
+}

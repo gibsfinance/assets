@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toCAIP2, fromCAIP2, namespaceOf, isBareNumeric } from './chain-id'
+import { toCAIP2, fromCAIP2, namespaceOf, isBareNumeric, isValidChainId } from './chain-id'
 
 describe('toCAIP2', () => {
   it('prefixes EVM chain IDs with eip155', () => {
@@ -64,5 +64,28 @@ describe('isBareNumeric', () => {
   it('returns false for empty or non-numeric', () => {
     expect(isBareNumeric('')).toBe(false)
     expect(isBareNumeric('abc')).toBe(false)
+  })
+})
+
+describe('isValidChainId', () => {
+  it('accepts bare numeric and prefixed eip155 ids', () => {
+    expect(isValidChainId('369')).toBe(true)
+    expect(isValidChainId('1')).toBe(true)
+    expect(isValidChainId('eip155-369')).toBe(true)
+  })
+
+  it('accepts chain 0 in both forms (asset namespace)', () => {
+    expect(isValidChainId('0')).toBe(true)
+    expect(isValidChainId('asset-0')).toBe(true)
+  })
+
+  it('rejects ids that can never match a stored network', () => {
+    // Stored networks only carry eip155-<number> or asset-0 (see
+    // insertNetworkFromChainId) — handlers use this to 400 early instead of
+    // answering 200 with zero tokens.
+    expect(isValidChainId('banana')).toBe(false)
+    expect(isValidChainId('eip155-banana')).toBe(false)
+    expect(isValidChainId('eip155-')).toBe(false)
+    expect(isValidChainId('solana-mainnet')).toBe(false)
   })
 })
