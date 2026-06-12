@@ -215,16 +215,21 @@ const main = async () => {
   try {
     const { data: spec, elapsed } = await fetchJson<{
       openapi: string
-      paths: Record<string, Record<string, { 'x-example'?: string }>>
+      paths: Record<string, Record<string, { 'x-example'?: string; security?: unknown[] }>>
     }>(`${args.url}/openapi.json`, args.timeoutMs)
     console.log(`  /openapi.json        ${pad(Math.round(elapsed) + 'ms', 10)} openapi=${spec.openapi}`)
     const examples = Object.values(spec.paths)
-      .flatMap((methods) => (methods.get?.['x-example'] ? [methods.get['x-example']] : []))
-      .filter((example) => example !== '/openapi.json')
-    for (const example of examples) {
+      .flatMap((methods) =>
+        methods.get?.['x-example']
+          ? [{ example: methods.get['x-example'], secured: Boolean(methods.get.security?.length) }]
+          : [],
+      )
+      .filter(({ example }) => example !== '/openapi.json')
+    for (const { example, secured } of examples) {
       try {
         const { status, elapsed } = await fetchStatus(`${args.url}${example}`, args.timeoutMs)
-        const ok = status === 200 || status === 204
+        // A secured operation probed without credentials proves itself by rejecting us.
+        const ok = status === 200 || status === 204 || (secured && status === 401)
         console.log(
           `  ${pad(`example ${example.split('?')[0]}`, 20)} ${pad(Math.round(elapsed) + 'ms', 10)} ${ok ? '✓' : `❌ status ${status}`}`,
         )
