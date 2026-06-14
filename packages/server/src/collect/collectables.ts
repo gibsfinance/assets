@@ -57,10 +57,10 @@ export const allCollectables = () => {
 type CollectableKey =
   | 'gibs'
   | 'pulsex'
+  | 'smoldapp'
   | 'dexscreener'
   | 'countries'
   | 'pulsechain'
-  | 'smoldapp'
   | 'internetmoney'
   | 'midgard'
   | 'pumptires'
@@ -94,14 +94,14 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
   return {
     gibs: gibsCollector,
     pulsex: pulsexCollector,
+    // smoldapp carries chain-native canonical logos keyed by chain id, so it must
+    // outrank providers that serve bridged/provenance-styled art (internetmoney et al)
+    // for tokens on their origin chain. Kept just below pulsex so the PulseX list
+    // still leads on chain 369.
+    smoldapp: new SmoldappCollector(),
     dexscreener: dexscreenerCollector,
     countries: countriesCollector,
     pulsechain: pulsechainCollector,
-    // smoldapp carries chain-native canonical logos keyed by chain id, so it must
-    // outrank providers that serve bridged/provenance-styled art (internetmoney et al)
-    // for tokens on their origin chain. Kept below pulsex/pulsechain so PulseChain
-    // ecosystem icons still win on chain 369.
-    smoldapp: new SmoldappCollector(),
     internetmoney: new InternetMoneyCollector(),
     midgard: new RemoteTokenListCollector('midgard', {
       providerKey: 'midgard',
