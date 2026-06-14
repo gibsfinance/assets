@@ -60,6 +60,7 @@ type CollectableKey =
   | 'dexscreener'
   | 'countries'
   | 'pulsechain'
+  | 'smoldapp'
   | 'internetmoney'
   | 'midgard'
   | 'pumptires'
@@ -68,7 +69,6 @@ type CollectableKey =
   | 'trustwallet'
   | 'piteas'
   | 'pls369'
-  | 'smoldapp'
   | 'balancer'
   | 'phux'
   | 'uniswap-tokenlists'
@@ -97,6 +97,11 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     dexscreener: dexscreenerCollector,
     countries: countriesCollector,
     pulsechain: pulsechainCollector,
+    // smoldapp carries chain-native canonical logos keyed by chain id, so it must
+    // outrank providers that serve bridged/provenance-styled art (internetmoney et al)
+    // for tokens on their origin chain. Kept below pulsex/pulsechain so PulseChain
+    // ecosystem icons still win on chain 369.
+    smoldapp: new SmoldappCollector(),
     internetmoney: new InternetMoneyCollector(),
     midgard: new RemoteTokenListCollector('midgard', {
       providerKey: 'midgard',
@@ -114,7 +119,6 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
       tokenList: 'https://raw.githubusercontent.com/piteasio/app-tokens/main/piteas-tokenlist.json',
     }),
     pls369: pls369Collector,
-    smoldapp: new SmoldappCollector(),
     balancer: new RemoteTokenListCollector('balancer', {
       providerKey: 'balancer',
       listKey: 'exchange',
