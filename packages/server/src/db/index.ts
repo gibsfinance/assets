@@ -897,7 +897,17 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
     .values(values)
     .onConflictDoUpdate({
       target: s.listToken.listTokenId,
-      set: { listTokenId: dsql`excluded.list_token_id` },
+      // The primary key is keccak256(token_id || list_id) — it deliberately excludes
+      // image_hash — so re-collecting an existing (token, list) pair conflicts. Without
+      // refreshing these columns the row's icon froze at first write: a provider that
+      // later changed an icon URL (e.g. Internet Money moving off Heroku) would keep
+      // serving the original image forever. COALESCE preserves a prior image when this
+      // run fetched none (transient failure, or the deliberate image-less store), so a
+      // good icon is never clobbered by a later NULL.
+      set: {
+        imageHash: dsql`COALESCE(excluded.image_hash, ${s.listToken.imageHash})`,
+        listTokenOrderId: dsql`excluded.list_token_order_id`,
+      },
     })
     .returning()
 }
