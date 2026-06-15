@@ -15,6 +15,7 @@ import { Collector } from '@gibs/dexscreener/collector'
 
 import { fetch } from '../fetch'
 import * as db from '../db'
+import { toCAIP2 } from '../chain-id'
 import * as utils from '../utils'
 import type { Network } from '../db/schema-types'
 import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
@@ -208,11 +209,16 @@ class DexscreenerCollector extends BaseCollector {
           const { getDrizzle } = await import('../db/drizzle')
           const { eq: eqOp, and: andOp } = await import('drizzle-orm')
           const schemaMod = await import('../db/schema')
+          // network.chain_id stores CAIP-2 strings (eip155-369) since the April migration,
+          // so the bare numeric id never matches — convert before querying.
           const [network] = (await getDrizzle()
             .select()
             .from(schemaMod.network)
             .where(
-              andOp(eqOp(schemaMod.network.type, chain.type), eqOp(schemaMod.network.chainId, chain.id.toString())),
+              andOp(
+                eqOp(schemaMod.network.type, chain.type),
+                eqOp(schemaMod.network.chainId, toCAIP2(chain.id.toString())),
+              ),
             )
             .limit(1)) as Network[]
           const k = chain.id.toString()

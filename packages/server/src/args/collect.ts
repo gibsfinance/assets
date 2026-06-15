@@ -92,8 +92,9 @@ export const collect = _.memoize(() => {
  * @param providerKey The provider to check
  * @return Boolean indicating if provider content should be saved
  */
-// because pumptires is controlled by anyone, we don't want to collect it by default
-const defaultNotCollected = new Set<Collectable>(['pumptires', 'dexscreener'] as unknown as Collectable[])
+// because pumptires is controlled by anyone, we don't want to save its bytes by default
+// (link-only: a served image redirects to the source uri rather than storing untrusted content)
+const defaultNotCollected = new Set<Collectable>(['pumptires'] as unknown as Collectable[])
 
 export const checkShouldSave = _.memoize((providerKey: string) => {
   const { mode } = collect()
