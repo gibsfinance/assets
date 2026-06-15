@@ -1,4 +1,4 @@
-import { fetch, limitByTime } from '@gibs/utils/fetch'
+import { fetch, limitByTime, retry } from '@gibs/utils/fetch'
 import { type Chain, defineChain } from 'viem'
 import * as chains from 'viem/chains'
 import type * as dexscreenerSDK from 'dexscreener-sdk'
@@ -57,9 +57,29 @@ export const taskedTokenRequests = <T, A extends object>(
   }
 }
 export const origin = new URL('https://api.dexscreener.com')
-export const directFetchJSON = async <T>(url: URL, signal?: AbortSignal) => {
-  return fetch(url, { signal }).then((res) => res.json() as Promise<T>)
-}
+
+/**
+ * DexScreener's edge intermittently answers with a throttle status (429/503) or an HTML
+ * challenge page under burst load. A blind `res.json()` on that HTML throws a SyntaxError
+ * that aborts an entire collection run, so a throttle status — or ANY non-JSON body — is
+ * treated as a transient failure worth retrying rather than a fatal parse error.
+ */
+const RETRYABLE_STATUS = new Set([403, 408, 425, 429, 500, 502, 503, 504])
+export const isRetryableResponse = (status: number, contentType: string | null) =>
+  RETRYABLE_STATUS.has(status) || !(contentType ?? '').toLowerCase().includes('json')
+
+export const directFetchJSON = async <T>(url: URL, signal?: AbortSignal) =>
+  retry(
+    async () => {
+      const res = await fetch(url, { signal })
+      if (isRetryableResponse(res.status, res.headers.get('content-type'))) {
+        const body = await res.text().catch(() => '')
+        throw new Error(`dexscreener ${res.status} non-JSON response for ${url.pathname}: ${body.slice(0, 120)}`)
+      }
+      return (await res.json()) as T
+    },
+    { signal, attempts: 4, delay: 3_000 },
+  )
 
 export type ChainKey = `${string}-${string}`
 export const chainKey = (chainId: string, tokenAddress: string) =>
