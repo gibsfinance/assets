@@ -19,9 +19,7 @@ export const tableNames = {
   listSubmission: 'list_submission',
 } as const
 
-const tn = Object.values(tableNames)
-
-export type TableNames = (typeof tn)[number]
+export type TableNames = (typeof tableNames)[keyof typeof tableNames]
 
 export const imageMode = {
   SAVE: 'save',

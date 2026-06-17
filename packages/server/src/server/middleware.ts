@@ -36,7 +36,7 @@ export const errorMiddleware = (
   _req: express.Request,
   res: express.Response,
   // the 4-argument signature is required for express to register an error handler
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   _next: express.NextFunction,
 ) => {
   if (isExpectedClientError(err)) {

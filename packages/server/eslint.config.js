@@ -1,14 +1,12 @@
 import globals from 'globals'
 import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
-import mocha from 'eslint-plugin-mocha'
 
 export default tseslint.config(
   { languageOptions: { globals: globals.node } },
   eslint.configs.recommended,
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
-  mocha.configs.flat.recommended,
   {
     ignores: [
       'images',
@@ -19,7 +17,7 @@ export default tseslint.config(
       '.env*',
       '!.env.example',
       'frontend/yarn.lock',
-      '.eslintrc.mjs',
+      'eslint.config.js',
     ],
     rules: {
       'no-plusplus': 'off',
@@ -36,10 +34,6 @@ export default tseslint.config(
       'no-console': 'off',
       'node/no-missing-require': 'off',
       'import/no-unresolved': 'off',
-      'mocha/no-mocha-arrows': 'off',
-      'mocha/no-global-tests': 'off',
-      'mocha/max-top-level-suites': 'off',
-      'mocha/no-setup-in-describe': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
