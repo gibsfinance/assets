@@ -1,6 +1,6 @@
 # Residual dependency advisories — triage
 
-_Last updated: 2026-06-16, after the Tier 3 dependency sweep._
+_Last updated: 2026-06-16, after removing the unused hardhat dependency._
 
 ## How to reproduce the audit
 
@@ -16,7 +16,8 @@ yarn npm audit --all --recursive --environment all
 |-----------|---------:|-----:|---------:|----:|-----------:|
 | Before Tier 1+2 (historical) | 3 | 35 | 37 | 7 | 82 |
 | After Tier 1+2 (commit `2b7c45c1`) | 3 | 35 | 37 | 7 | 82 |
-| **After Tier 3 (this sweep)** | **0** | **15** | **29** | **6** | **50** |
+| After Tier 3 (commit `3ba6dc0b`) | 0 | 15 | 29 | 6 | 50 |
+| **After removing unused hardhat** | **0** | **9** | **23** | **2** | **34** |
 
 The full inbound request path of the server (everything that processes an
 untrusted HTTP request) is clean. Every advisory listed below sits in
@@ -54,6 +55,36 @@ Applied as direct dependency bumps in `packages/ui`:
 Verified after the sweep: typecheck clean, server lint clean, full build clean,
 server suite 427/427, user-interface suite 889/889.
 
+## What removing hardhat fixed
+
+The earlier triage assumed `hardhat` was a live contract-tooling dependency and
+that clearing its advisories required a hardhat 2 → 3 migration. Inspection of
+the codebase showed it was simply unused: no `hardhat.config.*`, no Solidity
+files anywhere, no `import`/`require` of `hardhat` or `@nomicfoundation/*`, and
+no script that invokes it. It was moved from development to production
+dependencies in April 2025 (commit `0343c6e4`) at the same time `hardhat compile`
+was dropped from the build, and has been dead weight since.
+
+Removing the single dependency line from `packages/server/package.json` pruned
+140 transitive packages (the entire `@ethereumjs/*` and `@ethersproject/*`
+trees, hardhat's bundled `solc`, `mocha`, and `@sentry/node`) and cleared the
+advisory count from 50 to 34. Each of the following was sourced *only* through
+hardhat's transitive tree and is no longer present:
+
+- `undici` — 2 high + 3 moderate (hardhat's HTTP client).
+- `uuid` — 1 moderate.
+- `cookie` — 1 low, via hardhat's bundled `@sentry/node` telemetry.
+- `bn.js` — 1 moderate, and `elliptic` — 1 low, via the bundled ethers crypto
+  and signing stack.
+- `tmp` — 1 high + 1 low, via the bundled `solc` compiler.
+- `diff` — 1 low, via the bundled `mocha` test runner.
+
+Several deprecation notices (`inflight`, older `glob`, `rimraf`) remain because
+they also enter the tree through other tooling, not hardhat alone.
+
+Verified after removal: typecheck clean, server lint clean, full build clean,
+server suite 427/427, user-interface suite 889/889.
+
 ## Residual — and why each is left in place
 
 ### 1. Not exploitable as this project uses it (no action)
@@ -75,42 +106,29 @@ contract-compilation tooling. None reaches a production request path. Each fix
 would require a breaking major upgrade of a transitive parent (or would fork the
 dependency tree across incompatible majors), so they are accepted as residual.
 
-- **minimatch — high (×9):** regular-expression denial of service via
-  `eslint`, `mocha`, and `@typescript-eslint/typescript-estree`. Versions span
-  majors 3 / 5 / 9; a single pin cannot satisfy all three.
+- **minimatch — high (×6):** regular-expression denial of service via
+  `eslint` and `@typescript-eslint/typescript-estree`. Versions span multiple
+  majors; a single pin cannot satisfy all consumers. Largely cleared by the
+  eslint 9 upgrade (see below).
 - **picomatch — high / moderate:** regular-expression denial of service via
   `anymatch` (file watching, needs picomatch 2.x) and `vitest` (4.x).
 - **brace-expansion — moderate (×4):** denial of service via `minimatch`,
   same multi-major constraint.
-- **tmp — high / low:** path traversal via `solc`'s temporary files. The
-  traversal requires an attacker-controlled `prefix`/`postfix`, which `solc`
-  never exposes; `solc` also pins `tmp@0.0.33` and would break under a forced
-  bump. Contract-compilation tooling only.
 - **ajv, js-yaml — moderate:** regular-expression denial of service and
   prototype pollution via `eslint`; resolved by migrating to eslint 9.
-- **bn.js — moderate:** infinite loop via the ethers crypto stack
-  (contract tooling).
 - **ip-address — moderate:** cross-site scripting in HTML-emitting helpers via
   `socks` (the proxy-agent chain under puppeteer); we never call those helpers.
 - **mdast-util-to-hast — moderate:** unsanitized class attribute via
   `hast-util-to-html` (build-time documentation rendering).
 - **@babel/core — low:** arbitrary file read via a source-map comment, at
   build time only (`@vitejs/plugin-react`).
-- **diff — low:** denial of service via `mocha` (legacy test runner).
-- **elliptic — low:** risky cryptographic primitive via the ethers signing
-  stack (contract tooling).
-- **cookie — low:** out-of-bounds characters via `@sentry/node`, which is
-  pulled in by hardhat's telemetry — not the server's own cookie handling.
 
-### 3. Requires a parent major upgrade (tracked for a future branch)
+### 3. Cleared by removing the unused hardhat dependency (resolved)
 
-- **undici — high (×2) / moderate (×3) via hardhat:** the fix needs undici 6,
-  but hardhat 2.x pins undici 5.x. Although `hardhat` is declared a production
-  dependency, the server uses viem's HTTP transport for chain reads and never
-  exercises hardhat's HTTP or websocket client at runtime. Clearing this
-  requires upgrading to hardhat 3, which is its own migration.
-- **uuid — moderate via hardhat:** needs uuid 11; hardhat pins uuid 8. Same
-  hardhat-3 migration.
+The `undici` (high ×2 / moderate ×3), `uuid` (moderate), `cookie` (low),
+`bn.js` (moderate), `elliptic` (low), `tmp` (high / low), and `diff` (low)
+advisories all entered the tree solely through hardhat and are gone. See the
+"What removing hardhat fixed" section above.
 
 ### 4. Deprecation notices — not vulnerabilities
 
@@ -122,13 +140,21 @@ so on):
 `@esbuild-kit/core-utils`, `@esbuild-kit/esm-loader`,
 `@humanwhocodes/config-array`, `@humanwhocodes/object-schema`,
 `@ungap/structured-clone`, `eslint` (version 8 end-of-life), `glob`,
-`inflight`, `node-domexception`, `rimraf`, `whatwg-encoding`.
+`inflight`, `node-domexception`, `rimraf`.
 
 ## Suggested next steps (optional, lower priority)
 
-1. **hardhat 3 upgrade** on its own branch — clears the undici, uuid, and cookie
-   residuals in one move. Largest single reduction left, but a real migration.
-2. **eslint 9 migration** — clears minimatch, ajv, js-yaml, and several
-   deprecation notices. Requires moving `packages/server/.eslintrc.mjs` to the
-   flat-config format.
+1. ~~**hardhat 3 upgrade**~~ — done, and it turned out to be a removal rather
+   than a migration: hardhat was unused. See "What removing hardhat fixed".
+2. **eslint 9 upgrade in `packages/server`** — clears the remaining `minimatch`,
+   `ajv`, `js-yaml`, and `eslint`-end-of-life entries. This is a version bump,
+   not a config rewrite: the server already uses flat config
+   (`.eslintrc.mjs` via `tseslint.config()`, forced on with
+   `ESLINT_USE_FLAT_CONFIG=true`), and `packages/ui` is already on eslint 9 plus
+   typescript-eslint 8. The work is bumping the server's `eslint` 8.57 → 9 and
+   `typescript-eslint` 7 → 8 to match, dropping the env-var workaround, deciding
+   what to do with the now-pointless `eslint-plugin-mocha` (the repo uses vitest,
+   not mocha), and fixing whatever new rule defaults surface across the ~120
+   server source files. Roughly one to two hours, almost all of it in triaging
+   new lint findings.
 3. Leave everything in category 1 alone permanently — document-and-accept.
