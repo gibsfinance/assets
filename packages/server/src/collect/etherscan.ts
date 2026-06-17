@@ -643,7 +643,7 @@ async function processChainTokens({
     }
 
     row.increment(terminalCounterTypes.NETWORK, new Set([chain.id.toString()]))
-  } catch (error) {
+  } catch {
     row.increment(terminalLogTypes.EROR, new Set([`${chain.id}-chain-error`]))
   }
 }

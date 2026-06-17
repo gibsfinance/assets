@@ -4,10 +4,9 @@ import { router } from './github'
 
 /** Extract the POST /token handler (after the json() middleware) from the router stack. */
 function getTokenHandler(): (req: Request, res: Response) => Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layer = (router as any).stack.find((l: any) => l.route && l.route.path === '/token' && l.route.methods.post)
   if (!layer) throw new Error('POST /token route not found on router')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const handlers = layer.route.stack.map((s: any) => s.handle)
   return handlers[handlers.length - 1]
 }

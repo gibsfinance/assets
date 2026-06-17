@@ -130,7 +130,6 @@ const collectTokens = async (
   const relevantData: TokenInfo[] = []
   let cursor: string | null = null
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     if (signal.aborted) return
     const response = await retrieveData({ filter, cursor, row, section, signal })
