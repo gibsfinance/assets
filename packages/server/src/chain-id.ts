@@ -36,14 +36,33 @@ export function isBareNumeric(input: string): boolean {
 }
 
 /**
+ * Namespaces for non-Ethereum-Virtual-Machine chains. Each is stored with
+ * network.type equal to the namespace string itself, whereas eip155 chains use
+ * type 'evm' and the asset-0 network uses type 'evm' as well (legacy). Keeping
+ * this set explicit is what preserves every existing network_id hash.
+ */
+export const NON_EVM_NAMESPACES: ReadonlySet<string> = new Set(['bip122', 'solana', 'monero', 'cardano', 'memo', 'tvm'])
+
+/**
+ * Map a chain-id namespace to the value stored in network.type. Only the
+ * non-Ethereum-Virtual-Machine namespaces map to themselves; eip155, asset, and
+ * bare numeric inputs all resolve to 'evm', matching how existing rows were
+ * written so their network_id hashes never move.
+ */
+export const namespaceToNetworkType = (namespace: string): string =>
+  NON_EVM_NAMESPACES.has(namespace) ? namespace : 'evm'
+
+/**
  * Check whether a chain id (bare or prefixed) is syntactically servable.
- * Stored networks only ever carry eip155-<number> or asset-0 identifiers
+ * Stored networks carry eip155-<number>, asset-0, or one of the
+ * non-Ethereum-Virtual-Machine namespaces paired with a numeric reference
  * (see insertNetworkFromChainId), so anything else can never match a row —
  * callers should reject it with 400 instead of returning an empty 200.
  */
 export function isValidChainId(input: string): boolean {
   const canonical = toCAIP2(input)
   if (canonical === `${ASSET_PREFIX}-${ASSET_CHAIN}`) return true
-  if (namespaceOf(canonical) !== EVM_PREFIX) return false
+  const namespace = namespaceOf(canonical)
+  if (namespace !== EVM_PREFIX && !NON_EVM_NAMESPACES.has(namespace)) return false
   return isBareNumeric(fromCAIP2(canonical))
 }
