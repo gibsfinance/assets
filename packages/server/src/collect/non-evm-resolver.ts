@@ -16,13 +16,17 @@ export type ResolvedChain = {
 export type SkippedCoin = {
   reference: number
   name: string
-  reason: 'no-symbol' | 'reserved-evm' | 'no-icon'
+  reason: 'no-symbol' | 'reserved-evm' | 'not-curated' | 'no-icon'
 }
 
 /**
- * Curated namespace overrides for the chain families altar tracks. Every other
- * chain uses its catalog slug as its own ecosystem namespace. Keys are
- * Satoshi-Labs-Improvement-Proposal-44 coin types.
+ * Curated namespace map for the chain families altar tracks — this is the whole
+ * roster of chains served. A coin type absent from this map is skipped
+ * ('not-curated'), never stored: its stored network.type would fall outside the
+ * closed NON_EVM_NAMESPACES set in chain-id.ts, so its network_id hash would not
+ * reproduce at lookup time and the logo would be unreachable. Widening to the
+ * full Satoshi-Labs-Improvement-Proposal-44 catalog is deferred future work.
+ * Keys are Satoshi-Labs-Improvement-Proposal-44 coin types.
  */
 export const NAMESPACE_BY_COIN_TYPE: Record<number, string> = {
   0: 'bip122', // Bitcoin
@@ -56,9 +60,11 @@ export const slugify = (name: string): string =>
 const upscale = (rawUrl: string): string => rawUrl.replace('/32/', '/128/')
 
 /**
- * Resolve the SLIP-44 registry against the icon catalog. Drives off the
- * registry (real chains); the catalog only supplies images. A chain matches an
- * icon by symbol first, then by slugified name.
+ * Resolve the Satoshi-Labs-Improvement-Proposal-44 registry against the icon
+ * catalog. Drives off the registry (real chains); the catalog only supplies
+ * images. Only coin types in the curated NAMESPACE_BY_COIN_TYPE map are stored;
+ * everything else is skipped as 'not-curated'. A curated chain matches an icon
+ * by symbol first, then by slugified name.
  */
 export const resolveChains = (
   coinTypes: RegisteredCoinType[],
@@ -85,12 +91,16 @@ export const resolveChains = (
       skipped.push({ reference, name, reason: 'reserved-evm' })
       continue
     }
+    const namespace = NAMESPACE_BY_COIN_TYPE[reference]
+    if (!namespace) {
+      skipped.push({ reference, name, reason: 'not-curated' })
+      continue
+    }
     const entry = bySymbol.get(symbol.toUpperCase()) ?? bySlug.get(slugify(name))
     if (!entry) {
       skipped.push({ reference, name, reason: 'no-icon' })
       continue
     }
-    const namespace = NAMESPACE_BY_COIN_TYPE[reference] ?? entry.slug
     resolved.push({
       identifier: `${namespace}-${reference}`,
       namespace,

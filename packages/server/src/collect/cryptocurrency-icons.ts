@@ -53,7 +53,7 @@ class CryptocurrencyIconsCollector extends BaseCollector {
     console.warn(
       `cryptocurrency-icons: resolved ${resolved.length} chains; skipped ${skipped.length} ` +
         `(no-symbol ${skipCounts['no-symbol'] ?? 0}, reserved-evm ${skipCounts['reserved-evm'] ?? 0}, ` +
-        `no-icon ${skipCounts['no-icon'] ?? 0})`,
+        `not-curated ${skipCounts['not-curated'] ?? 0}, no-icon ${skipCounts['no-icon'] ?? 0})`,
     )
 
     for (const chain of resolved) {

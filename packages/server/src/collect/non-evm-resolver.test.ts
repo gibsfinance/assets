@@ -15,12 +15,13 @@ const coinTypes: RegisteredCoinType[] = [
   [60, 2147483708, 'ETH', 'Ether'],
   [128, 2147483776, 'XMR', 'Monero'],
   [144, 2147483792, 'XRP', 'Ripple'],
+  [175, 2147483823, 'RVN', 'Ravencoin'],
   [1729, 2147485377, 'XTZ', 'Tezos'],
   [999999, 3147483647, 'NOPE', 'No Icon Coin'],
 ]
 
 describe('resolveChains', () => {
-  it('slugifies names for the default namespace', () => {
+  it('slugifies names for icon name matching', () => {
     expect(slugify('Bitcoin Cash')).toBe('bitcoin-cash')
     expect(slugify('Ether')).toBe('ether')
   })
@@ -33,11 +34,10 @@ describe('resolveChains', () => {
     expect(byName['Ripple']).toBe('memo-144')
   })
 
-  it('gives long-tail chains their own slug namespace', () => {
-    const { resolved } = resolveChains(coinTypes, catalog)
-    const tezos = resolved.find((r) => r.name === 'Tezos')!
-    expect(tezos.identifier).toBe('tezos-1729')
-    expect(tezos.namespace).toBe('tezos')
+  it('skips non-curated long-tail chains rather than storing them', () => {
+    const { resolved, skipped } = resolveChains(coinTypes, catalog)
+    expect(resolved.find((r) => r.name === 'Tezos')).toBeUndefined()
+    expect(skipped.find((s) => s.name === 'Tezos')!.reason).toBe('not-curated')
   })
 
   it('upscales the icon url', () => {
@@ -45,11 +45,13 @@ describe('resolveChains', () => {
     expect(resolved.find((r) => r.name === 'Bitcoin')!.imageUrl).toBe('https://h/128/bitcoin.png')
   })
 
-  it('skips and records symbol-less, Ethereum, and iconless coins', () => {
+  it('skips and records symbol-less, Ethereum, non-curated, and iconless coins', () => {
     const { skipped } = resolveChains(coinTypes, catalog)
     const byReason = Object.fromEntries(skipped.map((s) => [s.name, s.reason]))
     expect(byReason['Testnet (all coins)']).toBe('no-symbol')
     expect(byReason['Ether']).toBe('reserved-evm')
-    expect(byReason['No Icon Coin']).toBe('no-icon')
+    expect(byReason['No Icon Coin']).toBe('not-curated')
+    // Ravencoin is a curated bip122 family member with no matching catalog icon.
+    expect(byReason['Ravencoin']).toBe('no-icon')
   })
 })
