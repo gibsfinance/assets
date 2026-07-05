@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { resolveChains, slugify, type CatalogEntry } from './non-evm-resolver'
-import type { RegisteredCoinType } from 'slip44'
+import { registeredCoinTypes, type RegisteredCoinType } from 'slip44'
+import { resolveChains, slugify, NAMESPACE_BY_COIN_TYPE, type CatalogEntry } from './non-evm-resolver'
 
 const catalog: CatalogEntry[] = [
   { name: 'Bitcoin', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin.png' },
@@ -53,5 +53,16 @@ describe('resolveChains', () => {
     expect(byReason['No Icon Coin']).toBe('not-curated')
     // Ravencoin is a curated bip122 family member with no matching catalog icon.
     expect(byReason['Ravencoin']).toBe('no-icon')
+  })
+
+  it('curates only real Satoshi-Labs-Improvement-Proposal-44 coin types', () => {
+    // Every curated coin type must exist in the real registry, otherwise the
+    // chain silently never resolves (the reference is matched against the
+    // registry, not invented). This guards against derivation-purpose values
+    // like Cardano's 1852 being mistaken for its coin type (1815).
+    const registered = new Set(registeredCoinTypes.map(([reference]) => reference))
+    for (const reference of Object.keys(NAMESPACE_BY_COIN_TYPE).map(Number)) {
+      expect(registered.has(reference), `coin type ${reference} is not a registered SLIP-44 chain`).toBe(true)
+    }
   })
 })

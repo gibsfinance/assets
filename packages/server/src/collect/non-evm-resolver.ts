@@ -39,7 +39,7 @@ export const NAMESPACE_BY_COIN_TYPE: Record<number, string> = {
   175: 'bip122', // Ravencoin
   128: 'monero',
   501: 'solana',
-  1852: 'cardano',
+  1815: 'cardano', // Satoshi-Labs-Improvement-Proposal-44 coin type for Cardano/ADA (1852 is the derivation purpose, not the coin type)
   144: 'memo', // XRP
   148: 'memo', // Stellar
   195: 'tvm', // Tron
