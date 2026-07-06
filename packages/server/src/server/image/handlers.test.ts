@@ -58,6 +58,7 @@ import {
   classifyImageServe,
   parseTypeFilter,
   MIN_SERVABLE_RASTER_SIZE,
+  isValidTokenAddress,
 } from './handlers'
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
@@ -751,6 +752,35 @@ describe('image handlers', () => {
       const res = mockResponse()
 
       await expect(handler(req, res, vi.fn())).rejects.toThrow(/address/)
+    })
+
+    it('rejects a base58 address on an Ethereum-Virtual-Machine chain', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: 'So11111111111111111111111111111111111111112' },
+        query: {},
+      })
+      await expect(handler(req, mockResponse(), vi.fn())).rejects.toThrow(/address/)
+    })
+  })
+
+  describe('isValidTokenAddress', () => {
+    const evmAddress = '0x0000000000000000000000000000000000000001'
+    const solanaMint = 'So11111111111111111111111111111111111111112'
+    const tronAddress = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+
+    it('requires a hex address for Ethereum-Virtual-Machine chains', () => {
+      expect(isValidTokenAddress(1, evmAddress)).toBe(true)
+      expect(isValidTokenAddress('eip155-1', evmAddress)).toBe(true)
+      expect(isValidTokenAddress(0, evmAddress)).toBe(true) // asset-0 is Ethereum-Virtual-Machine hex
+      expect(isValidTokenAddress(1, solanaMint)).toBe(false) // base58 rejected on an eip155 chain
+    })
+
+    it('accepts a bounded token identifier for non-Ethereum-Virtual-Machine chains', () => {
+      expect(isValidTokenAddress('solana-501', solanaMint)).toBe(true)
+      expect(isValidTokenAddress('tvm-195', tronAddress)).toBe(true)
+      expect(isValidTokenAddress('solana-501', '')).toBe(false) // empty
+      expect(isValidTokenAddress('solana-501', 'a'.repeat(200))).toBe(false) // over-length garbage
     })
   })
 
