@@ -101,4 +101,16 @@ describe('getNetworkName', () => {
       expect(getNetworkName(10)).toBe('Optimism')
     })
   })
+
+  it('names the curated non-Ethereum-Virtual-Machine chains by identifier', () => {
+    expect(getNetworkName('bip122-0')).toBe('Bitcoin')
+    expect(getNetworkName('cardano-1815')).toBe('Cardano')
+    expect(getNetworkName('tvm-195')).toBe('Tron')
+  })
+
+  it('still names Ethereum-Virtual-Machine chains from bare and prefixed ids', () => {
+    expect(getNetworkName(1)).toBe('Ethereum')
+    expect(getNetworkName('eip155-369')).toBe('PulseChain')
+    expect(getNetworkName('369')).toBe('PulseChain')
+  })
 })
