@@ -32,7 +32,7 @@ export default function PhysicsCanvas() {
 
       const networkSources = metrics.networks.supported
         .slice(0, 25)
-        .map((net) => getApiUrl(`/image/${toChainIdentifier(net.chainId)}`))
+        .map((net) => getApiUrl(`/image/${net.chainIdentifier}`))
 
       return [...networkSources, ...tokenSources]
     },
@@ -82,8 +82,7 @@ export default function PhysicsCanvas() {
       const src = sources[i % sources.length]
       const isMonster = Math.random() < MONSTER_CHANCE
       const layerRoll = Math.random()
-      const layer: PhysicsIcon['layer'] =
-        layerRoll < 0.3 ? 'background' : layerRoll < 0.65 ? 'middle' : 'foreground'
+      const layer: PhysicsIcon['layer'] = layerRoll < 0.3 ? 'background' : layerRoll < 0.65 ? 'middle' : 'foreground'
 
       const icon = createIcon(i, src, layer, config)
 
@@ -127,13 +126,7 @@ export default function PhysicsCanvas() {
         ctx.arc(icon.position.x, icon.position.y, icon.radius, 0, Math.PI * 2)
         ctx.closePath()
         ctx.clip()
-        ctx.drawImage(
-          icon.imgElement,
-          icon.position.x - icon.radius,
-          icon.position.y - icon.radius,
-          size,
-          size,
-        )
+        ctx.drawImage(icon.imgElement, icon.position.x - icon.radius, icon.position.y - icon.radius, size, size)
         ctx.restore()
       }
     }
@@ -203,11 +196,5 @@ export default function PhysicsCanvas() {
     }
   }, [initIcons, loop, render])
 
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 z-0 pointer-events-none"
-      aria-hidden="true"
-    />
-  )
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" aria-hidden="true" />
 }

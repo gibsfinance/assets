@@ -4,9 +4,9 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
+import { toChainIdentifier } from '../utils/chain-identifier'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
-import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface NetworkSelectProps {
   selectedChainId: string | null
@@ -23,9 +23,14 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
     return sortNetworks(metrics.networks.supported, showTestnets)
   }, [metrics, showTestnets])
 
+  // Normalize the incoming selection to its canonical identifier so a bare
+  // numeric value from an old bookmark or stored preference (e.g. "1") still
+  // matches the network whose identifier is "eip155-1".
+  const selectedIdentifier = selectedChainId ? toChainIdentifier(selectedChainId) : null
+
   const selectedNetwork = useMemo(
-    () => sortedNetworks.find((n) => n.chainId.toString() === selectedChainId) ?? null,
-    [sortedNetworks, selectedChainId],
+    () => sortedNetworks.find((n) => n.chainIdentifier === selectedIdentifier) ?? null,
+    [sortedNetworks, selectedIdentifier],
   )
 
   return (
@@ -33,19 +38,18 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
       <button
         type="button"
         className="flex w-full items-center justify-between border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
-        onClick={() => setIsOpen(true)}
-      >
+        onClick={() => setIsOpen(true)}>
         {selectedNetwork ? (
           <span className="flex items-center gap-2 truncate">
             <Image
-              src={getApiUrl(`/image/${toChainIdentifier(selectedNetwork.chainId)}`)}
+              src={getApiUrl(`/image/${selectedNetwork.chainIdentifier}`)}
               size={20}
               skeleton
               shape="circle"
               className="inline-block rounded-full"
             />
-            {getNetworkName(selectedNetwork.chainId)}{' '}
-            <span className="text-gray-400 dark:text-white/40">(Chain ID: {selectedNetwork.chainId})</span>
+            {getNetworkName(selectedNetwork.chainIdentifier)}{' '}
+            <span className="text-gray-400 dark:text-white/40">({selectedNetwork.chainIdentifier})</span>
           </span>
         ) : (
           <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
@@ -59,14 +63,11 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
                 e.stopPropagation()
                 onSelect(null)
               }}
-              aria-label="Clear network selection"
-            >
+              aria-label="Clear network selection">
               <i className="fas fa-times text-[10px]" />
             </button>
           )}
-          <i
-            className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
+          <i className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
@@ -74,10 +75,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         sortedNetworks={sortedNetworks}
-        selectedChainId={selectedChainId}
+        selectedChainId={selectedIdentifier}
         onPick={(network) => {
           setIsOpen(false)
-          onSelect(network.chainId.toString())
+          onSelect(network.chainIdentifier)
         }}
       />
     </div>
@@ -93,9 +94,7 @@ function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkIn
 
   let filtered = networks
   if (!showTestnets) {
-    filtered = networks.filter(
-      (network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'),
-    )
+    filtered = networks.filter((network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'))
   }
 
   return [...filtered].sort((a, b) => {
@@ -111,7 +110,6 @@ function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkIn
     return getNetworkName(a.chainId).localeCompare(getNetworkName(b.chainId))
   })
 }
-
 
 function NetworkDialog({
   isOpen,
@@ -137,8 +135,7 @@ function NetworkDialog({
           enterTo="opacity-100"
           leave="ease-in duration-200"
           leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
+          leaveTo="opacity-0">
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
         </TransitionChild>
 
@@ -150,39 +147,35 @@ function NetworkDialog({
           enterTo="translate-x-0"
           leave="ease-in duration-200"
           leaveFrom="translate-x-0"
-          leaveTo="-translate-x-full"
-        >
+          leaveTo="-translate-x-full">
           <DialogPanel className="fixed inset-y-0 left-0 w-[480px] overflow-y-auto border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base shadow-elevated">
             <div className="sticky top-0 z-10 border-b border-border-light dark:border-border-dark bg-white/90 dark:bg-surface-base/90 px-4 py-3 backdrop-blur-sm">
-              <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">
-                Select Network
-              </h2>
+              <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">Select Network</h2>
             </div>
 
             <div className="flex flex-col">
               {sortedNetworks.map((network) => (
                 <button
-                  key={network.chainId}
+                  key={network.chainIdentifier}
                   className={`flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-accent-500/10 ${
-                    selectedChainId === network.chainId.toString()
+                    selectedChainId === network.chainIdentifier
                       ? 'bg-accent-500/5 border-l-2 border-accent-500'
                       : 'border-l-2 border-transparent'
                   }`}
-                  onClick={() => onPick(network)}
-                >
+                  onClick={() => onPick(network)}>
                   <span className="mr-2 flex items-center gap-3 truncate">
                     <Image
-                      src={getApiUrl(`/image/${toChainIdentifier(network.chainId)}`)}
+                      src={getApiUrl(`/image/${network.chainIdentifier}`)}
                       size={24}
                       skeleton
                       lazy
                       shape="circle"
                       className="inline-block rounded-full"
                     />
-                    <span className="text-gray-900 dark:text-white/90">{getNetworkName(network.chainId)}</span>
+                    <span className="text-gray-900 dark:text-white/90">{getNetworkName(network.chainIdentifier)}</span>
                   </span>
                   <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-400 dark:text-white/30">
-                    Chain {network.chainId}
+                    {network.isEvm ? `Chain ${network.chainId}` : network.chainIdentifier}
                   </span>
                 </button>
               ))}
