@@ -8602,6 +8602,7 @@ __metadata:
     react: "npm:^18.2.0"
     response-time: "npm:^2.3.2"
     sharp: "npm:^0.34.5"
+    slip44: "npm:^3.0.39"
     supertest: "npm:^7.0.0"
     tsconfig-paths: "npm:^4.2.0"
     tsx: "npm:^4.11.2"
@@ -8840,6 +8841,13 @@ __metadata:
     ansi-styles: "npm:^6.2.1"
     is-fullwidth-code-point: "npm:^4.0.0"
   checksum: 10c0/d105f1296c2c5744a1fb5bedd69ad55596fabe95b0b3533c046969dd34d928b4794ff46ef18054d8f5786d6fbc7d8b94937391c10f8db89d8c236e47403223b8
+  languageName: node
+  linkType: hard
+
+"slip44@npm:^3.0.39":
+  version: 3.0.39
+  resolution: "slip44@npm:3.0.39"
+  checksum: 10c0/8fcd0ae5a91035f5597c1da87eaaaa6e073675e75e444d263f003d3e5115c3dc096c0d50e8db97138b7e473829ac781c4984ddbbdf1926f2732bca93cd04fc4d
   languageName: node
   linkType: hard
 

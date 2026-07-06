@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { toCAIP2, fromCAIP2, namespaceOf, isBareNumeric, isValidChainId } from './chain-id'
+import {
+  toCAIP2,
+  fromCAIP2,
+  namespaceOf,
+  isBareNumeric,
+  isValidChainId,
+  namespaceToNetworkType,
+  NON_EVM_NAMESPACES,
+} from './chain-id'
 
 describe('toCAIP2', () => {
   it('prefixes EVM chain IDs with eip155', () => {
@@ -87,5 +95,32 @@ describe('isValidChainId', () => {
     expect(isValidChainId('eip155-banana')).toBe(false)
     expect(isValidChainId('eip155-')).toBe(false)
     expect(isValidChainId('solana-mainnet')).toBe(false)
+  })
+})
+
+describe('namespace registry', () => {
+  it('lists the six non-Ethereum-Virtual-Machine namespaces', () => {
+    expect([...NON_EVM_NAMESPACES].sort()).toEqual(['bip122', 'cardano', 'memo', 'monero', 'solana', 'tvm'])
+  })
+
+  it('maps non-Ethereum-Virtual-Machine namespaces to their own type, others to evm', () => {
+    expect(namespaceToNetworkType('bip122')).toBe('bip122')
+    expect(namespaceToNetworkType('memo')).toBe('memo')
+    expect(namespaceToNetworkType('eip155')).toBe('evm')
+    expect(namespaceToNetworkType('asset')).toBe('evm')
+  })
+
+  it('accepts non-Ethereum-Virtual-Machine identifiers with a numeric reference', () => {
+    expect(isValidChainId('bip122-0')).toBe(true)
+    expect(isValidChainId('solana-501')).toBe(true)
+    expect(isValidChainId('memo-144')).toBe(true)
+  })
+
+  it('still accepts legacy identifiers and rejects unknown namespaces', () => {
+    expect(isValidChainId('369')).toBe(true)
+    expect(isValidChainId('eip155-1')).toBe(true)
+    expect(isValidChainId('asset-0')).toBe(true)
+    expect(isValidChainId('cosmos-1')).toBe(false)
+    expect(isValidChainId('bip122-notanumber')).toBe(false)
   })
 })

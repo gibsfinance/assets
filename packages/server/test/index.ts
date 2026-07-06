@@ -1,6 +1,7 @@
 import '../src/global.d.ts'
 import './list.test'
 import './server.test'
+import './non-evm-image.test'
 import './networks.test'
 import './db-batch.test'
 import './list-token-upsert.test'
