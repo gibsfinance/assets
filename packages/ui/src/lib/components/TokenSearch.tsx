@@ -32,8 +32,6 @@ export default function TokenSearch({
   const { metrics } = useMetrics()
   const { data: contextProviders = [] } = useProviders()
 
-
-
   const performGlobalSearch = useCallback(async () => {
     // Cancel any previous ongoing search
     if (searchAbortControllerRef.current) {
@@ -112,9 +110,8 @@ export default function TokenSearch({
                   sourceList: `${list.providerKey}/${list.key}`,
                   isBridgeToken: list.providerKey.includes('bridge'),
                   chainName:
-                    metrics?.networks.supported.find(
-                      (n) => n.chainId.toString() === token.chainId.toString(),
-                    )?.name || `Chain ${token.chainId}`,
+                    metrics?.networks.supported.find((n) => n.isEvm && n.chainId === token.chainId)?.name ||
+                    `Chain ${token.chainId}`,
                 }))
 
               if (matchingTokens.length > 0) {
@@ -127,10 +124,7 @@ export default function TokenSearch({
             // search aborted
             return
           }
-          console.error(
-            `Error searching global list ${list.providerKey}/${list.key}:`,
-            error,
-          )
+          console.error(`Error searching global list ${list.providerKey}/${list.key}:`, error)
         }
         onSearchUpdate({
           query,
@@ -171,9 +165,8 @@ export default function TokenSearch({
               sourceList: `${list.providerKey}/${list.key}`,
               isBridgeToken: list.providerKey.includes('bridge'),
               chainName:
-                metrics?.networks.supported.find(
-                  (n) => n.chainId.toString() === token.chainId.toString(),
-                )?.name || `Chain ${token.chainId}`,
+                metrics?.networks.supported.find((n) => n.isEvm && n.chainId === token.chainId)?.name ||
+                `Chain ${token.chainId}`,
             }))
 
           if (matchingTokens.length > 0) {
@@ -185,10 +178,7 @@ export default function TokenSearch({
             return
           }
           if (error instanceof Error && !error.message.includes('404')) {
-            console.error(
-              `Error searching chain-specific list ${list.providerKey}/${list.key}:`,
-              error,
-            )
+            console.error(`Error searching chain-specific list ${list.providerKey}/${list.key}:`, error)
             return
           }
         }
@@ -254,9 +244,7 @@ export default function TokenSearch({
           value={query}
           onChange={handleChange}
         />
-        {isGlobalSearching && (
-          <i className="fas fa-spinner fa-spin text-xs text-accent-500" />
-        )}
+        {isGlobalSearching && <i className="fas fa-spinner fa-spin text-xs text-accent-500" />}
         <TokenListFilter
           selectedChain={selectedChain}
           enabledLists={enabledLists}

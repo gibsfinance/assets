@@ -59,7 +59,7 @@ export function deduplicateTokens(
   const tokenMap = new Map<string, Token>()
 
   const addToken = (token: Token) => {
-    if (token.chainId.toString() !== selectedChainId) return
+    if (toChainIdentifier(String(token.chainId)) !== toChainIdentifier(selectedChainId)) return
     if (!token.hasIcon) return
     const ref: TokenListReference = {
       sourceList: token.sourceList,

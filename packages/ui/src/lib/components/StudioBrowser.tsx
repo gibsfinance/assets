@@ -7,7 +7,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
-import { toChainIdentifier } from '../utils/chain-identifier'
+import { toChainIdentifier, fromChainIdentifier } from '../utils/chain-identifier'
 import { getNetworkName } from '../utils/network-name'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import { filterTokensBySearch, getPopularChains } from '../utils/token-search'
@@ -91,16 +91,14 @@ function VirtualTokenList({
                 left: 0,
                 width: '100%',
                 transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
+              }}>
               <div
                 className={`group flex cursor-pointer items-center gap-3 px-4 py-2 transition-colors border-l-2 ${
                   isSelected
                     ? 'border-accent-500 bg-accent-500/10'
                     : 'border-transparent hover:bg-gray-50 dark:hover:bg-surface-2'
                 }`}
-                onClick={() => onTokenClick(token)}
-              >
+                onClick={() => onTokenClick(token)}>
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                   {hasIcon ? (
                     <Image
@@ -121,17 +119,13 @@ function VirtualTokenList({
 
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                      {token.name}
-                    </span>
+                    <span className="truncate text-sm font-medium text-gray-800 dark:text-white/90">{token.name}</span>
                     <span className="flex-shrink-0 font-mono text-[10px] text-gray-400 dark:text-white/30">
                       {token.address.slice(0, 6)}...{token.address.slice(-4)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-gray-400 dark:text-white/40">
-                      {token.symbol}
-                    </span>
+                    <span className="text-xs text-gray-400 dark:text-white/40">{token.symbol}</span>
                     <button
                       type="button"
                       className="flex items-center gap-1 truncate text-[10px] text-accent-500/70 hover:text-accent-500"
@@ -142,8 +136,7 @@ function VirtualTokenList({
                         } else {
                           onNavigateToList(token.sourceList)
                         }
-                      }}
-                    >
+                      }}>
                       <span className="truncate hover:underline">{token.sourceList}</span>
                       {(token.listReferences?.length ?? 0) > 1 && (
                         <span className="flex-shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
@@ -166,8 +159,7 @@ function VirtualTokenList({
                     onActionClick(token)
                   }}
                   title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
-                  aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
-                >
+                  aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}>
                   <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
                 </button>
               </div>
@@ -195,14 +187,26 @@ interface AvailableList {
 const POPULAR_CHAIN_COUNT = 8
 const ROW_HEIGHT = 44
 
-export default function StudioBrowser({ onInspectToken, selectChain: selectChainProp, selectToken: selectTokenProp }: StudioBrowserProps) {
+export default function StudioBrowser({
+  onInspectToken,
+  selectChain: selectChainProp,
+  selectToken: selectTokenProp,
+}: StudioBrowserProps) {
   const studio = useStudio()
   const selectedChainId = studio.selectedChainId
   const selectedToken = studio.selectedToken
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
   const { metrics, providers } = useMetrics()
-  const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor, openNewEditor } = useListEditor()
+  const {
+    isOpen: editorOpen,
+    activeList,
+    addToken,
+    createList,
+    setActiveList,
+    openEditor,
+    openNewEditor,
+  } = useListEditor()
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
@@ -211,14 +215,22 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
     })
   }, [metrics])
 
-  const {
-    enabledLists,
-    tokensByList,
-    toggleList,
-    toggleAll,
-    setListTokens,
-    clearTokens,
-  } = useTokenBrowser()
+  const { enabledLists, tokensByList, toggleList, toggleAll, setListTokens, clearTokens } = useTokenBrowser()
+
+  /* ----- Non-Ethereum-Virtual-Machine chain detection ---------------------
+   * A curated non-Ethereum-Virtual-Machine chain (Bitcoin, Solana, etc.) has a
+   * logo but no browsable token list — the @gibs/react components are
+   * chainId:number typed and cannot represent these identifiers, so the token
+   * grid and code snippet panel are meaningless for them. Resolve the
+   * selected network from metrics (once loaded) to branch into a logo-only
+   * empty state instead of an empty/broken token browser.
+   */
+  const selectedIdentifier = selectedChainId ? toChainIdentifier(selectedChainId) : null
+  const selectedNetwork = useMemo(
+    () => metrics?.networks.supported.find((network) => network.chainIdentifier === selectedIdentifier) ?? null,
+    [metrics, selectedIdentifier],
+  )
+  const isNonEvmChain = !!selectedNetwork && !selectedNetwork.isEvm
 
   /* ----- Local UI state -------------------------------------------------- */
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
@@ -356,7 +368,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
   }, [mergedTokens, clearTokens, setListTokens])
 
   /* ----- Derived --------------------------------------------------------- */
-  const selectedChainNumeric = selectedChainId ? Number(selectedChainId) : null
+  const selectedChainNumeric = selectedChainId ? Number(fromChainIdentifier(selectedChainId)) : null
 
   /** Combined, deduped, sorted tokens for the selected chain */
   const filteredTokens = useMemo(() => {
@@ -405,7 +417,6 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
   const handleToggleList = useCallback(
     (listKey: string, enabled: boolean) => {
       toggleList(listKey, enabled)
-      
     },
     [toggleList],
   )
@@ -413,14 +424,12 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
   const handleToggleAll = useCallback(
     (enabled: boolean) => {
       toggleAll(enabled)
-      
     },
     [toggleAll],
   )
 
   const handleSearchUpdate = useCallback((state: SearchUpdate) => {
     setSearchState(state)
-    
   }, [])
 
   const handleIconError = useCallback((token: Token) => {
@@ -432,7 +441,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
   }, [])
 
   const toggleExpand = useCallback((key: string) => {
-    setExpandedTokens(prev => {
+    setExpandedTokens((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -447,7 +456,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
       <NetworkSelect selectedChainId={selectedChainId} onSelect={handleChainSelect} />
 
       {/* Search + filter (TokenSearch embeds TokenListFilter internally) */}
-      {selectedChainId && (
+      {selectedChainId && !isNonEvmChain && (
         <TokenSearch
           count={tokenCount}
           onSearchUpdate={handleSearchUpdate}
@@ -458,7 +467,6 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
           onToggleAll={handleToggleAll}
         />
       )}
-
 
       {/* Token list */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -483,8 +491,7 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
                       key={chain.chainId}
                       type="button"
                       className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40"
-                      onClick={() => handleChainSelect(chain.chainId)}
-                    >
+                      onClick={() => handleChainSelect(chain.chainId)}>
                       <Image
                         src={getApiUrl(`/image/${toChainIdentifier(chain.chainId)}`)}
                         size={20}
@@ -493,8 +500,12 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
                         className="rounded-full"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{chain.name}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-white/30">{chain.tokenCount.toLocaleString()} tokens</div>
+                        <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">
+                          {chain.name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 dark:text-white/30">
+                          {chain.tokenCount.toLocaleString()} tokens
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -504,20 +515,38 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
           </div>
         )}
 
-        {selectedChainId && isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && isNonEvmChain && (
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <Image
+              src={getApiUrl(`/image/${selectedNetwork!.chainIdentifier}`)}
+              size={64}
+              skeleton
+              shape="circle"
+              className="rounded-full"
+            />
+            <div className="text-sm font-medium text-gray-800 dark:text-white/80">
+              {getNetworkName(selectedNetwork!.chainIdentifier)}
+            </div>
+            <p className="max-w-xs text-sm text-gray-400 dark:text-white/40">
+              This chain has a logo but no tokens to browse yet.
+            </p>
+          </div>
+        )}
+
+        {selectedChainId && !isNonEvmChain && isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
             <i className="fas fa-spinner fa-spin mr-2" />
             Loading tokens...
           </div>
         )}
 
-        {selectedChainId && !isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && !isNonEvmChain && !isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             No tokens found
           </div>
         )}
 
-        {filteredTokens.length > 0 && (
+        {!isNonEvmChain && filteredTokens.length > 0 && (
           <VirtualTokenList
             tokens={filteredTokens}
             selectedToken={selectedToken}
@@ -525,14 +554,13 @@ export default function StudioBrowser({ onInspectToken, selectChain: selectChain
             activeList={activeList}
             failedIcons={failedIcons}
             expandedTokens={expandedTokens}
-            onTokenClick={(token) => editorOpen ? addTokenToEditor(token) : selectToken(token)}
-            onActionClick={(token) => editorOpen ? addTokenToEditor(token) : onInspectToken(token)}
+            onTokenClick={(token) => (editorOpen ? addTokenToEditor(token) : selectToken(token))}
+            onActionClick={(token) => (editorOpen ? addTokenToEditor(token) : onInspectToken(token))}
             onToggleExpand={toggleExpand}
             onNavigateToList={openEditor}
             onIconError={handleIconError}
           />
         )}
-
       </div>
     </div>
   )

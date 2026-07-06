@@ -31,8 +31,7 @@ vi.mock('@tanstack/react-virtual', () => ({
 // image loads or IntersectionObserver.
 // ---------------------------------------------------------------------------
 vi.mock('./Image', () => ({
-  default: ({ src, alt }: { src: string; alt?: string }) =>
-    createElement('img', { src, alt: alt ?? '' }),
+  default: ({ src, alt }: { src: string; alt?: string }) => createElement('img', { src, alt: alt ?? '' }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -68,7 +67,7 @@ vi.mock('../utils', async () => {
 })
 
 import StudioBrowser from './StudioBrowser'
-import { StudioProvider } from '../contexts/StudioContext'
+import { StudioProvider, useStudio } from '../contexts/StudioContext'
 import { ListEditorProvider, useListEditor } from '../contexts/ListEditorContext'
 import { SettingsProvider } from '../contexts/SettingsContext'
 
@@ -171,8 +170,7 @@ function installDefaultFetch(
 ) {
   mockFetch.mockImplementation((input: string) => {
     const url = String(input)
-    const ok = (body: unknown) =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
 
     if (url.endsWith('/stats')) return ok(STATS)
     if (url.endsWith('/networks')) return ok(NETWORKS)
@@ -197,10 +195,7 @@ function installDefaultFetch(
 // behaviour) and SettingsProvider (NetworkSelect reads showTestnets).
 // `bootstrap` lets a test mount a companion control that drives the contexts.
 // ---------------------------------------------------------------------------
-function renderBrowser(
-  props: Partial<Parameters<typeof StudioBrowser>[0]> = {},
-  bootstrap: ReactNode = null,
-) {
+function renderBrowser(props: Partial<Parameters<typeof StudioBrowser>[0]> = {}, bootstrap: ReactNode = null) {
   const onInspectToken = props.onInspectToken ?? vi.fn()
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -262,9 +257,7 @@ describe('StudioBrowser', () => {
 
     fireEvent.click(await screen.findByText('PulseChain'))
 
-    await waitFor(() =>
-      expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/eip155-369'),
-    )
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/eip155-369'))
     expect(await screen.findByText('Pulse Token')).toBeTruthy()
   })
 
@@ -359,8 +352,7 @@ describe('StudioBrowser', () => {
     let releaseTokens: () => void = () => {}
     mockFetch.mockImplementation((input: string) => {
       const url = String(input)
-      const ok = (body: unknown) =>
-        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+      const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
       if (url.endsWith('/stats')) return ok(STATS)
       if (url.endsWith('/networks')) return ok(NETWORKS)
       if (url.endsWith('/list')) return ok(PROVIDERS)
@@ -415,6 +407,62 @@ describe('StudioBrowser', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Non-Ethereum-Virtual-Machine chain behaviour. A curated non-EVM network
+// (Bitcoin, Solana, etc.) has a logo but no browsable tokens. `useMetrics()`
+// flags this via `isEvm: false` on the resolved NetworkInfo. We drive the
+// selection through the real StudioContext (mirroring OpenEditorWithList
+// below) so StudioBrowser resolves `selectedNetwork` from live metrics rather
+// than a prop override.
+// ---------------------------------------------------------------------------
+
+/** Test-only bootstrap: selects the given chain via the real StudioContext. */
+function SelectChainOnMount({ chainId }: { chainId: string }) {
+  const { selectChain } = useStudio()
+  useEffect(() => {
+    selectChain(chainId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return null
+}
+
+describe('StudioBrowser with a non-Ethereum-Virtual-Machine chain selected', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('shows a logo-only empty state and hides the token grid and search box', async () => {
+    mockFetch.mockImplementation((input: string) => {
+      const url = String(input)
+      const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+
+      if (url.endsWith('/stats')) return ok(STATS)
+      if (url.endsWith('/networks'))
+        return ok([
+          ...NETWORKS,
+          { type: 'bip122', chainId: '0', networkId: '0', chainIdentifier: 'bip122-0', imageHash: 'abc' },
+        ])
+      if (url.endsWith('/list')) return ok(PROVIDERS)
+      if (url.includes('/list/tokens/')) return ok(tokensResponse(0, []))
+      return ok({ tokens: [] })
+    })
+
+    renderBrowser({}, createElement(SelectChainOnMount, { chainId: 'bip122-0' }))
+
+    expect(await screen.findByText(/no tokens to browse/i)).toBeTruthy()
+    // "Bitcoin" appears both in the network selector header and the empty
+    // state — assert at least one rendering rather than assuming uniqueness.
+    expect(screen.getAllByText('Bitcoin').length).toBeGreaterThan(0)
+    expect(screen.queryByPlaceholderText(/Search .* tokens/i)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Inspect token' })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Editor-open behaviour. We drive the real ListEditorProvider into the open
 // state with an active list using a companion control that calls the same
 // hooks the component uses, then assert the action button flips to
@@ -465,9 +513,7 @@ describe('StudioBrowser with the list editor open', () => {
     // The action button flips to the add affordance once the editor has an
     // active list. Wait for the async createList to settle.
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(
-        ETHEREUM_TOKENS.length,
-      ),
+      expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(ETHEREUM_TOKENS.length),
     )
     expect(screen.queryByRole('button', { name: 'Inspect token' })).toBeNull()
 
@@ -482,9 +528,7 @@ describe('StudioBrowser with the list editor open', () => {
     fireEvent.click(await screen.findByText('Ethereum'))
     await screen.findByText('Wrapped Ether')
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(
-        ETHEREUM_TOKENS.length,
-      ),
+      expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(ETHEREUM_TOKENS.length),
     )
 
     // Identify the WETH row's add button and click it.

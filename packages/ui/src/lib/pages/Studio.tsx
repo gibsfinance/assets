@@ -11,7 +11,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useStudio } from '../contexts/StudioContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
-import { toChainIdentifier, fromChainIdentifier } from '../utils/chain-identifier'
+import { toChainIdentifier } from '../utils/chain-identifier'
 import type { Token } from '../types'
 
 /**
@@ -21,8 +21,11 @@ import type { Token } from '../types'
  *   ?editor=new               — list editor creation menu
  *   ?editor=<listId>          — editing a specific list
  *
- * The chain param is written in prefixed identifier form; bare numeric values
- * from old URLs are still accepted (normalized on read).
+ * The chain param is written and read in prefixed identifier form
+ * (eip155-1, bip122-0, …) — the value is passed through unchanged so
+ * non-Ethereum-Virtual-Machine identifiers are not stripped to a bare
+ * reference that collides across chain namespaces. Downstream API calls
+ * still accept a bare numeric chain id via toChainIdentifier().
  *
  * Appearance/badge/code preferences stay in localStorage (via StudioContext).
  */
@@ -38,9 +41,12 @@ export default function Studio() {
   // Push URL values into context so child components can read them.
   // No bidirectional sync — one direction only: URL → context.
   // ---------------------------------------------------------------------------
-  // Context holds the bare numeric form — normalize whichever form the URL carries
+  // Context holds the canonical identifier form (e.g. eip155-1, bip122-0) —
+  // pass the URL value through unchanged so non-Ethereum-Virtual-Machine
+  // identifiers are not stripped to a bare reference that collides across
+  // chain namespaces.
   const rawUrlChain = searchParams.get('chain')
-  const urlChain = rawUrlChain ? fromChainIdentifier(rawUrlChain) : null
+  const urlChain = rawUrlChain || null
   const urlEditor = searchParams.get('editor') ?? null
 
   // URL → context: keep context in sync with URL (context is a read cache)
