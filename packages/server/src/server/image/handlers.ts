@@ -27,6 +27,26 @@ import { maybeResize, parseResizeParams } from './resize'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
+import { toCAIP2, namespaceOf } from '../../chain-id'
+
+/** Chain-id namespaces whose token addresses are Ethereum-Virtual-Machine hex. */
+const EVM_NAMESPACES = new Set(['eip155', 'asset'])
+
+/**
+ * Validate a token address for its chain. Ethereum-Virtual-Machine chains
+ * (eip155/asset) require a hex address; every other namespace (Solana base58,
+ * Tron base58, future Sui object ids, ...) accepts a bounded token identifier
+ * and lets the database lookup decide. The bound only rejects obvious garbage
+ * so an unservable request still returns 400 instead of an empty 200. Keyed on
+ * the eip155/asset namespaces explicitly (not namespaceToNetworkType, which
+ * defaults unknown namespaces to evm) so it stays correct for future non-EVM
+ * namespaces.
+ */
+export const isValidTokenAddress = (chainId: ChainId, address: string): boolean => {
+  const namespace = namespaceOf(toCAIP2(String(chainId)))
+  if (EVM_NAMESPACES.has(namespace)) return viem.isAddress(address)
+  return /^[A-Za-z0-9]{2,128}$/.test(address)
+}
 
 export const getListTokens = async ({
   chainId,
@@ -37,7 +57,7 @@ export const getListTokens = async ({
   listKey,
 }: {
   chainId: ChainId
-  address: viem.Hex
+  address: string
   listOrderId?: viem.Hex | null
   exts?: string[]
   providerKey?: string[]
@@ -220,7 +240,7 @@ const getListImage =
       throw httpErrors.BadRequest('chainId')
     }
     const { filename: address, ext: requestedExt } = splitExt(addressParam)
-    if (!viem.isAddress(address)) {
+    if (!isValidTokenAddress(chainId, address)) {
       throw httpErrors.BadRequest('address')
     }
     const outputExt = requestedExt ?? null
@@ -269,7 +289,7 @@ export const getImage =
   async (req, res, _next) => {
     const { img, outputExt } = await getListImage(parseOrder)({
       chainId: req.params.chainId,
-      address: req.params.address as viem.Hex,
+      address: req.params.address,
       order: req.params.order,
       typeFilter: parseTypeFilter(req.query.only),
       providerKey: queryStringToList(req.query.providerKey),
@@ -289,7 +309,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const typeFilter = parseTypeFilter(req.query.only)
   let result = await getListImage(true)({
     chainId: req.params.chainId,
-    address: req.params.address as viem.Hex,
+    address: req.params.address,
     order: req.params.order,
     typeFilter,
     providerKey,
@@ -298,7 +318,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   if (!result) {
     result = await getListImage(false)({
       chainId: req.params.chainId,
-      address: req.params.address as viem.Hex,
+      address: req.params.address,
       typeFilter,
       providerKey,
       listKey,
