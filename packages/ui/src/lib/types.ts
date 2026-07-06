@@ -40,7 +40,12 @@ export type FloatingToken = {
 
 export interface NetworkInfo {
   chainId: number
+  chainIdentifier: string
+  type: string
   name: string
+  tokenCount: number
+  hasImage: boolean
+  isEvm: boolean
 }
 
 export interface PlatformMetrics {
@@ -72,7 +77,13 @@ export type ListDescription = {
   chainType: string
 }
 
-export type Network = { type: string; chainId: string; networkId: string }
+export type Network = {
+  type: string
+  chainId: string
+  networkId: string
+  chainIdentifier: string
+  imageHash: string | null
+}
 
 export interface CodeBlockProps {
   code?: string
