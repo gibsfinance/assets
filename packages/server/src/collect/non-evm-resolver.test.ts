@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { registeredCoinTypes, type RegisteredCoinType } from 'slip44'
 import { resolveChains, slugify, NAMESPACE_BY_COIN_TYPE, type CatalogEntry } from './non-evm-resolver'
+import { NON_EVM_NAMESPACES } from '../chain-id'
 
 const catalog: CatalogEntry[] = [
   { name: 'Bitcoin', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin.png' },
@@ -63,6 +64,16 @@ describe('resolveChains', () => {
     const registered = new Set(registeredCoinTypes.map(([reference]) => reference))
     for (const reference of Object.keys(NAMESPACE_BY_COIN_TYPE).map(Number)) {
       expect(registered.has(reference), `coin type ${reference} is not a registered SLIP-44 chain`).toBe(true)
+    }
+  })
+
+  it('curates only namespaces the chain-id layer treats as non-Ethereum-Virtual-Machine', () => {
+    // Every curated namespace must be in the closed NON_EVM_NAMESPACES set,
+    // otherwise namespaceToNetworkType would map the stored network.type to
+    // 'evm' at lookup time -- the network_id hash would not reproduce and the
+    // logo would be silently unservable.
+    for (const namespace of Object.values(NAMESPACE_BY_COIN_TYPE)) {
+      expect(NON_EVM_NAMESPACES.has(namespace), `namespace ${namespace} is not in NON_EVM_NAMESPACES`).toBe(true)
     }
   })
 })

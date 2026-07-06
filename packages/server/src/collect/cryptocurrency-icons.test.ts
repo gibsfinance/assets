@@ -28,4 +28,13 @@ describe('parseCatalog', () => {
     expect(parseCatalog(raw).map((e) => e.slug)).toEqual(['bitcoin'])
     expect(parseCatalog({ not: 'an array' })).toEqual([])
   })
+
+  it('drops entries whose icon url is not https', () => {
+    const raw = [
+      { name: 'Bitcoin', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin.png' },
+      { name: 'Relative', symbol: 'REL', slug: 'relative', img_url: '/32/relative.png' },
+      { name: 'Insecure', symbol: 'INS', slug: 'insecure', img_url: 'http://h/32/insecure.png' },
+    ]
+    expect(parseCatalog(raw).map((e) => e.slug)).toEqual(['bitcoin'])
+  })
 })

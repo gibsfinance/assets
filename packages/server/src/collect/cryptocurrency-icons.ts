@@ -16,7 +16,12 @@ export const parseCatalog = (raw: unknown): CatalogEntry[] => {
       typeof value.name === 'string' &&
       typeof value.symbol === 'string' &&
       typeof value.slug === 'string' &&
-      typeof value.img_url === 'string'
+      typeof value.img_url === 'string' &&
+      // Only accept secure remote icons. The catalog is a fixed trusted
+      // source that already serves every icon over https, so this drops
+      // nothing legitimate while refusing any relative or non-https path
+      // that would otherwise reach the image fetcher's local-file branch.
+      value.img_url.startsWith('https://')
     ) {
       clean.push({ name: value.name, symbol: value.symbol, slug: value.slug, img_url: value.img_url })
     }
@@ -25,7 +30,7 @@ export const parseCatalog = (raw: unknown): CatalogEntry[] => {
 }
 
 class CryptocurrencyIconsCollector extends BaseCollector {
-  readonly key = 'cryptocurrency-icons'
+  readonly key = providerKey
 
   async discover(_signal: AbortSignal): Promise<DiscoveryManifest> {
     await db.insertProvider({
