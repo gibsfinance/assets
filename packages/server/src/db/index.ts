@@ -1461,7 +1461,9 @@ export const getTokenSourcesByChain = async (
  * Count distinct tokens per chain that have a usable image. A token counts if it has
  * at least one list_token entry passing usableImageSql (the SQL twin of directUri()).
  * Dedup is by `provided_id` to match normalizeTokens' groupBy of
- * `${chainId}-${providedId.toLowerCase()}`.
+ * `${chainId}-${normalizeProvidedId(providedId)}`. The column is citext, so DISTINCT is
+ * case-insensitive — which agrees with normalizeProvidedId for hex addresses and, for
+ * base58 ids, only diverges on case-only variants that do not occur among real mints.
  */
 export const getTokenCountsByChain = async (): Promise<{ chainId: string; count: number }[]> => {
   const db = getDrizzle()

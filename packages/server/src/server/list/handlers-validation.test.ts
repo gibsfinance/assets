@@ -10,16 +10,22 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../db', () => ({
-  getTokensByChainRanked: vi.fn(),
-  getTokenSourcesByChain: vi.fn(),
-  getTokensUnderListId: vi.fn(),
-  insertCacheRequest: vi.fn(),
-  getCachedRequest: vi.fn(),
-  getListOrderId: vi.fn(),
-  applyOrder: vi.fn(),
-  getLists: vi.fn(),
-}))
+vi.mock('../../db', async () => {
+  // Real normalizeProvidedId (isAddress ? lower : preserve) — the merged handler
+  // uses it to key its sources map, and stubbing it to undefined would throw.
+  const { normalizeProvidedId } = await vi.importActual<typeof import('../../db/provided-id')>('../../db/provided-id')
+  return {
+    getTokensByChainRanked: vi.fn(),
+    getTokenSourcesByChain: vi.fn(),
+    getTokensUnderListId: vi.fn(),
+    insertCacheRequest: vi.fn(),
+    getCachedRequest: vi.fn(),
+    getListOrderId: vi.fn(),
+    applyOrder: vi.fn(),
+    getLists: vi.fn(),
+    normalizeProvidedId,
+  }
+})
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/sync-order', () => ({ getDefaultListOrderId: vi.fn(() => '0xdefaultorder') }))
 vi.mock('../../collect/user-submissions', () => ({ bumpSubscriberCount: vi.fn() }))
