@@ -1,4 +1,3 @@
-import { isAddress } from 'viem'
 import { delay } from '../utils/delay'
 import * as db from '../db'
 import * as utils from '../utils'
@@ -6,7 +5,12 @@ import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { limitBy } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
-import { toCAIP2 } from '../chain-id'
+import {
+  isValidPlatformAddress,
+  normalizePlatformAddress,
+  resolvePlatform,
+  type ResolvedPlatform,
+} from './coingecko-platforms'
 
 const CHUNK_SIZE = 250
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -37,7 +41,8 @@ type ChainCoin = {
   symbol: string
   name: string
   address: string
-  chainId: number
+  /** CAIP-2 identifier of the chain (eip155-56, solana-501). */
+  chainIdentifier: string
   networkId: string
   listId: string
   orderIdx: number
@@ -57,7 +62,7 @@ type ChainCoin = {
 class CoinGeckoCollector extends BaseCollector {
   readonly key = 'coingecko'
 
-  // All EVM coins discovered during discover(), keyed by coingecko platform id
+  // All coins discovered during discover(), keyed by coingecko platform id
   private platformCoins = new Map<string, ChainCoin[]>()
   private _cfg?: ReturnType<CoinGeckoCollector['buildConfig']>
 
@@ -102,11 +107,13 @@ class CoinGeckoCollector extends BaseCollector {
       return []
     }
 
-    const platformToChain = new Map<string, number>()
+    // Resolve every platform to a network descriptor: Ethereum-Virtual-Machine
+    // platforms from their numeric chain_identifier, supported non-EVM platforms
+    // (Solana, Tron) to their CAIP-2 identifier, everything else skipped.
+    const platformResolved = new Map<string, ResolvedPlatform>()
     for (const p of platforms) {
-      if (p.chain_identifier && typeof p.chain_identifier === 'number') {
-        platformToChain.set(p.id, p.chain_identifier)
-      }
+      const resolved = resolvePlatform(p.id, p.chain_identifier)
+      if (resolved) platformResolved.set(p.id, resolved)
     }
 
     // --- 2. Fetch all coins with platform addresses ---
@@ -121,26 +128,24 @@ class CoinGeckoCollector extends BaseCollector {
       return []
     }
 
-    // --- 3. Build per-platform coin lists (EVM only, valid addresses) ---
-    const platformCoinsTmp = new Map<
-      string,
-      { coinId: string; symbol: string; name: string; address: string; chainId: number }[]
-    >()
+    // --- 3. Build per-platform coin lists (valid addresses only) ---
+    const platformCoinsTmp = new Map<string, { coinId: string; symbol: string; name: string; address: string }[]>()
     for (const coin of coinsList) {
       if (!coin.platforms) continue
       for (const [platformId, rawAddress] of Object.entries(coin.platforms)) {
-        const chainId = platformToChain.get(platformId)
-        if (!chainId) continue
-        if (!isAddress(rawAddress)) continue
-        const address = rawAddress.toLowerCase()
+        const resolved = platformResolved.get(platformId)
+        if (!resolved) continue
+        if (!isValidPlatformAddress(resolved, rawAddress)) continue
+        // EVM addresses lowercase; non-EVM base58 ids are case-significant and kept verbatim.
+        const address = normalizePlatformAddress(resolved, rawAddress)
         const existing = platformCoinsTmp.get(platformId) ?? []
-        existing.push({ coinId: coin.id, symbol: coin.symbol, name: coin.name, address, chainId })
+        existing.push({ coinId: coin.id, symbol: coin.symbol, name: coin.name, address })
         platformCoinsTmp.set(platformId, existing)
       }
     }
 
     if (platformCoinsTmp.size === 0) {
-      console.warn('[coingecko] no EVM tokens found in coins/list')
+      console.warn('[coingecko] no tokens found in coins/list')
       return []
     }
 
@@ -149,23 +154,23 @@ class CoinGeckoCollector extends BaseCollector {
 
     const lists: { listKey: string }[] = []
     for (const [platformId, coins] of platformCoinsTmp) {
-      const chainId = coins[0]!.chainId
-      const listKey = String(chainId) // e.g. "56" — consistent with chain ID usage elsewhere
-      const network = await db.insertNetworkFromChainId(chainId)
+      const resolved = platformResolved.get(platformId)!
+      const network = await db.insertNetworkFromChainId(resolved.chainIdentifier, resolved.type)
       const [dbList] = await db.insertList({
         providerId: provider.providerId,
         networkId: network.networkId,
-        key: listKey,
+        key: resolved.listKey,
       })
 
       const chainCoins: ChainCoin[] = coins.map((c, i) => ({
         ...c,
+        chainIdentifier: resolved.chainIdentifier,
         networkId: network.networkId,
         listId: dbList.listId,
         orderIdx: i,
       }))
       this.platformCoins.set(platformId, chainCoins)
-      lists.push({ listKey })
+      lists.push({ listKey: resolved.listKey })
     }
 
     return [{ providerKey, lists }]
@@ -185,7 +190,7 @@ class CoinGeckoCollector extends BaseCollector {
         for (const c of coins) allCoinIds.add(c.coinId)
       }
       const coinIdList = [...allCoinIds]
-      console.log(`[coingecko] ${this.platformCoins.size} EVM platforms, ${coinIdList.length} unique coins`)
+      console.log(`[coingecko] ${this.platformCoins.size} platforms, ${coinIdList.length} unique coins`)
 
       // --- 2. Batch-fetch images via coins/markets ---
       const imageMap = new Map<string, string>() // coinId → image URL
@@ -251,7 +256,7 @@ class CoinGeckoCollector extends BaseCollector {
         platformIdx++
         const section = row.issue(platformId)
         const withImage = coins.filter((c) => imageMap.has(c.coinId))
-        const caip2 = toCAIP2(String(coins[0]!.chainId))
+        const caip2 = coins[0]!.chainIdentifier
         const netLabel = `(${platformIdx}/${this.platformCoins.size}) ${platformId} → ${caip2}`
         console.log(`[coingecko] ${netLabel}: starting ${withImage.length}/${coins.length} tokens have images`)
 
