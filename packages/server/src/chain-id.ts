@@ -41,7 +41,15 @@ export function isBareNumeric(input: string): boolean {
  * type 'evm' and the asset-0 network uses type 'evm' as well (legacy). Keeping
  * this set explicit is what preserves every existing network_id hash.
  */
-export const NON_EVM_NAMESPACES: ReadonlySet<string> = new Set(['bip122', 'solana', 'monero', 'cardano', 'memo', 'tvm'])
+export const NON_EVM_NAMESPACES: ReadonlySet<string> = new Set([
+  'bip122',
+  'solana',
+  'monero',
+  'cardano',
+  'memo',
+  'tvm',
+  'ton',
+])
 
 /**
  * Map a chain-id namespace to the value stored in network.type. Only the

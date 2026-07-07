@@ -99,8 +99,15 @@ describe('isValidChainId', () => {
 })
 
 describe('namespace registry', () => {
-  it('lists the six non-Ethereum-Virtual-Machine namespaces', () => {
-    expect([...NON_EVM_NAMESPACES].sort()).toEqual(['bip122', 'cardano', 'memo', 'monero', 'solana', 'tvm'])
+  it('lists the seven non-Ethereum-Virtual-Machine namespaces', () => {
+    expect([...NON_EVM_NAMESPACES].sort()).toEqual(['bip122', 'cardano', 'memo', 'monero', 'solana', 'ton', 'tvm'])
+  })
+
+  it('maps the ton namespace to its own type (not evm) so ton-607 serves', () => {
+    // Trust the DexScreener collector writes ton-607 as type 'ton'; the serving
+    // path must resolve the same type or the network_id hash would not match.
+    expect(namespaceToNetworkType('ton')).toBe('ton')
+    expect(isValidChainId('ton-607')).toBe(true)
   })
 
   it('maps non-Ethereum-Virtual-Machine namespaces to their own type, others to evm', () => {

@@ -173,7 +173,10 @@ class DexscreenerCollector extends BaseCollector {
         const url = new URL(info.url)
         const image = await fetch(url, { signal }).then(responseToBuffer)
         await db.transaction(async (tx) => {
-          const network = await db.insertNetworkFromChainId(chain.id, chain.type, tx)
+          // Non-Ethereum-Virtual-Machine chains carry a namespaced CAIP-2 id
+          // (solana-501, ton-607); EVM chains fall back to their numeric id,
+          // which insertNetworkFromChainId normalizes to eip155-<id>.
+          const network = await db.insertNetworkFromChainId(chain.caip2 ?? chain.id, chain.type, tx)
           await db.fetchImageAndStoreForNetwork(
             {
               network,

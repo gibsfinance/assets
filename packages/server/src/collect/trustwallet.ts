@@ -51,6 +51,32 @@ const networkNameToChainId = new Map<string, number>([
   ['linea', 59144],
 ])
 
+/**
+ * Trust Wallet's two non-Ethereum-Virtual-Machine folders carry case-sensitive
+ * base58 token ids but its numeric chain-id map files them under EVM-looking
+ * references (solana=900, tron=1000). gib.show stores networks as CAIP-2
+ * `{namespace}-{reference}` keyed on the Satoshi-Labs-Improvement-Proposal-44 coin
+ * type, so these must persist under their real identifiers — solana-501 (type
+ * solana) and tvm-195 (type tvm, Tron) — for the non-EVM serving path to reach them.
+ */
+export const NON_EVM_NETWORK_ARGS: Record<string, { chainId: string; type: string }> = {
+  solana: { chainId: 'solana-501', type: 'solana' },
+  tron: { chainId: 'tvm-195', type: 'tvm' },
+}
+
+/**
+ * Insert the network for a Trust Wallet blockchain folder, choosing the correct
+ * CAIP-2 identifier and type. Non-EVM folders (solana, tron) use their namespaced
+ * identifier; every other folder is an EVM chain keyed by its numeric id.
+ */
+const insertNetworkForFolder = (folder: string, chainId: number) => {
+  const nonEvm = NON_EVM_NETWORK_ARGS[folder]
+  if (nonEvm) {
+    return db.insertNetworkFromChainId(nonEvm.chainId, nonEvm.type)
+  }
+  return db.insertNetworkFromChainId(chainId)
+}
+
 const getClient = _.memoize((url: string): PublicClient => {
   return createPublicClient({
     transport: http(url === 'https://rpc.ftm.tools' ? 'https://1rpc.io/ftm' : url, {
@@ -273,7 +299,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
   })
 
   const key = `wallet-${blockchainKey}`
-  const network = await db.insertNetworkFromChainId(chainId)
+  const network = await insertNetworkForFolder(blockchainKey, chainId)
   const [networkList] = await db.insertList({
     providerId: provider.providerId,
     networkId: network.networkId,
@@ -405,7 +431,7 @@ class TrustWalletCollector extends BaseCollector {
       if (!chainId) {
         continue
       }
-      const network = await db.insertNetworkFromChainId(chainId)
+      const network = await insertNetworkForFolder(folder, chainId)
       const key = `wallet-${folder}`
       const [networkList] = await db.insertList({
         providerId: provider.providerId,

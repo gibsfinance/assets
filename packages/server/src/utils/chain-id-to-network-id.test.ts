@@ -32,4 +32,24 @@ describe('chainIdToNetworkId', () => {
   it('honors an explicit type override (smoldapp path)', () => {
     expect(chainIdToNetworkId('eip155-1', 'evm')).toBe(toKeccakBytes('evm1'))
   })
+
+  // The collector persists a network as insertNetworkFromChainId(caip2, type),
+  // and the DB trigger hashes keccak256(type || split_part(chain_id,'-',2)). The
+  // serving path computes the same id from the CAIP-2 string alone (no type). If
+  // these ever diverge, a stored non-EVM logo/token becomes unreachable. This
+  // locks the two in agreement for the reconciled non-EVM networks (Increment 2).
+  describe('collector/serving agreement for reconciled non-EVM networks', () => {
+    const cases: { caip2: string; type: string; reference: string }[] = [
+      { caip2: 'solana-501', type: 'solana', reference: '501' },
+      { caip2: 'tvm-195', type: 'tvm', reference: '195' },
+      { caip2: 'ton-607', type: 'ton', reference: '607' },
+    ]
+    it.each(cases)('$caip2 hashes identically on both sides', ({ caip2, type, reference }) => {
+      const written = chainIdToNetworkId(caip2, type) // collector supplies the type
+      const served = chainIdToNetworkId(caip2) // serving resolves type from the namespace
+      const trigger = toKeccakBytes(`${type}${reference}`) // keccak256(type || reference)
+      expect(written).toBe(trigger)
+      expect(served).toBe(trigger)
+    })
+  })
 })
