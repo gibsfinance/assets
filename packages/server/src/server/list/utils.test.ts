@@ -6,10 +6,16 @@ const mockGetTokensWithExtensions = vi.fn()
 vi.mock('../../db/tables', () => ({
   imageMode: { SAVE: 'save', LINK: 'link' },
 }))
-vi.mock('../../db', () => ({
-  getTokensUnderListId: (...args: unknown[]) => mockGetTokensUnderListId(...args),
-  getTokensWithExtensions: (...args: unknown[]) => mockGetTokensWithExtensions(...args),
-}))
+vi.mock('../../db', async () => {
+  // Use the real normalizeProvidedId (isAddress ? lower : preserve) so the base58
+  // case-preservation behavior is exercised, not stubbed away.
+  const { normalizeProvidedId } = await vi.importActual<typeof import('../../db/provided-id')>('../../db/provided-id')
+  return {
+    getTokensUnderListId: (...args: unknown[]) => mockGetTokensUnderListId(...args),
+    getTokensWithExtensions: (...args: unknown[]) => mockGetTokensWithExtensions(...args),
+    normalizeProvidedId,
+  }
+})
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/schema', () => ({
   listToken: { listId: 'listToken.listId', listTokenOrderId: 'listToken.listTokenOrderId' },
@@ -90,6 +96,30 @@ describe('normalizeTokens', () => {
     expect((result[0] as any).name).toBe('From PulseX')
     expect(result[0].address).toBe('0xaaa')
     expect(result[1].address).toBe('0xbbb')
+  })
+
+  it('returns base58 (Solana, Tron) ids with their case intact', () => {
+    // The token-image URL and any copy-paste of the returned address must round-trip.
+    // A bare .toLowerCase() here would hand back an unusable, non-existent mint.
+    const SOLANA_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const TRON_ADDR = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+    const tokens = [
+      makeToken({ providedId: SOLANA_MINT, chainId: 'solana-501', providerKey: 'trustwallet', listKey: 'wallet' }),
+      makeToken({ providedId: TRON_ADDR, chainId: 'tvm-195', providerKey: 'trustwallet', listKey: 'wallet' }),
+    ]
+
+    const result = normalizeTokens(tokens as any)
+
+    expect(result.map((r) => r.address)).toEqual([SOLANA_MINT, TRON_ADDR])
+  })
+
+  it('still lowercases Ethereum-Virtual-Machine addresses to a canonical form', () => {
+    // A checksummed address (USDC) — normalizeProvidedId lowercases it to the canonical form.
+    const tokens = [makeToken({ providedId: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', chainId: 'eip155-1' })]
+
+    const result = normalizeTokens(tokens as any)
+
+    expect(result[0].address).toBe('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48')
   })
 
   it('collects sources from all duplicate rows', () => {

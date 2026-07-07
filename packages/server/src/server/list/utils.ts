@@ -74,7 +74,10 @@ export const normalizeTokens = (
   return [
     ..._(tokens)
       .filter((a) => over(a))
-      .groupBy((tkn) => `${tkn.chainId}-${tkn.providedId.toLowerCase()}`)
+      // normalizeProvidedId lowercases only hex addresses; base58 ids (Solana, Tron)
+      // are case-significant and preserved. A bare .toLowerCase() would merge distinct
+      // base58 mints and, at the address below, hand back a corrupted id.
+      .groupBy((tkn) => `${tkn.chainId}-${db.normalizeProvidedId(tkn.providedId)}`)
       .reduce((collected, tkns) => {
         // When duplicate tokens share the same address (different token_ids), prefer
         // the row that resolves to a usable logoURI so the address isn't dropped by
@@ -86,7 +89,7 @@ export const normalizeTokens = (
         const tkn = tkns.find((t) => utils.directUri(t)) ?? tkns[0]
         const baseline: TokenEntryMetadataOptional = {
           chainId: +fromCAIP2(tkn.chainId),
-          address: tkn.providedId.toLowerCase() as viem.Hex,
+          address: db.normalizeProvidedId(tkn.providedId) as viem.Hex,
           logoURI: utils.directUri(tkn),
         }
         if (!extensions.has('sansMetadata')) {

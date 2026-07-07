@@ -4,6 +4,7 @@ import { RequestHandler } from 'express'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, ne, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
+import { normalizeProvidedId } from '../../db/provided-id'
 
 const DEFAULT_SIZE = 32
 const DEFAULT_COLS = 25
@@ -24,8 +25,12 @@ interface SpriteToken {
  * carrying the same address on several chains keeps one cell per chain and
  * both endpoints agree on coordinates.
  */
-function spriteKey(token: { chainId: string; address: string }): string {
-  return `${token.chainId}-${token.address.toLowerCase()}`
+export function spriteKey(token: { chainId: string; address: string }): string {
+  // normalizeProvidedId lowercases only hex addresses; base58 ids (Solana, Tron) are
+  // case-significant and preserved. The key is exposed verbatim in the manifest's
+  // `tokens` map, so a bare .toLowerCase() would both collide distinct base58 mints
+  // in the grid and hand consumers a corrupted address.
+  return `${token.chainId}-${normalizeProvidedId(token.address)}`
 }
 
 async function rasterize(image: SpriteToken, size: number): Promise<Buffer | null> {

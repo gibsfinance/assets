@@ -28,9 +28,23 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 import sharp from 'sharp'
-import { manifest, sheet } from './sprite'
+import { manifest, sheet, spriteKey } from './sprite'
 import { getDrizzle } from '../../db/drizzle'
 import type { Request, Response } from 'express'
+
+describe('spriteKey', () => {
+  it('lowercases Ethereum-Virtual-Machine addresses so casing never splits a cell', () => {
+    // Checksummed USDC — normalizeProvidedId canonicalizes it to lowercase.
+    expect(spriteKey({ chainId: 'eip155-1', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' })).toBe(
+      'eip155-1-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    )
+  })
+
+  it('preserves base58 ids — the key is exposed verbatim in the manifest', () => {
+    const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    expect(spriteKey({ chainId: 'solana-501', address: mint })).toBe(`solana-501-${mint}`)
+  })
+})
 
 const ADDRESS = '0x00000000000000000000000000000000000000AA'
 
