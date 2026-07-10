@@ -1,26 +1,37 @@
 -- Cleanup: delete faked non-Ethereum-Virtual-Machine networks and their data.
 --
 -- Removes the stale networks that earlier collector runs filed under fabricated
--- Ethereum-Virtual-Machine chain ids (Solana -> eip155-900, Tron -> eip155-1000,
--- and a "tvm"-typed eip155-1 for The-Open-Network). The collectors now write the
--- correct coin-type ids (solana-501, tvm-195, ton-607), so these rows are stale
--- duplicates. See preview-nonevm-faked-networks.sql for the full background.
+-- Ethereum-Virtual-Machine chain ids. The collectors now write the correct
+-- coin-type ids (solana-501, tvm-195), so these rows are stale duplicates. See
+-- preview-nonevm-faked-networks.sql for the full background.
 --
--- SAFETY: the target predicate is self-validating and cannot touch a real chain --
--- it only matches an eip155-* network whose tokens contain NO Ethereum-Virtual-Machine
--- address (0x + 40 hex). A genuine Ethereum-Virtual-Machine chain always has such
--- tokens and is therefore skipped. The "tvm"-typed eip155-1 (The-Open-Network) is a
--- distinct network_id from real Ethereum mainnet, and only the base58/base64url one
--- matches. Still, this DELETE is irreversible: run preview-nonevm-faked-networks.sql
--- on the same database first and eyeball the rows.
+-- SCOPE: an explicit allow-list of the four reviewed faked Solana/Tron networks:
+--   eip155-900        Solana (base58 mints)       -> re-homed to solana-501
+--   eip155-501000101  Solana (base58 mints)       -> re-homed to solana-501
+--   eip155-1000       Tron (numeric TRC-10 ids)   -> re-homed to tvm-195
+--   eip155-728126428  Tron (duplicate of 1000)    -> re-homed to tvm-195
+-- The earlier broad "any eip155 network with no 0x-hex token" predicate ALSO
+-- matched genuinely-unhandled chains that were never faked Solana/Tron duplicates
+-- and have NO re-homed copy -- BRC-20/Runes (eip155-2203), Algorand (eip155-4160),
+-- and Ontology (eip155-58). Deleting those would be data loss, so they are
+-- deliberately excluded here; they need their own coin-type namespaces (future
+-- work), not deletion.
+--
+-- SAFETY: even within the allow-list, the no-Ethereum-Virtual-Machine-address guard
+-- is kept -- a row is deleted only if it has tokens and NONE look like a 0x + 40 hex
+-- address. A real Ethereum-Virtual-Machine chain that happened to reuse one of these
+-- numeric ids (e.g. some tooling assigns Tron the eip155-728126428 id) always has hex
+-- tokens and is therefore skipped. This DELETE is irreversible: run
+-- preview-nonevm-faked-networks.sql on the same database first and eyeball the rows.
 --
 -- ORDERING: run AFTER the Increment 2a/3 collectors have been deployed AND a full
--- collection cycle has re-populated the correct-id rows (confirm via the preview's
--- reincarnated_token_count == token_count), so nothing is left without a live copy.
+-- collection cycle has re-populated the correct-id rows. Any not-yet-re-homed tokens
+-- under a deleted network (the preview's token_count minus reincarnated_token_count)
+-- are dropped until a future collection re-homes them.
 --
--- Idempotent: the predicate matches nothing once the faked rows are gone, so re-running
--- is a no-op. Wrapped in a single transaction. Records the run in _data_migrations for
--- an audit trail.
+-- Idempotent: the allow-listed rows are gone after the first run, so the predicate
+-- matches nothing on re-run. Wrapped in a single transaction. Records the run in
+-- _data_migrations for an audit trail.
 --
 -- Run from packages/server:
 --   psql "$DATABASE_URL" -f scripts/cleanup-nonevm-faked-networks.sql
@@ -38,7 +49,7 @@ CREATE TABLE IF NOT EXISTS _data_migrations (
 CREATE TEMPORARY TABLE _faked_networks ON COMMIT DROP AS
 SELECT n.network_id, n.chain_id, n.type
 FROM network n
-WHERE n.chain_id LIKE 'eip155-%'
+WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428')
   AND EXISTS (SELECT 1 FROM token t WHERE t.network_id = n.network_id)
   AND NOT EXISTS (
     SELECT 1 FROM token t
@@ -59,8 +70,8 @@ WHERE list_id IN (
 
 -- 2. Delete the faked network rows. ON DELETE CASCADE removes their token, list, bridge,
 --    and metadata rows, which cascade further to list_token, list_tag, bridge_link,
---    header_link, and metadata. Only the correct-namespace rows (solana-501, tvm-195,
---    ton-607) survive.
+--    header_link, and metadata. Only the correct-namespace rows (solana-501, tvm-195)
+--    survive.
 DELETE FROM network
 WHERE network_id IN (SELECT network_id FROM _faked_networks);
 

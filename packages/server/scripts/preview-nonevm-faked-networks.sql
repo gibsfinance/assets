@@ -18,17 +18,20 @@
 --   psql "$DATABASE_URL" -f scripts/preview-nonevm-faked-networks.sql
 --
 -- Candidate predicate (identical to the cleanup script):
---   * chain_id LIKE 'eip155-%'  -> only Ethereum-Virtual-Machine-namespace rows are
---     ever considered, so the correct solana-501 / tvm-195 / ton-607 rows are untouched.
+--   * chain_id in an explicit allow-list of the four reviewed faked Solana/Tron
+--     networks (eip155-900, eip155-501000101, eip155-1000, eip155-728126428). A
+--     broader "any eip155 network with no hex token" predicate also matched
+--     genuinely-unhandled chains with no re-homed copy -- BRC-20/Runes, Algorand,
+--     Ontology -- so it is narrowed to the reviewed duplicates only.
 --   * has at least one token   -> never deletes a real-but-empty chain (vacuous match).
 --   * NO token shaped like a real Ethereum-Virtual-Machine address (0x + 40 hex) -> a
 --     genuine Ethereum-Virtual-Machine chain always has such tokens, so it is protected;
---     Solana/Tron base58 and The-Open-Network base64url ids never match that shape.
+--     Solana base58 and Tron numeric/base58 ids never match that shape.
 
 WITH faked AS (
   SELECT n.network_id, n.chain_id, n.type
   FROM network n
-  WHERE n.chain_id LIKE 'eip155-%'
+  WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428')
     AND EXISTS (SELECT 1 FROM token t WHERE t.network_id = n.network_id)
     AND NOT EXISTS (
       SELECT 1 FROM token t
