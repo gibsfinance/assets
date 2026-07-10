@@ -32,13 +32,25 @@ Run in order, on staging first, then production:
 
 ### Why these are safe
 
-The target predicate is self-validating: it matches only an `eip155-*` network whose
-tokens contain **no** Ethereum-Virtual-Machine address (`0x` + 40 hex). A genuine
-Ethereum-Virtual-Machine chain always has such tokens, so it can never be selected —
-including the real Ethereum mainnet that shares `chain_id = eip155-1` with the faked
-The-Open-Network row (they are distinct `network_id`s; only the base58/base64url one
-matches). The cleanup is idempotent: once the faked rows are gone the predicate matches
-nothing, so re-running is a no-op.
+The target is an explicit allow-list of the four reviewed faked Solana/Tron networks —
+`eip155-900` and `eip155-501000101` (Solana, re-homed to `solana-501`), and `eip155-1000`
+and `eip155-728126428` (Tron, re-homed to `tvm-195`). An earlier version used a broad
+"any `eip155-*` network with no `0x`-hex token" predicate, but a staging preview showed it
+also matched genuinely-unhandled chains that were never faked duplicates and have **no**
+re-homed copy — BRC-20/Runes (`eip155-2203`), Algorand (`eip155-4160`), and Ontology
+(`eip155-58`). Deleting those would lose data, so the scope is narrowed to the reviewed
+duplicates only; those other chains need their own coin-type namespaces (future work).
+
+Within the allow-list the `no-hex-token` guard is kept as a second layer: a row is deleted
+only if its tokens contain **no** Ethereum-Virtual-Machine address (`0x` + 40 hex), so a
+real Ethereum-Virtual-Machine chain that reused one of these numeric ids (some tooling
+assigns Tron the `eip155-728126428` id) is still protected. The cleanup is idempotent:
+once the allow-listed rows are gone the predicate matches nothing, so re-running is a no-op.
+
+**Caveat — not-yet-re-homed tokens.** The preview's `token_count` minus
+`reincarnated_token_count` is the count of tokens that exist **only** under the faked id
+(not yet re-collected under the correct one). Deleting drops those rows until a future
+collection re-homes them. Run only when that remainder is an acceptable loss.
 
 ### Promoting to an automatic migration
 
