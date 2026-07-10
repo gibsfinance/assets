@@ -49,6 +49,9 @@ export const NON_EVM_NAMESPACES: ReadonlySet<string> = new Set([
   'memo',
   'tvm',
   'ton',
+  'cosmos',
+  'aptos',
+  'sui',
 ])
 
 /**

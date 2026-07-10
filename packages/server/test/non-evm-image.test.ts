@@ -63,25 +63,41 @@ test(
     // thumbnail-sized placeholders), because PNG compresses flat color down
     // to well under 200 bytes. Random per-pixel noise defeats that
     // compression so the encoded buffer clears the guard.
-    const noise = Buffer.alloc(64 * 64 * 4)
-    for (let i = 0; i < noise.length; i++) noise[i] = Math.floor(Math.random() * 256)
-    const logo = await sharp(noise, { raw: { width: 64, height: 64, channels: 4 } })
-      .png()
-      .toBuffer()
+    const makeNoiseLogo = async (): Promise<Buffer> => {
+      const noise = Buffer.alloc(64 * 64 * 4)
+      for (let i = 0; i < noise.length; i++) noise[i] = Math.floor(Math.random() * 256)
+      return sharp(noise, { raw: { width: 64, height: 64, channels: 4 } })
+        .png()
+        .toBuffer()
+    }
 
-    const stored = await db.fetchImageAndStoreForNetwork({
-      network,
-      uri: logo,
-      originalUri: 'https://example.com/non-evm-image-test-logo.png',
-      providerKey: provider.key,
-    })
-    assert.ok(stored?.network.imageHash, 'expected the network row to be linked to a stored image')
-    imageHashes.push(stored!.image.imageHash)
+    const seedChainLogo = async (chainId: string, namespace: string) => {
+      const seededNetwork = await db.insertNetworkFromChainId(chainId, namespace)
+      networkIds.push(seededNetwork.networkId)
+      assert.strictEqual(seededNetwork.chainId, chainId)
+      assert.strictEqual(seededNetwork.type, namespace)
+      const stored = await db.fetchImageAndStoreForNetwork({
+        network: seededNetwork,
+        uri: await makeNoiseLogo(),
+        originalUri: `https://example.com/non-evm-image-test-${chainId}.png`,
+        providerKey: provider.key,
+      })
+      assert.ok(stored?.network.imageHash, `expected the ${chainId} network row to be linked to a stored image`)
+      imageHashes.push(stored!.image.imageHash)
+    }
 
-    await t.test('resolves /image/bip122-0 to the stored logo', async () => {
-      const response = await supertest(app).get('/image/bip122-0').expect(200)
-      assert.match(response.headers['content-type'], /^image\//)
-    })
+    // bip122-0 (Bitcoin) is the original family; sui-784 (Sui) is a namespace
+    // added later -- both must round-trip so the added 'sui' network type is
+    // proven, not assumed, to hash identically in PostgreSQL and JavaScript.
+    await seedChainLogo('bip122-0', 'bip122')
+    await seedChainLogo('sui-784', 'sui')
+
+    for (const identifier of ['bip122-0', 'sui-784']) {
+      await t.test(`resolves /image/${identifier} to the stored logo`, async () => {
+        const response = await supertest(app).get(`/image/${identifier}`).expect(200)
+        assert.match(response.headers['content-type'], /^image\//)
+      })
+    }
 
     await t.test('appears in the public network listing with both identifier forms', async () => {
       // Assert against a fresh database read mapped through the same
@@ -97,10 +113,14 @@ test(
       // networks.test.
       const rows = await getDrizzle().select().from(s.network)
       const listing = rows.filter((n) => n.chainId !== 'asset-0').map(toPublicNetwork)
-      const found = listing.find((n) => n.chainIdentifier === 'bip122-0')
-      assert.ok(found, 'expected the bip122-0 network to appear in the public listing')
-      assert.strictEqual(found!.chainId, '0')
-      assert.strictEqual(found!.type, 'bip122')
+      const bitcoin = listing.find((n) => n.chainIdentifier === 'bip122-0')
+      assert.ok(bitcoin, 'expected the bip122-0 network to appear in the public listing')
+      assert.strictEqual(bitcoin!.chainId, '0')
+      assert.strictEqual(bitcoin!.type, 'bip122')
+      const sui = listing.find((n) => n.chainIdentifier === 'sui-784')
+      assert.ok(sui, 'expected the sui-784 network to appear in the public listing')
+      assert.strictEqual(sui!.chainId, '784')
+      assert.strictEqual(sui!.type, 'sui')
     })
   },
 )

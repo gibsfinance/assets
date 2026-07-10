@@ -106,6 +106,10 @@ describe('getNetworkName', () => {
     expect(getNetworkName('bip122-0')).toBe('Bitcoin')
     expect(getNetworkName('cardano-1815')).toBe('Cardano')
     expect(getNetworkName('tvm-195')).toBe('Tron')
+    expect(getNetworkName('sui-784')).toBe('Sui')
+    expect(getNetworkName('aptos-637')).toBe('Aptos')
+    expect(getNetworkName('ton-607')).toBe('TON')
+    expect(getNetworkName('cosmos-118')).toBe('Cosmos')
   })
 
   it('still names Ethereum-Virtual-Machine chains from bare and prefixed ids', () => {
