@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { registeredCoinTypes, type RegisteredCoinType } from 'slip44'
-import { resolveChains, slugify, NAMESPACE_BY_COIN_TYPE, type CatalogEntry } from './non-evm-resolver'
+import { resolveChains, NAMESPACE_BY_COIN_TYPE, type CatalogEntry } from './non-evm-resolver'
 import { NON_EVM_NAMESPACES } from '../chain-id'
 
 const catalog: CatalogEntry[] = [
@@ -22,11 +22,6 @@ const coinTypes: RegisteredCoinType[] = [
 ]
 
 describe('resolveChains', () => {
-  it('slugifies names for icon name matching', () => {
-    expect(slugify('Bitcoin Cash')).toBe('bitcoin-cash')
-    expect(slugify('Ether')).toBe('ether')
-  })
-
   it('applies curated namespaces for altar families and the coin type as reference', () => {
     const { resolved } = resolveChains(coinTypes, catalog)
     const byName = Object.fromEntries(resolved.map((r) => [r.name, r.identifier]))
@@ -46,14 +41,39 @@ describe('resolveChains', () => {
     expect(resolved.find((r) => r.name === 'Bitcoin')!.imageUrl).toBe('https://h/128/bitcoin.png')
   })
 
-  it('skips and records symbol-less, Ethereum, non-curated, and iconless coins', () => {
+  it('pins the icon by slug, never by ticker symbol, so a same-symbol impostor cannot win', () => {
+    // This is the whole reason the resolver pins slugs. A meme/wrapped token can
+    // share a chain's ticker and, when it sorts earlier in the catalog, would win
+    // a symbol-first match. Here two decoys with Bitcoin's BTC ticker precede the
+    // real 'bitcoin' entry; the pinned slug must still resolve to Bitcoin. If
+    // anyone reintroduces symbol matching, this test fails.
+    const decoyCatalog: CatalogEntry[] = [
+      { name: 'Wrapped BTC Impostor', symbol: 'BTC', slug: 'wbtc-impostor', img_url: 'https://h/32/wbtc-impostor.png' },
+      { name: 'BTC Meme', symbol: 'BTC', slug: 'btc-meme', img_url: 'https://h/32/btc-meme.png' },
+      { name: 'Bitcoin', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin.png' },
+    ]
+    const { resolved } = resolveChains([[0, 2147483648, 'BTC', 'Bitcoin']], decoyCatalog)
+    expect(resolved).toHaveLength(1)
+    expect(resolved[0].imageUrl).toBe('https://h/128/bitcoin.png')
+  })
+
+  it('fails safe (no-icon) when a pinned slug is absent from the catalog', () => {
+    // Ravencoin is curated (bip122, pinned to 'ravencoin') but the fixture catalog
+    // has no 'ravencoin' slug, so it must be skipped as 'no-icon' rather than
+    // falling back to some wrong entry.
+    const { resolved, skipped } = resolveChains(coinTypes, catalog)
+    expect(resolved.find((r) => r.name === 'Ravencoin')).toBeUndefined()
+    expect(skipped.find((s) => s.name === 'Ravencoin')!.reason).toBe('no-icon')
+  })
+
+  it('skips and records reserved-Ethereum and non-curated coins', () => {
     const { skipped } = resolveChains(coinTypes, catalog)
     const byReason = Object.fromEntries(skipped.map((s) => [s.name, s.reason]))
-    expect(byReason['Testnet (all coins)']).toBe('no-symbol')
     expect(byReason['Ether']).toBe('reserved-evm')
     expect(byReason['No Icon Coin']).toBe('not-curated')
-    // Ravencoin is a curated bip122 family member with no matching catalog icon.
-    expect(byReason['Ravencoin']).toBe('no-icon')
+    // A symbol-less registry entry that is not curated is simply not curated —
+    // the resolver no longer consults ticker symbols at all.
+    expect(byReason['Testnet (all coins)']).toBe('not-curated')
   })
 
   it('curates only real Satoshi-Labs-Improvement-Proposal-44 coin types', () => {
@@ -72,8 +92,17 @@ describe('resolveChains', () => {
     // otherwise namespaceToNetworkType would map the stored network.type to
     // 'evm' at lookup time -- the network_id hash would not reproduce and the
     // logo would be silently unservable.
-    for (const namespace of Object.values(NAMESPACE_BY_COIN_TYPE)) {
+    for (const { namespace } of Object.values(NAMESPACE_BY_COIN_TYPE)) {
       expect(NON_EVM_NAMESPACES.has(namespace), `namespace ${namespace} is not in NON_EVM_NAMESPACES`).toBe(true)
+    }
+  })
+
+  it('pins every curated chain to a non-empty slug or an explicit icon url', () => {
+    // A structural guard so a future addition cannot forget the pin and silently
+    // fall back to no icon (or, worse, reintroduce ambiguous matching).
+    for (const [reference, chain] of Object.entries(NAMESPACE_BY_COIN_TYPE)) {
+      const hasSource = (typeof chain.iconSlug === 'string' && chain.iconSlug.length > 0) || Boolean(chain.iconUrl)
+      expect(hasSource, `coin type ${reference} has no iconSlug or iconUrl`).toBe(true)
     }
   })
 })
