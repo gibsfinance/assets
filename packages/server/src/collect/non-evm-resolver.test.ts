@@ -57,6 +57,18 @@ describe('resolveChains', () => {
     expect(resolved[0].imageUrl).toBe('https://h/128/bitcoin.png')
   })
 
+  it('resolves the Sui flagship to its own namespace, coin type, and pinned icon', () => {
+    const suiCatalog: CatalogEntry[] = [
+      // A same-ticker impostor sorted first, to prove the pin (not the symbol) wins.
+      { name: 'GOATs of Sui', symbol: 'SUI', slug: 'goats-of-sui', img_url: 'https://h/32/goats-of-sui.png' },
+      { name: 'Sui', symbol: 'SUI', slug: 'sui', img_url: 'https://h/32/sui.png' },
+    ]
+    const { resolved } = resolveChains([[784, 2147484432, 'SUI', 'Sui']], suiCatalog)
+    expect(resolved).toEqual([
+      { identifier: 'sui-784', namespace: 'sui', reference: 784, name: 'Sui', imageUrl: 'https://h/128/sui.png' },
+    ])
+  })
+
   it('fails safe (no-icon) when a pinned slug is absent from the catalog', () => {
     // Ravencoin is curated (bip122, pinned to 'ravencoin') but the fixture catalog
     // has no 'ravencoin' slug, so it must be skipped as 'no-icon' rather than

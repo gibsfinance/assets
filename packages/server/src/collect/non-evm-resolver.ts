@@ -59,6 +59,12 @@ export const NAMESPACE_BY_COIN_TYPE: Record<number, CuratedChain> = {
   144: { namespace: 'memo', iconSlug: 'xrp' },
   148: { namespace: 'memo', iconSlug: 'stellar' },
   195: { namespace: 'tvm', iconSlug: 'tron' },
+  // Additional non-Ethereum-Virtual-Machine chains. Each namespace must also be
+  // registered in NON_EVM_NAMESPACES (chain-id.ts) or the logo is unservable.
+  118: { namespace: 'cosmos', iconSlug: 'cosmos' }, // coin type is labelled "Atom" in the registry
+  607: { namespace: 'ton', iconSlug: 'toncoin' }, // The Open Network
+  637: { namespace: 'aptos', iconSlug: 'aptos' },
+  784: { namespace: 'sui', iconSlug: 'sui' },
 }
 
 /** Coin types served through another path; never create a duplicate network. */

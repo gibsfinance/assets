@@ -99,8 +99,19 @@ describe('isValidChainId', () => {
 })
 
 describe('namespace registry', () => {
-  it('lists the seven non-Ethereum-Virtual-Machine namespaces', () => {
-    expect([...NON_EVM_NAMESPACES].sort()).toEqual(['bip122', 'cardano', 'memo', 'monero', 'solana', 'ton', 'tvm'])
+  it('lists the registered non-Ethereum-Virtual-Machine namespaces', () => {
+    expect([...NON_EVM_NAMESPACES].sort()).toEqual([
+      'aptos',
+      'bip122',
+      'cardano',
+      'cosmos',
+      'memo',
+      'monero',
+      'solana',
+      'sui',
+      'ton',
+      'tvm',
+    ])
   })
 
   it('maps the ton namespace to its own type (not evm) so ton-607 serves', () => {
@@ -123,11 +134,23 @@ describe('namespace registry', () => {
     expect(isValidChainId('memo-144')).toBe(true)
   })
 
+  it('serves the newly added chains under their own type', () => {
+    // Each added namespace must both validate and hash to its own type, or the
+    // network_id computed at lookup would not reproduce the trigger-written one.
+    expect(namespaceToNetworkType('sui')).toBe('sui')
+    expect(namespaceToNetworkType('aptos')).toBe('aptos')
+    expect(namespaceToNetworkType('cosmos')).toBe('cosmos')
+    expect(isValidChainId('sui-784')).toBe(true)
+    expect(isValidChainId('aptos-637')).toBe(true)
+    expect(isValidChainId('cosmos-118')).toBe(true)
+  })
+
   it('still accepts legacy identifiers and rejects unknown namespaces', () => {
     expect(isValidChainId('369')).toBe(true)
     expect(isValidChainId('eip155-1')).toBe(true)
     expect(isValidChainId('asset-0')).toBe(true)
-    expect(isValidChainId('cosmos-1')).toBe(false)
+    // polkadot is a real chain but not yet a registered gib.show namespace.
+    expect(isValidChainId('polkadot-1')).toBe(false)
     expect(isValidChainId('bip122-notanumber')).toBe(false)
   })
 })
