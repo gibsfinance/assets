@@ -110,6 +110,10 @@ describe('getNetworkName', () => {
     expect(getNetworkName('aptos-637')).toBe('Aptos')
     expect(getNetworkName('ton-607')).toBe('TON')
     expect(getNetworkName('cosmos-118')).toBe('Cosmos')
+    expect(getNetworkName('near-397')).toBe('NEAR')
+    expect(getNetworkName('polkadot-354')).toBe('Polkadot')
+    expect(getNetworkName('algorand-283')).toBe('Algorand')
+    expect(getNetworkName('fil-461')).toBe('Filecoin')
   })
 
   it('still names Ethereum-Virtual-Machine chains from bare and prefixed ids', () => {

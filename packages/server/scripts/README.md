@@ -36,10 +36,22 @@ The target is an explicit allow-list of the four reviewed faked Solana/Tron netw
 `eip155-900` and `eip155-501000101` (Solana, re-homed to `solana-501`), and `eip155-1000`
 and `eip155-728126428` (Tron, re-homed to `tvm-195`). An earlier version used a broad
 "any `eip155-*` network with no `0x`-hex token" predicate, but a staging preview showed it
-also matched genuinely-unhandled chains that were never faked duplicates and have **no**
-re-homed copy — BRC-20/Runes (`eip155-2203`), Algorand (`eip155-4160`), and Ontology
-(`eip155-58`). Deleting those would lose data, so the scope is narrowed to the reviewed
-duplicates only; those other chains need their own coin-type namespaces (future work).
+also matched three chains that are **not** faked Solana/Tron duplicates, each excluded for
+a different reason:
+
+- **Ontology (`eip155-58`)** — **not** fabricated. `58` is Ontology's genuine
+  Ethereum-Virtual-Machine mainnet chain id; it is correctly served as an `eip155` chain
+  and must never be deleted.
+- **Algorand (`eip155-4160`)** — a fabricated id (Algorand is not
+  Ethereum-Virtual-Machine-compatible), but it now has a proper home: the `algorand-283`
+  namespace was added to the curated roster. Once a collection cycle re-homes its tokens
+  under `algorand-283`, `eip155-4160` becomes a stale duplicate that can be added to this
+  allow-list and cleaned up — like the Solana/Tron ids were.
+- **BRC-20/Runes (`eip155-2203`)** — token standards **on** Bitcoin, not a separate
+  Layer-1 chain, so there is no coin type to re-home to. Left as-is pending a separate
+  decision.
+
+So the scope is narrowed to the reviewed Solana/Tron duplicates only.
 
 Within the allow-list the `no-hex-token` guard is kept as a second layer: a row is deleted
 only if its tokens contain **no** Ethereum-Virtual-Machine address (`0x` + 40 hex), so a

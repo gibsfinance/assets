@@ -31,6 +31,7 @@ const NON_EVM_NAMES: Record<string, string> = {
   'monero-128': 'Monero', 'solana-501': 'Solana', 'cardano-1815': 'Cardano',
   'memo-144': 'XRP', 'memo-148': 'Stellar', 'tvm-195': 'Tron',
   'cosmos-118': 'Cosmos', 'ton-607': 'TON', 'aptos-637': 'Aptos', 'sui-784': 'Sui',
+  'near-397': 'NEAR', 'polkadot-354': 'Polkadot', 'algorand-283': 'Algorand', 'fil-461': 'Filecoin',
 }
 
 export function getNetworkName(chainId: string | number): string {

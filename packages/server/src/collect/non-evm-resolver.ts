@@ -65,6 +65,16 @@ export const NAMESPACE_BY_COIN_TYPE: Record<number, CuratedChain> = {
   607: { namespace: 'ton', iconSlug: 'toncoin' }, // The Open Network
   637: { namespace: 'aptos', iconSlug: 'aptos' },
   784: { namespace: 'sui', iconSlug: 'sui' },
+  // Broader Layer-1 coverage. The catalog has no bare 'near'/'polkadot' slug —
+  // the real chains live at 'near-protocol' and 'polkadot-new'. The NEAR and DOT
+  // tickers each collide with a same-symbol impostor ("Dogs Of Toly" shares DOT),
+  // so pinning the slug is what keeps the right logo.
+  397: { namespace: 'near', iconSlug: 'near-protocol' },
+  354: { namespace: 'polkadot', iconSlug: 'polkadot-new' },
+  283: { namespace: 'algorand', iconSlug: 'algorand' },
+  // Filecoin's native account space (f1.. addresses). Distinct from its
+  // Ethereum-Virtual-Machine layer, which gib.show serves separately as eip155-314.
+  461: { namespace: 'fil', iconSlug: 'filecoin' },
 }
 
 /** Coin types served through another path; never create a duplicate network. */
