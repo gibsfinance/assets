@@ -11,11 +11,22 @@
 --   eip155-1000       Tron (numeric TRC-10 ids)   -> re-homed to tvm-195
 --   eip155-728126428  Tron (duplicate of 1000)    -> re-homed to tvm-195
 -- The earlier broad "any eip155 network with no 0x-hex token" predicate ALSO
--- matched genuinely-unhandled chains that were never faked Solana/Tron duplicates
--- and have NO re-homed copy -- BRC-20/Runes (eip155-2203), Algorand (eip155-4160),
--- and Ontology (eip155-58). Deleting those would be data loss, so they are
--- deliberately excluded here; they need their own coin-type namespaces (future
--- work), not deletion.
+-- matched three chains that are NOT faked Solana/Tron duplicates, each excluded
+-- here for a different reason:
+--   * Ontology (eip155-58)      -- NOT fabricated. 58 is Ontology's genuine
+--                                  Ethereum-Virtual-Machine mainnet chain id; it
+--                                  is correctly served as an eip155 chain and
+--                                  must never be deleted.
+--   * Algorand (eip155-4160)    -- a fabricated id (Algorand is not EVM). It now
+--                                  has a proper home: the algorand-283 namespace
+--                                  was added to the curated roster. Once a
+--                                  collection cycle re-homes its tokens under
+--                                  algorand-283 it becomes a stale duplicate
+--                                  eligible for this cleanup -- add it to the
+--                                  allow-list then, not before.
+--   * BRC-20/Runes (eip155-2203) -- token standards ON Bitcoin, not a Layer-1
+--                                  chain, so there is no coin type to re-home to.
+--                                  Left as-is pending a separate decision.
 --
 -- SAFETY: even within the allow-list, the no-Ethereum-Virtual-Machine-address guard
 -- is kept -- a row is deleted only if it has tokens and NONE look like a 0x + 40 hex

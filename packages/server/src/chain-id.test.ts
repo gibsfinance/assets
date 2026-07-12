@@ -101,12 +101,16 @@ describe('isValidChainId', () => {
 describe('namespace registry', () => {
   it('lists the registered non-Ethereum-Virtual-Machine namespaces', () => {
     expect([...NON_EVM_NAMESPACES].sort()).toEqual([
+      'algorand',
       'aptos',
       'bip122',
       'cardano',
       'cosmos',
+      'fil',
       'memo',
       'monero',
+      'near',
+      'polkadot',
       'solana',
       'sui',
       'ton',
@@ -140,17 +144,25 @@ describe('namespace registry', () => {
     expect(namespaceToNetworkType('sui')).toBe('sui')
     expect(namespaceToNetworkType('aptos')).toBe('aptos')
     expect(namespaceToNetworkType('cosmos')).toBe('cosmos')
+    expect(namespaceToNetworkType('near')).toBe('near')
+    expect(namespaceToNetworkType('polkadot')).toBe('polkadot')
+    expect(namespaceToNetworkType('algorand')).toBe('algorand')
+    expect(namespaceToNetworkType('fil')).toBe('fil')
     expect(isValidChainId('sui-784')).toBe(true)
     expect(isValidChainId('aptos-637')).toBe(true)
     expect(isValidChainId('cosmos-118')).toBe(true)
+    expect(isValidChainId('near-397')).toBe(true)
+    expect(isValidChainId('polkadot-354')).toBe(true)
+    expect(isValidChainId('algorand-283')).toBe(true)
+    expect(isValidChainId('fil-461')).toBe(true)
   })
 
   it('still accepts legacy identifiers and rejects unknown namespaces', () => {
     expect(isValidChainId('369')).toBe(true)
     expect(isValidChainId('eip155-1')).toBe(true)
     expect(isValidChainId('asset-0')).toBe(true)
-    // polkadot is a real chain but not yet a registered gib.show namespace.
-    expect(isValidChainId('polkadot-1')).toBe(false)
+    // tezos is a real chain but not yet a registered gib.show namespace.
+    expect(isValidChainId('tezos-1')).toBe(false)
     expect(isValidChainId('bip122-notanumber')).toBe(false)
   })
 })

@@ -69,6 +69,26 @@ describe('resolveChains', () => {
     ])
   })
 
+  it('pins Polkadot to its real catalog slug even though the obvious slug and ticker are decoys', () => {
+    // Polkadot has no bare 'polkadot' slug — the real chain is 'polkadot-new' —
+    // and its DOT ticker is shared by a meme token. A symbol match or a guess at
+    // the 'polkadot' slug would both miss; only the explicit pin resolves it.
+    const dotCatalog: CatalogEntry[] = [
+      { name: 'Dogs Of Toly', symbol: 'DOT', slug: 'dogs-of-toly', img_url: 'https://h/32/dogs-of-toly.png' },
+      { name: 'Polkadot', symbol: 'DOT', slug: 'polkadot-new', img_url: 'https://h/32/polkadot-new.png' },
+    ]
+    const { resolved } = resolveChains([[354, 2147484002, 'DOT', 'Polkadot']], dotCatalog)
+    expect(resolved).toEqual([
+      {
+        identifier: 'polkadot-354',
+        namespace: 'polkadot',
+        reference: 354,
+        name: 'Polkadot',
+        imageUrl: 'https://h/128/polkadot-new.png',
+      },
+    ])
+  })
+
   it('fails safe (no-icon) when a pinned slug is absent from the catalog', () => {
     // Ravencoin is curated (bip122, pinned to 'ravencoin') but the fixture catalog
     // has no 'ravencoin' slug, so it must be skipped as 'no-icon' rather than

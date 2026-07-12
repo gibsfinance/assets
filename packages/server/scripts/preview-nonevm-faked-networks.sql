@@ -20,9 +20,12 @@
 -- Candidate predicate (identical to the cleanup script):
 --   * chain_id in an explicit allow-list of the four reviewed faked Solana/Tron
 --     networks (eip155-900, eip155-501000101, eip155-1000, eip155-728126428). A
---     broader "any eip155 network with no hex token" predicate also matched
---     genuinely-unhandled chains with no re-homed copy -- BRC-20/Runes, Algorand,
---     Ontology -- so it is narrowed to the reviewed duplicates only.
+--     broader "any eip155 network with no hex token" predicate also matched three
+--     chains that are NOT faked duplicates: Ontology (eip155-58, a REAL
+--     Ethereum-Virtual-Machine chain, never delete), Algorand (eip155-4160,
+--     fabricated but now re-homable to algorand-283), and BRC-20/Runes
+--     (eip155-2203, a Bitcoin token standard, no coin type). So the predicate is
+--     narrowed to the reviewed Solana/Tron duplicates only.
 --   * has at least one token   -> never deletes a real-but-empty chain (vacuous match).
 --   * NO token shaped like a real Ethereum-Virtual-Machine address (0x + 40 hex) -> a
 --     genuine Ethereum-Virtual-Machine chain always has such tokens, so it is protected;
