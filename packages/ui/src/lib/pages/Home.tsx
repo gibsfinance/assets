@@ -200,17 +200,23 @@ export default function Home() {
     })
   }, [])
 
+  const mainnetNetworkCount = useMemo(() => {
+    if (!metricsData) return 0
+    return countSupportedNetworks(metricsData.networks.supported)
+  }, [metricsData])
+
   const MAX_ROWS = 3
   const loadableNetworks = filteredNetworks.filter((n) => !failedChains.has(n.chainId))
   const maxVisible = gridCols * MAX_ROWS
   const evenCount = Math.floor(Math.min(loadableNetworks.length, maxVisible) / gridCols) * gridCols
   const visibleNetworks = loadableNetworks.slice(0, evenCount)
-  const hiddenCount = loadableNetworks.length - evenCount
-
-  const mainnetNetworkCount = useMemo(() => {
-    if (!metricsData) return 0
-    return countSupportedNetworks(metricsData.networks.supported)
-  }, [metricsData])
+  // Count the hidden remainder against the same "Supported Networks" universe the
+  // headline advertises (has tokens or a logo, excluding testnets) rather than the
+  // token-bearing subset the grid renders. Otherwise "and N more networks" (e.g.
+  // 211) silently contradicts the "Supported Networks" total (e.g. 282) shown just
+  // above it. Logo-only chains have zero tokens, sort to the bottom, and never fill
+  // the visible rows, so they only ever land in the "more" remainder.
+  const hiddenCount = Math.max(0, mainnetNetworkCount - visibleNetworks.length)
 
   const handleNetworkClick = useCallback(
     (chainIdentifier: string) => {
