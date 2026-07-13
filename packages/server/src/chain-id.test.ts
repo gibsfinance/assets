@@ -6,6 +6,7 @@ import {
   isBareNumeric,
   isValidChainId,
   namespaceToNetworkType,
+  expectedNetworkType,
   NON_EVM_NAMESPACES,
 } from './chain-id'
 
@@ -164,5 +165,32 @@ describe('namespace registry', () => {
     // tezos is a real chain but not yet a registered gib.show namespace.
     expect(isValidChainId('tezos-1')).toBe(false)
     expect(isValidChainId('bip122-notanumber')).toBe(false)
+  })
+})
+
+describe('expectedNetworkType', () => {
+  it('derives evm for bare numeric, eip155, and asset identifiers', () => {
+    expect(expectedNetworkType('1')).toBe('evm')
+    expect(expectedNetworkType('369')).toBe('evm')
+    expect(expectedNetworkType('eip155-1')).toBe('evm')
+    expect(expectedNetworkType('asset-0')).toBe('evm')
+  })
+
+  it('derives each non-Ethereum-Virtual-Machine namespace to its own type', () => {
+    expect(expectedNetworkType('tvm-195')).toBe('tvm')
+    expect(expectedNetworkType('bip122-0')).toBe('bip122')
+    expect(expectedNetworkType('solana-501')).toBe('solana')
+    expect(expectedNetworkType('ton-607')).toBe('ton')
+  })
+
+  it('flags the corruption class: a bare-numeric id never expects a non-evm type', () => {
+    // insertNetworkFromChainId hashed the smoldapp "btcm" folder to 1651794797
+    // and typed it 'btc'; the identifier normalizes to eip155-1651794797, whose
+    // expected type is 'evm'. The mismatch is exactly what the boundary guard now
+    // rejects so a "btc"-typed eip155 network can never be written again.
+    expect(expectedNetworkType('1651794797')).toBe('evm')
+    expect(expectedNetworkType('1651794797')).not.toBe('btc')
+    // A bare '1' with an intended 'tvm' is likewise a mismatch (eip155-1 is Ethereum).
+    expect(expectedNetworkType('1')).not.toBe('tvm')
   })
 })

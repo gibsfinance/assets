@@ -68,6 +68,15 @@ export const namespaceToNetworkType = (namespace: string): string =>
   NON_EVM_NAMESPACES.has(namespace) ? namespace : 'evm'
 
 /**
+ * The network.type a chain id must carry, derived purely from its namespace:
+ * eip155 / asset / bare-numeric all resolve to 'evm', and each non-EVM
+ * namespace resolves to itself. This is the single source of truth that pairs
+ * an identifier with its type, so a stored row can never disagree with itself
+ * (an eip155-<n> row typed 'btc' or 'tvm' is definitionally corrupt).
+ */
+export const expectedNetworkType = (chainId: string): string => namespaceToNetworkType(namespaceOf(toCAIP2(chainId)))
+
+/**
  * Check whether a chain id (bare or prefixed) is syntactically servable.
  * Stored networks carry eip155-<number>, asset-0, or one of the
  * non-Ethereum-Virtual-Machine namespaces paired with a numeric reference
