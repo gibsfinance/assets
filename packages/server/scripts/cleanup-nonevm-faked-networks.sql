@@ -29,10 +29,14 @@
 --                                  Left as-is pending a separate decision.
 --
 -- SAFETY: even within the allow-list, the no-Ethereum-Virtual-Machine-address guard
--- is kept -- a row is deleted only if it has tokens and NONE look like a 0x + 40 hex
--- address. A real Ethereum-Virtual-Machine chain that happened to reuse one of these
--- numeric ids (e.g. some tooling assigns Tron the eip155-728126428 id) always has hex
--- tokens and is therefore skipped. This DELETE is irreversible: run
+-- is kept -- a row is deleted only if NONE of its tokens look like a 0x + 40 hex address.
+-- A real Ethereum-Virtual-Machine chain that happened to reuse one of these numeric ids
+-- (e.g. some tooling assigns Tron the eip155-728126428 id) always has hex tokens and is
+-- therefore skipped. Token-LESS husks ARE deleted (no "has a token" guard): after the
+-- collectors re-homed their data, eip155-900 / eip155-1000 / eip155-728126428 are bare
+-- network rows still advertising an image_hash, and eip155-900's is orphaned so
+-- /image/eip155-900 404s. A husk has zero tokens, so the hex guard is vacuously true and
+-- it is correctly selected. This DELETE is irreversible: run
 -- preview-nonevm-faked-networks.sql on the same database first and eyeball the rows.
 --
 -- ORDERING: run AFTER the Increment 2a/3 collectors have been deployed AND a full
@@ -61,7 +65,6 @@ CREATE TEMPORARY TABLE _faked_networks ON COMMIT DROP AS
 SELECT n.network_id, n.chain_id, n.type
 FROM network n
 WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428')
-  AND EXISTS (SELECT 1 FROM token t WHERE t.network_id = n.network_id)
   AND NOT EXISTS (
     SELECT 1 FROM token t
     WHERE t.network_id = n.network_id

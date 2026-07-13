@@ -26,16 +26,20 @@
 --     fabricated but now re-homable to algorand-283), and BRC-20/Runes
 --     (eip155-2203, a Bitcoin token standard, no coin type). So the predicate is
 --     narrowed to the reviewed Solana/Tron duplicates only.
---   * has at least one token   -> never deletes a real-but-empty chain (vacuous match).
 --   * NO token shaped like a real Ethereum-Virtual-Machine address (0x + 40 hex) -> a
 --     genuine Ethereum-Virtual-Machine chain always has such tokens, so it is protected;
---     Solana base58 and Tron numeric/base58 ids never match that shape.
+--     Solana base58 and Tron numeric/base58 ids never match that shape. There is NO
+--     "has at least one token" guard: after the collectors re-homed their data, some of
+--     these ids are token-LESS husks (a bare network row still advertising an image_hash
+--     -- eip155-900's is orphaned, so /image/eip155-900 404s). A husk has zero tokens, so
+--     the hex guard is vacuously true for it; requiring a token would strand these husks
+--     and their dangling images. The allow-list is the safety here -- none of the four is
+--     a real Ethereum-Virtual-Machine chain, so "real-but-empty" cannot apply to them.
 
 WITH faked AS (
   SELECT n.network_id, n.chain_id, n.type
   FROM network n
   WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428')
-    AND EXISTS (SELECT 1 FROM token t WHERE t.network_id = n.network_id)
     AND NOT EXISTS (
       SELECT 1 FROM token t
       WHERE t.network_id = n.network_id

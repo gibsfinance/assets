@@ -54,10 +54,18 @@ a different reason:
 So the scope is narrowed to the reviewed Solana/Tron duplicates only.
 
 Within the allow-list the `no-hex-token` guard is kept as a second layer: a row is deleted
-only if its tokens contain **no** Ethereum-Virtual-Machine address (`0x` + 40 hex), so a
-real Ethereum-Virtual-Machine chain that reused one of these numeric ids (some tooling
-assigns Tron the `eip155-728126428` id) is still protected. The cleanup is idempotent:
-once the allow-listed rows are gone the predicate matches nothing, so re-running is a no-op.
+only if it has **no** token that looks like an Ethereum-Virtual-Machine address (`0x` + 40
+hex), so a real Ethereum-Virtual-Machine chain that reused one of these numeric ids (some
+tooling assigns Tron the `eip155-728126428` id) is still protected. There is **no**
+"has at least one token" guard: after the collectors re-homed their data, `eip155-900`,
+`eip155-1000`, and `eip155-728126428` are token-less **husks** — bare network rows that
+still advertise an `image_hash`. `eip155-900`'s hash is orphaned (no matching image row),
+so `/image/eip155-900` returns a 404 and the icon breaks in the UI. A husk has zero tokens,
+so the hex guard is vacuously true for it and it is correctly selected; requiring a token
+would strand these husks and their dangling images. The allow-list itself is the safety —
+none of the four is a real Ethereum-Virtual-Machine chain, so "real-but-empty" cannot apply.
+The cleanup is idempotent: once the allow-listed rows are gone the predicate matches nothing,
+so re-running is a no-op.
 
 **Caveat — not-yet-re-homed tokens.** The preview's `token_count` minus
 `reincarnated_token_count` is the count of tokens that exist **only** under the faked id
