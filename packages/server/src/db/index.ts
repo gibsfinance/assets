@@ -14,7 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
-import { toCAIP2, namespaceOf, expectedNetworkType, TEST_NETWORK_TYPE } from '../chain-id'
+import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
@@ -305,6 +305,15 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
   // smoldapp hashing the "btcm" folder to 1651794797 and typing it 'btc' produced
   // eip155-1651794797/btc, which the UI then renders as a bogus network.
   const canonicalChainId = toCAIP2(chainId.toString())
+  // Refuse a non-EVM chain that an upstream list echoed as a bare eip155 number
+  // (Solana 900/501000101, Tron 1000/728126428). The dedicated collectors file
+  // these under solana-501 / tvm-195, so creating the eip155 form only resurrects
+  // the husks the cleanup migrations removed. Collectors isolate this per token.
+  if (isFakedEvmReference(canonicalChainId)) {
+    throw new Error(
+      `chain id "${canonicalChainId}" is a non-Ethereum-Virtual-Machine chain mis-numbered as eip155; collect it under its coin-type id (Solana -> solana-501, Tron -> tvm-195) instead.`,
+    )
+  }
   const expectedType = expectedNetworkType(canonicalChainId)
   if (type !== expectedType && type !== TEST_NETWORK_TYPE) {
     throw new Error(

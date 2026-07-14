@@ -57,6 +57,13 @@
       "when": 1783987200000,
       "tag": "0007_delete_type_mismatched_networks",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784073600000,
+      "tag": "0008_delete_faked_evm_references",
+      "breakpoints": true
     }
   ]
 }
