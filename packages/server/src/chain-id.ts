@@ -77,6 +77,16 @@ export const namespaceToNetworkType = (namespace: string): string =>
 export const expectedNetworkType = (chainId: string): string => namespaceToNetworkType(namespaceOf(toCAIP2(chainId)))
 
 /**
+ * Reserved network.type used only by integration-test fixtures to seed
+ * throwaway networks whose network_id hash cannot collide with a real 'evm' row
+ * of the same numeric chain id. Production collectors never write it. The
+ * insertNetworkFromChainId guard lets this one value through so fixtures stay
+ * isolated, while every real type/namespace mismatch (a 'btc'- or 'tvm'-typed
+ * eip155 row) is still rejected.
+ */
+export const TEST_NETWORK_TYPE = 'test'
+
+/**
  * Check whether a chain id (bare or prefixed) is syntactically servable.
  * Stored networks carry eip155-<number>, asset-0, or one of the
  * non-Ethereum-Virtual-Machine namespaces paired with a numeric reference

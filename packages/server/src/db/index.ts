@@ -14,7 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import * as fileType from 'file-type'
 import { sanitizeImage } from '../sanitize'
-import { toCAIP2, namespaceOf, expectedNetworkType } from '../chain-id'
+import { toCAIP2, namespaceOf, expectedNetworkType, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
@@ -306,7 +306,7 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
   // eip155-1651794797/btc, which the UI then renders as a bogus network.
   const canonicalChainId = toCAIP2(chainId.toString())
   const expectedType = expectedNetworkType(canonicalChainId)
-  if (type !== expectedType) {
+  if (type !== expectedType && type !== TEST_NETWORK_TYPE) {
     throw new Error(
       `network type "${type}" conflicts with chain id "${canonicalChainId}": its "${namespaceOf(canonicalChainId)}" namespace requires type "${expectedType}". Pass a namespaced id (e.g. tvm-195, bip122-0) for non-Ethereum-Virtual-Machine chains rather than a bare number.`,
     )
