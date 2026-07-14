@@ -43,6 +43,20 @@
       "when": 1776974400000,
       "tag": "0005_dedupe_tokens_normalize_case",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783900800000,
+      "tag": "0006_cleanup_nonevm_faked_networks",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783987200000,
+      "tag": "0007_delete_type_mismatched_networks",
+      "breakpoints": true
     }
   ]
 }

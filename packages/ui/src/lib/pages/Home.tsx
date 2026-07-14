@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { getNetworkName } from '../utils/network-name'
+import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
-import { toChainIdentifier } from '../utils/chain-identifier'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
@@ -88,7 +88,15 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
     return (
       <div className="flex flex-col md:flex-row items-center gap-4">
         <div className="flex flex-row items-center gap-3">
-          <Image src={getApiUrl('/image/eip155-1')} alt="Ethereum" size={48} skeleton lazy shape="circle" className="rounded-full" />
+          <Image
+            src={getApiUrl('/image/eip155-1')}
+            alt="Ethereum"
+            size={48}
+            skeleton
+            lazy
+            shape="circle"
+            className="rounded-full"
+          />
           <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
         </div>
         <CodeBlock code={displayUrl} />
@@ -146,12 +154,13 @@ export default function Home() {
 
     return metricsData.networks.supported
       .map((n) => {
-        const nameKey = getNetworkName(n.chainId).toLowerCase()
+        const nameKey = getNetworkName(n.chainIdentifier).toLowerCase()
         const isTestnet = nameKey.includes('testnet') || testnetWhitelist.has(nameKey)
         return {
           chainId: n.chainId,
-          name: getNetworkName(n.chainId),
-          tokenCount: metricsData.tokenList.byChain[n.chainId] || 0,
+          chainIdentifier: n.chainIdentifier,
+          name: getNetworkName(n.chainIdentifier),
+          tokenCount: n.tokenCount,
           isTestnet,
         }
       })
@@ -191,23 +200,27 @@ export default function Home() {
     })
   }, [])
 
+  const mainnetNetworkCount = useMemo(() => {
+    if (!metricsData) return 0
+    return countSupportedNetworks(metricsData.networks.supported)
+  }, [metricsData])
+
   const MAX_ROWS = 3
   const loadableNetworks = filteredNetworks.filter((n) => !failedChains.has(n.chainId))
   const maxVisible = gridCols * MAX_ROWS
   const evenCount = Math.floor(Math.min(loadableNetworks.length, maxVisible) / gridCols) * gridCols
   const visibleNetworks = loadableNetworks.slice(0, evenCount)
-  const hiddenCount = loadableNetworks.length - evenCount
-
-  const mainnetNetworkCount = useMemo(() => {
-    if (!metricsData) return 0
-    return metricsData.networks.supported.filter(
-      (n) => !getNetworkName(n.chainId).toLowerCase().includes('testnet'),
-    ).length
-  }, [metricsData])
+  // Count the hidden remainder against the same "Supported Networks" universe the
+  // headline advertises (has tokens or a logo, excluding testnets) rather than the
+  // token-bearing subset the grid renders. Otherwise "and N more networks" (e.g.
+  // 211) silently contradicts the "Supported Networks" total (e.g. 282) shown just
+  // above it. Logo-only chains have zero tokens, sort to the bottom, and never fill
+  // the visible rows, so they only ever land in the "more" remainder.
+  const hiddenCount = Math.max(0, mainnetNetworkCount - visibleNetworks.length)
 
   const handleNetworkClick = useCallback(
-    (chainId: number) => {
-      localStorage.setItem('selectedChainId', chainId.toString())
+    (chainIdentifier: string) => {
+      localStorage.setItem('selectedChainId', chainIdentifier)
       navigate('/studio')
     },
     [navigate],
@@ -257,12 +270,10 @@ export default function Home() {
               {features.map((feature) => (
                 <div
                   key={feature.title}
-                  className="glass-card group p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-glow-green-subtle"
-                >
+                  className="glass-card group p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-glow-green-subtle">
                   <div className="flex items-center gap-4">
                     <i
-                      className={`fas ${feature.icon} mb-4 text-4xl text-accent-500 transition-transform group-hover:scale-110`}
-                    ></i>
+                      className={`fas ${feature.icon} mb-4 text-4xl text-accent-500 transition-transform group-hover:scale-110`}></i>
                     <h3 className="mb-2 font-heading text-lg font-bold text-gray-900 dark:text-white">
                       {feature.title}
                     </h3>
@@ -282,8 +293,7 @@ export default function Home() {
               {examples.map((example) => (
                 <div
                   key={example.type}
-                  className="glass-card p-6 transition-all duration-200 hover:shadow-glow-green-subtle"
-                >
+                  className="glass-card p-6 transition-all duration-200 hover:shadow-glow-green-subtle">
                   <div className="grid gap-6 lg:grid-cols-2">
                     {/* Visual Preview */}
                     <div className="flex items-center justify-center rounded-lg bg-surface-light-2 p-4 dark:bg-surface-2">
@@ -305,8 +315,7 @@ export default function Home() {
                         href={example.code}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
-                      >
+                        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                         <i className="fas fa-link text-accent-500"></i>
                         <code className="break-all font-mono">{example.code}</code>
                       </a>
@@ -375,13 +384,12 @@ export default function Home() {
                     <button
                       key={network.chainId}
                       type="button"
-                      onClick={() => handleNetworkClick(network.chainId)}
-                      className="group relative cursor-pointer transition-all duration-200 hover:scale-105"
-                    >
+                      onClick={() => handleNetworkClick(network.chainIdentifier)}
+                      className="group relative cursor-pointer transition-all duration-200 hover:scale-105">
                       <div className="glass-card relative flex h-[160px] flex-col items-center justify-between p-3 transition-all duration-200 hover:border-accent-500/40 hover:shadow-glow-green-subtle">
                         <div className="flex flex-1 flex-col items-center">
                           <Image
-                            src={getApiUrl(`/image/${toChainIdentifier(network.chainId)}`)}
+                            src={getApiUrl(`/image/${network.chainIdentifier}`)}
                             alt={network.name}
                             size={40}
                             skeleton
@@ -393,8 +401,7 @@ export default function Home() {
                           <div className="mt-2 flex w-full flex-1 flex-col justify-center text-center">
                             <div
                               className="line-clamp-2 px-1 text-sm font-medium leading-tight text-gray-900 dark:text-white"
-                              title={network.name}
-                            >
+                              title={network.name}>
                               {network.name}
                             </div>
                             <div className="mt-1 font-mono text-xs text-gray-400 dark:text-gray-500">
@@ -429,11 +436,17 @@ export default function Home() {
               Open the Studio to browse tokens, configure URLs, and explore the API.
             </p>
             <div className="flex items-center justify-center gap-3">
-              <button type="button" onClick={() => navigate('/studio')} className="btn-primary inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate('/studio')}
+                className="btn-primary inline-flex items-center gap-2">
                 <i className="fas fa-flask"></i>
                 Open Studio
               </button>
-              <button type="button" onClick={() => navigate('/studio?editor=new')} className="btn-secondary inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate('/studio?editor=new')}
+                className="btn-secondary inline-flex items-center gap-2">
                 <i className="fas fa-list-ul"></i>
                 Create a List
               </button>

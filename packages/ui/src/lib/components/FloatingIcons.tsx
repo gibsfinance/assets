@@ -6,9 +6,25 @@ import Image from './Image'
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
 const ROW_SPEEDS = [18, 22, 26] // pixels per second per row — top slowest, bottom fastest
+const ROW_GAP = 12 // matches the `gap-3` (0.75rem) between conveyor icons
 // Each row shows a fresh random sample instead of the whole catalog: 3 rows ×
-// 30 icons × 2 (loop copy) = 180 mounted images instead of 2,658.
+// 30 icons × 2 (loop copy) = 180 mounted images instead of 2,658. On viewports
+// wider than one sample the sample is repeated (same URLs, so no extra fetches)
+// so a single conveyor half always spans the viewport — see `repeatsToFill`.
 const ICONS_PER_ROW = 30
+
+/**
+ * How many times a row's icon sample must repeat so one conveyor half is at least
+ * as wide as the viewport. The seamless loop translates the doubled strip by -50%
+ * (one half). If a half is narrower than the viewport, that translation exposes a
+ * bare strip on the right — and the reverse-direction middle row, which starts
+ * already at -50%, shows the gap on first paint. Repeating the sample closes it.
+ */
+export function repeatsToFill(containerWidth: number, iconSize: number, iconCount: number): number {
+  const halfWidth = iconCount * (iconSize + ROW_GAP)
+  if (containerWidth <= 0 || halfWidth <= 0) return 1
+  return Math.max(1, Math.ceil(containerWidth / halfWidth))
+}
 
 let keyframesInjected = false
 function ensureKeyframes() {
@@ -491,11 +507,24 @@ function ConveyorIcon({ src, href, size }: { src: string; href: string; size: nu
 const TOTAL_HEIGHT = SIZES.reduce((a, b) => a + b, 0) + (SIZES.length - 1) * 4
 
 export default function FloatingIcons({ className }: { className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const row0 = useRef<HTMLDivElement>(null)
   const row1 = useRef<HTMLDivElement>(null)
   const row2 = useRef<HTMLDivElement>(null)
   // Stable identity so the animation effect can list it as a dependency
   const rowRefs = useMemo(() => [row0, row1, row2], [])
+
+  // Track the container width so each row can repeat its sample enough to span it.
+  const [containerWidth, setContainerWidth] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => setContainerWidth(el.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // The conveyor is decoration — defer its image mounts to idle time so the
   // first paint and the metrics fetch are never competing with it. The outer
@@ -512,7 +541,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
 
   const rowIcons = useMemo(() => {
     if (!ready) return []
-    return [0, 1, 2].map(() => {
+    return [0, 1, 2].map((rowIdx) => {
       const sample = shuffle(ICON_PATHS).slice(0, ICONS_PER_ROW).map((p) => {
         const path = prefixImagePath(p)
         return {
@@ -520,9 +549,13 @@ export default function FloatingIcons({ className }: { className?: string }) {
           href: getApiUrl(path),
         }
       })
-      return [...sample, ...sample]
+      // Widen one conveyor half to at least the viewport, then duplicate it for the
+      // seamless -50% loop. Repeats reuse the same URLs, so no extra image fetches.
+      const repeats = repeatsToFill(containerWidth, SIZES[rowIdx], sample.length)
+      const half = Array.from({ length: repeats }, () => sample).flat()
+      return [...half, ...half]
     })
-  }, [ready])
+  }, [ready, containerWidth])
 
   useEffect(() => {
     if (!ready) return
@@ -540,7 +573,11 @@ export default function FloatingIcons({ className }: { className?: string }) {
   }, [ready, rowRefs])
 
   return (
-    <div className={`overflow-hidden space-y-1 ${className ?? ''}`} style={{ height: TOTAL_HEIGHT }} aria-hidden="true">
+    <div
+      ref={containerRef}
+      className={`overflow-hidden space-y-1 ${className ?? ''}`}
+      style={{ height: TOTAL_HEIGHT }}
+      aria-hidden="true">
       {rowIcons.map((icons, rowIdx) => (
         <div key={rowIdx} className="overflow-hidden">
           <div

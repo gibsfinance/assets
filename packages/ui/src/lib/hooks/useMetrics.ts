@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ListDescription, Network, PlatformMetrics, Token } from '../types'
+import type { ListDescription, Network, NetworkInfo, PlatformMetrics, Token } from '../types'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 
@@ -7,10 +7,10 @@ import { getNetworkName } from '../utils/network-name'
 // Fetch functions (exported for testing)
 // ---------------------------------------------------------------------------
 
-export async function fetchStats(): Promise<{ chainId: string; count: number }[]> {
+export async function fetchStats(): Promise<{ chainId: string; chainIdentifier: string; count: number }[]> {
   const response = await fetch(getApiUrl('/stats'))
   if (!response.ok) return []
-  return (await response.json()) as { chainId: string; count: number }[]
+  return (await response.json()) as { chainId: string; chainIdentifier: string; count: number }[]
 }
 
 export async function fetchProvidersList(): Promise<ListDescription[]> {
@@ -98,26 +98,26 @@ export function useMetrics(): {
     return { metrics: null, providers: providers ?? [], isLoading }
   }
 
-  // Extract bare numeric reference from either "369" or "eip155-369"
-  const bare = (id: string) => (id.includes('-') ? id.split('-').pop()! : id)
-
-  const evmNetworks = networks.filter((n) => n.type === 'evm')
-
+  // Token counts keyed on the canonical identifier so a non-Ethereum-Virtual-Machine
+  // bare reference (e.g. monero-128) never inherits an Ethereum-Virtual-Machine
+  // chain's count (e.g. Huobi chain 128).
+  const byIdentifier: Record<string, number> = {}
   const byChain: Record<string, number> = {}
-  for (const { chainId, count } of stats) {
-    byChain[bare(chainId)] = count
+  for (const { chainId, chainIdentifier, count } of stats) {
+    byIdentifier[chainIdentifier] = count
+    byChain[chainId] = count // legacy bare-keyed map, kept for existing consumers
   }
-  const total = Object.values(byChain).reduce((sum, c) => sum + c, 0)
+  const total = Object.values(byIdentifier).reduce((sum, c) => sum + c, 0)
 
-  const supported = evmNetworks
-    .filter((n) => byChain[bare(n.chainId)] !== undefined)
-    .map((n) => {
-      const id = bare(n.chainId)
-      return {
-        chainId: Number(id),
-        name: getNetworkName(id),
-      }
-    })
+  const supported: NetworkInfo[] = networks.map((n) => ({
+    chainId: Number(n.chainId),
+    chainIdentifier: n.chainIdentifier,
+    type: n.type,
+    name: getNetworkName(n.chainIdentifier),
+    tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
+    hasImage: n.imageHash != null,
+    isEvm: n.type === 'evm',
+  }))
 
   const metrics: PlatformMetrics = {
     tokenList: { total, byChain },

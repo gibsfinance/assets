@@ -12,6 +12,7 @@ import * as viem from 'viem'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
 import { failures, type ChainId } from '@gibs/utils'
+import { toCAIP2, fromCAIP2, namespaceOf, namespaceToNetworkType } from '../chain-id'
 
 import type { TokenEntry } from '../types'
 import type { Image } from '../db/schema-types'
@@ -70,11 +71,18 @@ export const removedUndesirable = (names: string[]) => {
   return names.filter((name) => name !== '.DS_Store')
 }
 
-/** Hash type + bare reference for network_id. Accepts both '369' and 'eip155-369'. */
-export const chainIdToNetworkId = (chainId: ChainId, type = 'evm') => {
-  const str = String(chainId)
-  const bare = str.includes('-') ? str.split('-').slice(1).join('-') : str
-  return toKeccakBytes(`${type}${bare}`)
+/**
+ * Hash type + bare reference for network_id, mirroring the database trigger
+ * keccak256(type || split_part(chain_id,'-',2)). Accepts bare numbers
+ * ('369'), Ethereum-Virtual-Machine identifiers ('eip155-369'), and non-Ethereum-Virtual-Machine
+ * identifiers ('bip122-0'). When no explicit type is given it is derived from
+ * the namespace so non-Ethereum-Virtual-Machine lookups match their stored rows.
+ */
+export const chainIdToNetworkId = (chainId: ChainId, type?: string) => {
+  const canonical = toCAIP2(String(chainId))
+  const reference = fromCAIP2(canonical)
+  const resolvedType = type ?? namespaceToNetworkType(namespaceOf(canonical))
+  return toKeccakBytes(`${resolvedType}${reference}`)
 }
 
 const folderAccessLimit = promiseLimit<any>(256)

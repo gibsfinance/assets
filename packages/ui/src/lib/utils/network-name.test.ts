@@ -101,4 +101,24 @@ describe('getNetworkName', () => {
       expect(getNetworkName(10)).toBe('Optimism')
     })
   })
+
+  it('names the curated non-Ethereum-Virtual-Machine chains by identifier', () => {
+    expect(getNetworkName('bip122-0')).toBe('Bitcoin')
+    expect(getNetworkName('cardano-1815')).toBe('Cardano')
+    expect(getNetworkName('tvm-195')).toBe('Tron')
+    expect(getNetworkName('sui-784')).toBe('Sui')
+    expect(getNetworkName('aptos-637')).toBe('Aptos')
+    expect(getNetworkName('ton-607')).toBe('TON')
+    expect(getNetworkName('cosmos-118')).toBe('Cosmos')
+    expect(getNetworkName('near-397')).toBe('NEAR')
+    expect(getNetworkName('polkadot-354')).toBe('Polkadot')
+    expect(getNetworkName('algorand-283')).toBe('Algorand')
+    expect(getNetworkName('fil-461')).toBe('Filecoin')
+  })
+
+  it('still names Ethereum-Virtual-Machine chains from bare and prefixed ids', () => {
+    expect(getNetworkName(1)).toBe('Ethereum')
+    expect(getNetworkName('eip155-369')).toBe('PulseChain')
+    expect(getNetworkName('369')).toBe('PulseChain')
+  })
 })

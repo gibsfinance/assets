@@ -205,7 +205,10 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
   // sources from this separate query rather than from duplicate rows.
   const sourcesMap = new Map<string, string[]>()
   for (const { providedId, providerKey, listKey } of sourcesRows) {
-    const key = providedId.toLowerCase()
+    // Key identically to normalizeTokens' groupBy so the sources patch matches;
+    // normalizeProvidedId keeps base58 ids case-significant (a bare .toLowerCase()
+    // here would miss every non-Ethereum-Virtual-Machine token's sources).
+    const key = db.normalizeProvidedId(providedId)
     const source = `${providerKey}/${listKey}`
     const existing = sourcesMap.get(key)
     if (existing) {

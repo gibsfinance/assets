@@ -211,7 +211,7 @@ export const dexscreenerApi = {
   ),
 }
 
-export type ChainType = 'evm' | 'solana' | 'tvm'
+export type ChainType = 'evm' | 'solana' | 'tvm' | 'ton'
 
 export const nameToKey = (name: string) => {
   return name.toLowerCase().split(' ').join('')
@@ -236,7 +236,17 @@ const evmChains = Object.entries(chains)
     ['conflux', { ...chains.confluxESpace, type: 'evm' }],
   ])
 
-export const chainIdToChain = new Map<string, Chain & { type: ChainType }>([
+/**
+ * DexScreener addresses non-Ethereum-Virtual-Machine chains by name, not by a
+ * chain-agnostic identifier. gib.show stores every network as a CAIP-2 string
+ * `{namespace}-{reference}` where the reference is the Satoshi-Labs-Improvement-Proposal-44
+ * coin type. The bare numeric `id` below is a DexScreener-internal handle (900 for
+ * Solana, 1 for TON) and would otherwise be written as `eip155-900`/`eip155-1` —
+ * the wrong namespace. `caip2` carries the correct identifier so collectors persist
+ * `solana-501` (type `solana`) and `ton-607` (type `ton`) instead. TON uses its own
+ * `ton` namespace rather than `tvm`, which is reserved for Tron (coin type 195).
+ */
+export const chainIdToChain = new Map<string, Chain & { type: ChainType; caip2?: string }>([
   ...evmChains,
   [
     'solana',
@@ -245,6 +255,7 @@ export const chainIdToChain = new Map<string, Chain & { type: ChainType }>([
       name: 'Solana',
       network: 'solana',
       type: 'solana',
+      caip2: 'solana-501',
       nativeCurrency: {
         name: 'Solana',
         symbol: 'SOL',
@@ -268,7 +279,8 @@ export const chainIdToChain = new Map<string, Chain & { type: ChainType }>([
       id: 1,
       name: 'Ton',
       network: 'ton',
-      type: 'tvm',
+      type: 'ton',
+      caip2: 'ton-607',
       nativeCurrency: {
         name: 'Ton',
         symbol: 'TON',

@@ -4,7 +4,8 @@ import * as db from '../db'
 import * as utils from '../utils'
 import type { List } from '../db/schema-types'
 import * as paths from '../paths'
-import { zeroAddress, type Hex, stringToHex } from 'viem'
+import { zeroAddress, type Hex } from 'viem'
+import { isBareNumeric } from '../chain-id'
 import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
@@ -66,19 +67,23 @@ class SmoldappCollector extends BaseCollector {
 
     for (const cID of chains) {
       if (cID === '_info.json') continue
-      const chainIdIsNumber = !!+cID
-      const chainId = chainIdIsNumber ? cID : cID
       if (signal.aborted) return []
 
-      if (path.extname(chainId) === '.json') {
+      if (path.extname(cID) === '.json') {
         continue
       }
 
-      const networkChainId = chainIdIsNumber ? +chainId : Number(stringToHex(chainId))
+      // smoldapp is an Ethereum-Virtual-Machine asset set keyed by numeric chain
+      // id. A non-numeric folder (e.g. "btcm") has no eip155 representation, so
+      // skip it — hashing the name into a fake numeric id and typing it 'btc'
+      // produced corrupt eip155-<n>/btc rows. Non-EVM chains are served by the
+      // curated roster instead.
+      if (!isBareNumeric(cID)) continue
+
+      const networkChainId = +cID
       this.folderToNetworkChainId.set(cID, networkChainId)
-      const type = chainIdIsNumber ? 'evm' : 'btc'
-      await db.insertNetworkFromChainId(networkChainId, type)
-      const chainFolder = path.join(this.chainsPath, chainId || cID)
+      await db.insertNetworkFromChainId(networkChainId, 'evm')
+      const chainFolder = path.join(this.chainsPath, cID)
       const folders = await utils.folderContents(chainFolder)
 
       for (const file of folders) {
@@ -88,7 +93,7 @@ class SmoldappCollector extends BaseCollector {
         const [networkList] = await db.insertList({
           key: networkKey,
           providerId: provider.providerId,
-          networkId: utils.chainIdToNetworkId(networkChainId, type),
+          networkId: utils.chainIdToNetworkId(networkChainId, 'evm'),
         })
         this.chainIdToNetworkId.set(networkList.key, networkList)
         lists.push({ listKey: networkKey, listId: networkList.listId })
@@ -133,21 +138,23 @@ class SmoldappCollector extends BaseCollector {
       const chains = await utils.folderContents(this.chainsPath)
       for (const cID of chains) {
         if (cID === '_info.json') continue
-        const chainIdIsNumber = !!+cID
-        const chainId = chainIdIsNumber ? cID : cID
         if (signal.aborted) return
 
-        if (path.extname(chainId) === '.json') {
-          row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
-          row.increment('skipped', `${providerKey}-${chainId}`)
+        if (path.extname(cID) === '.json') {
+          row.increment(terminalCounterTypes.NETWORK, `${cID}`)
+          row.increment('skipped', `${providerKey}-${cID}`)
           continue
         }
 
-        const networkChainId =
-          this.folderToNetworkChainId.get(cID) ?? (chainIdIsNumber ? +chainId : Number(stringToHex(chainId)))
-        const type = chainIdIsNumber ? 'evm' : 'btc'
-        const network = await db.insertNetworkFromChainId(networkChainId, type)
-        const chainFolder = path.join(this.chainsPath, chainId || cID)
+        // Non-numeric folders have no eip155 id — skip (see discoverLists above).
+        if (!isBareNumeric(cID)) {
+          row.increment('skipped', `${providerKey}-${cID}`)
+          continue
+        }
+
+        const networkChainId = this.folderToNetworkChainId.get(cID) ?? +cID
+        const network = await db.insertNetworkFromChainId(networkChainId, 'evm')
+        const chainFolder = path.join(this.chainsPath, cID)
         const folders = await utils.folderContents(chainFolder)
 
         for (const file of folders) {
@@ -181,7 +188,7 @@ class SmoldappCollector extends BaseCollector {
               )
             })
           } else {
-            const img = await db.fetchImage(originalUri, signal, providerKey, chainId)
+            const img = await db.fetchImage(originalUri, signal, providerKey, cID)
             await db.transaction(async (tx) => {
               await db.fetchImageAndStoreForList(
                 {
@@ -238,12 +245,12 @@ class SmoldappCollector extends BaseCollector {
       await networkLimiter.map(reverseOrderTokens, async ([chainIdString, tokens]) => {
         if (signal.aborted) return
 
-        const chainIdIsNumber = !!+chainIdString
-        const type = chainIdIsNumber ? 'evm' : 'btc'
-        const networkChainId =
-          this.folderToNetworkChainId.get(chainIdString) ?? (+chainIdString || Number(stringToHex(chainIdString)))
+        // Non-numeric chains have no eip155 id — skip (see discoverLists above).
+        if (!isBareNumeric(chainIdString)) return
+
+        const networkChainId = this.folderToNetworkChainId.get(chainIdString) ?? +chainIdString
         this.folderToNetworkChainId.set(chainIdString, networkChainId)
-        const network = await db.insertNetworkFromChainId(networkChainId, type)
+        const network = await db.insertNetworkFromChainId(networkChainId, 'evm')
         // Pre-compute all possible network lists for this chain to avoid per-token database calls
         const networkListCache = new Map<string, List>()
         const possibleListKeys = ['svg', 'png', 'png128', 'png32'] // Based on actual smoldapp file patterns
@@ -262,7 +269,7 @@ class SmoldappCollector extends BaseCollector {
                     })
                     .then((list) => list?.[0] as List)
                     .catch((err) => {
-                      failureLog('error inserting list %o %o %o', networkKey, networkChainId, type)
+                      failureLog('error inserting list %o %o %o', networkKey, networkChainId, 'evm')
                       throw err
                     }),
               )!
@@ -296,8 +303,6 @@ class SmoldappCollector extends BaseCollector {
               token,
               i,
               chainIdString,
-              chainIdIsNumber,
-              type,
               networkChainId,
               tokensPath: this.tokensPath,
               networkListCache,
@@ -336,8 +341,6 @@ type ProcessTokenParams = {
   token: Hex
   i: number
   chainIdString: string
-  chainIdIsNumber: boolean
-  type: string
   networkChainId: number
   tokensPath: string
   networkListCache: Map<string, List>
@@ -352,8 +355,6 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     token,
     i,
     chainIdString,
-    chainIdIsNumber,
-    type,
     networkChainId,
     tokensPath,
     networkListCache,
@@ -365,41 +366,37 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
   const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
   const address = (utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token).toLowerCase() as Hex
   let metadata: [string, string, number] | null = null
-  if (chainIdIsNumber) {
-    const chain = utils.findChain(+chainIdString)
-    if (!chain) {
-      return
-    }
-    const networkId = utils.chainIdToNetworkId(chain.id)
-    const { getDrizzle } = await import('../db/drizzle')
-    const { eq, and, ne } = await import('drizzle-orm')
-    const schemaMod = await import('../db/schema')
-    const [existingToken] = await getDrizzle()
-      .select({
-        name: schemaMod.token.name,
-        symbol: schemaMod.token.symbol,
-        decimals: schemaMod.token.decimals,
-      })
-      .from(schemaMod.token)
-      .where(
-        and(
-          eq(schemaMod.token.providedId, address),
-          eq(schemaMod.token.networkId, networkId),
-          ne(schemaMod.token.name, ''),
-          ne(schemaMod.token.symbol, ''),
-        ),
-      )
-      .limit(1)
-    if (existingToken) {
-      metadata = [existingToken.name, existingToken.symbol, existingToken.decimals]
-    } else {
-      metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
-        failureLog('%o', error)
-        return null
-      })
-    }
-  } else if (type === 'btc') {
-    metadata = ['Bitcoin', 'BTC', 8]
+  const chain = utils.findChain(+chainIdString)
+  if (!chain) {
+    return
+  }
+  const networkId = utils.chainIdToNetworkId(chain.id)
+  const { getDrizzle } = await import('../db/drizzle')
+  const { eq, and, ne } = await import('drizzle-orm')
+  const schemaMod = await import('../db/schema')
+  const [existingToken] = await getDrizzle()
+    .select({
+      name: schemaMod.token.name,
+      symbol: schemaMod.token.symbol,
+      decimals: schemaMod.token.decimals,
+    })
+    .from(schemaMod.token)
+    .where(
+      and(
+        eq(schemaMod.token.providedId, address),
+        eq(schemaMod.token.networkId, networkId),
+        ne(schemaMod.token.name, ''),
+        ne(schemaMod.token.symbol, ''),
+      ),
+    )
+    .limit(1)
+  if (existingToken) {
+    metadata = [existingToken.name, existingToken.symbol, existingToken.decimals]
+  } else {
+    metadata = await erc20Read(chain, utils.chainToPublicClient(chain), address).catch((error) => {
+      failureLog('%o', error)
+      return null
+    })
   }
   if (!metadata) {
     row.increment('missing', utils.counterId.token([networkChainId, token]))

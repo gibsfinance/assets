@@ -2,11 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { Token, TokenListReference } from '../types'
 import { deduplicateTokens, mergeTokenIntoMap, tokenImageUri } from './dedup-tokens'
 
-function makeToken(
-  address: string,
-  sourceList: string,
-  overrides: Partial<Token> = {},
-): Token {
+function makeToken(address: string, sourceList: string, overrides: Partial<Token> = {}): Token {
   return {
     chainId: 1,
     address,
@@ -31,9 +27,7 @@ describe('deduplicateTokens', () => {
   })
 
   it('keeps unique tokens separate', () => {
-    const tokensByList = new Map([
-      ['listA', [makeToken('0xabc', 'provA/listA'), makeToken('0xdef', 'provA/listA')]],
-    ])
+    const tokensByList = new Map([['listA', [makeToken('0xabc', 'provA/listA'), makeToken('0xdef', 'provA/listA')]]])
     const result = deduplicateTokens(tokensByList, new Set(['listA']), '1')
     expect(result).toHaveLength(2)
   })
@@ -42,10 +36,7 @@ describe('deduplicateTokens', () => {
     const tokensByList = new Map([
       [
         'listA',
-        [
-          makeToken('0xabc', 'provA/listA', { chainId: 1 }),
-          makeToken('0xdef', 'provA/listA', { chainId: 56 }),
-        ],
+        [makeToken('0xabc', 'provA/listA', { chainId: 1 }), makeToken('0xdef', 'provA/listA', { chainId: 56 })],
       ],
     ])
     const result = deduplicateTokens(tokensByList, new Set(['listA']), '1')
@@ -71,9 +62,7 @@ describe('deduplicateTokens', () => {
   })
 
   it('does not duplicate same list reference', () => {
-    const tokensByList = new Map([
-      ['listA', [makeToken('0xabc', 'provA/listA'), makeToken('0xabc', 'provA/listA')]],
-    ])
+    const tokensByList = new Map([['listA', [makeToken('0xabc', 'provA/listA'), makeToken('0xabc', 'provA/listA')]]])
     const result = deduplicateTokens(tokensByList, new Set(['listA']), '1')
     expect(result).toHaveLength(1)
     expect(result[0].listReferences).toHaveLength(1)
@@ -84,11 +73,7 @@ describe('deduplicateTokens', () => {
       ['bridge-list', [makeToken('0xabc', 'bridge/list')]],
       ['normal-list', [makeToken('0xabc', 'normal/list')]],
     ])
-    const result = deduplicateTokens(
-      tokensByList,
-      new Set(['bridge-list', 'normal-list']),
-      '1',
-    )
+    const result = deduplicateTokens(tokensByList, new Set(['bridge-list', 'normal-list']), '1')
     expect(result).toHaveLength(1)
     // Normal list should be the primary (processed first)
     expect(result[0].sourceList).toBe('normal/list')
@@ -106,9 +91,7 @@ describe('deduplicateTokens', () => {
   })
 
   it('returns empty array when no lists are enabled', () => {
-    const tokensByList = new Map([
-      ['listA', [makeToken('0xabc', 'provA/listA')]],
-    ])
+    const tokensByList = new Map([['listA', [makeToken('0xabc', 'provA/listA')]]])
     const result = deduplicateTokens(tokensByList, new Set(), '1')
     expect(result).toHaveLength(0)
   })
@@ -122,10 +105,7 @@ describe('deduplicateTokens', () => {
     const tokensByList = new Map([
       [
         'listA',
-        [
-          makeToken('0xabc', 'provA/listA', { chainId: 1 }),
-          makeToken('0xabc', 'provA/listA', { chainId: 137 }),
-        ],
+        [makeToken('0xabc', 'provA/listA', { chainId: 1 }), makeToken('0xabc', 'provA/listA', { chainId: 137 })],
       ],
     ])
     const chain1 = deduplicateTokens(tokensByList, new Set(['listA']), '1')
@@ -136,10 +116,15 @@ describe('deduplicateTokens', () => {
     expect(chain137[0].chainId).toBe(137)
   })
 
+  it('matches a bare-numeric token chainId against a canonical selectedChainId', () => {
+    const tokensByList = new Map([['listA', [makeToken('0xabc', 'provA/listA', { chainId: 1 })]]])
+    const result = deduplicateTokens(tokensByList, new Set(['listA']), 'eip155-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].address).toBe('0xabc')
+  })
+
   it('prepends imageUriPrefix when provided', () => {
-    const tokensByList = new Map([
-      ['listA', [makeToken('0xabc', 'provA/listA')]],
-    ])
+    const tokensByList = new Map([['listA', [makeToken('0xabc', 'provA/listA')]]])
     const result = deduplicateTokens(tokensByList, new Set(['listA']), '1', 'https://api.example.com')
     expect(result[0].listReferences![0].imageUri).toBe('https://api.example.com/image/eip155-1/0xabc')
   })

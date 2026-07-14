@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { toCAIP2, fromCAIP2, namespaceOf, isBareNumeric, isValidChainId } from './chain-id'
+import {
+  toCAIP2,
+  fromCAIP2,
+  namespaceOf,
+  isBareNumeric,
+  isValidChainId,
+  namespaceToNetworkType,
+  expectedNetworkType,
+  NON_EVM_NAMESPACES,
+} from './chain-id'
 
 describe('toCAIP2', () => {
   it('prefixes EVM chain IDs with eip155', () => {
@@ -87,5 +96,101 @@ describe('isValidChainId', () => {
     expect(isValidChainId('eip155-banana')).toBe(false)
     expect(isValidChainId('eip155-')).toBe(false)
     expect(isValidChainId('solana-mainnet')).toBe(false)
+  })
+})
+
+describe('namespace registry', () => {
+  it('lists the registered non-Ethereum-Virtual-Machine namespaces', () => {
+    expect([...NON_EVM_NAMESPACES].sort()).toEqual([
+      'algorand',
+      'aptos',
+      'bip122',
+      'cardano',
+      'cosmos',
+      'fil',
+      'memo',
+      'monero',
+      'near',
+      'polkadot',
+      'solana',
+      'sui',
+      'ton',
+      'tvm',
+    ])
+  })
+
+  it('maps the ton namespace to its own type (not evm) so ton-607 serves', () => {
+    // Trust the DexScreener collector writes ton-607 as type 'ton'; the serving
+    // path must resolve the same type or the network_id hash would not match.
+    expect(namespaceToNetworkType('ton')).toBe('ton')
+    expect(isValidChainId('ton-607')).toBe(true)
+  })
+
+  it('maps non-Ethereum-Virtual-Machine namespaces to their own type, others to evm', () => {
+    expect(namespaceToNetworkType('bip122')).toBe('bip122')
+    expect(namespaceToNetworkType('memo')).toBe('memo')
+    expect(namespaceToNetworkType('eip155')).toBe('evm')
+    expect(namespaceToNetworkType('asset')).toBe('evm')
+  })
+
+  it('accepts non-Ethereum-Virtual-Machine identifiers with a numeric reference', () => {
+    expect(isValidChainId('bip122-0')).toBe(true)
+    expect(isValidChainId('solana-501')).toBe(true)
+    expect(isValidChainId('memo-144')).toBe(true)
+  })
+
+  it('serves the newly added chains under their own type', () => {
+    // Each added namespace must both validate and hash to its own type, or the
+    // network_id computed at lookup would not reproduce the trigger-written one.
+    expect(namespaceToNetworkType('sui')).toBe('sui')
+    expect(namespaceToNetworkType('aptos')).toBe('aptos')
+    expect(namespaceToNetworkType('cosmos')).toBe('cosmos')
+    expect(namespaceToNetworkType('near')).toBe('near')
+    expect(namespaceToNetworkType('polkadot')).toBe('polkadot')
+    expect(namespaceToNetworkType('algorand')).toBe('algorand')
+    expect(namespaceToNetworkType('fil')).toBe('fil')
+    expect(isValidChainId('sui-784')).toBe(true)
+    expect(isValidChainId('aptos-637')).toBe(true)
+    expect(isValidChainId('cosmos-118')).toBe(true)
+    expect(isValidChainId('near-397')).toBe(true)
+    expect(isValidChainId('polkadot-354')).toBe(true)
+    expect(isValidChainId('algorand-283')).toBe(true)
+    expect(isValidChainId('fil-461')).toBe(true)
+  })
+
+  it('still accepts legacy identifiers and rejects unknown namespaces', () => {
+    expect(isValidChainId('369')).toBe(true)
+    expect(isValidChainId('eip155-1')).toBe(true)
+    expect(isValidChainId('asset-0')).toBe(true)
+    // tezos is a real chain but not yet a registered gib.show namespace.
+    expect(isValidChainId('tezos-1')).toBe(false)
+    expect(isValidChainId('bip122-notanumber')).toBe(false)
+  })
+})
+
+describe('expectedNetworkType', () => {
+  it('derives evm for bare numeric, eip155, and asset identifiers', () => {
+    expect(expectedNetworkType('1')).toBe('evm')
+    expect(expectedNetworkType('369')).toBe('evm')
+    expect(expectedNetworkType('eip155-1')).toBe('evm')
+    expect(expectedNetworkType('asset-0')).toBe('evm')
+  })
+
+  it('derives each non-Ethereum-Virtual-Machine namespace to its own type', () => {
+    expect(expectedNetworkType('tvm-195')).toBe('tvm')
+    expect(expectedNetworkType('bip122-0')).toBe('bip122')
+    expect(expectedNetworkType('solana-501')).toBe('solana')
+    expect(expectedNetworkType('ton-607')).toBe('ton')
+  })
+
+  it('flags the corruption class: a bare-numeric id never expects a non-evm type', () => {
+    // insertNetworkFromChainId hashed the smoldapp "btcm" folder to 1651794797
+    // and typed it 'btc'; the identifier normalizes to eip155-1651794797, whose
+    // expected type is 'evm'. The mismatch is exactly what the boundary guard now
+    // rejects so a "btc"-typed eip155 network can never be written again.
+    expect(expectedNetworkType('1651794797')).toBe('evm')
+    expect(expectedNetworkType('1651794797')).not.toBe('btc')
+    // A bare '1' with an intended 'tvm' is likewise a mismatch (eip155-1 is Ethereum).
+    expect(expectedNetworkType('1')).not.toBe('tvm')
   })
 })

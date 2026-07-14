@@ -41,6 +41,7 @@ import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
+import cryptocurrencyIconsCollector from './cryptocurrency-icons'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -88,6 +89,7 @@ type CollectableKey =
   | 'baofinance'
   | 'compound'
   | 'optimism'
+  | 'cryptocurrency-icons'
 
 const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
@@ -167,6 +169,7 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     baofinance: baofinanceCollector,
     compound: compoundCollector,
     optimism: optimismCollector,
+    'cryptocurrency-icons': cryptocurrencyIconsCollector,
   }
 }
 
