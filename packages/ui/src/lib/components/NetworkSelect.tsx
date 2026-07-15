@@ -2,7 +2,6 @@ import { useState, useMemo, Fragment } from 'react'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
-import { getNetworkName } from '../utils/network-name'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import Image from './Image'
@@ -48,7 +47,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
               shape="circle"
               className="inline-block rounded-full"
             />
-            {getNetworkName(selectedNetwork.chainIdentifier)}{' '}
+            {selectedNetwork.name}{' '}
             <span className="text-gray-400 dark:text-white/40">({selectedNetwork.chainIdentifier})</span>
           </span>
         ) : (
@@ -89,12 +88,21 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 /*  Shared helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Order the drawer: Ethereum, then PulseChain, then everything else by name.
+ *
+ * Reads the `name` useMetrics already resolved rather than re-deriving one. Beyond
+ * being the single source, that fixes what re-deriving got wrong: it passed the bare
+ * `chainId`, so every non-Ethereum-Virtual-Machine chain looked up its coin type as
+ * if it were an Ethereum chain id — Bitcoin (bip122-0) resolved to "Chain 0" and
+ * sorted under C, and the testnet filter matched against that same wrong string.
+ */
 function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkInfo[] {
   const priorityChains = ['1', '369']
 
   let filtered = networks
   if (!showTestnets) {
-    filtered = networks.filter((network) => !getNetworkName(network.chainId).toLowerCase().includes('testnet'))
+    filtered = networks.filter((network) => !network.name.toLowerCase().includes('testnet'))
   }
 
   return [...filtered].sort((a, b) => {
@@ -107,7 +115,7 @@ function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkIn
     if (aIdx === -1 && bIdx !== -1) return 1
     if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
 
-    return getNetworkName(a.chainId).localeCompare(getNetworkName(b.chainId))
+    return a.name.localeCompare(b.name)
   })
 }
 
@@ -172,7 +180,7 @@ function NetworkDialog({
                       shape="circle"
                       className="inline-block rounded-full"
                     />
-                    <span className="text-gray-900 dark:text-white/90">{getNetworkName(network.chainIdentifier)}</span>
+                    <span className="text-gray-900 dark:text-white/90">{network.name}</span>
                   </span>
                   <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-400 dark:text-white/30">
                     {network.isEvm ? `Chain ${network.chainId}` : network.chainIdentifier}

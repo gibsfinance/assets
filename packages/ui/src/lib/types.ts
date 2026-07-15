@@ -82,6 +82,8 @@ export type Network = {
   chainId: string
   networkId: string
   chainIdentifier: string
+  /** Registry name from the server; null when no collector had one for this chain. */
+  name: string | null
   imageHash: string | null
 }
 

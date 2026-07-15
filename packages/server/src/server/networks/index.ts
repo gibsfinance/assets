@@ -23,6 +23,9 @@ export const toPublicNetwork = (n: Network) => ({
   // Bare chainId (string) for backwards compat, chainIdentifier is prefixed
   chainId: fromCAIP2(n.chainId),
   chainIdentifier: n.chainId,
+  // Registry display name, null when no collector had one to write. Clients keep
+  // their own fallback map, so this supplements their naming rather than replacing it.
+  name: n.name,
   imageHash: n.imageHash,
 })
 

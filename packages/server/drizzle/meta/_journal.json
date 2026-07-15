@@ -64,6 +64,13 @@
       "when": 1784073600000,
       "tag": "0008_delete_faked_evm_references",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784123696452,
+      "tag": "0009_add_network_name",
+      "breakpoints": true
     }
   ]
 }

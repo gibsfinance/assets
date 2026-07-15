@@ -1,70 +1,49 @@
 import { describe, expect, it } from 'vitest'
 import type { NetworkInfo } from '../types'
 import { countSupportedNetworks } from './network-metrics'
-import networksJson from '../networks.json'
-
-const generated = networksJson as Record<string, string>
 
 /**
- * countSupportedNetworks resolves each name through getNetworkName(chainIdentifier)
- * and ignores whatever `name` a fixture carries, so the excluded case has to name a
- * chain the generated map really does call a testnet. Deriving that id keeps this test
- * from rotting the way a hard-coded chain 9 did: it read as a testnet only because the
- * vendored registry snapshot happened to call it "Ubiq Network Testnet", and a regen
- * silently flipped it to "Quai Network Mainnet" — changing the count while the fixture
- * still claimed to be a testnet.
+ * countSupportedNetworks now reads NetworkInfo.name, which useMetrics has already
+ * resolved through getNetworkName. That makes the fixture's own `name` the thing under
+ * test, so these no longer have to derive a chain the vendored registry snapshot
+ * happens to call a testnet — a coupling that broke once already when upstream renamed
+ * chain 9 from "Ubiq Network Testnet" to "Quai Network Mainnet".
  */
-const testnetEntry = Object.entries(generated).find(([, name]) => name.toLowerCase().includes('testnet'))
-if (!testnetEntry) throw new Error('networks.json has no testnet-named chain to exercise the exclusion')
-const [testnetChainId, testnetChainName] = testnetEntry
+const network = (over: Partial<NetworkInfo>): NetworkInfo => ({
+  name: 'Ethereum',
+  tokenCount: 0,
+  hasImage: false,
+  chainId: 1,
+  chainIdentifier: 'eip155-1',
+  type: 'evm',
+  isEvm: true,
+  ...over,
+})
 
 describe('countSupportedNetworks', () => {
   it('counts chains with tokens or a logo, excluding testnets', () => {
     const nets = [
-      {
-        name: 'Ethereum',
-        tokenCount: 100,
-        hasImage: true,
-        chainId: 1,
-        chainIdentifier: 'eip155-1',
-        type: 'evm',
-        isEvm: true,
-      },
-      {
-        name: 'Bitcoin',
-        tokenCount: 0,
-        hasImage: true,
-        chainId: 0,
-        chainIdentifier: 'bip122-0',
-        type: 'bip122',
-        isEvm: false,
-      }, // logo-only -> counts
-      {
-        name: 'Ghost',
-        tokenCount: 0,
-        hasImage: false,
-        chainId: 999999,
-        chainIdentifier: 'eip155-999999',
-        type: 'evm',
-        isEvm: true,
-      }, // neither -> excluded
-      {
-        name: testnetChainName,
-        tokenCount: 5,
-        hasImage: true,
-        chainId: Number(testnetChainId),
-        chainIdentifier: `eip155-${testnetChainId}`,
-        type: 'evm',
-        isEvm: true,
-      }, // testnet -> excluded
-    ] as NetworkInfo[]
+      network({ name: 'Ethereum', tokenCount: 100, hasImage: true }),
+      // logo-only -> counts
+      network({ name: 'Bitcoin', chainId: 0, chainIdentifier: 'bip122-0', type: 'bip122', isEvm: false, hasImage: true }),
+      // neither tokens nor logo -> excluded
+      network({ name: 'Ghost', chainId: 999999, chainIdentifier: 'eip155-999999' }),
+      // testnet -> excluded despite qualifying on both counts
+      network({ name: 'Sepolia Testnet', chainId: 11155111, chainIdentifier: 'eip155-11155111', tokenCount: 5, hasImage: true }),
+    ]
     expect(countSupportedNetworks(nets)).toBe(2)
   })
 
-  // Guards the derivation above: if the chain this test picked ever stopped reading as
-  // a testnet, the count assertion would quietly drift from 2 to 3 rather than fail on
-  // the thing that actually broke.
-  it('resolves the derived exclusion fixture to a testnet name', () => {
-    expect(generated[testnetChainId].toLowerCase()).toContain('testnet')
+  it('matches the testnet name case-insensitively', () => {
+    const nets = [network({ name: 'Some TESTNET Chain', tokenCount: 5, hasImage: true })]
+    expect(countSupportedNetworks(nets)).toBe(0)
+  })
+
+  // Documents the known undercount rather than asserting it is correct: the registry
+  // ships no testnet flag, so a testnet not named like one is counted as a mainnet.
+  // If a real signal ever replaces the substring match, this is the test to delete.
+  it('counts a testnet whose name omits the word — the known limitation', () => {
+    const nets = [network({ name: 'Goerli', chainId: 5, chainIdentifier: 'eip155-5', tokenCount: 5, hasImage: true })]
+    expect(countSupportedNetworks(nets)).toBe(1)
   })
 })

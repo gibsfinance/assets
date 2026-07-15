@@ -55,6 +55,10 @@ class ChainlistCollector extends BaseCollector {
       return
     }
 
+    // The registry's name for this chain is the only one that arrives alongside its
+    // icon, so writing it here keeps label and logo from drifting apart.
+    await db.setNetworkName({ networkId: network.networkId, name: chain.name })
+
     await db.fetchImageAndStoreForNetwork({
       network,
       uri: iconUrl,

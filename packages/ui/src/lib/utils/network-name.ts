@@ -34,12 +34,30 @@ const NON_EVM_NAMES: Record<string, string> = {
   'near-397': 'NEAR', 'polkadot-354': 'Polkadot', 'algorand-283': 'Algorand', 'fil-461': 'Filecoin',
 }
 
-export function getNetworkName(chainId: string | number): string {
+/**
+ * Resolve a chain's display name, best source first:
+ *
+ *  1. NON_EVM_NAMES / priorityNames — names this repo curates on purpose. The registry
+ *     calls chain 1 "Ethereum Mainnet" and chain 10 "OP Mainnet"; the drawer says
+ *     "Ethereum" and "Optimism". Curation outranks upstream, including `registryName`.
+ *  2. registryName — the name the server stored alongside the chain's icon. Always
+ *     current, because it is written by the same collection run that adds the network.
+ *  3. networks.json — the vendored registry snapshot, refreshed by `yarn gen:networks`.
+ *     Covers chains no collector named (a network known only to a token list) and any
+ *     caller without a server response to hand in.
+ *  4. "Chain <id>" — recognisable, and better than a blank label.
+ *
+ * @param chainId Bare id or namespaced identifier (369, "369", "eip155-369", "bip122-0").
+ * @param options.registryName Name from the server's /networks payload, when available.
+ */
+export function getNetworkName(chainId: string | number, options: { registryName?: string | null } = {}): string {
   const key = String(chainId)
   if (NON_EVM_NAMES[key]) return NON_EVM_NAMES[key]
   // Strip any namespace prefix (eip155-369 -> 369) before the numeric lookup.
   const id = Number(key.includes('-') ? key.split('-').pop() : key)
   if (priorityNames[id]) return priorityNames[id]
+  const registryName = options.registryName?.trim()
+  if (registryName) return registryName
   const entry = (networks as Record<string, string>)[String(id)]
   if (entry) return entry
   return `Chain ${id}`

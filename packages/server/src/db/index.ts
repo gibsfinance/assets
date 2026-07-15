@@ -336,6 +336,30 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
   return network
 }
 
+/**
+ * Record a network's display name.
+ *
+ * Deliberately separate from insertNetworkFromChainId. That funnel is the one entry
+ * point every collector shares, and almost none of them know a name — they resolve a
+ * chain id from a token list and nothing more. Only a collector reading a registry
+ * that publishes names (chainlist, from ethereum-lists) has one to write, so the name
+ * is its own narrow write rather than a fourth argument thirty call sites would have
+ * to pass as undefined.
+ *
+ * A blank name is ignored rather than stored: null already means "no label from
+ * upstream" and lets consumers fall back to their own map, whereas an empty string
+ * would read as a name and render as a blank label.
+ */
+export const setNetworkName = async (
+  { networkId, name }: { networkId: string; name?: string | null },
+  tx?: DrizzleTx,
+) => {
+  const trimmed = name?.trim()
+  if (!trimmed) return
+  const db = tx ?? getDrizzle()
+  await db.update(s.network).set({ name: trimmed }).where(eq(s.network.networkId, networkId))
+}
+
 export const getNetworks = (tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   return db.select().from(s.network)

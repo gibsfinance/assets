@@ -85,6 +85,12 @@ export const network = pgTable(
     networkId: text('network_id').primaryKey().notNull(),
     type: text().notNull(),
     chainId: text('chain_id').notNull(),
+    // Display name from the ethereum-lists registry ("Ethereum Mainnet"), written by
+    // the chainlist collector. Nullable: most networks arrive via a token-list
+    // collector that only knows a chain id, and the registry itself ships chains with
+    // no name. Consumers fall back to the UI's own name map, so a null is a missing
+    // label rather than a broken row.
+    name: text(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),

@@ -913,6 +913,11 @@ export const openapi = {
           type: { type: 'string' },
           chainId: { type: 'string', description: 'Bare chain id as a string.' },
           chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-1).' },
+          name: {
+            type: ['string', 'null'],
+            description:
+              'Display name from the ethereum-lists registry ("Ethereum Mainnet"). Null when no collector had a name for the chain; clients should fall back to their own map.',
+          },
           imageHash: { type: ['string', 'null'] },
         },
       },

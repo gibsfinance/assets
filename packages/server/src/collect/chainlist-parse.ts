@@ -7,13 +7,30 @@
 export type ChainlistEntry = {
   chainId: number
   icon: string
+  /** Registry display name, absent when the entry ships without a usable one. */
+  name?: string
+}
+
+/**
+ * Pull a usable display name off a chains.json entry, or undefined.
+ *
+ * The registry really does ship nameless chains (704851 has a null name), and a
+ * blank string is worse than nothing downstream: a stored empty name would read as
+ * "upstream named this" and suppress the fallback that would otherwise render a
+ * recognisable "Chain <id>".
+ */
+const parseName = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 /**
  * Keep only well-formed chains that carry an icon key, deduped by chainId.
  * chains.json is a large, community-maintained list, so junk and duplicate rows
  * are tolerated: anything without a positive integer chainId or a non-empty icon
- * string is dropped rather than trusted.
+ * string is dropped rather than trusted. A missing name is not disqualifying — the
+ * icon is what this collector exists to fetch, and the name rides along with it.
  */
 export const parseChains = (raw: unknown): ChainlistEntry[] => {
   if (!Array.isArray(raw)) return []
@@ -28,7 +45,7 @@ export const parseChains = (raw: unknown): ChainlistEntry[] => {
       value.icon.length > 0 &&
       !byChainId.has(value.chainId)
     ) {
-      byChainId.set(value.chainId, { chainId: value.chainId, icon: value.icon })
+      byChainId.set(value.chainId, { chainId: value.chainId, icon: value.icon, name: parseName(value.name) })
     }
   }
   return [...byChainId.values()]

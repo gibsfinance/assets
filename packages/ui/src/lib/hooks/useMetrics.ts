@@ -113,7 +113,7 @@ export function useMetrics(): {
     chainId: Number(n.chainId),
     chainIdentifier: n.chainIdentifier,
     type: n.type,
-    name: getNetworkName(n.chainIdentifier),
+    name: getNetworkName(n.chainIdentifier, { registryName: n.name }),
     tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
     hasImage: n.imageHash != null,
     isEvm: n.type === 'evm',
