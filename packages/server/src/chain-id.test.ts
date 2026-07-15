@@ -199,11 +199,20 @@ describe('expectedNetworkType', () => {
 describe('isFakedEvmReference', () => {
   it('flags the non-EVM chains upstream lists mis-number as eip155', () => {
     // Bare and prefixed forms both resolve to the same faked reference.
-    expect(isFakedEvmReference('900')).toBe(true) // Solana (DexScreener)
-    expect(isFakedEvmReference('1000')).toBe(true) // Tron (TrustWallet)
     expect(isFakedEvmReference('501000101')).toBe(true) // Solana (bridged list)
     expect(isFakedEvmReference('728126428')).toBe(true) // Tron (native eip155 id)
     expect(isFakedEvmReference('eip155-728126428')).toBe(true)
+  })
+
+  // Regression: 900/1000 are DexScreener/TrustWallet internal handles for Solana and
+  // Tron, and both collectors resolve them to solana-501/tvm-195 before insert — the
+  // bare numbers never reach the funnel. Banning them here rejected the real EVM
+  // chains that hold those ids in the ethereum-lists registry, so the icon-bearing
+  // Garizon Testnet Stage0 (900) silently vanished from /networks.
+  it('does not flag the real EVM chains that own the provider-handle numbers', () => {
+    expect(isFakedEvmReference('900')).toBe(false) // Garizon Testnet Stage0
+    expect(isFakedEvmReference('1000')).toBe(false) // GTON Mainnet
+    expect(isFakedEvmReference('eip155-900')).toBe(false)
   })
 
   it('never flags a real EVM chain or a correctly namespaced non-EVM id', () => {

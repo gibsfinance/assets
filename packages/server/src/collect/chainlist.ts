@@ -49,8 +49,9 @@ class ChainlistCollector extends BaseCollector {
       network = await db.insertNetworkFromChainId(chain.chainId, 'evm')
     } catch {
       // insertNetworkFromChainId rejects a non-EVM chain mis-numbered as eip155
-      // (isFakedEvmReference). chains.json carries none of those ids today, but
-      // skip the chain rather than abort the whole run if one ever appears.
+      // (isFakedEvmReference). chains.json does carry one: 728126428 is listed as
+      // "Tron Mainnet" even though Tron belongs at tvm-195, so this fires on every
+      // run. Skip the chain rather than abort the whole run.
       return
     }
 

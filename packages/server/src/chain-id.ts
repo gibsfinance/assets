@@ -87,20 +87,26 @@ export const expectedNetworkType = (chainId: string): string => namespaceToNetwo
 export const TEST_NETWORK_TYPE = 'test'
 
 /**
- * Numeric chain references that are really non-Ethereum-Virtual-Machine chains
- * which some upstream token lists and explorers publish under a bare number.
- * toCAIP2 would prefix each 'eip155-<n>' — the wrong namespace — so they must be
- * collected under their real coin-type id instead:
- *   900        Solana (DexScreener reference)   -> solana-501
- *   1000       Tron (TrustWallet reference)      -> tvm-195
- *   501000101  Solana (bridged list reference)   -> solana-501
- *   728126428  Tron (native eip155-style id)     -> tvm-195
- * The dedicated collectors already file these chains under the correct id, so
- * the eip155 forms are duplicates. isFakedEvmReference lets insertNetworkFromChainId
+ * Numeric chain references that upstream token lists publish as bare numbers even
+ * though the chain is not Ethereum-Virtual-Machine based. toCAIP2 would prefix each
+ * 'eip155-<n>' — the wrong namespace — so they must be collected under their real
+ * coin-type id instead:
+ *   501000101  Solana (bridged list reference)  -> solana-501
+ *   728126428  Tron (native eip155-style id)    -> tvm-195
+ * The dedicated collectors already file these chains under the correct id, so the
+ * eip155 forms are duplicates. isFakedEvmReference lets insertNetworkFromChainId
  * refuse them, so a generic list collector that echoes the raw number cannot
  * resurrect the husks that migrations 0006–0008 removed.
+ *
+ * DexScreener's 900 (Solana) and TrustWallet's 1000 (Tron) are deliberately NOT
+ * listed. Those are provider-internal handles, not chain ids, and each collector
+ * already resolves them to a CAIP-2 identifier before insert — dexscreener passes
+ * `chain.caip2 ?? chain.id`, trustwallet maps tron to tvm-195 — so neither number
+ * ever reaches this funnel. Banning them globally only rejected the real EVM chains
+ * that own those ids in the ethereum-lists registry: 900 is Garizon Testnet Stage0
+ * and 1000 is GTON Mainnet.
  */
-export const FAKED_EVM_REFERENCES: ReadonlySet<string> = new Set(['900', '1000', '501000101', '728126428'])
+export const FAKED_EVM_REFERENCES: ReadonlySet<string> = new Set(['501000101', '728126428'])
 
 /** True when a chain id normalizes to one of the faked non-EVM eip155 references. */
 export const isFakedEvmReference = (chainId: string): boolean => {
