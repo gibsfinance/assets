@@ -3,6 +3,7 @@ import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/re
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { getApiUrl } from '../utils'
+import { isTestnetName } from '../utils/is-testnet'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
@@ -102,7 +103,7 @@ function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkIn
 
   let filtered = networks
   if (!showTestnets) {
-    filtered = networks.filter((network) => !network.name.toLowerCase().includes('testnet'))
+    filtered = networks.filter((network) => !isTestnetName(network.name))
   }
 
   return [...filtered].sort((a, b) => {

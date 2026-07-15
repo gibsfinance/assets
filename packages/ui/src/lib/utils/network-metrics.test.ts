@@ -25,11 +25,24 @@ describe('countSupportedNetworks', () => {
     const nets = [
       network({ name: 'Ethereum', tokenCount: 100, hasImage: true }),
       // logo-only -> counts
-      network({ name: 'Bitcoin', chainId: 0, chainIdentifier: 'bip122-0', type: 'bip122', isEvm: false, hasImage: true }),
+      network({
+        name: 'Bitcoin',
+        chainId: 0,
+        chainIdentifier: 'bip122-0',
+        type: 'bip122',
+        isEvm: false,
+        hasImage: true,
+      }),
       // neither tokens nor logo -> excluded
       network({ name: 'Ghost', chainId: 999999, chainIdentifier: 'eip155-999999' }),
       // testnet -> excluded despite qualifying on both counts
-      network({ name: 'Sepolia Testnet', chainId: 11155111, chainIdentifier: 'eip155-11155111', tokenCount: 5, hasImage: true }),
+      network({
+        name: 'Sepolia Testnet',
+        chainId: 11155111,
+        chainIdentifier: 'eip155-11155111',
+        tokenCount: 5,
+        hasImage: true,
+      }),
     ]
     expect(countSupportedNetworks(nets)).toBe(2)
   })
@@ -39,11 +52,11 @@ describe('countSupportedNetworks', () => {
     expect(countSupportedNetworks(nets)).toBe(0)
   })
 
-  // Documents the known undercount rather than asserting it is correct: the registry
-  // ships no testnet flag, so a testnet not named like one is counted as a mainnet.
-  // If a real signal ever replaces the substring match, this is the test to delete.
-  it('counts a testnet whose name omits the word — the known limitation', () => {
+  // Testnet families whose names never say "testnet" used to be counted as mainnets,
+  // which is most of what made this count too high. isTestnetName owns the rule now;
+  // its own tests cover the pattern, this just proves the count goes through it.
+  it('excludes a testnet whose name never says testnet', () => {
     const nets = [network({ name: 'Goerli', chainId: 5, chainIdentifier: 'eip155-5', tokenCount: 5, hasImage: true })]
-    expect(countSupportedNetworks(nets)).toBe(1)
+    expect(countSupportedNetworks(nets)).toBe(0)
   })
 })
