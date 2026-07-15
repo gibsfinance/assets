@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "dev:static": "vite build --watch",
     "check": "tsc --noEmit",
+    "gen:networks": "tsx scripts/gen-networks.ts",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test": "vitest run",

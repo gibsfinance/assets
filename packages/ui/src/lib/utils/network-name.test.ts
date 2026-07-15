@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { getNetworkName } from './network-name'
+import networksJson from '../networks.json'
+
+/**
+ * networks.json is generated from the ethereum-lists registry (yarn gen:networks),
+ * which renames chains on its own schedule. Tests that cover the generated map assert
+ * the lookup against this import rather than a copied string — pinning the literal
+ * name only records what the registry happened to say on the day it was vendored.
+ * The curated maps this repo owns (priorityNames, NON_EVM_NAMES) stay pinned.
+ */
+const generated = networksJson as Record<string, string>
 
 describe('getNetworkName', () => {
   describe('priority names', () => {
@@ -54,24 +64,33 @@ describe('getNetworkName', () => {
     })
 
     it('accepts string chainId for non-priority networks', () => {
-      // Chain 25 = Cronos Mainnet Beta in networks.json
-      expect(getNetworkName('25')).toBe('Cronos Mainnet Beta')
+      expect(getNetworkName('25')).toBe(generated['25'])
     })
   })
 
   describe('fallback to networks.json', () => {
-    it('returns name from networks.json for non-priority chain', () => {
-      // Chain 5 = Gorli in networks.json
-      expect(getNetworkName(5)).toBe('Görli')
+    it('returns the generated name for a non-priority chain', () => {
+      expect(generated['5']).toBeTruthy()
+      expect(getNetworkName(5)).toBe(generated['5'])
     })
 
-    it('returns name from networks.json for another non-priority chain', () => {
-      // Chain 8 = Ubiq in networks.json
-      expect(getNetworkName(8)).toBe('Ubiq')
+    it('returns the generated name for another non-priority chain', () => {
+      expect(generated['8']).toBeTruthy()
+      expect(getNetworkName(8)).toBe(generated['8'])
     })
 
-    it('returns name from networks.json for chain 14', () => {
-      expect(getNetworkName(14)).toBe('Flare Mainnet')
+    it('strips the eip155 prefix before the generated-map lookup', () => {
+      expect(generated['14']).toBeTruthy()
+      expect(getNetworkName('eip155-14')).toBe(generated['14'])
+      expect(getNetworkName(14)).toBe(generated['14'])
+    })
+
+    // The registry lists Garizon Testnet Stage0 at chain 900, which the server briefly
+    // refused to collect because DexScreener uses 900 as its internal Solana handle.
+    // Naming it here keeps the drawer honest once the network is served again.
+    it('names the real chains that sit behind provider handle numbers', () => {
+      expect(generated['900']).toBe('Garizon Testnet Stage0')
+      expect(getNetworkName(900)).toBe('Garizon Testnet Stage0')
     })
   })
 
@@ -90,14 +109,17 @@ describe('getNetworkName', () => {
   })
 
   describe('priority over networks.json', () => {
-    it('prefers priority name when both exist', () => {
-      // Chain 1 is in both priorityNames and networks.json
-      // Both say "Ethereum" but the priority lookup runs first
+    // The registry's formal names ("Ethereum Mainnet", "OP Mainnet") are not what the
+    // drawer should read, so priorityNames overrides them. Asserting the generated map
+    // disagrees proves the override is load-bearing: if a regen ever aligned the two,
+    // these would pass while testing nothing.
+    it('prefers the curated name over the generated one for Ethereum', () => {
+      expect(generated['1']).not.toBe('Ethereum')
       expect(getNetworkName(1)).toBe('Ethereum')
     })
 
-    it('prefers priority name for Optimism (chain 10)', () => {
-      // Chain 10 is in both — networks.json also has "Optimism"
+    it('prefers the curated name over the generated one for Optimism', () => {
+      expect(generated['10']).not.toBe('Optimism')
       expect(getNetworkName(10)).toBe('Optimism')
     })
   })
