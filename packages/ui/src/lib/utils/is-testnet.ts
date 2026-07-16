@@ -35,12 +35,24 @@
  */
 
 /**
- * `test`/`devnet` are matched unanchored at the start of a word but not the end: the
- * registry ships "Core Blockchain Testnet2", and a trailing boundary would not match a
- * name ending in a digit. Anchoring the front keeps `test` from firing inside words
- * like "latest" or "greatest".
+ * The vocabulary chains use for "not production". Each part is anchored as loosely as
+ * it safely can be, which differs per word:
+ *
+ *  - `testnet` / `devnet` need no anchor at all. No English word contains either, and
+ *    leaving both ends open is what matches the registry's "Core Blockchain Testnet2"
+ *    (a trailing boundary fails before a digit) and "LaTestnet" (a leading one fails
+ *    mid-word).
+ *  - `test` must be anchored at the front, or it fires inside "latest", "greatest",
+ *    "attestation". Open at the end so "Testnet2" still matches.
+ *  - The rest are whole words — staging, local, private and alpha deployments. Bounded
+ *    both ends because they are ordinary enough to appear inside real chain names.
+ *
+ * Deliberately absent: `subnet`, `mixnet`, `conet`, `tenet`. Those read as testnet
+ * vocabulary but name production chains — Avalanche subnets (ONIGIRI Subnet, Jono11
+ * Subnet), Qitmeer's Mixnet, CONET Mainnet, Tenet Mainnet. The testnets among them say
+ * so separately ("ONIGIRI Test Subnet", "CONET Sebolia Testnet") and are caught above.
  */
-const TESTNET_WORDS = /\btest|devnet/i
+const TESTNET_WORDS = /testnet|devnet|\btest|\b(stagenet|localnet|privnet|alphanet)\b/i
 
 /**
  * Testnet families that say it nowhere in prose. Word-bounded so they cannot fire from

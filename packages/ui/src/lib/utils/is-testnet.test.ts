@@ -30,12 +30,44 @@ describe('isTestnet', () => {
     expect(named('ONIGIRI Test Subnet')).toBe(true)
   })
 
-  // The front anchor earns its keep here: without \b, "test" fires inside ordinary words.
+  // The front anchor on `test` earns its keep here: without it, "test" fires inside
+  // ordinary words. Note "Latest Chain" must not match while "LaTestnet" must.
   it('does not fire on test as a substring of an unrelated word', () => {
     expect(named('Latest Chain')).toBe(false)
     expect(named('Greatest Network')).toBe(false)
     expect(named('Attestation Chain')).toBe(false)
     expect(named('Protest Chain')).toBe(false)
+  })
+
+  // `testnet` carries no anchors, so it still matches mid-word. The registry ships this.
+  it('matches testnet embedded in a word', () => {
+    expect(named('LaTestnet')).toBe(true)
+  })
+
+  // Staging, local, private and alpha deployments — all non-production.
+  it('matches the other non-production network words', () => {
+    expect(named('KWALA Stagenet')).toBe(true)
+    expect(named('Unit Zero Stagenet')).toBe(true)
+    expect(named('Hedera Localnet')).toBe(true)
+    expect(named('Qitmeer Network Privnet')).toBe(true)
+    expect(named('Load Alphanet')).toBe(true)
+  })
+
+  /**
+   * The traps. These read like testnet vocabulary but name production chains, so a
+   * looser rule would hide them. Their testnet siblings say so separately and are
+   * caught by the words above — that contrast is the point.
+   */
+  it('does not flag production chains whose names end in -net', () => {
+    expect(named('ONIGIRI Subnet')).toBe(false)
+    expect(named('ONIGIRI Test Subnet')).toBe(true)
+    expect(named('Jono11 Subnet')).toBe(false)
+    expect(named('HighOctane Subnet')).toBe(false)
+    expect(named('Qitmeer Network Mixnet')).toBe(false)
+    expect(named('CONET Mainnet')).toBe(false)
+    expect(named('CONET Sebolia Testnet')).toBe(true)
+    expect(named('Tenet', 'Tenet Mainnet')).toBe(false)
+    expect(named('Tenet Testnet')).toBe(true)
   })
 
   /**
