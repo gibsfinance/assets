@@ -91,6 +91,11 @@ export const network = pgTable(
     // no name. Consumers fall back to the UI's own name map, so a null is a missing
     // label rather than a broken row.
     name: text(),
+    // The registry's longer prose label ("Ethereum Testnet Sepolia"). Only ~11% of
+    // chains ship one, so this is null far more often than name — but it is the only
+    // place a testnet named after a codename ("Adiri") says so, and clients classify
+    // testnets from it. Not shown to users; name is the display field.
+    title: text(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' })
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),

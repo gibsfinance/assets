@@ -9,17 +9,23 @@ export type ChainlistEntry = {
   icon: string
   /** Registry display name, absent when the entry ships without a usable one. */
   name?: string
+  /**
+   * The registry's longer prose label ("Ethereum Testnet Sepolia"), on the ~11% of
+   * chains that ship one. Carried because it is where a testnet named after a codename
+   * ("Adiri", "Rinia") states what it actually is — see the UI's is-testnet.ts.
+   */
+  title?: string
 }
 
 /**
- * Pull a usable display name off a chains.json entry, or undefined.
+ * Pull a usable string off a chains.json entry, or undefined.
  *
  * The registry really does ship nameless chains (704851 has a null name), and a
  * blank string is worse than nothing downstream: a stored empty name would read as
  * "upstream named this" and suppress the fallback that would otherwise render a
  * recognisable "Chain <id>".
  */
-const parseName = (value: unknown): string | undefined => {
+const parseText = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
@@ -45,7 +51,12 @@ export const parseChains = (raw: unknown): ChainlistEntry[] => {
       value.icon.length > 0 &&
       !byChainId.has(value.chainId)
     ) {
-      byChainId.set(value.chainId, { chainId: value.chainId, icon: value.icon, name: parseName(value.name) })
+      byChainId.set(value.chainId, {
+        chainId: value.chainId,
+        icon: value.icon,
+        name: parseText(value.name),
+        title: parseText(value.title),
+      })
     }
   }
   return [...byChainId.values()]

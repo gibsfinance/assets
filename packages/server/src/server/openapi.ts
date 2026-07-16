@@ -918,6 +918,11 @@ export const openapi = {
             description:
               'Display name from the ethereum-lists registry ("Ethereum Mainnet"). Null when no collector had a name for the chain; clients should fall back to their own map.',
           },
+          title: {
+            type: ['string', 'null'],
+            description:
+              'The registry\'s longer prose label ("Ethereum Testnet Sepolia"), on the ~11% of chains that ship one. Not a display field — use name. Provided because the registry publishes no testnet flag, and a testnet named after a codename ("Adiri") states what it is only here.',
+          },
           imageHash: { type: ['string', 'null'] },
         },
       },

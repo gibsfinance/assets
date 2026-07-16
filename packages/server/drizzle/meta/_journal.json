@@ -71,6 +71,13 @@
       "when": 1784123696452,
       "tag": "0009_add_network_name",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784214301186,
+      "tag": "0010_add_network_title",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ const fixtureRows = [
     type: 'evm',
     chainId: 'eip155-369',
     name: 'PulseChain',
+    title: 'PulseChain Mainnet',
     imageHash: 'abc123hash',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
@@ -24,6 +25,7 @@ const fixtureRows = [
     type: 'asset',
     chainId: 'asset-0',
     name: null,
+    title: null,
     imageHash: null,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
@@ -72,7 +74,15 @@ function startApp(): Promise<{ port: number; close: () => void }> {
 describe('toPublicNetwork', () => {
   it('picks exactly the public fields — internal timestamps never leak', () => {
     const mapped = toPublicNetwork(fixtureRows[0] as unknown as Network)
-    expect(Object.keys(mapped).sort()).toEqual(['chainId', 'chainIdentifier', 'imageHash', 'name', 'networkId', 'type'])
+    expect(Object.keys(mapped).sort()).toEqual([
+      'chainId',
+      'chainIdentifier',
+      'imageHash',
+      'name',
+      'networkId',
+      'title',
+      'type',
+    ])
   })
 
   it('exposes the bare chain id as chainId and the prefixed form as chainIdentifier', () => {
@@ -81,14 +91,18 @@ describe('toPublicNetwork', () => {
     expect(mapped.chainIdentifier).toBe('eip155-369')
   })
 
-  it('passes the stored name through', () => {
-    expect(toPublicNetwork(fixtureRows[0] as unknown as Network).name).toBe('PulseChain')
+  it('passes the stored naming through', () => {
+    const mapped = toPublicNetwork(fixtureRows[0] as unknown as Network)
+    expect(mapped.name).toBe('PulseChain')
+    expect(mapped.title).toBe('PulseChain Mainnet')
   })
 
   // Null must survive as null rather than becoming undefined and dropping out of the
   // JSON entirely — the client keys its fallback off an explicit "no name from upstream".
-  it('keeps a missing name as an explicit null', () => {
-    expect(toPublicNetwork(fixtureRows[1] as unknown as Network).name).toBeNull()
+  it('keeps missing naming as explicit nulls', () => {
+    const mapped = toPublicNetwork(fixtureRows[1] as unknown as Network)
+    expect(mapped.name).toBeNull()
+    expect(mapped.title).toBeNull()
   })
 })
 
@@ -109,6 +123,7 @@ describe('GET /networks', () => {
         'imageHash',
         'name',
         'networkId',
+        'title',
         'type',
       ])
       expect(networks[0]).toEqual({
@@ -117,6 +132,7 @@ describe('GET /networks', () => {
         chainId: '369',
         chainIdentifier: 'eip155-369',
         name: 'PulseChain',
+        title: 'PulseChain Mainnet',
         imageHash: 'abc123hash',
       })
     } finally {

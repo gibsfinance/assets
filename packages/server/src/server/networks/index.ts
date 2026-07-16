@@ -26,6 +26,9 @@ export const toPublicNetwork = (n: Network) => ({
   // Registry display name, null when no collector had one to write. Clients keep
   // their own fallback map, so this supplements their naming rather than replacing it.
   name: n.name,
+  // The registry's prose label. Not for display — clients classify testnets from it,
+  // since it is where a codename-named testnet ("Adiri") states what it is.
+  title: n.title,
   imageHash: n.imageHash,
 })
 

@@ -3,14 +3,13 @@ import type { NetworkInfo } from '../types'
 import { countSupportedNetworks } from './network-metrics'
 
 /**
- * countSupportedNetworks now reads NetworkInfo.name, which useMetrics has already
- * resolved through getNetworkName. That makes the fixture's own `name` the thing under
- * test, so these no longer have to derive a chain the vendored registry snapshot
- * happens to call a testnet — a coupling that broke once already when upstream renamed
- * chain 9 from "Ubiq Network Testnet" to "Quai Network Mainnet".
+ * countSupportedNetworks reads the flags useMetrics already resolved, so a fixture's
+ * own `isTestnet` is the thing under test here. The classification rule itself lives in
+ * is-testnet.ts and is tested there.
  */
 const network = (over: Partial<NetworkInfo>): NetworkInfo => ({
   name: 'Ethereum',
+  isTestnet: false,
   tokenCount: 0,
   hasImage: false,
   chainId: 1,
@@ -38,6 +37,7 @@ describe('countSupportedNetworks', () => {
       // testnet -> excluded despite qualifying on both counts
       network({
         name: 'Sepolia Testnet',
+        isTestnet: true,
         chainId: 11155111,
         chainIdentifier: 'eip155-11155111',
         tokenCount: 5,
@@ -47,16 +47,26 @@ describe('countSupportedNetworks', () => {
     expect(countSupportedNetworks(nets)).toBe(2)
   })
 
-  it('matches the testnet name case-insensitively', () => {
-    const nets = [network({ name: 'Some TESTNET Chain', tokenCount: 5, hasImage: true })]
+  // A testnet is excluded on its resolved flag, not on how its name happens to read —
+  // codename testnets like Goerli say nothing in the string.
+  it('excludes a flagged testnet whose name never says testnet', () => {
+    const nets = [
+      network({
+        name: 'Goerli',
+        isTestnet: true,
+        chainId: 5,
+        chainIdentifier: 'eip155-5',
+        tokenCount: 5,
+        hasImage: true,
+      }),
+    ]
     expect(countSupportedNetworks(nets)).toBe(0)
   })
 
-  // Testnet families whose names never say "testnet" used to be counted as mainnets,
-  // which is most of what made this count too high. isTestnetName owns the rule now;
-  // its own tests cover the pattern, this just proves the count goes through it.
-  it('excludes a testnet whose name never says testnet', () => {
-    const nets = [network({ name: 'Goerli', chainId: 5, chainIdentifier: 'eip155-5', tokenCount: 5, hasImage: true })]
-    expect(countSupportedNetworks(nets)).toBe(0)
+  // The inverse guard: the count must not sniff the name itself, or it would drift from
+  // the drawer the moment the two disagreed.
+  it('counts an unflagged chain even if its name reads like a testnet', () => {
+    const nets = [network({ name: 'Wanchain Testnet', isTestnet: false, tokenCount: 5, hasImage: true })]
+    expect(countSupportedNetworks(nets)).toBe(1)
   })
 })

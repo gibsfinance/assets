@@ -35,65 +35,90 @@ test('networks', { skip: !(await isDbAvailable()) && 'no database connection' },
    * src/server/networks/index.test.ts against mocked rows; what needs a real database
    * is that the column itself round-trips.
    */
-  await t.test('it round-trips a stored network name through the public mapping', async () => {
+  await t.test('it round-trips stored naming through the public mapping', async () => {
     const network = await db.insertNetworkFromChainId(8891, 'test')
-    await db.setNetworkName({ networkId: network.networkId, name: 'Round Trip Chain' })
+    await db.setNetworkNaming({
+      networkId: network.networkId,
+      name: 'Round Trip Chain',
+      title: 'Round Trip Testnet Chain',
+    })
 
     const stored = (await db.getNetworks()).find((n) => n.networkId === network.networkId)
     assert.ok(stored, 'the seeded network should be stored')
     assert.strictEqual(toPublicNetwork(stored).name, 'Round Trip Chain')
+    assert.strictEqual(toPublicNetwork(stored).title, 'Round Trip Testnet Chain')
   })
 
-  // A network no collector ever named must still serve, carrying an explicit null so
-  // the client knows to fall back rather than render an empty label.
-  await t.test('it maps a network nobody named to a null name', async () => {
+  // A network no collector ever named must still serve, carrying explicit nulls so the
+  // client knows to fall back rather than render an empty label.
+  await t.test('it maps a network nobody named to null naming', async () => {
     const network = await db.insertNetworkFromChainId(8892, 'test')
 
     const stored = (await db.getNetworks()).find((n) => n.networkId === network.networkId)
     assert.ok(stored, 'the seeded network should be stored')
     assert.strictEqual(toPublicNetwork(stored).name, null)
+    assert.strictEqual(toPublicNetwork(stored).title, null)
   })
 })
 
-test('setNetworkName', { skip: !(await isDbAvailable()) && 'no database connection' }, async (t) => {
+test('setNetworkNaming', { skip: !(await isDbAvailable()) && 'no database connection' }, async (t) => {
   t.beforeEach(async () => testUtils.setup())
   t.afterEach(async () => testUtils.teardown())
 
-  const nameOf = async (networkId: string) => {
+  const namingOf = async (networkId: string) => {
     const networks = await db.getNetworks()
-    return networks.find((n) => n.networkId === networkId)?.name
+    const found = networks.find((n) => n.networkId === networkId)
+    return { name: found?.name, title: found?.title }
   }
 
-  await t.test('it stores a trimmed name', async () => {
+  await t.test('it stores trimmed values', async () => {
     const network = await db.insertNetworkFromChainId(8893, 'test')
-    await db.setNetworkName({ networkId: network.networkId, name: '  Padded Chain  ' })
-    assert.strictEqual(await nameOf(network.networkId), 'Padded Chain')
+    await db.setNetworkNaming({ networkId: network.networkId, name: '  Padded Chain  ', title: '  Padded Title  ' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Padded Chain', title: 'Padded Title' })
   })
 
-  await t.test('it overwrites an earlier name so a rename upstream lands', async () => {
+  await t.test('it overwrites earlier values so a rename upstream lands', async () => {
     const network = await db.insertNetworkFromChainId(8894, 'test')
-    await db.setNetworkName({ networkId: network.networkId, name: 'Old Name' })
-    await db.setNetworkName({ networkId: network.networkId, name: 'New Name' })
-    assert.strictEqual(await nameOf(network.networkId), 'New Name')
+    await db.setNetworkNaming({ networkId: network.networkId, name: 'Old Name', title: 'Old Title' })
+    await db.setNetworkNaming({ networkId: network.networkId, name: 'New Name', title: 'New Title' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'New Name', title: 'New Title' })
   })
 
   /**
-   * A blank name must not overwrite a good one. The registry ships nameless chains, so
+   * A blank value must not overwrite a good one. The registry ships nameless chains, so
    * without this guard a single malformed entry would blank a label that a previous
-   * run had recorded correctly — and an empty string reads as "named" downstream,
+   * run had recorded correctly — and an empty string reads as a real value downstream,
    * suppressing the fallback and rendering nothing at all.
    */
-  await t.test('it leaves an existing name alone when handed a blank or missing one', async () => {
+  await t.test('it leaves existing values alone when handed blank or missing ones', async () => {
     const network = await db.insertNetworkFromChainId(8895, 'test')
-    await db.setNetworkName({ networkId: network.networkId, name: 'Real Name' })
+    await db.setNetworkNaming({ networkId: network.networkId, name: 'Real Name', title: 'Real Title' })
 
-    await db.setNetworkName({ networkId: network.networkId, name: '   ' })
-    assert.strictEqual(await nameOf(network.networkId), 'Real Name')
+    await db.setNetworkNaming({ networkId: network.networkId, name: '   ', title: '   ' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Real Name', title: 'Real Title' })
 
-    await db.setNetworkName({ networkId: network.networkId, name: null })
-    assert.strictEqual(await nameOf(network.networkId), 'Real Name')
+    await db.setNetworkNaming({ networkId: network.networkId, name: null, title: null })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Real Name', title: 'Real Title' })
 
-    await db.setNetworkName({ networkId: network.networkId, name: undefined })
-    assert.strictEqual(await nameOf(network.networkId), 'Real Name')
+    await db.setNetworkNaming({ networkId: network.networkId })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Real Name', title: 'Real Title' })
+  })
+
+  /**
+   * Most registry chains ship a name and no title. Writing the name must not blank a
+   * title, and each field has to be skippable on its own — a single shared guard would
+   * drop the name whenever the title was absent.
+   */
+  await t.test('it writes each field independently', async () => {
+    const network = await db.insertNetworkFromChainId(8896, 'test')
+
+    await db.setNetworkNaming({ networkId: network.networkId, name: 'Name Only' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Name Only', title: null })
+
+    await db.setNetworkNaming({ networkId: network.networkId, title: 'Title Only' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Name Only', title: 'Title Only' })
+
+    await db.setNetworkNaming({ networkId: network.networkId, name: 'Renamed', title: '  ' })
+    assert.deepStrictEqual(await namingOf(network.networkId), { name: 'Renamed', title: 'Title Only' })
   })
 })

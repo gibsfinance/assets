@@ -337,27 +337,33 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
 }
 
 /**
- * Record a network's display name.
+ * Record what a registry calls a network: its display `name` and its longer prose
+ * `title`, which arrive together on one chains.json entry.
  *
  * Deliberately separate from insertNetworkFromChainId. That funnel is the one entry
  * point every collector shares, and almost none of them know a name — they resolve a
  * chain id from a token list and nothing more. Only a collector reading a registry
- * that publishes names (chainlist, from ethereum-lists) has one to write, so the name
- * is its own narrow write rather than a fourth argument thirty call sites would have
- * to pass as undefined.
+ * that publishes naming (chainlist, from ethereum-lists) has any to write, so this is
+ * its own narrow write rather than extra arguments thirty call sites would have to
+ * pass as undefined.
  *
- * A blank name is ignored rather than stored: null already means "no label from
- * upstream" and lets consumers fall back to their own map, whereas an empty string
- * would read as a name and render as a blank label.
+ * Blank values are skipped rather than stored, per field: null already means "nothing
+ * from upstream" and lets consumers fall back, whereas an empty string would read as a
+ * real value — rendering a blank label, or suppressing a testnet match. Skipping per
+ * field also means a chain that loses its title upstream keeps the name it had.
  */
-export const setNetworkName = async (
-  { networkId, name }: { networkId: string; name?: string | null },
+export const setNetworkNaming = async (
+  { networkId, name, title }: { networkId: string; name?: string | null; title?: string | null },
   tx?: DrizzleTx,
 ) => {
-  const trimmed = name?.trim()
-  if (!trimmed) return
+  const set: { name?: string; title?: string } = {}
+  const trimmedName = name?.trim()
+  const trimmedTitle = title?.trim()
+  if (trimmedName) set.name = trimmedName
+  if (trimmedTitle) set.title = trimmedTitle
+  if (!Object.keys(set).length) return
   const db = tx ?? getDrizzle()
-  await db.update(s.network).set({ name: trimmed }).where(eq(s.network.networkId, networkId))
+  await db.update(s.network).set(set).where(eq(s.network.networkId, networkId))
 }
 
 export const getNetworks = (tx?: DrizzleTx) => {

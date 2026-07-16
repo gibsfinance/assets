@@ -43,6 +43,8 @@ export interface NetworkInfo {
   chainIdentifier: string
   type: string
   name: string
+  /** Resolved once in useMetrics from the registry's name and title. */
+  isTestnet: boolean
   tokenCount: number
   hasImage: boolean
   isEvm: boolean
@@ -84,6 +86,8 @@ export type Network = {
   chainIdentifier: string
   /** Registry name from the server; null when no collector had one for this chain. */
   name: string | null
+  /** The registry's prose label; null on the ~89% of chains that ship none. */
+  title: string | null
   imageHash: string | null
 }
 

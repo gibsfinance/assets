@@ -3,7 +3,6 @@ import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/re
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { getApiUrl } from '../utils'
-import { isTestnetName } from '../utils/is-testnet'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
@@ -92,18 +91,18 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 /**
  * Order the drawer: Ethereum, then PulseChain, then everything else by name.
  *
- * Reads the `name` useMetrics already resolved rather than re-deriving one. Beyond
- * being the single source, that fixes what re-deriving got wrong: it passed the bare
- * `chainId`, so every non-Ethereum-Virtual-Machine chain looked up its coin type as
- * if it were an Ethereum chain id — Bitcoin (bip122-0) resolved to "Chain 0" and
- * sorted under C, and the testnet filter matched against that same wrong string.
+ * Reads the `name` and `isTestnet` useMetrics already resolved rather than re-deriving
+ * them. Beyond being the single source, that fixes what re-deriving got wrong: it
+ * passed the bare `chainId`, so every non-Ethereum-Virtual-Machine chain looked up its
+ * coin type as if it were an Ethereum chain id — Bitcoin (bip122-0) resolved to
+ * "Chain 0" and sorted under C, and the testnet filter matched that same wrong string.
  */
 function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkInfo[] {
   const priorityChains = ['1', '369']
 
   let filtered = networks
   if (!showTestnets) {
-    filtered = networks.filter((network) => !isTestnetName(network.name))
+    filtered = networks.filter((network) => !network.isTestnet)
   }
 
   return [...filtered].sort((a, b) => {

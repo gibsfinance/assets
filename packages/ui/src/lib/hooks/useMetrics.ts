@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ListDescription, Network, NetworkInfo, PlatformMetrics, Token } from '../types'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
+import { isTestnet } from '../utils/is-testnet'
 
 // ---------------------------------------------------------------------------
 // Fetch functions (exported for testing)
@@ -109,15 +110,23 @@ export function useMetrics(): {
   }
   const total = Object.values(byIdentifier).reduce((sum, c) => sum + c, 0)
 
-  const supported: NetworkInfo[] = networks.map((n) => ({
-    chainId: Number(n.chainId),
-    chainIdentifier: n.chainIdentifier,
-    type: n.type,
-    name: getNetworkName(n.chainIdentifier, { registryName: n.name }),
-    tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
-    hasImage: n.imageHash != null,
-    isEvm: n.type === 'evm',
-  }))
+  // Naming is resolved once, here, so a consumer can never re-derive it differently.
+  // isTestnet reads the registry's raw name rather than the curated display one: the
+  // curated maps rename chains for the drawer ("PulseChain Testnet v4" survives, but a
+  // future entry might not), whereas upstream's own naming is what states the fact.
+  const supported: NetworkInfo[] = networks.map((n) => {
+    const name = getNetworkName(n.chainIdentifier, { registryName: n.name })
+    return {
+      chainId: Number(n.chainId),
+      chainIdentifier: n.chainIdentifier,
+      type: n.type,
+      name,
+      isTestnet: isTestnet({ name: n.name ?? name, title: n.title }),
+      tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
+      hasImage: n.imageHash != null,
+      isEvm: n.type === 'evm',
+    }
+  })
 
   const metrics: PlatformMetrics = {
     tokenList: { total, byChain },

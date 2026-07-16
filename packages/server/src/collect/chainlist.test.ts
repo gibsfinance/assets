@@ -14,8 +14,8 @@ describe('parseChains', () => {
       { chainId: 100, name: 'Gnosis', icon: '' }, // empty icon -> dropped
     ]
     expect(parseChains(raw)).toEqual([
-      { chainId: 1, icon: 'ethereum', name: 'Ethereum Mainnet' },
-      { chainId: 137, icon: 'polygon', name: 'Polygon' },
+      { chainId: 1, icon: 'ethereum', name: 'Ethereum Mainnet', title: undefined },
+      { chainId: 137, icon: 'polygon', name: 'Polygon', title: undefined },
     ])
   })
 
@@ -24,7 +24,7 @@ describe('parseChains', () => {
       { chainId: 1, name: 'Ethereum', icon: 'ethereum' },
       { chainId: 1, name: 'Ethereum dup', icon: 'other' },
     ]
-    expect(parseChains(raw)).toEqual([{ chainId: 1, icon: 'ethereum', name: 'Ethereum' }])
+    expect(parseChains(raw)).toEqual([{ chainId: 1, icon: 'ethereum', name: 'Ethereum', title: undefined }])
   })
 
   it('tolerates non-array and junk input', () => {
@@ -46,22 +46,41 @@ describe('parseChains', () => {
         { chainId: 3, name: '   ', icon: 'blank' },
       ]
       expect(parseChains(raw)).toEqual([
-        { chainId: 704851, icon: 'nameless', name: undefined },
-        { chainId: 2, icon: 'absent', name: undefined },
-        { chainId: 3, icon: 'blank', name: undefined },
+        { chainId: 704851, icon: 'nameless', name: undefined, title: undefined },
+        { chainId: 2, icon: 'absent', name: undefined, title: undefined },
+        { chainId: 3, icon: 'blank', name: undefined, title: undefined },
       ])
     })
 
     it('trims a padded name', () => {
       expect(parseChains([{ chainId: 1, name: '  Ethereum Mainnet  ', icon: 'ethereum' }])).toEqual([
-        { chainId: 1, icon: 'ethereum', name: 'Ethereum Mainnet' },
+        { chainId: 1, icon: 'ethereum', name: 'Ethereum Mainnet', title: undefined },
       ])
     })
 
     it('ignores a name that is not a string', () => {
       expect(parseChains([{ chainId: 1, name: 42, icon: 'ethereum' }])).toEqual([
-        { chainId: 1, icon: 'ethereum', name: undefined },
+        { chainId: 1, icon: 'ethereum', name: undefined, title: undefined },
       ])
+    })
+  })
+
+  /**
+   * The registry ships a title on only ~11% of chains, but it is the one place a
+   * testnet named after a codename says what it is, so it has to survive parsing.
+   */
+  describe('title', () => {
+    it('keeps the registry title when present', () => {
+      expect(
+        parseChains([{ chainId: 2017, name: 'Adiri', title: 'Telcoin Network Testnet', icon: 'telcoin' }]),
+      ).toEqual([{ chainId: 2017, icon: 'telcoin', name: 'Adiri', title: 'Telcoin Network Testnet' }])
+    })
+
+    it('trims a padded title and drops a blank one', () => {
+      expect(parseChains([{ chainId: 1, name: 'A', title: '  Padded  ', icon: 'i' }])[0].title).toBe('Padded')
+      expect(parseChains([{ chainId: 1, name: 'A', title: '   ', icon: 'i' }])[0].title).toBeUndefined()
+      expect(parseChains([{ chainId: 1, name: 'A', title: null, icon: 'i' }])[0].title).toBeUndefined()
+      expect(parseChains([{ chainId: 1, name: 'A', title: 42, icon: 'i' }])[0].title).toBeUndefined()
     })
   })
 })
