@@ -1,5 +1,31 @@
 import { describe, it, expect } from 'vitest'
-import { repeatsToFill } from './FloatingIcons'
+import { conveyorIconSrc, repeatsToFill } from './FloatingIcons'
+
+describe('conveyorIconSrc', () => {
+  /**
+   * The bug this pins: the band asked for `format=webp` long after the server had
+   * renamed the parameter to `as`. Nothing failed — an unknown parameter is ignored,
+   * so every icon quietly came back as the full-size PNG and the band carried ~65%
+   * more bytes than it should. Asserting the exact parameter name is the only thing
+   * that catches a rename, since the symptom is payload size, never an error.
+   */
+  it('requests conversion with `as`, the parameter the server actually reads', () => {
+    expect(conveyorIconSrc('/image/1')).toContain('as=webp')
+  })
+
+  it('does not use `format`, the parameter the server dropped', () => {
+    expect(conveyorIconSrc('/image/1')).not.toContain('format=')
+  })
+
+  // Icons render at 72px; requesting that size is what keeps the payload small.
+  it('requests the rendered size rather than the full-resolution source', () => {
+    expect(conveyorIconSrc('/image/1')).toBe('/image/1?w=72&h=72&as=webp')
+  })
+
+  it('builds the same shape for a non-eip155 identifier', () => {
+    expect(conveyorIconSrc('/image/tvm-195')).toBe('/image/tvm-195?w=72&h=72&as=webp')
+  })
+})
 
 describe('repeatsToFill', () => {
   // One conveyor "half" must be at least the viewport width, or the seamless -50%
