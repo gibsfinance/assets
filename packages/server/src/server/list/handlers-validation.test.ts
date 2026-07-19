@@ -23,6 +23,10 @@ vi.mock('../../db', async () => {
     getListOrderId: vi.fn(),
     applyOrder: vi.fn(),
     getLists: vi.fn(),
+    // Namespace resolution for bare numeric chain ids. Defaults to "nothing stored",
+    // under which a bare number falls back to eip155 — the behaviour these tests
+    // already assert. Cases that need a non-EVM chain override it per test.
+    getChainIdsByReference: vi.fn(async () => []),
     normalizeProvidedId,
   }
 })
@@ -152,6 +156,47 @@ describe('tokensByChain handler', () => {
   it('clamps oversized limits to the documented maximum', async () => {
     await callTokensByChain('369', { limit: '999999' })
     expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:eip155-369:100000:')
+  })
+
+  // End-to-end proof of the namespace fix, at the layer that broke. /stats reports
+  // {chainId: "501", chainIdentifier: "solana-501"}, and feeding that bare 501 back
+  // in used to read the eip155-501 cache key, which nothing ever writes — 200 with
+  // zero tokens against /stats reporting 6286.
+  it('reads a bare non-evm chain id from its own namespace, not eip155', async () => {
+    vi.mocked(db.getChainIdsByReference).mockResolvedValueOnce([{ chainId: 'solana-501', hasTokens: true }] as never)
+    await callTokensByChain('501')
+    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+  })
+
+  // A phantom eip155 row must not shadow the namespace holding the tokens — the dev
+  // database has exactly this pair, and migration 0008 deletes four more like it.
+  it('ignores an empty eip155 row when another namespace holds the tokens', async () => {
+    vi.mocked(db.getChainIdsByReference).mockResolvedValueOnce([
+      { chainId: 'eip155-501', hasTokens: false },
+      { chainId: 'solana-501', hasTokens: true },
+    ] as never)
+    await callTokensByChain('501')
+    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+  })
+
+  it('rejects a bare id that several populated namespaces claim', async () => {
+    vi.mocked(db.getChainIdsByReference).mockResolvedValueOnce([
+      { chainId: 'solana-42', hasTokens: true },
+      { chainId: 'tvm-42', hasTokens: true },
+    ] as never)
+    const { next } = await callTokensByChain('42')
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('solana-42')
+    expect(error.message).toContain('tvm-42')
+  })
+
+  // An explicit namespace costs no lookup — it is already unambiguous.
+  it('does not query candidates for an explicitly namespaced id', async () => {
+    vi.mocked(db.getChainIdsByReference).mockClear()
+    await callTokensByChain('solana-501')
+    expect(db.getChainIdsByReference).not.toHaveBeenCalled()
+    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
   })
 })
 
