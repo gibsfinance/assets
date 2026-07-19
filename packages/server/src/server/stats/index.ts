@@ -1,6 +1,8 @@
+import createError from 'http-errors'
 import { cacheResult } from '@gibs/utils'
 import { Router } from 'express'
 import { nextOnError } from '../utils'
+import { refreshRequest, REFRESH_CACHE_CONTROL, type RefreshQuery } from '../cache-refresh'
 import config from '../../../config'
 import { fromCAIP2 } from '../../chain-id'
 import * as db from '../../db'
@@ -22,9 +24,22 @@ export const getStats = cacheResult<Result[]>(async () => {
 
 router.get(
   '/',
-  nextOnError(async (_req, res) => {
+  nextOnError<unknown, unknown, unknown, RefreshQuery>(async (req, res, next) => {
+    const refresh = refreshRequest({
+      refreshParam: req.query.refresh,
+      authorizationHeader: req.headers.authorization,
+      adminToken: config.adminToken,
+    })
+    // Reject rather than ignore: a refresh that silently returns the cached counts
+    // would read as confirmation that a deploy landed when it has not.
+    if (refresh.requested && !refresh.authorized) {
+      return next(createError.Unauthorized('unauthorized'))
+    }
+    // Counts move as collection runs, but the memo pins them for an hour — drop it
+    // so the rebuilt response reflects what is actually in the database right now.
+    if (refresh.authorized) getStats.reset()
     const counts = await getStats()
-    res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    res.set('cache-control', refresh.authorized ? REFRESH_CACHE_CONTROL : `public, max-age=${config.cacheSeconds}`)
     // chainId = bare number for backwards compat, chainIdentifier = CAIP-2
     res.send(
       counts.map((r) => ({
