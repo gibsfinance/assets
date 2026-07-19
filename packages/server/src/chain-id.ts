@@ -129,6 +129,25 @@ export function isValidChainId(input: string): boolean {
   return isBareNumeric(fromCAIP2(canonical))
 }
 
+/** How a chain-id filter value should be matched against the stored `chain_id` column. */
+export type ChainIdFilterMatch = { kind: 'reference'; reference: string } | { kind: 'exact'; chainId: string }
+
+/**
+ * Decide how to match a chain-id filter value.
+ *
+ * A bare number names no namespace, so it matches on the stored id's reference —
+ * `?chain_id=501` must reach `solana-501`, not only the `eip155-501` that prefixing
+ * it would have demanded. An explicit identifier is an assertion about namespace and
+ * matches exactly, so `?chain_id=eip155-501` never widens to Solana.
+ *
+ * Kept here, pure and free of SQL, so the rule can be tested without a database and
+ * the query builder stays a thin translation of it.
+ */
+export function chainIdFilterMatch(value: string): ChainIdFilterMatch {
+  if (isBareNumeric(value)) return { kind: 'reference', reference: value }
+  return { kind: 'exact', chainId: toCAIP2(value) }
+}
+
 /** Outcome of pairing a requested chain id with the identifiers actually stored. */
 export type ChainIdResolution = { status: 'resolved'; chainId: string } | { status: 'ambiguous'; candidates: string[] }
 

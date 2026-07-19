@@ -9,7 +9,7 @@
  * `tokenFilters()` parses `?chainId=` and `?decimals=` query params into predicate functions.
  */
 import createError from 'http-errors'
-import { fromCAIP2, toCAIP2 } from '../../chain-id'
+import { fromCAIP2 } from '../../chain-id'
 import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
@@ -168,12 +168,20 @@ type Filter<T> = (a: T) => boolean
 export const tokenFilters = (q: { chainId?: number | string | string[]; decimals?: number | string | string[] }) => {
   const filters: Filter<Token & Network>[] = []
   if (q.chainId) {
-    // Stored rows carry prefixed chain ids (eip155-369) — normalize both sides
-    // through toCAIP2 so a bare ?chainId=369 matches instead of silently
-    // filtering everything out.
-    const chainIdsQs = (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => toCAIP2(`${cId}`))
-    const chainIds = new Set<string>(chainIdsQs)
-    filters.push((a) => chainIds.has(toCAIP2(`${a.chainId}`)))
+    // Compare on the bare reference, not the prefixed id. Normalizing both sides
+    // through toCAIP2 matched only by symmetry: a bare ?chainId=369 became
+    // eip155-369 on both sides and worked, but an explicit ?chainId=solana-501
+    // became solana-501 while every row had already been flattened to the number
+    // 501 (normalizeTokens emits `+fromCAIP2(chainId)`, since the token-list format
+    // types chainId as a number), so it matched nothing.
+    //
+    // The flattening is why this cannot distinguish solana-501 from eip155-501 —
+    // by the time a filter runs, that distinction is gone from the data. Matching on
+    // the reference is the honest version of what this already did.
+    const references = new Set<string>(
+      (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => fromCAIP2(`${cId}`)),
+    )
+    filters.push((a) => references.has(fromCAIP2(`${a.chainId}`)))
   }
   if (q.decimals) {
     const decimalsQs = (Array.isArray(q.decimals) ? q.decimals : [q.decimals]).map((d) => `${d}`)
@@ -248,7 +256,11 @@ const parseListFilterValue = (key: string, value: string): unknown => {
     return value === 'true'
   }
   if (key === 'chain_id') {
-    return toCAIP2(value)
+    // Left bare on purpose. toCAIP2 here turned ?chain_id=501 into eip155-501 and
+    // then matched it with equality, so lists on solana-501 were unreachable by
+    // number. getFilteredLists compares a bare value against the stored id's
+    // reference instead, and an explicit id still matches exactly.
+    return value
   }
   if (INTEGER_LIST_FILTERS.has(key)) {
     if (!/^\d+$/.test(value)) {

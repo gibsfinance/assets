@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { resolveChainIdAgainstStored } from './chain-id'
+import { chainIdFilterMatch, resolveChainIdAgainstStored } from './chain-id'
+
+describe('chainIdFilterMatch', () => {
+  // ?chain_id=501 used to be prefixed to eip155-501 and matched with equality, so
+  // lists on solana-501 were unreachable by number. A bare value names no namespace,
+  // so it matches on the stored id's reference instead.
+  it('matches a bare number on the reference, reaching any namespace', () => {
+    expect(chainIdFilterMatch('501')).toEqual({ kind: 'reference', reference: '501' })
+    expect(chainIdFilterMatch('369')).toEqual({ kind: 'reference', reference: '369' })
+  })
+
+  // The counterpart: an explicit id is an assertion, so it must NOT widen to Solana.
+  it('matches an explicit identifier exactly', () => {
+    expect(chainIdFilterMatch('eip155-501')).toEqual({ kind: 'exact', chainId: 'eip155-501' })
+    expect(chainIdFilterMatch('solana-501')).toEqual({ kind: 'exact', chainId: 'solana-501' })
+  })
+
+  it('canonicalizes the bare asset chain rather than treating it as a reference', () => {
+    expect(chainIdFilterMatch('asset-0')).toEqual({ kind: 'exact', chainId: 'asset-0' })
+  })
+})
 
 /** A stored network that holds tokens. */
 const populated = (chainId: string) => ({ chainId, hasTokens: true })

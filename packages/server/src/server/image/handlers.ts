@@ -27,10 +27,13 @@ import { maybeResize, parseResizeParams } from './resize'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
-import { toCAIP2, namespaceOf } from '../../chain-id'
+import { toCAIP2, namespaceOf, isBareNumeric } from '../../chain-id'
 
 /** Chain-id namespaces whose token addresses are Ethereum-Virtual-Machine hex. */
 const EVM_NAMESPACES = new Set(['eip155', 'asset'])
+
+/** A non-Ethereum-Virtual-Machine token identifier: bounded, rejects obvious garbage. */
+const NON_EVM_TOKEN_ID_REGEX = /^[A-Za-z0-9]{2,128}$/
 
 /**
  * Validate a token address for its chain. Ethereum-Virtual-Machine chains
@@ -41,11 +44,22 @@ const EVM_NAMESPACES = new Set(['eip155', 'asset'])
  * the eip155/asset namespaces explicitly (not namespaceToNetworkType, which
  * defaults unknown namespaces to evm) so it stays correct for future non-EVM
  * namespaces.
+ *
+ * A BARE number names no namespace, so neither shape can be ruled out: `/image/501/`
+ * is Solana (solana-501) and wants base58, while `/image/1/` is Ethereum and wants
+ * hex. Assuming eip155 rejected every base58 address reachable through a bare id,
+ * and `/stats` hands out exactly those bare ids. Both shapes are therefore accepted
+ * when the namespace is unstated, which trades a 400 for a 404 on a wrong-shaped
+ * address — the lookup still refuses to serve it, and "no such token" is the more
+ * accurate answer than "malformed request". Resolving the namespace properly would
+ * mean a database round trip on every image request; this stays free.
  */
 export const isValidTokenAddress = (chainId: ChainId, address: string): boolean => {
-  const namespace = namespaceOf(toCAIP2(String(chainId)))
+  const raw = String(chainId)
+  if (isBareNumeric(raw)) return viem.isAddress(address) || NON_EVM_TOKEN_ID_REGEX.test(address)
+  const namespace = namespaceOf(toCAIP2(raw))
   if (EVM_NAMESPACES.has(namespace)) return viem.isAddress(address)
-  return /^[A-Za-z0-9]{2,128}$/.test(address)
+  return NON_EVM_TOKEN_ID_REGEX.test(address)
 }
 
 export const getListTokens = async ({

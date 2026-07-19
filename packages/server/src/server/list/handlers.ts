@@ -16,10 +16,17 @@ import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { failureLog } from '@gibs/utils'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
+import { eq, and, or, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
-import { toCAIP2, fromCAIP2, isValidChainId, isBareNumeric, resolveChainIdAgainstStored } from '../../chain-id'
+import {
+  toCAIP2,
+  fromCAIP2,
+  isValidChainId,
+  isBareNumeric,
+  resolveChainIdAgainstStored,
+  chainIdFilterMatch,
+} from '../../chain-id'
 import { log, timerLog } from '../../logger'
 
 export const merged: RequestHandler = async (req, res, next) => {
@@ -130,6 +137,22 @@ const getFilteredLists = async (filter: Record<string, unknown>) => {
   for (const [k, v] of Object.entries(filter)) {
     const col = columnMap[k]
     if (!col) continue
+    // A bare chain number names no namespace, so match it against the stored id's
+    // reference — ?chain_id=501 must reach solana-501, not just eip155-501. An
+    // explicit id keeps exact equality, since it is an assertion about namespace.
+    if (k === 'chain_id') {
+      const values = (_.isArray(v) ? v : [v]) as string[]
+      // OR across values, matching the inArray semantics this replaced — several
+      // chain ids mean "any of these", never "all of them at once".
+      const matches = values.map((value) => {
+        const match = chainIdFilterMatch(value)
+        return match.kind === 'reference'
+          ? dsql`split_part(${col}, '-', 2) = ${match.reference}`
+          : eq(col, match.chainId)
+      })
+      conditions.push(or(...matches) as ReturnType<typeof eq>)
+      continue
+    }
     if (_.isArray(v)) {
       conditions.push(inArray(col, v as string[]))
     } else {

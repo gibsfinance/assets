@@ -515,6 +515,24 @@ describe('tokenFilters', () => {
     expect(filter({ chainId: '56', decimals: 18 } as any)).toBe(false)
   })
 
+  // normalizeTokens flattens every row to a bare number (`+fromCAIP2(chainId)`)
+  // because the token-list format types chainId as a number. The old filter pushed
+  // both sides through toCAIP2, which only worked by symmetry: a bare query became
+  // eip155-N and so did every row. An explicit ?chainId=solana-501 stayed
+  // solana-501 and therefore matched nothing at all.
+  it('matches an explicitly namespaced chainId against flattened rows', () => {
+    const filters = tokenFilters({ chainId: 'solana-501' })
+    const filter = filters[0]
+    expect(filter({ chainId: 501, decimals: 9 } as any)).toBe(true)
+    expect(filter({ chainId: 1, decimals: 18 } as any)).toBe(false)
+  })
+
+  it('still matches a bare chainId, the case that already worked', () => {
+    const filter = tokenFilters({ chainId: '501' })[0]
+    expect(filter({ chainId: 501, decimals: 9 } as any)).toBe(true)
+    expect(filter({ chainId: 369, decimals: 18 } as any)).toBe(false)
+  })
+
   it('creates a decimals filter for a single string value', () => {
     const filters = tokenFilters({ decimals: '18' })
     expect(filters).toHaveLength(1)
@@ -659,15 +677,21 @@ describe('parseListFilters', () => {
     expect(parseListFilters({ default: 'false' })).toEqual({ default: false })
   })
 
-  it('normalizes bare chain ids to the prefixed form rows store', () => {
-    // Regression: ?chain_id=369 went to eq() raw and matched nothing because
-    // the network table stores eip155-369.
-    expect(parseListFilters({ chain_id: '369' })).toEqual({ chain_id: 'eip155-369' })
+  // Bare chain ids now pass through untouched. The original fix prefixed them here
+  // so ?chain_id=369 would equal the stored eip155-369 — correct for EVM chains, but
+  // it also made ?chain_id=501 mean eip155-501, putting lists on solana-501 out of
+  // reach by number. Matching moved to the query builder, which compares a bare value
+  // against the stored id's reference (see chainIdFilterMatch); the parser no longer
+  // decides namespace. ?chain_id=369 still reaches eip155-369 — via the reference.
+  it('passes chain ids through without assuming a namespace', () => {
+    expect(parseListFilters({ chain_id: '369' })).toEqual({ chain_id: '369' })
+    expect(parseListFilters({ chain_id: '501' })).toEqual({ chain_id: '501' })
     expect(parseListFilters({ chain_id: 'eip155-369' })).toEqual({ chain_id: 'eip155-369' })
+    expect(parseListFilters({ chain_id: 'solana-501' })).toEqual({ chain_id: 'solana-501' })
   })
 
-  it('normalizes each element of an array chain_id filter', () => {
-    expect(parseListFilters({ chain_id: ['369', 'eip155-1'] })).toEqual({ chain_id: ['eip155-369', 'eip155-1'] })
+  it('passes each element of an array chain_id filter through', () => {
+    expect(parseListFilters({ chain_id: ['369', 'eip155-1'] })).toEqual({ chain_id: ['369', 'eip155-1'] })
   })
 
   it('rejects empty values with 400', () => {
