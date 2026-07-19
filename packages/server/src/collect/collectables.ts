@@ -41,6 +41,7 @@ import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
+import ethereumListsCollector from './ethereum-lists'
 import cryptocurrencyIconsCollector from './cryptocurrency-icons'
 import chainlistCollector from './chainlist'
 import type { BaseCollector } from './base-collector'
@@ -90,6 +91,7 @@ type CollectableKey =
   | 'baofinance'
   | 'compound'
   | 'optimism'
+  | 'ethereum-lists'
   | 'cryptocurrency-icons'
   | 'chainlist'
 
@@ -171,6 +173,11 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     baofinance: baofinanceCollector,
     compound: compoundCollector,
     optimism: optimismCollector,
+    // Broad metadata source (name/symbol/decimals plus a logo where one exists) from
+    // the ethereum-lists/tokens repository. Kept near the bottom because it is not an
+    // authoritative logo source, so every curated provider above must outrank it when
+    // they cover the same token; only the pure network-icon fallbacks sit lower.
+    'ethereum-lists': ethereumListsCollector,
     'cryptocurrency-icons': cryptocurrencyIconsCollector,
     // Broadest, lowest-priority network-icon source: fills eip155 chains no
     // curated provider covers. Kept last so any chain-specific logo outranks it.
