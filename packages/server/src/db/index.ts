@@ -359,6 +359,29 @@ export const getNetworks = (tx?: DrizzleTx) => {
   return db.select().from(s.network)
 }
 
+/**
+ * Stored networks sharing a bare numeric reference, each flagged with whether any
+ * token sits behind it — '501' yields [{eip155-501, false}, {solana-501, true}].
+ * Lets a namespace-less request resolve to the namespace that actually holds the
+ * tokens instead of assuming eip155; see resolveChainIdAgainstStored.
+ *
+ * EXISTS rather than COUNT: the resolver only needs populated-or-not, and EXISTS
+ * stops at the first row instead of scanning a chain's entire token set.
+ */
+export const getChainIdsByReference = async (
+  reference: string,
+  tx?: DrizzleTx,
+): Promise<{ chainId: string; hasTokens: boolean }[]> => {
+  const db = tx ?? getDrizzle()
+  const rows = await db.execute<{ chainId: string; hasTokens: boolean }>(dsql`
+    SELECT ${s.network.chainId} AS "chainId",
+           EXISTS (SELECT 1 FROM ${s.token} WHERE ${eq(s.token.networkId, s.network.networkId)}) AS "hasTokens"
+    FROM ${s.network}
+    WHERE split_part(${s.network.chainId}, '-', 2) = ${reference}
+  `)
+  return rows.rows.map((row) => ({ chainId: row.chainId, hasTokens: Boolean(row.hasTokens) }))
+}
+
 export const insertToken = async (token: InsertableToken, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   // Target the (network_id, provided_id) unique constraint rather than the PK so

@@ -128,3 +128,84 @@ export function isValidChainId(input: string): boolean {
   if (namespace !== EVM_PREFIX && !NON_EVM_NAMESPACES.has(namespace)) return false
   return isBareNumeric(fromCAIP2(canonical))
 }
+
+/** How a chain-id filter value should be matched against the stored `chain_id` column. */
+export type ChainIdFilterMatch = { kind: 'reference'; reference: string } | { kind: 'exact'; chainId: string }
+
+/**
+ * Decide how to match a chain-id filter value.
+ *
+ * A bare number names no namespace, so it matches on the stored id's reference —
+ * `?chain_id=501` must reach `solana-501`, not only the `eip155-501` that prefixing
+ * it would have demanded. An explicit identifier is an assertion about namespace and
+ * matches exactly, so `?chain_id=eip155-501` never widens to Solana.
+ *
+ * Kept here, pure and free of SQL, so the rule can be tested without a database and
+ * the query builder stays a thin translation of it.
+ */
+export function chainIdFilterMatch(value: string): ChainIdFilterMatch {
+  if (isBareNumeric(value)) return { kind: 'reference', reference: value }
+  return { kind: 'exact', chainId: toCAIP2(value) }
+}
+
+/** Outcome of pairing a requested chain id with the identifiers actually stored. */
+export type ChainIdResolution = { status: 'resolved'; chainId: string } | { status: 'ambiguous'; candidates: string[] }
+
+/** A stored network sharing the requested numeric reference, and whether it holds tokens. */
+export type StoredChainCandidate = { chainId: string; hasTokens: boolean }
+
+/**
+ * Resolve a requested chain id against the identifiers a chain reference actually
+ * has rows under.
+ *
+ * A bare number carries no namespace, and `toCAIP2` assumes eip155 — correct when
+ * every stored network was an EVM chain, wrong once Solana and Tron arrived under
+ * `solana-501` and `tvm-195`. `/stats` publishes the bare number alongside the real
+ * identifier, so feeding its own output back into a lookup asked for `eip155-501`,
+ * matched nothing, and answered 200 with an empty list while `/stats` reported
+ * thousands of tokens.
+ *
+ * Resolution follows the tokens, not merely the namespace. A network row can exist
+ * with nothing behind it — the dev database carries an empty `eip155-501` beside the
+ * real `solana-501`, and migration 0008 deletes four more such phantoms — so a rule
+ * that preferred eip155 on sight would resolve to the empty row and reproduce the
+ * very bug it fixes.
+ *
+ * Rules, in order:
+ *   - An explicit namespace is an assertion; it passes through unchanged, even when
+ *     it matches nothing. Redirecting it would answer a question nobody asked.
+ *   - Among candidates holding tokens, eip155 wins, so `/list/tokens/1` keeps meaning
+ *     Ethereum forever no matter which other chains share the number.
+ *   - A lone populated non-EVM match resolves to that namespace — the fix.
+ *   - Several populated matches and no eip155 is genuinely ambiguous; say so rather
+ *     than serve one chain's tokens under another's name.
+ *   - With nothing populated, a lone candidate is still named truthfully; otherwise
+ *     fall back to eip155, preserving the empty-200 contract for a chain whose first
+ *     token has yet to be collected.
+ *
+ * @param input Requested chain id, bare (`501`) or namespaced (`solana-501`).
+ * @param storedCandidates Stored networks sharing the input's numeric reference.
+ */
+export function resolveChainIdAgainstStored(
+  input: string,
+  storedCandidates: readonly StoredChainCandidate[],
+): ChainIdResolution {
+  const canonical = toCAIP2(input)
+  if (!isBareNumeric(input)) return { status: 'resolved', chainId: canonical }
+  if (canonical === `${ASSET_PREFIX}-${ASSET_CHAIN}`) return { status: 'resolved', chainId: canonical }
+
+  const reference = fromCAIP2(canonical)
+  const matches = storedCandidates.filter((candidate) => fromCAIP2(candidate.chainId) === reference)
+  const populated = matches.filter((candidate) => candidate.hasTokens)
+
+  if (populated.length) {
+    if (populated.some((candidate) => candidate.chainId === canonical)) {
+      return { status: 'resolved', chainId: canonical }
+    }
+    if (populated.length === 1) return { status: 'resolved', chainId: populated[0].chainId }
+    return { status: 'ambiguous', candidates: populated.map((candidate) => candidate.chainId).sort() }
+  }
+
+  if (matches.length === 1) return { status: 'resolved', chainId: matches[0].chainId }
+  return { status: 'resolved', chainId: canonical }
+}

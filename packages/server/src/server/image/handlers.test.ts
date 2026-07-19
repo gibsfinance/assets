@@ -754,13 +754,27 @@ describe('image handlers', () => {
       await expect(handler(req, res, vi.fn())).rejects.toThrow(/address/)
     })
 
-    it('rejects a base58 address on an Ethereum-Virtual-Machine chain', async () => {
+    it('rejects a base58 address on an explicit Ethereum-Virtual-Machine chain', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: 'eip155-1', address: 'So11111111111111111111111111111111111111112' },
+        query: {},
+      })
+      await expect(handler(req, mockResponse(), vi.fn())).rejects.toThrow(/address/)
+    })
+
+    // Deliberate trade-off. This case used to reject, which also rejected every
+    // base58 address on a BARE id — and /image/501/<mint> is a bare id for Solana,
+    // so valid requests 400'd. A bare number names no namespace, so the shape check
+    // cannot rule either out; the lookup below still refuses to serve a token that
+    // does not exist, turning this into a 404 rather than a 400.
+    it('does not reject a base58 address on a bare chain id', async () => {
       const handler = getImage(false)
       const req = mockRequest({
         params: { chainId: '1', address: 'So11111111111111111111111111111111111111112' },
         query: {},
       })
-      await expect(handler(req, mockResponse(), vi.fn())).rejects.toThrow(/address/)
+      await expect(handler(req, mockResponse(), vi.fn())).resolves.not.toThrow()
     })
   })
 
@@ -773,7 +787,7 @@ describe('image handlers', () => {
       expect(isValidTokenAddress(1, evmAddress)).toBe(true)
       expect(isValidTokenAddress('eip155-1', evmAddress)).toBe(true)
       expect(isValidTokenAddress(0, evmAddress)).toBe(true) // asset-0 is Ethereum-Virtual-Machine hex
-      expect(isValidTokenAddress(1, solanaMint)).toBe(false) // base58 rejected on an eip155 chain
+      expect(isValidTokenAddress('eip155-1', solanaMint)).toBe(false) // base58 rejected on an explicit eip155 chain
     })
 
     it('accepts a bounded token identifier for non-Ethereum-Virtual-Machine chains', () => {
@@ -781,6 +795,26 @@ describe('image handlers', () => {
       expect(isValidTokenAddress('tvm-195', tronAddress)).toBe(true)
       expect(isValidTokenAddress('solana-501', '')).toBe(false) // empty
       expect(isValidTokenAddress('solana-501', 'a'.repeat(200))).toBe(false) // over-length garbage
+    })
+
+    // A bare number names no namespace. This previously assumed eip155 and rejected
+    // every base58 address reachable through a bare id — and /stats publishes exactly
+    // those bare ids, so /image/501/<mint> 400'd on a mint that /image/solana-501/
+    // serves happily. Both shapes are accepted when the namespace is unstated.
+    it('accepts either address shape when the namespace is unstated', () => {
+      expect(isValidTokenAddress(501, solanaMint)).toBe(true)
+      expect(isValidTokenAddress(195, tronAddress)).toBe(true)
+      expect(isValidTokenAddress(1, evmAddress)).toBe(true)
+    })
+
+    // The deliberate trade-off: a wrong-shaped address on a bare id is no longer a
+    // 400. The database lookup still refuses to serve it, so the caller gets a 404 —
+    // "no such token" rather than "malformed request". Garbage is still rejected
+    // outright, which is what the bound is actually for.
+    it('still rejects garbage on a bare id', () => {
+      expect(isValidTokenAddress(1, '')).toBe(false)
+      expect(isValidTokenAddress(1, 'a'.repeat(200))).toBe(false)
+      expect(isValidTokenAddress(1, 'not an address')).toBe(false) // spaces
     })
   })
 

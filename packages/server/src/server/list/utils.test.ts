@@ -61,6 +61,39 @@ function makeToken(overrides: Record<string, unknown>) {
 }
 
 describe('normalizeTokens', () => {
+  // chainId alone cannot say which chain 501 is, and the envelope minimalList builds
+  // for /list/merged and provider lists names no chain at all — so without this the
+  // namespace is unrecoverable from those responses.
+  it('carries the stored identifier alongside the numeric chain id', () => {
+    const [entry] = normalizeTokens([makeToken({ chainId: 'eip155-369' })] as any)
+    expect(entry.chainId).toBe(369)
+    expect(entry.chainIdentifier).toBe('eip155-369')
+  })
+
+  it('keeps a non-Ethereum-Virtual-Machine namespace intact', () => {
+    const [entry] = normalizeTokens([makeToken({ chainId: 'solana-501', providedId: 'So111' })] as any)
+    expect(entry.chainId).toBe(501)
+    expect(entry.chainIdentifier).toBe('solana-501')
+  })
+
+  it('derives the identifier for a bare stored id rather than emitting a bare value', () => {
+    const [entry] = normalizeTokens([makeToken({ chainId: '369' })] as any)
+    expect(entry.chainIdentifier).toBe('eip155-369')
+  })
+
+  // The dedup map was keyed on `${chainId}-${address}` with the flattened number, so
+  // two chains sharing a number and an address string collapsed into one entry and
+  // one was silently dropped. Keyed on the identifier, both survive.
+  it('does not collapse same-numbered chains from different namespaces', () => {
+    const result = normalizeTokens([
+      makeToken({ chainId: 'eip155-501', providedId: '0xaaa', name: 'Evm Token' }),
+      makeToken({ chainId: 'solana-501', providedId: '0xaaa', name: 'Solana Token' }),
+    ] as any)
+
+    expect(result).toHaveLength(2)
+    expect(result.map((entry) => entry.chainIdentifier).sort()).toEqual(['eip155-501', 'solana-501'])
+  })
+
   it('preserves input order — first token in input is first in output', () => {
     const tokens = [
       makeToken({ providedId: '0xfirst', name: 'Zebra', symbol: 'ZZZ', providerKey: 'pulsex', listKey: 'extended' }),
@@ -515,6 +548,28 @@ describe('tokenFilters', () => {
     expect(filter({ chainId: '56', decimals: 18 } as any)).toBe(false)
   })
 
+  // Filters run against database rows, whose chainId is the stored CAIP-2
+  // identifier — not the flattened number that reaches the response. An explicit
+  // ?chainId=solana-501 used to match nothing at all, because the old code pushed
+  // both sides through toCAIP2 and matched only by symmetry.
+  it('matches an explicitly namespaced chainId, and only that namespace', () => {
+    const filter = tokenFilters({ chainId: 'solana-501' })[0]
+    expect(filter({ chainId: 'solana-501', decimals: 9 } as any)).toBe(true)
+    // The whole point: an explicit namespace must not widen to a chain that merely
+    // shares the number.
+    expect(filter({ chainId: 'eip155-501', decimals: 18 } as any)).toBe(false)
+    expect(filter({ chainId: 'eip155-1', decimals: 18 } as any)).toBe(false)
+  })
+
+  // A bare number names no namespace, so it spans them — the caller asked for
+  // "chain 501", and both rows honestly answer to that.
+  it('matches a bare chainId across every namespace sharing the number', () => {
+    const filter = tokenFilters({ chainId: '501' })[0]
+    expect(filter({ chainId: 'solana-501', decimals: 9 } as any)).toBe(true)
+    expect(filter({ chainId: 'eip155-501', decimals: 18 } as any)).toBe(true)
+    expect(filter({ chainId: 'eip155-369', decimals: 18 } as any)).toBe(false)
+  })
+
   it('creates a decimals filter for a single string value', () => {
     const filters = tokenFilters({ decimals: '18' })
     expect(filters).toHaveLength(1)
@@ -659,15 +714,21 @@ describe('parseListFilters', () => {
     expect(parseListFilters({ default: 'false' })).toEqual({ default: false })
   })
 
-  it('normalizes bare chain ids to the prefixed form rows store', () => {
-    // Regression: ?chain_id=369 went to eq() raw and matched nothing because
-    // the network table stores eip155-369.
-    expect(parseListFilters({ chain_id: '369' })).toEqual({ chain_id: 'eip155-369' })
+  // Bare chain ids now pass through untouched. The original fix prefixed them here
+  // so ?chain_id=369 would equal the stored eip155-369 — correct for EVM chains, but
+  // it also made ?chain_id=501 mean eip155-501, putting lists on solana-501 out of
+  // reach by number. Matching moved to the query builder, which compares a bare value
+  // against the stored id's reference (see chainIdFilterMatch); the parser no longer
+  // decides namespace. ?chain_id=369 still reaches eip155-369 — via the reference.
+  it('passes chain ids through without assuming a namespace', () => {
+    expect(parseListFilters({ chain_id: '369' })).toEqual({ chain_id: '369' })
+    expect(parseListFilters({ chain_id: '501' })).toEqual({ chain_id: '501' })
     expect(parseListFilters({ chain_id: 'eip155-369' })).toEqual({ chain_id: 'eip155-369' })
+    expect(parseListFilters({ chain_id: 'solana-501' })).toEqual({ chain_id: 'solana-501' })
   })
 
-  it('normalizes each element of an array chain_id filter', () => {
-    expect(parseListFilters({ chain_id: ['369', 'eip155-1'] })).toEqual({ chain_id: ['eip155-369', 'eip155-1'] })
+  it('passes each element of an array chain_id filter through', () => {
+    expect(parseListFilters({ chain_id: ['369', 'eip155-1'] })).toEqual({ chain_id: ['369', 'eip155-1'] })
   })
 
   it('rejects empty values with 400', () => {
