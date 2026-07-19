@@ -9,13 +9,13 @@
  * `tokenFilters()` parses `?chainId=` and `?decimals=` query params into predicate functions.
  */
 import createError from 'http-errors'
-import { fromCAIP2 } from '../../chain-id'
+import { fromCAIP2, toCAIP2, chainIdFilterMatch } from '../../chain-id'
 import * as db from '../../db'
 import * as utils from '../../utils'
 import { Response } from 'express'
 import * as viem from 'viem'
 import type { Network, Token } from '../../db/schema-types'
-import { Extensions, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
+import { Extensions, ServedTokenEntry, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
 import _ from 'lodash'
 import config from '../../../config'
 import { eq, asc } from 'drizzle-orm'
@@ -66,7 +66,7 @@ export const normalizeTokens = (
   tokens: TokenInfo[],
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string> = new Set(),
-): TokenEntryMetadataOptional[] => {
+): ServedTokenEntry[] => {
   const over = _.overEvery(filters)
   const bridgeInfoExtension = extensions.has('bridgeInfo')
   const headerUriExtension = extensions.has('headerUri')
@@ -87,13 +87,18 @@ export const normalizeTokens = (
         // image" here and "image-first, then ranking" there pick the same winner. If
         // the SQL preference changes, revisit this pick.
         const tkn = tkns.find((t) => utils.directUri(t)) ?? tkns[0]
-        const baseline: TokenEntryMetadataOptional = {
+        const baseline: ServedTokenEntry = {
           chainId: +fromCAIP2(tkn.chainId),
+          // The stored identifier, kept alongside the number. chainId alone cannot
+          // say whether 501 means Solana or an eip155 chain, and the envelopes built
+          // by minimalList carry no chain at all, so without this the namespace is
+          // gone by the time a response leaves the server.
+          chainIdentifier: toCAIP2(tkn.chainId),
           address: db.normalizeProvidedId(tkn.providedId) as viem.Hex,
           logoURI: utils.directUri(tkn),
         }
         if (!extensions.has('sansMetadata')) {
-          const b = baseline as TokenEntry
+          const b = baseline as TokenEntry & { chainIdentifier: string }
           b.name = tkn.name
           b.symbol = tkn.symbol
           b.decimals = tkn.decimals
@@ -161,27 +166,33 @@ export const normalizeTokens = (
   ]
 }
 
-const uniqueTokenKey = (info: { chainId: number; address: viem.Hex }) => `${info.chainId}-${info.address}`
+/**
+ * Dedup key for the assembled entry map. Keyed on the full identifier, not the
+ * number: `${chainId}-${address}` let a solana-501 token and an eip155-501 token
+ * sharing an address string overwrite one another, silently dropping one. The
+ * groupBy feeding this already keys on the stored identifier — this is the same
+ * distinction, held one step further.
+ */
+const uniqueTokenKey = (info: { chainIdentifier: string; address: viem.Hex }) =>
+  `${info.chainIdentifier}-${info.address}`
 
 type Filter<T> = (a: T) => boolean
 
 export const tokenFilters = (q: { chainId?: number | string | string[]; decimals?: number | string | string[] }) => {
   const filters: Filter<Token & Network>[] = []
   if (q.chainId) {
-    // Compare on the bare reference, not the prefixed id. Normalizing both sides
-    // through toCAIP2 matched only by symmetry: a bare ?chainId=369 became
-    // eip155-369 on both sides and worked, but an explicit ?chainId=solana-501
-    // became solana-501 while every row had already been flattened to the number
-    // 501 (normalizeTokens emits `+fromCAIP2(chainId)`, since the token-list format
-    // types chainId as a number), so it matched nothing.
-    //
-    // The flattening is why this cannot distinguish solana-501 from eip155-501 —
-    // by the time a filter runs, that distinction is gone from the data. Matching on
-    // the reference is the honest version of what this already did.
-    const references = new Set<string>(
-      (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => fromCAIP2(`${cId}`)),
-    )
-    filters.push((a) => references.has(fromCAIP2(`${a.chainId}`)))
+    // Filters run against database rows, whose chainId is the stored identifier
+    // (solana-501), so a bare query matches on the reference and an explicit one
+    // matches the namespace exactly. An explicit ?chainId=solana-501 no longer
+    // has to widen to every chain numbered 501 — the distinction survives now
+    // that entries carry chainIdentifier.
+    const matches = (Array.isArray(q.chainId) ? q.chainId : [q.chainId]).map((cId) => chainIdFilterMatch(`${cId}`))
+    const references = new Set(matches.filter((m) => m.kind === 'reference').map((m) => m.reference))
+    const identifiers = new Set(matches.filter((m) => m.kind === 'exact').map((m) => m.chainId))
+    filters.push((a) => {
+      const stored = toCAIP2(`${a.chainId}`)
+      return identifiers.has(stored) || references.has(fromCAIP2(stored))
+    })
   }
   if (q.decimals) {
     const decimalsQs = (Array.isArray(q.decimals) ? q.decimals : [q.decimals]).map((d) => `${d}`)

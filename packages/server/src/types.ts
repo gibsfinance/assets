@@ -18,6 +18,11 @@ export type Extensions = {
 }
 
 export type SansMetadataTokenEntry = {
+  /**
+   * Numeric chain reference, as the token-list format requires. Ambiguous on its
+   * own — Solana is 501 and so is any eip155 chain numbered 501 — so read a served
+   * entry's `chainIdentifier` when the namespace matters.
+   */
   chainId: number
   address: Hex
   logoURI?: string
@@ -32,6 +37,23 @@ export type TokenEntry = SansMetadataTokenEntry & {
 }
 
 export type TokenEntryMetadataOptional = SansMetadataTokenEntry | TokenEntry
+
+/**
+ * A token entry as this API *serves* it: the token-list shape plus the full CAIP-2
+ * identifier the token is stored under (`eip155-369`, `solana-501`).
+ *
+ * Distinct from TokenEntry because the two directions differ. Ingested entries —
+ * upstream token-list JSON, on-chain reads in the pulsex collector — follow the
+ * standard schema, which has only a numeric `chainId`; the identifier is ours to
+ * add on the way out, never theirs to supply. Requiring it on TokenEntry would
+ * demand that every upstream list invent a field the format does not define.
+ *
+ * Carried per token because the envelope minimalList builds for `/list/merged` and
+ * provider lists names no chain at all, so without this the namespace is
+ * unrecoverable from those responses. Mirrors the `chainId`/`chainIdentifier` pair
+ * `/stats` and `/list/tokens` already publish at the envelope level.
+ */
+export type ServedTokenEntry = TokenEntryMetadataOptional & { chainIdentifier: string }
 
 export type InternetMoneyNetwork = {
   txnType: number

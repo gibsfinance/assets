@@ -855,7 +855,19 @@ export const openapi = {
       Token: {
         type: 'object',
         properties: {
-          chainId: { type: 'integer', description: 'Bare numeric chain id (token-list standard).' },
+          chainId: {
+            type: 'integer',
+            description:
+              'Bare numeric chain id (token-list standard). Ambiguous across namespaces — 501 is ' +
+              'both Solana and any eip155 chain numbered 501 — so read chainIdentifier when the ' +
+              'namespace matters.',
+          },
+          chainIdentifier: {
+            type: 'string',
+            description:
+              'Full CAIP-2 identifier the token is stored under (eip155-369, solana-501). Always ' +
+              'present on served tokens; it is what disambiguates chainId.',
+          },
           address: { type: 'string' },
           name: { type: 'string' },
           symbol: { type: 'string' },
