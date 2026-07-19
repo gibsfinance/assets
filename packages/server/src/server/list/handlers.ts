@@ -28,6 +28,7 @@ import {
   chainIdFilterMatch,
 } from '../../chain-id'
 import { log, timerLog } from '../../logger'
+import { refreshRequest, REFRESH_CACHE_CONTROL } from '../cache-refresh'
 
 export const merged: RequestHandler = async (req, res, next) => {
   const rawChainId = req.query.chainId as string | undefined
@@ -318,6 +319,17 @@ export const warmTokensByChainCache = async (stats: { chainId: string; count: nu
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const rawChainId = req.params.chainId
   if (!rawChainId) return next(createError.BadRequest('chainId required'))
+  const refresh = refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+  // This is the expensive endpoint — an unauthenticated refresh would let anyone
+  // force the full per-chain ranked query on demand, which is a denial of service
+  // lever. Reject it outright instead of downgrading to a cached read.
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
+  }
   // Stored networks only carry eip155-<number> or asset-0 — anything else can
   // never match a row, so reject it instead of answering 200 with zero tokens.
   if (!isValidChainId(rawChainId)) {
@@ -355,8 +367,11 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // as new tokens are collected and the CDN would serve stale counts for a day.
   const tokenListCacheControl = `public, max-age=${Math.floor(FRESH_TTL_MS / 1000)}, stale-while-revalidate=${Math.floor(STALE_TTL_MS / 1000)}`
 
-  // Check cache — expiresAt is the hard 1hr expiry
-  const cached = await db.getCachedRequest(cacheKey)
+  // Check cache — expiresAt is the hard 1hr expiry.
+  // An authorized refresh skips the read entirely and falls through to the build
+  // path below, which also rewrites the cache row — the point of a refresh is that
+  // the next ordinary visitor gets the rebuilt body too, not just this caller.
+  const cached = refresh.authorized ? null : await db.getCachedRequest(cacheKey)
   if (cached) {
     res.set('cache-control', tokenListCacheControl)
     res.set('content-type', 'application/json')
@@ -375,7 +390,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // No cache — build fresh (first request or after hard expiry)
   const body = await buildAndCacheTokensByChain(chainId, limit)
 
-  res.set('cache-control', tokenListCacheControl)
+  res.set('cache-control', refresh.authorized ? REFRESH_CACHE_CONTROL : tokenListCacheControl)
   res.set('content-type', 'application/json')
   res.send(body)
 }

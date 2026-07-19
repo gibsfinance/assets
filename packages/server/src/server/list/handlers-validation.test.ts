@@ -30,6 +30,12 @@ vi.mock('../../db', async () => {
     normalizeProvidedId,
   }
 })
+// A known admin token so the refresh-parameter gate has something to accept and
+// something to reject; everything else in config keeps its real value.
+vi.mock('../../../config', async () => {
+  const actual = await vi.importActual<{ default: Record<string, unknown> }>('../../../config')
+  return { default: { ...actual.default, adminToken: 'test-admin-token' } }
+})
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/sync-order', () => ({ getDefaultListOrderId: vi.fn(() => '0xdefaultorder') }))
 vi.mock('../../collect/user-submissions', () => ({ bumpSubscriberCount: vi.fn() }))
@@ -116,10 +122,16 @@ describe('tokensByChain handler', () => {
       .mockResolvedValue({ value: '{"tokens":[]}', expiresAt: new Date(Date.now() + STALE_TTL_MS) } as never)
   })
 
-  const callTokensByChain = async (chainId: string, query: Record<string, unknown> = {}) => {
+  const callTokensByChain = async (
+    chainId: string,
+    query: Record<string, unknown> = {},
+    headers: Record<string, string> = {},
+  ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await tokensByChain({ params: { chainId }, query } as never, res as never, next as never)
+    // Headers are always present on a real express request; the handler reads
+    // Authorization for the admin-gated refresh parameter.
+    await tokensByChain({ params: { chainId }, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -197,6 +209,62 @@ describe('tokensByChain handler', () => {
     await callTokensByChain('solana-501')
     expect(db.getChainIdsByReference).not.toHaveBeenCalled()
     expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+  })
+
+  describe('admin refresh parameter', () => {
+    beforeEach(() => {
+      // The refresh path builds instead of reading the cache, so the build's
+      // queries need to answer with something rather than undefined.
+      vi.mocked(db.getTokensByChainRanked)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.getTokenSourcesByChain)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.insertCacheRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+    })
+
+    it('rejects refresh without a valid admin token instead of serving the cached body', async () => {
+      // Silently downgrading to the cached read would tell an operator their deploy
+      // is live when they are looking at a body built hours before it.
+      const { res, next } = await callTokensByChain('eip155-369', { refresh: '1' })
+      const error = next.mock.calls[0][0] as { status: number; message: string }
+      expect(error.status).toBe(401)
+      expect(error.message).toBe('unauthorized')
+      expect(db.getCachedRequest).not.toHaveBeenCalled()
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('bypasses the cache read and rebuilds when an admin asks for a refresh', async () => {
+      await callTokensByChain('eip155-369', { refresh: '1' }, { authorization: 'Bearer test-admin-token' })
+      // The whole point: the persisted row is skipped and the response is rebuilt.
+      expect(db.getCachedRequest).not.toHaveBeenCalled()
+      expect(db.getTokensByChainRanked).toHaveBeenCalled()
+      // ...and the rebuilt body is written back, so the next ordinary visitor is
+      // served the fresh value too rather than the row the refresh just bypassed.
+      expect(db.insertCacheRequest).toHaveBeenCalled()
+    })
+
+    it('marks a refresh response no-store so no content delivery network keeps it', async () => {
+      // A cacheable refresh response would be stored at the edge and handed to
+      // everyone else, which reintroduces exactly the staleness it was clearing.
+      const { res } = await callTokensByChain(
+        'eip155-369',
+        { refresh: '1' },
+        { authorization: 'Bearer test-admin-token' },
+      )
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+    })
+
+    it('leaves an ordinary request on the cached path with its public cache-control', async () => {
+      // Regression guard: the refresh wiring must be inert for traffic that did not
+      // ask for it — every unauthenticated request still reads the cache row.
+      const { res } = await callTokensByChain('eip155-369')
+      expect(db.getCachedRequest).toHaveBeenCalled()
+      expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('public, max-age='))
+    })
   })
 })
 

@@ -60,7 +60,12 @@ export const retry = async <T>(fn: () => Promise<T>, options: Partial<typeof def
 }
 
 /**
- * Result caching utility with TTL
+ * Result caching utility with a time-to-live window.
+ *
+ * The returned function also carries `reset()`, which drops the memoized value so
+ * the next call re-runs the worker. Without it the only way to pick up a change
+ * inside the window is to restart the process, which is a poor way to confirm a
+ * deploy actually took effect.
  */
 export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
   let cached: null | {
@@ -68,7 +73,7 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
     result: Promise<T>
   } = null
 
-  return _.wrap(worker, (fn) => {
+  const read = _.wrap(worker, (fn) => {
     if (cached) {
       const { timestamp, result } = cached
       if (timestamp > Date.now() - duration) {
@@ -80,6 +85,15 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
       result: fn(),
     }
     return cached.result
+  })
+
+  // Object.assign keeps the wrapped call signature (and its inference) intact for
+  // every existing call site, which only ever invokes the function itself.
+  return Object.assign(read, {
+    /** Discard the memoized value so the next call rebuilds it from the worker. */
+    reset: () => {
+      cached = null
+    },
   })
 }
 

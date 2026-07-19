@@ -124,6 +124,25 @@ const DECIMALS_QUERY_PARAM = {
   schema: { type: 'string' as const },
 }
 
+/**
+ * The administrative cache-bypass parameter, shared by every endpoint that sits
+ * behind a cache the operator may need to rebuild on demand.
+ */
+const REFRESH_QUERY_PARAM = {
+  name: 'refresh',
+  in: 'query' as const,
+  description:
+    'Admin only — rebuild this response instead of serving it from cache. Accepts 1 or true, and requires ' +
+    'the admin bearer token; without a valid token the request is rejected with 401 rather than served from cache. ' +
+    'Refresh responses are returned with cache-control: no-store so no content delivery network retains them.',
+  schema: { type: 'string' as const, examples: ['1', 'true'] },
+}
+
+const REFRESH_UNAUTHORIZED_RESPONSE = {
+  description: 'refresh was requested without a valid admin bearer token (401 also when ADMIN_TOKEN is unset).',
+  content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+}
+
 const IMAGE_RESPONSE = {
   '200': {
     description:
@@ -209,6 +228,8 @@ export const openapi = {
         tags: ['Networks & Stats'],
         summary: 'All supported networks with chain ids and icon hashes',
         'x-example': '/networks',
+        parameters: [REFRESH_QUERY_PARAM],
+        security: [{}, { adminBearer: [] }],
         responses: {
           '200': {
             description: 'Network array.',
@@ -216,6 +237,7 @@ export const openapi = {
               'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Network' } } },
             },
           },
+          '401': REFRESH_UNAUTHORIZED_RESPONSE,
         },
       },
     },
@@ -224,6 +246,8 @@ export const openapi = {
         tags: ['Networks & Stats'],
         summary: 'Per-chain counts of token addresses that have a usable image',
         'x-example': '/stats',
+        parameters: [REFRESH_QUERY_PARAM],
+        security: [{}, { adminBearer: [] }],
         responses: {
           '200': {
             description: 'Count per chain.',
@@ -231,6 +255,7 @@ export const openapi = {
               'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/ChainStat' } } },
             },
           },
+          '401': REFRESH_UNAUTHORIZED_RESPONSE,
         },
       },
     },
@@ -293,7 +318,9 @@ export const openapi = {
               'Maximum tokens returned, clamped to [1, 100000]. Non-numeric, zero, and negative values fall back to the default.',
             schema: { type: 'integer', minimum: 1, maximum: 100000, default: 50000 },
           },
+          REFRESH_QUERY_PARAM,
         ],
+        security: [{}, { adminBearer: [] }],
         responses: {
           '200': {
             description: 'Ranked tokens with totals.',
@@ -304,6 +331,7 @@ export const openapi = {
               'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
+          '401': REFRESH_UNAUTHORIZED_RESPONSE,
         },
       },
     },

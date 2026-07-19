@@ -159,6 +159,39 @@ describe('cacheResult', () => {
     expect(second).toBe(2)
     expect(calls).toBe(2)
   })
+
+  it('reset forces the next call to re-run the worker inside the live window', async () => {
+    let calls = 0
+    const worker = async () => ++calls
+    // A one-hour window, so nothing expires on its own during this test — the only
+    // thing that can produce a second call is reset(). This is the property an
+    // administrative refresh depends on: proving a deploy took effect without
+    // waiting out the time-to-live or restarting the process.
+    const cached = cacheResult(worker, 1000 * 60 * 60)
+
+    expect(await cached()).toBe(1)
+    expect(await cached()).toBe(1)
+
+    cached.reset()
+
+    expect(await cached()).toBe(2)
+    expect(calls).toBe(2)
+  })
+
+  it('reset before the first call is a no-op and does not double-run the worker', async () => {
+    let calls = 0
+    const worker = async () => ++calls
+    const cached = cacheResult(worker, 1000 * 60 * 60)
+
+    // Refresh requests can arrive before anything has been cached (a cold process).
+    // Clearing an empty cache must not throw, and must not itself trigger the
+    // worker — otherwise a refresh would cost two builds instead of one.
+    expect(() => cached.reset()).not.toThrow()
+    expect(calls).toBe(0)
+
+    expect(await cached()).toBe(1)
+    expect(calls).toBe(1)
+  })
 })
 
 describe('limitByTime', () => {

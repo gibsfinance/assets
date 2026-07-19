@@ -1,7 +1,9 @@
+import createError from 'http-errors'
 import { Router } from 'express'
 import { cacheResult } from '@gibs/utils'
 import type { Network } from '../../db/schema-types'
 import { nextOnError } from '../utils'
+import { refreshRequest, REFRESH_CACHE_CONTROL, type RefreshQuery } from '../cache-refresh'
 import config from '../../../config'
 import { fromCAIP2 } from '../../chain-id'
 import { getDrizzle } from '../../db/drizzle'
@@ -34,9 +36,23 @@ export const toPublicNetwork = (n: Network) => ({
 
 router.get(
   '/',
-  nextOnError(async (_req, res) => {
+  nextOnError<unknown, unknown, unknown, RefreshQuery>(async (req, res, next) => {
+    const refresh = refreshRequest({
+      refreshParam: req.query.refresh,
+      authorizationHeader: req.headers.authorization,
+      adminToken: config.adminToken,
+    })
+    // Fail loudly rather than quietly serving the cached body — an operator who
+    // thinks they verified a deploy against fresh data, but did not, is worse off
+    // than one who is told their token was rejected.
+    if (refresh.requested && !refresh.authorized) {
+      return next(createError.Unauthorized('unauthorized'))
+    }
+    // The memo is process-local and holds for an hour by default, so a deploy that
+    // changes network rows is invisible until it lapses. Drop it before reading.
+    if (refresh.authorized) getNetworks.reset()
     const networks = await getNetworks()
-    res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+    res.set('cache-control', refresh.authorized ? REFRESH_CACHE_CONTROL : `public, max-age=${config.cacheSeconds}`)
     // The asset-0 sentinel row is internal bookkeeping — /stats already
     // excludes it, so exclude it here too for consistency.
     res.json(networks.filter((n) => n.chainId !== 'asset-0').map(toPublicNetwork))
