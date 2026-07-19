@@ -26,6 +26,24 @@ export function repeatsToFill(containerWidth: number, iconSize: number, iconCoun
   return Math.max(1, Math.ceil(containerWidth / halfWidth))
 }
 
+/** Rendered size of a conveyor icon, in device-independent pixels. */
+const ICON_REQUEST_SIZE = 72
+
+/**
+ * Source URL for one conveyor icon, resized and converted server-side.
+ *
+ * The conversion parameter is `as`, not `format`. The server renamed it in
+ * "refactor(server): rename query params" and this caller was missed, so the band
+ * spent months requesting an unknown parameter — silently ignored, which served the
+ * original PNG and quietly undid the WebP work this function exists for. Measured
+ * against staging, the correct parameter takes the band from 2566 KiB to 991 KiB.
+ * An unrecognized parameter degrades to a heavier image rather than an error, so
+ * only the byte count ever shows the difference — hence the test on this function.
+ */
+export function conveyorIconSrc(path: string): string {
+  return `${path}?w=${ICON_REQUEST_SIZE}&h=${ICON_REQUEST_SIZE}&as=webp`
+}
+
 let keyframesInjected = false
 function ensureKeyframes() {
   if (keyframesInjected) return
@@ -44,8 +62,14 @@ function shuffle<T>(arr: T[]): T[] {
   return copy
 }
 
-// 443 curated icons (>=64x64 or SVG) from Ethereum, PulseChain, TrustWallet + network icons
+// 438 curated icons (>=64x64 or SVG) from Ethereum, PulseChain, TrustWallet + network icons
 const ICON_PATHS: string[] = [
+  // Deliberately absent: chains 182 (opBNB), 204 (IOST), 42766 (ZKFair) and 65357
+  // (Vecno). Their stored icons are not images — the first three are IPFS gateway
+  // directory listings captured as HTML, the fourth is an SVG with an unterminated
+  // attribute — so they cannot render at any size or format. They only looked alive
+  // while this band sent an ignored conversion parameter and got the raw bytes back
+  // with a 200. Restore them once the stored icons are real images.
   '/image/1',
   '/image/1/0x0000000000085d4780b73119b644ae5ecd22b376',
   '/image/1/0x00000000001876eb1444c986fd502e618c587430',
@@ -159,7 +183,6 @@ const ICON_PATHS: string[] = [
   '/image/1/0x04203b7668eb832a5cbfe248b57defeb709e48e3',
   '/image/10',
   '/image/100',
-  '/image/1000',
   '/image/10000',
   '/image/10001',
   '/image/10143',
@@ -196,12 +219,10 @@ const ICON_PATHS: string[] = [
   '/image/169',
   '/image/1750',
   '/image/17777',
-  '/image/182',
   '/image/1868',
   '/image/20',
   '/image/2000',
   '/image/2020',
-  '/image/204',
   '/image/210425',
   '/image/2203',
   '/image/2222',
@@ -438,7 +459,6 @@ const ICON_PATHS: string[] = [
   '/image/42170',
   '/image/42220',
   '/image/42262',
-  '/image/42766',
   '/image/43111',
   '/image/43113',
   '/image/43114',
@@ -463,10 +483,12 @@ const ICON_PATHS: string[] = [
   '/image/60808',
   '/image/61',
   '/image/64',
-  '/image/65357',
   '/image/66',
   '/image/70',
-  '/image/728126428',
+  // Tron mainnet is stored under its native identifier, not its EVM-compatibility
+  // chain id (728126428), which resolves to nothing. Its testnets are the other way
+  // round — Nile and Shasta really are served as eip155 chains.
+  '/image/tvm-195',
   '/image/747',
   '/image/747474',
   '/image/77',
@@ -545,7 +567,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
       const sample = shuffle(ICON_PATHS).slice(0, ICONS_PER_ROW).map((p) => {
         const path = prefixImagePath(p)
         return {
-          src: getApiUrl(`${path}?w=72&h=72&format=webp`),
+          src: getApiUrl(conveyorIconSrc(path)),
           href: getApiUrl(path),
         }
       })

@@ -1,0 +1,22 @@
+-- Carry the registry's `title` alongside `name` (added in 0009), for the same reason:
+-- the chainlist collector already fetches it from chains.json and was discarding it.
+--
+-- title is not a display field — name is. It is stored because it is the only place a
+-- testnet named after a codename admits what it is:
+--
+--   { "name": "Adiri",            "title": "Telcoin Network Testnet" }
+--   { "name": "Rinia",            "title": "Firechain Testnet Rinia" }
+--   { "name": "Ethereum Sepolia", "title": "Ethereum Testnet Sepolia" }
+--
+-- The registry publishes no testnet boolean, and its structured fields are worse than
+-- the prose: slip44 == 1 is SLIP-0044's reserved testnet coin type but sits on real
+-- mainnets (World Chain, CrossFi, Treasure), and mainnets publish faucets (Gnosis,
+-- Injective). Clients classify from name + title; see packages/ui/src/lib/utils/
+-- is-testnet.ts for the measurements behind that choice.
+--
+-- Nullable, and null far more often than name: only ~11% of registry chains ship a
+-- title at all. A null means "no prose from upstream", not a broken row.
+--
+-- IF NOT EXISTS mirrors 0009: this runs on boot against databases that may already
+-- have been pushed via drizzle-kit, so it must be re-runnable.
+ALTER TABLE "network" ADD COLUMN IF NOT EXISTS "title" text;

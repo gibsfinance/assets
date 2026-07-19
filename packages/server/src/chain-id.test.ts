@@ -7,6 +7,7 @@ import {
   isValidChainId,
   namespaceToNetworkType,
   expectedNetworkType,
+  isFakedEvmReference,
   NON_EVM_NAMESPACES,
 } from './chain-id'
 
@@ -192,5 +193,34 @@ describe('expectedNetworkType', () => {
     expect(expectedNetworkType('1651794797')).not.toBe('btc')
     // A bare '1' with an intended 'tvm' is likewise a mismatch (eip155-1 is Ethereum).
     expect(expectedNetworkType('1')).not.toBe('tvm')
+  })
+})
+
+describe('isFakedEvmReference', () => {
+  it('flags the non-EVM chains upstream lists mis-number as eip155', () => {
+    // Bare and prefixed forms both resolve to the same faked reference.
+    expect(isFakedEvmReference('501000101')).toBe(true) // Solana (bridged list)
+    expect(isFakedEvmReference('728126428')).toBe(true) // Tron (native eip155 id)
+    expect(isFakedEvmReference('eip155-728126428')).toBe(true)
+  })
+
+  // Regression: 900/1000 are DexScreener/TrustWallet internal handles for Solana and
+  // Tron, and both collectors resolve them to solana-501/tvm-195 before insert — the
+  // bare numbers never reach the funnel. Banning them here rejected the real EVM
+  // chains that hold those ids in the ethereum-lists registry, so the icon-bearing
+  // Garizon Testnet Stage0 (900) silently vanished from /networks.
+  it('does not flag the real EVM chains that own the provider-handle numbers', () => {
+    expect(isFakedEvmReference('900')).toBe(false) // Garizon Testnet Stage0
+    expect(isFakedEvmReference('1000')).toBe(false) // GTON Mainnet
+    expect(isFakedEvmReference('eip155-900')).toBe(false)
+  })
+
+  it('never flags a real EVM chain or a correctly namespaced non-EVM id', () => {
+    expect(isFakedEvmReference('1')).toBe(false) // Ethereum
+    expect(isFakedEvmReference('369')).toBe(false) // PulseChain
+    expect(isFakedEvmReference('728126428000')).toBe(false) // not the Tron reference
+    expect(isFakedEvmReference('solana-501')).toBe(false) // already correct
+    expect(isFakedEvmReference('tvm-195')).toBe(false) // already correct
+    expect(isFakedEvmReference('asset-0')).toBe(false)
   })
 })

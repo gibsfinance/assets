@@ -1,0 +1,23 @@
+-- Give network a display name, written by the chainlist collector from the
+-- ethereum-lists registry (chainid.network/chains.json) — the same feed it already
+-- reads for icons, whose `name` it fetched and discarded until now.
+--
+-- Until this column existed, the only chain-id -> name mapping lived in the UI's
+-- vendored networks.json, refreshed by hand. That map is a snapshot: when the
+-- collector added a network the registry had just listed, the studio drawer showed
+-- a real logo above a "Chain 97477" label until someone regenerated the file. The
+-- name now travels with the row the icon travels with, so the two cannot drift.
+--
+-- Nullable on purpose. Most networks arrive from a token-list collector that knows
+-- only a chain id, and the registry itself ships chains with no name — a null here
+-- means "no label from upstream", and consumers fall back to the UI's own map.
+--
+-- IF NOT EXISTS mirrors the baseline migration: this runs on boot against databases
+-- that may already have been pushed via drizzle-kit, so it must be re-runnable.
+--
+-- (drizzle-kit also wanted to add token_network_provided_unique here. Migration 0005
+-- already creates that constraint and every live database has it; snapshots 0005-0008
+-- were hand-authored and never recorded it, so the generator believed it missing.
+-- Emitting it would abort this migration — and boot — on "constraint already exists".
+-- 0009_snapshot.json now records it, which settles the drift for future generates.)
+ALTER TABLE "network" ADD COLUMN IF NOT EXISTS "name" text;

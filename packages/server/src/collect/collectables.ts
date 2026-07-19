@@ -42,6 +42,7 @@ import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
 import cryptocurrencyIconsCollector from './cryptocurrency-icons'
+import chainlistCollector from './chainlist'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -90,6 +91,7 @@ type CollectableKey =
   | 'compound'
   | 'optimism'
   | 'cryptocurrency-icons'
+  | 'chainlist'
 
 const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
   const { bsc, mainnet, pulsechain, sepolia, pulsechainV4 } = chains()
@@ -170,6 +172,9 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     compound: compoundCollector,
     optimism: optimismCollector,
     'cryptocurrency-icons': cryptocurrencyIconsCollector,
+    // Broadest, lowest-priority network-icon source: fills eip155 chains no
+    // curated provider covers. Kept last so any chain-specific logo outranks it.
+    chainlist: chainlistCollector,
   }
 }
 

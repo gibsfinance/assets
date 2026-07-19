@@ -12,9 +12,9 @@ import * as path from 'path'
 import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
-import * as fileType from 'file-type'
+import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
-import { toCAIP2, namespaceOf, expectedNetworkType, TEST_NETWORK_TYPE } from '../chain-id'
+import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import { imageMode } from './tables'
 import type {
@@ -78,18 +78,6 @@ export { migrate } from './drizzle'
 /** Run a Drizzle transaction. */
 export const transaction = async <T>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => {
   return getDrizzle().transaction(fn)
-}
-
-const getExt = async (image: Buffer, providedExt: string) => {
-  const e = await fileType.fileTypeFromBuffer(Uint8Array.from(image))
-  let ext = e && e.ext ? `.${e.ext}` : null
-  if (ext) {
-    if (ext === '.xml' && providedExt !== ext) {
-      ext = providedExt
-    }
-    return ext
-  }
-  return image.toString().split('<').length > 2 ? '.svg' : null
 }
 
 const missingInfoPath = ({
@@ -183,7 +171,7 @@ export const insertImage = async (
   tx?: DrizzleTx,
 ) => {
   const db = tx ?? getDrizzle()
-  const ext = await getExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image, path.extname(originalUri))
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
     failureLog('no ext %o -> %o', providerKey, originalUri)
@@ -305,6 +293,15 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
   // smoldapp hashing the "btcm" folder to 1651794797 and typing it 'btc' produced
   // eip155-1651794797/btc, which the UI then renders as a bogus network.
   const canonicalChainId = toCAIP2(chainId.toString())
+  // Refuse a non-EVM chain that an upstream list echoed as a bare eip155 number
+  // (Solana 900/501000101, Tron 1000/728126428). The dedicated collectors file
+  // these under solana-501 / tvm-195, so creating the eip155 form only resurrects
+  // the husks the cleanup migrations removed. Collectors isolate this per token.
+  if (isFakedEvmReference(canonicalChainId)) {
+    throw new Error(
+      `chain id "${canonicalChainId}" is a non-Ethereum-Virtual-Machine chain mis-numbered as eip155; collect it under its coin-type id (Solana -> solana-501, Tron -> tvm-195) instead.`,
+    )
+  }
   const expectedType = expectedNetworkType(canonicalChainId)
   if (type !== expectedType && type !== TEST_NETWORK_TYPE) {
     throw new Error(
@@ -325,6 +322,36 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
     })
     .returning()
   return network
+}
+
+/**
+ * Record what a registry calls a network: its display `name` and its longer prose
+ * `title`, which arrive together on one chains.json entry.
+ *
+ * Deliberately separate from insertNetworkFromChainId. That funnel is the one entry
+ * point every collector shares, and almost none of them know a name — they resolve a
+ * chain id from a token list and nothing more. Only a collector reading a registry
+ * that publishes naming (chainlist, from ethereum-lists) has any to write, so this is
+ * its own narrow write rather than extra arguments thirty call sites would have to
+ * pass as undefined.
+ *
+ * Blank values are skipped rather than stored, per field: null already means "nothing
+ * from upstream" and lets consumers fall back, whereas an empty string would read as a
+ * real value — rendering a blank label, or suppressing a testnet match. Skipping per
+ * field also means a chain that loses its title upstream keeps the name it had.
+ */
+export const setNetworkNaming = async (
+  { networkId, name, title }: { networkId: string; name?: string | null; title?: string | null },
+  tx?: DrizzleTx,
+) => {
+  const set: { name?: string; title?: string } = {}
+  const trimmedName = name?.trim()
+  const trimmedTitle = title?.trim()
+  if (trimmedName) set.name = trimmedName
+  if (trimmedTitle) set.title = trimmedTitle
+  if (!Object.keys(set).length) return
+  const db = tx ?? getDrizzle()
+  await db.update(s.network).set(set).where(eq(s.network.networkId, networkId))
 }
 
 export const getNetworks = (tx?: DrizzleTx) => {
@@ -398,7 +425,7 @@ export const resolveImage = async (
   const image = await fetchImage(uri, signal, providerKey, address)
   if (!image) return null
   const originalUri = Buffer.isBuffer(uri) ? `buffer:${providerKey}:${address}` : uri
-  const ext = await getExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image, path.extname(originalUri))
   if (!ext) return null
   return { buffer: image, ext, originalUri }
 }

@@ -1,6 +1,6 @@
 {
-  "id": "00cbce6d-c92d-4406-9b0d-e104d6f69dad",
-  "prevId": "3a4b5c6d-7e8f-4a9b-8c0d-1e2f3a4b5c6d",
+  "id": "60b0b0da-95d5-468d-855b-cad423f4d4e1",
+  "prevId": "27360a2a-831c-4939-9e10-ef7ddc8aac33",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2056,6 +2056,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2589,7 +2601,13 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "token_network_provided_unique": {
+          "name": "token_network_provided_unique",
+          "nullsNotDistinct": false,
+          "columns": ["network_id", "provided_id"]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
