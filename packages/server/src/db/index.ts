@@ -12,7 +12,7 @@ import * as path from 'path'
 import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
-import * as fileType from 'file-type'
+import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
@@ -78,18 +78,6 @@ export { migrate } from './drizzle'
 /** Run a Drizzle transaction. */
 export const transaction = async <T>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => {
   return getDrizzle().transaction(fn)
-}
-
-const getExt = async (image: Buffer, providedExt: string) => {
-  const e = await fileType.fileTypeFromBuffer(Uint8Array.from(image))
-  let ext = e && e.ext ? `.${e.ext}` : null
-  if (ext) {
-    if (ext === '.xml' && providedExt !== ext) {
-      ext = providedExt
-    }
-    return ext
-  }
-  return image.toString().split('<').length > 2 ? '.svg' : null
 }
 
 const missingInfoPath = ({
@@ -183,7 +171,7 @@ export const insertImage = async (
   tx?: DrizzleTx,
 ) => {
   const db = tx ?? getDrizzle()
-  const ext = await getExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image, path.extname(originalUri))
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
     failureLog('no ext %o -> %o', providerKey, originalUri)
@@ -437,7 +425,7 @@ export const resolveImage = async (
   const image = await fetchImage(uri, signal, providerKey, address)
   if (!image) return null
   const originalUri = Buffer.isBuffer(uri) ? `buffer:${providerKey}:${address}` : uri
-  const ext = await getExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image, path.extname(originalUri))
   if (!ext) return null
   return { buffer: image, ext, originalUri }
 }

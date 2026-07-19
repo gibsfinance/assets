@@ -9,6 +9,7 @@
 import { Router } from 'express'
 import * as fileType from 'file-type'
 import * as db from '../db'
+import { looksLikeSvg } from '../image-format'
 import { nextOnError } from './utils'
 
 export const router = Router() as Router
@@ -73,9 +74,9 @@ router.post(
     const detected = await fileType.fileTypeFromBuffer(Uint8Array.from(parsed.buffer))
 
     if (!detected || !detected.mime.startsWith('image/')) {
-      // file-type cannot detect SVG (plain-text format); fall back to content sniff
-      const head = parsed.buffer.toString('utf8', 0, Math.min(parsed.buffer.length, 512))
-      if (!head.includes('<svg')) {
+      // file-type cannot detect SVG (plain-text format); fall back to a content
+      // sniff. Shared with the collector path so the two cannot drift again.
+      if (!looksLikeSvg(parsed.buffer)) {
         res.status(400).json({ error: 'Unrecognized image format' })
         return
       }
