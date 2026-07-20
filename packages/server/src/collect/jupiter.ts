@@ -89,7 +89,13 @@ class JupiterCollector extends BaseCollector {
   private prepared: PreparedList[] = []
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
-    const row = utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
+    // Reuse an existing row rather than issuing a fresh one: the terminal registry
+    // persists across collect cycles and `complete()` only marks a row done without
+    // removing it, so a bare issue() throws `duplicated row jupiter` on the second
+    // cycle — and collides with collect()'s row within a single cycle. This is the
+    // same get-or-issue idiom inmemory-tokenlist uses for exactly this reason.
+    const row =
+      utils.terminal.get(providerKey) ?? utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
     try {
       const verifiedRaw = await db.cachedJSONRequest<unknown[]>(verifiedUrl, signal, verifiedUrl)
       if (signal.aborted) return []
@@ -154,7 +160,11 @@ class JupiterCollector extends BaseCollector {
     const networkId = this.networkId
     if (!networkId || this.prepared.length === 0) return
 
-    const row = utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
+    // Reuse discover()'s row (still registered, since complete() never removes it)
+    // rather than issuing a duplicate — a bare issue() here threw `duplicated row
+    // jupiter` and aborted the whole collect before a single token was inserted.
+    const row =
+      utils.terminal.get(providerKey) ?? utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
     const limit = limitBy<OrderedToken>(`${providerKey}-insert`, 8)
     try {
       for (const list of this.prepared) {
