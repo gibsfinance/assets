@@ -44,15 +44,13 @@ import gibsCollector from './gibs'
 import ethereumListsCollector from './ethereum-lists'
 import cryptocurrencyIconsCollector from './cryptocurrency-icons'
 import chainlistCollector from './chainlist'
-// Additional curated third-party lists (chain-native DEXes + Solana).
+// Additional curated third-party lists, each an actively-maintained source.
 import aaveCollector from './aave'
 import pancakeswapExtendedCollector from './pancakeswap-extended'
-import traderjoeCollector from './traderjoe'
 import pangolinCollector from './pangolin'
-import spookyswapCollector from './spookyswap'
-import celoCollector from './celo'
 import arbitrumCollector from './arbitrum'
-import solanaLabsCollector from './solana-tokenlist'
+import mewCollector from './mew'
+import jupiterCollector from './jupiter'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -102,12 +100,10 @@ type CollectableKey =
   | 'optimism'
   | 'aave'
   | 'pancakeswap-extended'
-  | 'traderjoe'
   | 'pangolin'
-  | 'spookyswap'
-  | 'celo'
   | 'arbitrum'
-  | 'solana-labs'
+  | 'mew'
+  | 'jupiter'
   | 'ethereum-lists'
   | 'cryptocurrency-icons'
   | 'chainlist'
@@ -190,19 +186,19 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     baofinance: baofinanceCollector,
     compound: compoundCollector,
     optimism: optimismCollector,
-    // Additional curated third-party lists. These sit below the chain-native and
-    // decentralized-exchange providers above but above the broad fallbacks, so a
-    // curated logo still wins over the ethereum-lists metadata dump and the pure
-    // network-icon sources.
+    // Additional curated third-party lists, each an actively-maintained source.
+    // These sit below the chain-native and decentralized-exchange providers above
+    // but above the broad fallbacks, so a curated logo still wins over the
+    // ethereum-lists metadata dump and the pure network-icon sources.
     aave: aaveCollector,
     'pancakeswap-extended': pancakeswapExtendedCollector,
-    traderjoe: traderjoeCollector,
     pangolin: pangolinCollector,
-    spookyswap: spookyswapCollector,
-    celo: celoCollector,
     arbitrum: arbitrumCollector,
-    // Solana mainnet tokens from solana-labs/token-list, filed under solana-501.
-    'solana-labs': solanaLabsCollector,
+    // Jupiter's verified Solana universe, filed under solana-501 and split into one
+    // list per meaningful tag (lst, meme, rwa, stable, and so on).
+    jupiter: jupiterCollector,
+    // MyEtherWallet's Ethereum mainnet token metadata (name/symbol/decimals, no logos).
+    mew: mewCollector,
     // Broad metadata source (name/symbol/decimals plus a logo where one exists) from
     // the ethereum-lists/tokens repository. Kept near the bottom because it is not an
     // authoritative logo source, so every curated provider above must outrank it when
