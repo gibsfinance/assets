@@ -24,6 +24,12 @@ type Input = {
   row?: TerminalSectionProxy
   extension?: Extension[]
   providerKey: string
+  /**
+   * Human-readable provider name. When set, discover() writes it before delegating
+   * to inmemory-tokenlist (which inserts the provider by key alone), so the provider
+   * row carries a display name instead of being left null.
+   */
+  providerName?: string
   tokenList: string
   listKey: string
   isDefault?: boolean
@@ -54,6 +60,13 @@ export class RemoteTokenListCollector extends BaseCollector {
     // Fetch the remote JSON (cached by cachedJSONRequest)
     const tokenList = await db.cachedJSONRequest<types.TokenList>(tokenListUrl, signal, tokenListUrl)
     if (signal.aborted || !tokenList?.tokens) return []
+
+    // Establish the provider name up front. inmemory-tokenlist inserts the same
+    // provider by key alone and the upsert leaves an existing name untouched, so
+    // writing it here keeps the display name from ever being left null.
+    if (this.config.providerName) {
+      await db.insertProvider({ key: providerKey, name: this.config.providerName })
+    }
 
     // Run inmemory discover to create provider + list rows
     await inmemoryTokenlist.discover({

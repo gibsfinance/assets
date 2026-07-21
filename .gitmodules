@@ -10,3 +10,6 @@
 	path = submodules/smoldapp-tokenassets
 	url = https://github.com/SmolDapp/tokenAssets.git
 	ignore = dirty
+[submodule "submodules/ethereum-lists-tokens"]
+	path = submodules/ethereum-lists-tokens
+	url = https://github.com/ethereum-lists/tokens

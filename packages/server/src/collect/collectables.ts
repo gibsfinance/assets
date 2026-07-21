@@ -41,8 +41,16 @@ import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
+import ethereumListsCollector from './ethereum-lists'
 import cryptocurrencyIconsCollector from './cryptocurrency-icons'
 import chainlistCollector from './chainlist'
+// Additional curated third-party lists, each an actively-maintained source.
+import aaveCollector from './aave'
+import pancakeswapExtendedCollector from './pancakeswap-extended'
+import pangolinCollector from './pangolin'
+import arbitrumCollector from './arbitrum'
+import mewCollector from './mew'
+import jupiterCollector from './jupiter'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -90,6 +98,13 @@ type CollectableKey =
   | 'baofinance'
   | 'compound'
   | 'optimism'
+  | 'aave'
+  | 'pancakeswap-extended'
+  | 'pangolin'
+  | 'arbitrum'
+  | 'mew'
+  | 'jupiter'
+  | 'ethereum-lists'
   | 'cryptocurrency-icons'
   | 'chainlist'
 
@@ -171,6 +186,24 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     baofinance: baofinanceCollector,
     compound: compoundCollector,
     optimism: optimismCollector,
+    // Additional curated third-party lists, each an actively-maintained source.
+    // These sit below the chain-native and decentralized-exchange providers above
+    // but above the broad fallbacks, so a curated logo still wins over the
+    // ethereum-lists metadata dump and the pure network-icon sources.
+    aave: aaveCollector,
+    'pancakeswap-extended': pancakeswapExtendedCollector,
+    pangolin: pangolinCollector,
+    arbitrum: arbitrumCollector,
+    // Jupiter's verified Solana universe, filed under solana-501 and split into one
+    // list per meaningful tag (lst, meme, rwa, stable, and so on).
+    jupiter: jupiterCollector,
+    // MyEtherWallet's Ethereum mainnet token metadata (name/symbol/decimals, no logos).
+    mew: mewCollector,
+    // Broad metadata source (name/symbol/decimals plus a logo where one exists) from
+    // the ethereum-lists/tokens repository. Kept near the bottom because it is not an
+    // authoritative logo source, so every curated provider above must outrank it when
+    // they cover the same token; only the pure network-icon fallbacks sit lower.
+    'ethereum-lists': ethereumListsCollector,
     'cryptocurrency-icons': cryptocurrencyIconsCollector,
     // Broadest, lowest-priority network-icon source: fills eip155 chains no
     // curated provider covers. Kept last so any chain-specific logo outranks it.
