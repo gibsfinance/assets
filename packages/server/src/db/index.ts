@@ -16,6 +16,7 @@ import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
+import config from '../../config'
 import { imageMode } from './tables'
 import type {
   InsertableList,
@@ -621,7 +622,7 @@ export const fetchImageAndStoreForList = async (
     originalUri,
     providerKey,
     signal,
-    maxImageAge = sixHours,
+    maxImageAge = defaultImageMaxAge,
   }: {
     listId: string
     uri: string | Buffer | null
@@ -700,7 +701,7 @@ export const fetchImageAndStoreForNetwork = async (
     originalUri,
     providerKey,
     signal,
-    maxImageAge = sixHours,
+    maxImageAge = defaultImageMaxAge,
   }: {
     network: Network
     uri: string | Buffer
@@ -766,7 +767,7 @@ export const fetchAndInsertHeader = async (
   tx?: DrizzleTx,
 ) => {
   const db = tx ?? getDrizzle()
-  const maxImageAge = header.maxImageAge ?? sixHours
+  const maxImageAge = header.maxImageAge ?? defaultImageMaxAge
   if (_.isString(header.uri)) {
     const existing = await getFreshImageFromLink(header.uri, maxImageAge, tx)
     if (existing) return
@@ -812,7 +813,10 @@ export const insertHeaderLink = async (header: InsertableHeaderLink, tx?: Drizzl
     .returning()
 }
 
-const sixHours = 1000 * 60 * 60 * 6
+// Default freshness window for a fetched logo before it is re-downloaded.
+// Sourced from config (IMAGE_MAX_AGE_HOURS, default 7 days) so it can be tuned
+// above the collect cron interval instead of re-fetching every logo each run.
+const defaultImageMaxAge = config.imageMaxAgeMs
 
 export const fetchImageAndStoreForToken = async (
   inputs: {
@@ -833,7 +837,7 @@ export const fetchImageAndStoreForToken = async (
   image?: typeof s.image.$inferSelect
 }> => {
   const db = tx ?? getDrizzle()
-  const { listId, uri, token, providerKey, signal, listTokenOrderId, maxImageAge = sixHours } = inputs
+  const { listId, uri, token, providerKey, signal, listTokenOrderId, maxImageAge = defaultImageMaxAge } = inputs
   if (!listId) {
     throw new Error('listId is required')
   }
