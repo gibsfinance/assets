@@ -2,6 +2,8 @@ import {
   type Hex,
   type Chain,
   type Abi,
+  type Transport,
+  type EIP1193RequestFn,
   getContract,
   multicall3Abi,
   encodeFunctionData,
@@ -11,7 +13,8 @@ import {
   erc20Abi_bytes32,
   fromHex,
   http,
-  fallback,
+  createTransport,
+  shouldThrow,
   createPublicClient,
 } from 'viem'
 import type * as types from './types'
@@ -24,9 +27,64 @@ const defaultRpcOverrides: Record<number, string[]> = {
 }
 
 /**
- * Build a viem transport for a chain with fallback load balancing.
+ * Round-robin load-balancing transport with failover.
+ *
+ * viem's built-in `fallback` transport is failover-only: every request hits the
+ * first endpoint and only moves on when one errors, so it never spreads load.
+ * This transport advances a per-request cursor instead, so consecutive requests
+ * are distributed evenly across all endpoints — multiplying the combined
+ * rate-limit headroom during a large collect run — while still falling through
+ * the remaining endpoints in rotation whenever one fails.
+ *
+ * Error handling reuses viem's own `shouldThrow`: node-level answers (execution
+ * reverts, user rejections) propagate immediately rather than being pointlessly
+ * retried against every other endpoint, whereas connection failures and rate
+ * limits (for example a 429) fail over to the next endpoint in the rotation.
+ *
+ * @param urls - The endpoint URLs to balance across (two or more).
+ * @param options - Per-endpoint request timeout in milliseconds.
+ */
+export const loadBalance =
+  (urls: readonly string[], { timeout }: { timeout: number }): Transport =>
+  (params) => {
+    // Instantiate each endpoint once (http transports are stateless closures);
+    // retryCount 0 lets a failing endpoint fail over immediately rather than
+    // retrying the same dead node before the rotation moves on.
+    const endpoints = urls.map((url) => http(url, { timeout, retryCount: 0 })(params))
+    let cursor = 0
+    return createTransport(
+      {
+        key: 'loadBalance',
+        name: 'Round-robin load balancer',
+        type: 'loadBalance',
+        // Let viem's retry wrapper re-run the whole rotation on retriable errors;
+        // each retry advances the cursor, so a retry also lands on a fresh endpoint.
+        retryCount: params.retryCount,
+        request: (async (args: Parameters<EIP1193RequestFn>[0]) => {
+          const start = cursor
+          cursor = (cursor + 1) % endpoints.length
+          const tryEndpoint = async (offset: number): Promise<unknown> => {
+            const endpoint = endpoints[(start + offset) % endpoints.length]
+            try {
+              return await endpoint.request(args)
+            } catch (error) {
+              if (shouldThrow(error as Error)) throw error
+              if (offset === endpoints.length - 1) throw error
+              return tryEndpoint(offset + 1)
+            }
+          }
+          return tryEndpoint(0)
+        }) as EIP1193RequestFn,
+      },
+      { transports: endpoints },
+    )
+  }
+
+/**
+ * Build a viem transport for a chain.
  * Priority: RPC_{chainId} env var (comma-separated) > hardcoded overrides > chain defaults.
- * Uses viem's fallback transport with ranking for multiple RPCs.
+ * A single resolved URL uses a plain http transport; multiple URLs use the
+ * round-robin {@link loadBalance} transport (load balancing plus failover).
  */
 export const buildTransport = (chain: Chain) => {
   const envKey = `RPC_${chain.id}`
@@ -37,10 +95,7 @@ export const buildTransport = (chain: Chain) => {
     return http(urls[0], { timeout: rpcTimeout })
   }
 
-  return fallback(
-    urls.map((url) => http(url, { timeout: rpcTimeout })),
-    { rank: false },
-  )
+  return loadBalance(urls, { timeout: rpcTimeout })
 }
 
 const defaultBatchSettings = {
