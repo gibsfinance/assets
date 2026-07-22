@@ -663,4 +663,26 @@ describe('erc20Read', () => {
     const target = '0x0000000000000000000000000000000000000001' as `0x${string}`
     await expect(erc20Read(chain, client, target, { signal: controller.signal })).rejects.toThrow('test abort')
   })
+
+  it('rejects with the abort reason when the signal aborts mid-flight', async () => {
+    vi.mocked(encodeFunctionData).mockReturnValue('0xcalldata')
+    vi.mocked(getContract).mockReturnValue({
+      read: {
+        // Never settles, so the only way out is the abort listener.
+        aggregate3: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    } as unknown as ReturnType<typeof getContract>)
+
+    const controller = new AbortController()
+    const promise = erc20Read(multicallChain, stubClient, '0xTokenAddress', { signal: controller.signal })
+
+    // Distinct from the already-aborted case above: here the read is genuinely
+    // in flight, so cancellation has to arrive through the abort listener —
+    // which clears the timeout and rejects — rather than the entry guard. An
+    // abort must surface even though mustExist is false, since a cancelled
+    // read is not the same as a token that could not be read.
+    controller.abort(new Error('aborted mid-flight'))
+
+    await expect(promise).rejects.toThrow('aborted mid-flight')
+  })
 })
