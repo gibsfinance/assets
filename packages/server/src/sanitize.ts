@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import type { FormatEnum } from 'sharp'
 
 /**
  * Sanitize an image buffer before storage.
@@ -18,7 +19,9 @@ export async function sanitizeImage(image: Buffer, ext: string): Promise<Buffer>
 
 /** Re-encode a raster image through sharp to strip metadata and embedded payloads */
 async function sanitizeRaster(image: Buffer, ext: string): Promise<Buffer> {
-  const formatMap: Record<string, keyof sharp.FormatEnum> = {
+  // sharp's `toFormat` accepts `keyof FormatEnum | "avif"` — avif is typed
+  // separately from the enum, so the union is required to include it.
+  const formatMap: Record<string, keyof FormatEnum | 'avif'> = {
     '.png': 'png',
     '.jpg': 'jpeg',
     '.jpeg': 'jpeg',

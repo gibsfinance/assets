@@ -9,6 +9,7 @@
  * SVGs with viewBox are served as-is unless explicit format conversion is requested.
  */
 import sharp from 'sharp'
+import type { FormatEnum } from 'sharp'
 import type { Response } from 'express'
 import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'
 import * as db from '../../db'
@@ -212,7 +213,7 @@ export async function maybeResize({ res, img, params }: MaybeResizeOptions): Pro
     })
   }
 
-  pipeline = pipeline.toFormat(normalizeFormat(targetFormat) as keyof sharp.FormatEnum)
+  pipeline = pipeline.toFormat(normalizeFormat(targetFormat) as keyof FormatEnum | 'avif')
 
   const resizedBuffer = await pipeline.toBuffer()
 
