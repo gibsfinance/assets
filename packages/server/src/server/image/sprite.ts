@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import type { OverlayOptions } from 'sharp'
 import config from '../../../config'
 import { RequestHandler } from 'express'
 import { getDrizzle } from '../../db/drizzle'
@@ -206,7 +207,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
   const height = Math.max(rows * size, 1)
 
   // Rasterize in parallel batches
-  const composites: sharp.OverlayOptions[] = []
+  const composites: OverlayOptions[] = []
   const batchSize = 20
   for (let i = 0; i < deduped.length; i += batchSize) {
     const batch = deduped.slice(i, i + batchSize)
