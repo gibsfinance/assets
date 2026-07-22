@@ -1,10 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  oxc: {
-    jsx: 'automatic',
-    jsxImportSource: 'react',
-  },
   test: {
     include: ['src/**/*.test.ts'],
     coverage: {
@@ -14,9 +10,9 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       // Providing `exclude` replaces Vitest's defaults, so the standard entries
       // have to be restated: a test file never counts toward the coverage of
-      // the code it tests. `bin/` holds executable entry points driven through
-      // the shell rather than imported, and `db/schema*` is table declarations.
-      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/bin/**', 'src/db/schema.ts', 'src/db/schema-types.ts'],
+      // the code it tests. `types.ts` is type-only and `index.ts` is the
+      // package barrel — neither carries runtime behaviour to exercise.
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/types.ts', 'src/index.ts'],
       thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },

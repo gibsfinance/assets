@@ -4,7 +4,15 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     coverage: {
-      exclude: ['src/types.ts', 'src/index.ts'],
+      // Vitest 4 reports nothing at all unless `include` is set — an unset
+      // include yields an empty table rather than an error, which reads as a
+      // clean run. Name the sources explicitly so the report is real.
+      include: ['src/**/*.ts'],
+      // Providing `exclude` replaces Vitest's defaults, so the standard entries
+      // have to be restated: a test file never counts toward the coverage of
+      // the code it tests.
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts', 'src/types.ts', 'src/index.ts'],
+      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
 })
