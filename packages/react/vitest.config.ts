@@ -17,4 +17,14 @@ export default defineConfig({
       thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
+  resolve: {
+    alias: {
+      // @gibs/sdk is the published artifact, so it resolves to dist/ — which is
+      // gitignored and unbuilt on a clean checkout, making these tests pass
+      // only where a stale dist happens to exist. Point them at source, as the
+      // other workspace packages (@gibs/utils, @gibs/dexscreener) already do,
+      // so the suite never depends on build ordering.
+      '@gibs/sdk': new URL('../sdk/src/index.ts', import.meta.url).pathname,
+    },
+  },
 })
