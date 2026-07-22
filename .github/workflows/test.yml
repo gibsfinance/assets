@@ -38,6 +38,8 @@ jobs:
       - run: yarn install --immutable
       - run: yarn run build
 
+  # Legacy `node --test` files. The bulk of the suite is vitest — see the
+  # `vitest` job below.
   unit-test:
     runs-on: ubuntu-latest
     steps:
@@ -49,6 +51,58 @@ jobs:
           cache: 'yarn'
       - run: yarn install --immutable
       - run: node --import tsx --test packages/server/test/sync-order.test.ts packages/server/test/db-batch.test.ts
+
+  # The vitest suites — ~1,900 tests that previously ran in no push-triggered
+  # workflow at all, so a broken test could reach staging or master unnoticed.
+  # One job per package so a failure names the package that broke, and
+  # fail-fast is off so one red package still reports the rest.
+  vitest:
+    name: vitest (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: utils, workspace: '@gibs/utils' }
+          - { package: sdk, workspace: '@gibs/sdk' }
+          - { package: react, workspace: '@gibs/react' }
+          - { package: ui, workspace: ui }
+          - { package: server, workspace: server }
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn workspace ${{ matrix.workspace }} run vitest run
+
+  # Coverage is gated at 100% (thresholds live in each package's vitest.config).
+  # Kept separate from `vitest` on purpose: a failing test and a coverage
+  # shortfall are different problems, and merging them would mask a real
+  # regression behind a standing shortfall.
+  coverage:
+    name: coverage (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: utils, workspace: '@gibs/utils' }
+          - { package: sdk, workspace: '@gibs/sdk' }
+          - { package: react, workspace: '@gibs/react' }
+          - { package: ui, workspace: ui }
+          - { package: server, workspace: server }
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn workspace ${{ matrix.workspace }} run vitest run --coverage
 
   browser-test:
     runs-on: ubuntu-latest
