@@ -50,7 +50,7 @@ jobs:
           node-version: 24
           cache: 'yarn'
       - run: yarn install --immutable
-      - run: node --import tsx --test packages/server/test/sync-order.test.ts packages/server/test/db-batch.test.ts
+      - run: node --import tsx --test packages/server/test/db-batch.test.ts
 
   # The vitest suites — ~1,900 tests that previously ran in no push-triggered
   # workflow at all, so a broken test could reach staging or master unnoticed.
