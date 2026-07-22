@@ -4,15 +4,29 @@ import type { Chain } from 'viem'
 // ---------------------------------------------------------------------------
 // Viem mock
 // We mock the whole 'viem' module so that no real RPC calls are made.
-// The mocks return simple sentinel values that let us assert which
-// transport-building path was taken (single http vs. fallback).
+// `http` returns a programmable fake transport whose per-request behavior is
+// driven by `rpcRegistry` (keyed by URL) — this lets the loadBalance tests
+// exercise real round-robin and failover logic without any network access.
+// `createTransport` and `shouldThrow` remain the real implementations (from
+// `...actual`) so loadBalance's rotation and error discrimination are tested
+// as they run in production.
 // ---------------------------------------------------------------------------
+const { rpcRegistry } = vi.hoisted(() => ({
+  rpcRegistry: new Map<string, (args: { method: string; params?: unknown }) => Promise<unknown>>(),
+}))
+
 vi.mock('viem', async (importOriginal) => {
   const actual = await importOriginal<typeof import('viem')>()
   return {
     ...actual,
-    http: vi.fn((url: string) => ({ type: 'http', url })),
-    fallback: vi.fn((transports: unknown[], opts: unknown) => ({ type: 'fallback', transports, opts })),
+    http: vi.fn((url: string) => (_params: unknown) => ({
+      config: { key: 'http', url },
+      request: async (args: { method: string; params?: unknown }) => {
+        const behavior = rpcRegistry.get(url)
+        return behavior ? behavior(args) : { url, method: args.method }
+      },
+      value: {},
+    })),
     createPublicClient: vi.fn((config: unknown) => ({ type: 'publicClient', config })),
     getContract: vi.fn(),
     encodeFunctionData: vi.fn(),
@@ -21,16 +35,8 @@ vi.mock('viem', async (importOriginal) => {
   }
 })
 
-import {
-  http,
-  fallback,
-  createPublicClient,
-  getContract,
-  encodeFunctionData,
-  decodeFunctionResult,
-  fromHex,
-} from 'viem'
-import { buildTransport, createChainClient, multicallRead, erc20Read } from './viem'
+import { http, createPublicClient, getContract, encodeFunctionData, decodeFunctionResult, fromHex } from 'viem'
+import { buildTransport, loadBalance, createChainClient, multicallRead, erc20Read } from './viem'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +75,7 @@ const mainnetChain = makeChain(1, ['https://chain-default.example.com'])
 describe('buildTransport', () => {
   beforeEach(() => {
     vi.mocked(http).mockClear()
-    vi.mocked(fallback).mockClear()
+    rpcRegistry.clear()
     delete process.env['RPC_998']
     delete process.env['RPC_999']
     delete process.env['RPC_1']
@@ -85,34 +91,33 @@ describe('buildTransport', () => {
 
   it('returns an http transport when the resolved URL list has a single entry', () => {
     buildTransport(chainWithSingleRpc)
+    // Single URL → one http transport, no load balancer wrapping.
     expect(http).toHaveBeenCalledTimes(1)
     expect(http).toHaveBeenCalledWith(
       'https://single.example.com',
       expect.objectContaining({ timeout: expect.any(Number) }),
     )
-    expect(fallback).not.toHaveBeenCalled()
   })
 
-  it('returns a fallback transport when the resolved URL list has multiple entries', () => {
-    buildTransport(chainWithMultipleRpcs)
-    expect(fallback).toHaveBeenCalledTimes(1)
-    // fallback receives an array of http transports, one per URL
-    const [transports] = vi.mocked(fallback).mock.calls[0]
-    expect(transports).toHaveLength(2)
+  it('builds a load-balanced transport across every URL when the list has multiple entries', () => {
+    // The load balancer is a lazy transport factory — instantiate it (as viem's
+    // createPublicClient would) so the per-URL http transports are created.
+    buildTransport(chainWithMultipleRpcs)({ retryCount: 0 })
     expect(http).toHaveBeenCalledTimes(2)
+    expect(http).toHaveBeenCalledWith('https://rpc1.example.com', expect.objectContaining({ retryCount: 0 }))
+    expect(http).toHaveBeenCalledWith('https://rpc2.example.com', expect.objectContaining({ retryCount: 0 }))
   })
 
   it('uses RPC_{chainId} env var (single URL) over chain defaults', () => {
     process.env['RPC_998'] = 'https://env-single.example.com'
     buildTransport(chainWithSingleRpc)
+    expect(http).toHaveBeenCalledTimes(1)
     expect(http).toHaveBeenCalledWith('https://env-single.example.com', expect.any(Object))
-    expect(fallback).not.toHaveBeenCalled()
   })
 
-  it('uses RPC_{chainId} env var (comma-separated) and builds a fallback transport', () => {
+  it('uses RPC_{chainId} env var (comma-separated) and load-balances across each URL', () => {
     process.env['RPC_998'] = 'https://env-a.example.com,https://env-b.example.com'
-    buildTransport(chainWithSingleRpc)
-    expect(fallback).toHaveBeenCalledTimes(1)
+    buildTransport(chainWithSingleRpc)({ retryCount: 0 })
     expect(http).toHaveBeenCalledTimes(2)
     expect(http).toHaveBeenCalledWith('https://env-a.example.com', expect.any(Object))
     expect(http).toHaveBeenCalledWith('https://env-b.example.com', expect.any(Object))
@@ -120,16 +125,8 @@ describe('buildTransport', () => {
 
   it('falls back to hardcoded overrides when no env var is set (chain 1)', () => {
     // Chain 1 has 3 hardcoded override URLs; no env var set.
-    buildTransport(mainnetChain)
-    expect(fallback).toHaveBeenCalledTimes(1)
-    const [transports] = vi.mocked(fallback).mock.calls[0]
-    expect(transports).toHaveLength(3)
-  })
-
-  it('passes { rank: false } to the fallback transport', () => {
-    buildTransport(chainWithMultipleRpcs)
-    const [, opts] = vi.mocked(fallback).mock.calls[0]
-    expect(opts).toEqual({ rank: false })
+    buildTransport(mainnetChain)({ retryCount: 0 })
+    expect(http).toHaveBeenCalledTimes(3)
   })
 
   it('ignores empty segments in comma-separated env var', () => {
@@ -137,7 +134,79 @@ describe('buildTransport', () => {
     buildTransport(chainWithSingleRpc)
     // One non-empty URL → single http transport
     expect(http).toHaveBeenCalledTimes(1)
-    expect(fallback).not.toHaveBeenCalled()
+  })
+})
+
+describe('loadBalance', () => {
+  beforeEach(() => {
+    vi.mocked(http).mockClear()
+    rpcRegistry.clear()
+  })
+
+  const urls = ['https://a.example.com', 'https://b.example.com', 'https://c.example.com']
+
+  /** Instantiate the transport with no outer retries so each request advances the cursor exactly once. */
+  const instantiate = (endpoints: string[]) => loadBalance(endpoints, { timeout: 1_000 })({ retryCount: 0 })
+
+  it('round-robins consecutive requests across every endpoint in order', async () => {
+    urls.forEach((url) => rpcRegistry.set(url, async () => url))
+    const transport = instantiate(urls)
+
+    const first = await transport.request({ method: 'eth_blockNumber' })
+    const second = await transport.request({ method: 'eth_blockNumber' })
+    const third = await transport.request({ method: 'eth_blockNumber' })
+    const fourth = await transport.request({ method: 'eth_blockNumber' })
+
+    // Three endpoints, four calls → the fourth wraps back to the first.
+    expect([first, second, third, fourth]).toEqual([urls[0], urls[1], urls[2], urls[0]])
+  })
+
+  it('fails over to the next endpoint when one raises a connection error', async () => {
+    rpcRegistry.set(urls[0], async () => {
+      throw new Error('fetch failed')
+    })
+    rpcRegistry.set(urls[1], async () => urls[1])
+    const transport = instantiate(urls)
+
+    // Starts at endpoint 0 (connection error → not shouldThrow), rotates to endpoint 1.
+    const result = await transport.request({ method: 'eth_blockNumber' })
+    expect(result).toBe(urls[1])
+  })
+
+  it('spreads load off a rate-limited endpoint (429 fails over)', async () => {
+    rpcRegistry.set(urls[0], async () => {
+      throw Object.assign(new Error('too many requests'), { code: 429 })
+    })
+    rpcRegistry.set(urls[1], async () => urls[1])
+    const transport = instantiate(urls)
+
+    const result = await transport.request({ method: 'eth_call' })
+    expect(result).toBe(urls[1])
+  })
+
+  it('propagates an execution revert immediately without trying other endpoints', async () => {
+    const secondEndpoint = vi.fn(async () => urls[1])
+    rpcRegistry.set(urls[0], async () => {
+      throw Object.assign(new Error('execution reverted: insufficient balance'), { code: 3 })
+    })
+    rpcRegistry.set(urls[1], secondEndpoint)
+    const transport = instantiate(urls)
+
+    // A revert is a real node answer — it must surface, not fan out across endpoints.
+    await expect(transport.request({ method: 'eth_call' })).rejects.toThrow('execution reverted')
+    expect(secondEndpoint).not.toHaveBeenCalled()
+  })
+
+  it('throws the last error when every endpoint fails to connect', async () => {
+    urls.forEach((url, index) =>
+      rpcRegistry.set(url, async () => {
+        throw new Error(`down-${index}`)
+      }),
+    )
+    const transport = instantiate(urls)
+
+    // Rotation exhausts all three endpoints, then surfaces the final failure.
+    await expect(transport.request({ method: 'eth_blockNumber' })).rejects.toThrow(/down-/)
   })
 })
 
@@ -145,7 +214,7 @@ describe('createChainClient', () => {
   beforeEach(() => {
     vi.mocked(createPublicClient).mockClear()
     vi.mocked(http).mockClear()
-    vi.mocked(fallback).mockClear()
+    rpcRegistry.clear()
     delete process.env['RPC_998']
   })
 
