@@ -73,7 +73,7 @@ describe('omnibridge collector: discover()', () => {
     expect(harness.state.providers.map((p) => p.key)).toEqual(['fixture-bridge'])
     expect(manifest).toHaveLength(1)
     expect(manifest[0].providerKey).toBe('fixture-bridge')
-    expect(manifest[0].lists.map((l) => l.listKey)).toEqual(['home', 'foreign'])
+    expect(manifest[0].lists.map((l) => l.listKey)).toEqual(['home', 'foreign', 'on-home', 'on-foreign'])
     expect(manifest[0].lists.every((l) => typeof l.listId === 'string')).toBe(true)
 
     const bridge = harness.findBridge({
@@ -244,15 +244,24 @@ describe('omnibridge collector: pairing native and bridged tokens', () => {
     expect(harness.state.tokens.size).toBe(4)
   })
 
+  /** Every list key the given token address ended up a member of. */
+  const listKeysHolding = (address: Hex) => {
+    const token = [...harness.state.tokens.values()].find((t) => t.providedId === address.toLowerCase())
+    const keyByListId = new Map(harness.state.lists.map((l) => [l.listId, l.key]))
+    return new Set(
+      [...harness.state.listTokens.values()]
+        .filter((lt) => lt.tokenId === token?.tokenId)
+        .map((lt) => keyByListId.get(lt.listId)),
+    )
+  }
+
   /**
-   * `storeToken` is called with `listId: toList.listId` for BOTH the native
-   * side (on `fromConfig.chain`) and the bridged side (on `toConfig.chain`) —
-   * `fromList` is computed but never referenced (see the commented-out
-   * destructure in omnibridge.ts). This test locks in that observed behavior
-   * rather than the presumably-intended one (each side filed under its own
-   * chain's list); see the final report for the full write-up.
+   * The direction lists keep exactly the contents they had before the
+   * chain-scoped lists existed — that is the compatibility guarantee for
+   * anything already reading `home` or `foreign`. What is new is a second
+   * membership per token, in the list for the chain that token is on.
    */
-  it('files both the native and bridged token under the same (to) list, not one list per side', async () => {
+  it('adds a chain-scoped membership without disturbing the direction list', async () => {
     quietTheReverseDirection()
     harness.setFinalizedBlock(FOREIGN_CHAIN.id, 5_000n)
     const config = buildConfig()
@@ -264,10 +273,53 @@ describe('omnibridge collector: pairing native and bridged tokens', () => {
 
     await collectByBridgeConfig(config, new AbortController().signal)
 
-    const foreignListId = harness.state.lists.find((l) => l.key === 'foreign')?.listId
-    const listIdsUsed = new Set([...harness.state.listTokens.values()].map((lt) => lt.listId))
-    expect(listIdsUsed.size).toBe(1)
-    expect([...listIdsUsed][0]).toBe(foreignListId)
+    // Both sides are still in `foreign`, the list for the direction that observed
+    // them. The native token additionally joins `on-home` because that is where
+    // it lives, even though the home->foreign pass is what found it.
+    expect(listKeysHolding(NATIVE_TOKEN_ADDRESS)).toEqual(new Set(['foreign', 'on-home']))
+    expect(listKeysHolding(BRIDGED_TOKEN_ADDRESS)).toEqual(new Set(['foreign', 'on-foreign']))
+  })
+
+  it('keeps every chain-scoped list to a single network, whichever direction found the token', async () => {
+    // Both directions collect here, so each chain-scoped list is fed from both:
+    // one direction contributes its native side, the other its wrapper. A list
+    // that stayed single-network only because one direction ran would prove
+    // nothing.
+    harness.setFinalizedBlock(HOME_CHAIN.id, 5_000n)
+    harness.setFinalizedBlock(FOREIGN_CHAIN.id, 5_000n)
+    const config = buildConfig()
+    harness
+      .getEventsMockFor(FOREIGN_ADDRESS)
+      .mockResolvedValue([newTokenRegisteredEvent(NATIVE_TOKEN_ADDRESS, BRIDGED_TOKEN_ADDRESS, TRANSACTION_HASH)])
+    harness
+      .getEventsMockFor(HOME_ADDRESS)
+      .mockResolvedValue([
+        newTokenRegisteredEvent(SECOND_NATIVE_TOKEN_ADDRESS, SECOND_BRIDGED_TOKEN_ADDRESS, SECOND_TRANSACTION_HASH),
+      ])
+    for (const address of [
+      NATIVE_TOKEN_ADDRESS,
+      BRIDGED_TOKEN_ADDRESS,
+      SECOND_NATIVE_TOKEN_ADDRESS,
+      SECOND_BRIDGED_TOKEN_ADDRESS,
+    ]) {
+      harness.setErc20Metadata(address, ['Fixture', 'FIX', 18])
+    }
+
+    await collectByBridgeConfig(config, new AbortController().signal)
+
+    // A list whose networkId names a chain its members are not on is the defect
+    // these lists exist to avoid: `/list` publishes that networkId as the list's
+    // chainId and filters on it, so it has to hold for every member.
+    const tokensById = new Map([...harness.state.tokens.values()].map((t) => [t.tokenId, t]))
+    for (const key of ['on-home', 'on-foreign']) {
+      const list = harness.state.lists.find((l) => l.key === key)!
+      const memberNetworkIds = new Set(
+        [...harness.state.listTokens.values()]
+          .filter((lt) => lt.listId === list.listId)
+          .map((lt) => tokensById.get(lt.tokenId)!.networkId),
+      )
+      expect([...memberNetworkIds]).toEqual([list.networkId])
+    }
   })
 })
 

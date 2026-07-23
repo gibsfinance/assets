@@ -160,6 +160,7 @@ export const createOmnibridgeHarness = () => {
     insertNetworkFromChainId: base.dbModule.insertNetworkFromChainId,
     transaction: base.dbModule.transaction,
     storeToken: tokenStore.storeToken,
+    insertListToken: tokenStore.insertListToken,
     insertBridge,
     getBridge,
     updateBridgeBlockProgress,

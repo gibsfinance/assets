@@ -27,6 +27,42 @@ type BridgeConfig = {
 
 const providerKey = 'omnibridge'
 
+/**
+ * The `home` and `foreign` lists are named for a bridge *direction*, not for a
+ * chain. Each accumulates both sides of every pair it sees — the original token
+ * on the chain the tokens came from, and its wrapper on the chain they went to —
+ * so roughly half of either list lives on the chain its `networkId` does not
+ * name. These two lists are scoped the way their `networkId` claims: every token
+ * in `on-home` is on the home chain, and every token in `on-foreign` is on the
+ * foreign chain.
+ *
+ * They are written alongside the direction lists rather than in place of them,
+ * so nothing already reading `home` or `foreign` has to change. Pairing is
+ * unaffected either way — the counterpart address is served from `bridge_link`
+ * through the `bridgeInfo` extension, not by list membership.
+ *
+ * Both keys sort after `foreign` and `home`, which is load-bearing rather than
+ * cosmetic: `applyOrder` breaks ties between the lists of one provider on `key`,
+ * so a token that now belongs to a direction list and a chain-scoped list still
+ * resolves to whichever one it resolved to before these existed.
+ */
+const chainScopedListDefinitions = (config: BridgeConfig, providerId: string) => ({
+  onHome: {
+    providerId,
+    key: 'on-home',
+    name: 'Tokens on the home chain',
+    default: false,
+    networkId: chainIdToNetworkId(config.home.chain.id),
+  },
+  onForeign: {
+    providerId,
+    key: 'on-foreign',
+    name: 'Tokens on the foreign chain',
+    default: false,
+    networkId: chainIdToNetworkId(config.foreign.chain.id),
+  },
+})
+
 const term = _.memoize(() => {
   const row = terminal.issue({
     id: providerKey,
@@ -77,6 +113,10 @@ class OmnibridgeCollector extends BaseCollector {
         networkId: chainIdToNetworkId(c.foreign.chain.id),
       })
 
+      const scoped = chainScopedListDefinitions(c, provider.providerId)
+      const [onHomeList] = await db.insertList(scoped.onHome)
+      const [onForeignList] = await db.insertList(scoped.onForeign)
+
       // Also create bridge record during discover (insertBridge canonicalizes casing)
       await db.insertBridge({
         type: c.type ?? 'omnibridge',
@@ -92,6 +132,8 @@ class OmnibridgeCollector extends BaseCollector {
         lists: [
           { listKey: 'home', listId: homeList.listId },
           { listKey: 'foreign', listId: foreignList.listId },
+          { listKey: scoped.onHome.key, listId: onHomeList.listId },
+          { listKey: scoped.onForeign.key, listId: onForeignList.listId },
         ],
       })
     }
@@ -161,6 +203,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     const {
       // fromList,
       toList,
+      onHomeList,
+      onForeignList,
       bridge,
     } = await db.transaction(async (tx) => {
       // other services may be held by the provider
@@ -186,6 +230,13 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         },
         tx,
       )
+      // Derived from `config` rather than from this task's `fromConfig`, so both
+      // directions — which run concurrently and upsert the same rows — agree on
+      // every column. `insertList` keys on (provider, key, version), so a
+      // disagreement here would have the two directions overwrite each other.
+      const scoped = chainScopedListDefinitions(config, provider.providerId)
+      const [onHomeList] = await db.insertList(scoped.onHome, tx)
+      const [onForeignList] = await db.insertList(scoped.onForeign, tx)
       const bridge = await db.insertBridge(
         {
           type: config.type ?? 'omnibridge',
@@ -201,6 +252,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         provider,
         fromList,
         toList,
+        onHomeList,
+        onForeignList,
         bridge,
       }
     })
@@ -316,6 +369,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                 // contributes both its entries — so this lookup can never miss. `Map#get`'s
                 // type signature still reports `V | undefined`, hence the assertion.
                 const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)!
+                const listTokenOrderId = count++
                 // Use storeToken for efficient token insertion without image processing
                 const { token } = await db.storeToken(
                   {
@@ -327,7 +381,20 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                       decimals: metadata.decimals,
                     },
                     listId: toList.listId,
-                    listTokenOrderId: count++,
+                    listTokenOrderId,
+                  },
+                  tx,
+                )
+                // The same token, filed a second time under the list for the chain
+                // it actually lives on. `chainId` is the pair member's own chain,
+                // so this side of the bridge lands in `on-home` or `on-foreign`
+                // according to where the token is, not according to which
+                // direction happened to observe it.
+                await db.insertListToken(
+                  {
+                    tokenId: token.tokenId,
+                    listId: chainId === config.home.chain.id ? onHomeList.listId : onForeignList.listId,
+                    listTokenOrderId,
                   },
                   tx,
                 )
