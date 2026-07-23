@@ -223,14 +223,22 @@ class DexscreenerCollector extends BaseCollector {
           const { eq: eqOp, and: andOp } = await import('drizzle-orm')
           const schemaMod = await import('../db/schema')
           // network.chain_id stores CAIP-2 strings (eip155-369) since the April migration,
-          // so the bare numeric id never matches — convert before querying.
+          // so the bare numeric id never matches — convert before querying. The
+          // `caip2` override has to win the same way it does where these rows are
+          // written above, because for a non-Ethereum-Virtual-Machine chain the
+          // numeric `id` is a DexScreener-internal handle rather than a chain id:
+          // Solana's is 900 and TON's is 1. Deriving from it alone looks for
+          // `eip155-900` where the row was written as `solana-501`, and asks for
+          // `eip155-1` — Ethereum mainnet — on behalf of TON. Only the type
+          // conjunct above keeps that second one from matching another chain's row
+          // outright, which is far too little to rest on.
           const [network] = (await getDrizzle()
             .select()
             .from(schemaMod.network)
             .where(
               andOp(
                 eqOp(schemaMod.network.type, chain.type),
-                eqOp(schemaMod.network.chainId, toCAIP2(chain.id.toString())),
+                eqOp(schemaMod.network.chainId, chain.caip2 ?? toCAIP2(chain.id.toString())),
               ),
             )
             .limit(1)) as Network[]

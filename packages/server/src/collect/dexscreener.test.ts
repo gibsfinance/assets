@@ -565,4 +565,43 @@ describe('dexscreener collector', () => {
       expect.objectContaining({ tokenAddress: solanaNativeToken.toLowerCase() }),
     )
   })
+
+  it('finds a chain by its chain-agnostic override rather than by its numeric id', async () => {
+    // For a chain that is not an Ethereum Virtual Machine chain, the numeric `id`
+    // in `chainIdToChain` is a DexScreener-internal handle and not a chain id at
+    // all — Solana's is 900, TON's is 1. The icon phase already writes those rows
+    // under `caip2`, so a lookup that derives its key from `id` alone asks for
+    // `eip155-900` where the row says `solana-501`, and (for TON) asks for
+    // `eip155-1`, which is Ethereum mainnet. Only the `type` half of the condition
+    // stops that second one matching another chain's row outright.
+    //
+    // Neither real entry in `relevantChains` carries an override, so as with the
+    // test above this points the 'pulsechain' key at a chain that does, restoring
+    // it in `finally`.
+    queueNetworkIconFetches()
+    const solanaChain = chainIdToChain.get('solana')!
+    const originalPulsechain = chainIdToChain.get('pulsechain')!
+    chainIdToChain.set('pulsechain', solanaChain)
+    // Seeded under the override only. Nothing is ever written as `eip155-900`, so
+    // a lookup ignoring `caip2` finds no row and abandons the chain silently.
+    harness.state.networks.set('solana-501', {
+      networkId: 'network:solana-501',
+      type: 'solana',
+      chainId: 'solana-501',
+    })
+    const solanaNativeToken = 'So11111111111111111111111111111111111111112'
+    pairsFixtures.set(`pulsechain:${solanaNativeToken.toLowerCase()}`, [])
+    queueDecimals(1)
+
+    try {
+      await runCollect(new AbortController().signal)
+    } finally {
+      chainIdToChain.set('pulsechain', originalPulsechain)
+    }
+
+    // Reaching the pairs call at all proves the network row was resolved.
+    expect(dexscreenerApiMock.tokenPairs).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenAddress: solanaNativeToken.toLowerCase() }),
+    )
+  })
 })
