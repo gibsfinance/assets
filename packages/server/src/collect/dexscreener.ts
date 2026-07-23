@@ -172,22 +172,32 @@ class DexscreenerCollector extends BaseCollector {
         }
         const url = new URL(info.url)
         const image = await fetch(url, { signal }).then(responseToBuffer)
-        await db.transaction(async (tx) => {
-          // Non-Ethereum-Virtual-Machine chains carry a namespaced CAIP-2 id
-          // (solana-501, ton-607); EVM chains fall back to their numeric id,
-          // which insertNetworkFromChainId normalizes to eip155-<id>.
-          const network = await db.insertNetworkFromChainId(chain.caip2 ?? chain.id, chain.type, tx)
-          await db.fetchImageAndStoreForNetwork(
-            {
-              network,
-              uri: image ?? url.href,
-              originalUri: url.href,
-              providerKey: provider.providerId,
-              signal,
-            },
-            tx,
-          )
-        })
+        try {
+          await db.transaction(async (tx) => {
+            // Non-Ethereum-Virtual-Machine chains carry a namespaced CAIP-2 id
+            // (solana-501, ton-607); EVM chains fall back to their numeric id,
+            // which insertNetworkFromChainId normalizes to eip155-<id>.
+            const network = await db.insertNetworkFromChainId(chain.caip2 ?? chain.id, chain.type, tx)
+            await db.fetchImageAndStoreForNetwork(
+              {
+                network,
+                uri: image ?? url.href,
+                originalUri: url.href,
+                providerKey: provider.providerId,
+                signal,
+              },
+              tx,
+            )
+          })
+        } catch (error) {
+          // insertNetworkFromChainId rejects a chain whose bare numeric id is actually a
+          // non-Ethereum-Virtual-Machine chain mis-numbered as eip155 (isFakedEvmReference)
+          // — chainIdToChain carries Tron this way (viem's `tron` chain, id 728126428, no
+          // caip2 override), and DexScreener's own sidebar lists Tron, so this fires on
+          // every run without this guard. Skip the one chain's icon rather than aborting
+          // the whole `.map()` batch — every other chain still gets stored.
+          failureLog('Failed to store network for %o: %o', key, error)
+        }
       })
 
       const nativeTokens = new Map<ChainType | `${ChainType}-${number}`, string[]>([

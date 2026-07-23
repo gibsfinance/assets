@@ -235,16 +235,17 @@ const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
   if (!chainId) {
     let list = await fs.promises.readFile(tokenlistPath).catch(() => null)
     if (!list) {
-      const tokenlistPath = path.join(blockchainsRoot, 'ethereum', 'tokenlist.json')
-      list = await fs.promises.readFile(tokenlistPath)
-      const parsed = JSON.parse(list.toString()) as types.TokenList
+      const fallback = await fs.promises
+        .readFile(path.join(blockchainsRoot, 'ethereum', 'tokenlist.json'))
+        .catch(() => null)
+      if (!fallback) {
+        row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
+        return
+      }
+      const parsed = JSON.parse(fallback.toString()) as types.TokenList
       parsed.tokens = []
       parsed.name = `Trust Wallet: ${blockchainKey}`
       list = Buffer.from(JSON.stringify(parsed))
-    }
-    if (!list) {
-      row.increment(terminalLogTypes.EROR, `${providerKey}-${blockchainKey}`)
-      return
     }
 
     const tokenList = JSON.parse(list.toString()) as types.TokenList

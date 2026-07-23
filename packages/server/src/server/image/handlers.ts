@@ -336,7 +336,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
       typeFilter,
       providerKey,
       listKey,
-    })
+    }).catch(ignoreNotFound)
   }
   if (!result) return next(httpErrors.NotFound('image not found'))
   const { img, outputExt } = result
