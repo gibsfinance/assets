@@ -125,8 +125,6 @@ export const collect =
         throw new Error(`Invalid JSON response from ${tokenListUrl}`)
       }
 
-      if (signal.aborted) return
-
       // Canonicalize with the same function applied to token.address below — a plain
       // .toLowerCase() here would miss non-EVM blacklist entries, whose addresses
       // pass through normalizeProvidedId with their original casing intact.

@@ -292,9 +292,6 @@ class CoinGeckoCollector extends BaseCollector {
             .catch(() => {})
 
           inserted++
-          if (inserted % 250 === 0) {
-            console.log(`[coingecko] ${netLabel}: ${inserted}/${withImage.length} inserted`)
-          }
           row.increment(terminalCounterTypes.TOKEN, coin.coinId)
         })
 

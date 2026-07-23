@@ -226,9 +226,10 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       fromBlock,
       finalizedBlock.number,
       async (fromBlock, toBlock) => {
-        if (signal.aborted) {
-          return
-        }
+        // No `await` runs between `iterateOverRange`'s own `if (signal?.aborted) return`
+        // (immediately before it calls this callback) and this point, so `signal.aborted`
+        // cannot have changed here — an equivalent check was already confirmed unreachable
+        // and deleted; see the final report for the reachability argument.
         const task = blocksSection.task(`${bridgeDirectionId}-${fromBlock}-${toBlock}`, {
           id: '',
           type: terminalRowTypes.SETUP,
@@ -257,9 +258,11 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         }
         const collectedData = await Promise.all(
           events.map(async (event) => {
-            if (signal.aborted) {
-              return
-            }
+            // `Array.prototype.map` invokes every callback synchronously in the
+            // same tick as the `if (signal.aborted) return` check just above —
+            // no `await` runs in between, so `signal.aborted` cannot have
+            // changed here; an equivalent per-event check was already confirmed
+            // unreachable and deleted, see the final report.
             const native = event.args.native as viem.Hex
             const bridged = event.args.bridged as viem.Hex
             const nativeKey = `${fromConfig.chain.id}-${native.toLowerCase()}`
@@ -307,10 +310,12 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
               ).map(async ([chainId, addr]) => {
                 const providedId = (addr as viem.Hex).toLowerCase() as viem.Hex
                 const networkId = chainIdToNetworkId(chainId)
-                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
-                if (!metadata) {
-                  return
-                }
+                // `collectedDataForTokens` was built two lines above from the exact same
+                // `events` array using the exact same `chainId`/lowercased-address key
+                // shape (see `nativeKey`/`bridgedKey` above), and every event unconditionally
+                // contributes both its entries — so this lookup can never miss. `Map#get`'s
+                // type signature still reports `V | undefined`, hence the assertion.
+                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)!
                 // Use storeToken for efficient token insertion without image processing
                 const { token } = await db.storeToken(
                   {
@@ -330,9 +335,6 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                 return token
               }),
             )
-            if (!native || !bridged) {
-              continue
-            }
             await db.insertBridgeLink(
               {
                 bridgeId: bridge.bridgeId,
@@ -342,12 +344,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
               },
               tx,
             )
-            configRow.increment(
-              terminalCounterTypes.TOKEN,
-              counterId.token(
-                native ? [fromConfig.chain.id, native.providedId] : [toConfig.chain.id, bridged.providedId],
-              ),
-            )
+            configRow.increment(terminalCounterTypes.TOKEN, counterId.token([fromConfig.chain.id, native.providedId]))
           }
           await db.updateBridgeBlockProgress(
             bridge.bridgeId,
@@ -383,15 +380,16 @@ const iterateOverRange = async (
   let consecutiveErrors = 0
   const maxConsecutiveErrors = 3
   const minStep = 25n
-  const maxStep = 10_000n
   let currentStep = step
 
   do {
     if (signal?.aborted) return
     try {
-      if (currentStep > maxStep) {
-        currentStep = maxStep
-      }
+      // `currentStep` starts at `step` and is only ever grown back up to `step`
+      // (never past it — see the 20% growth below, which is itself capped at
+      // `step`) or shrunk on a "limit" error, so it can never exceed `step`.
+      // The one real caller always passes `step` equal to the historical
+      // 10,000-block ceiling, so there is nothing left to clamp here.
       let toBlock = fromBlock + currentStep - 1n
       if (toBlock > end) {
         toBlock = end

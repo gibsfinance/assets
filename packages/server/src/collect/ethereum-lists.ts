@@ -10,7 +10,7 @@ import * as paths from '../paths'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { terminalLogTypes, terminalRowTypes, TerminalRowProxy } from '../log/types'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
-import { NETWORK_MAPPING, parseTokenRecord, resolveChainId } from './ethereum-lists-parse'
+import { NETWORK_MAPPING, parseTokenRecord } from './ethereum-lists-parse'
 
 const providerKey = 'ethereum-lists'
 const providerName = 'Ethereum Lists'
@@ -86,13 +86,24 @@ const readNetworkTokenList = async (slug: string, chainId: number, row: Terminal
   }
 }
 
+/** A folder slug present on disk, paired with the chain id it is already known to resolve to. */
+type ResolvedSlug = {
+  slug: string
+  chainId: number
+}
+
 /**
  * The slugs actually present on disk that also appear in the authoritative map,
- * preserving the map's declared order for stable ranking.
+ * each paired with its already-resolved chain id and preserving the map's
+ * declared order for stable ranking. Resolving here, once, means every entry
+ * this returns is guaranteed included — the caller never has to re-check a
+ * resolution status that disk presence has already settled.
  */
-const includedSlugsOnDisk = async (): Promise<string[]> => {
+const includedSlugsOnDisk = async (): Promise<ResolvedSlug[]> => {
   const present = new Set(utils.removedUndesirable(await fs.promises.readdir(tokensRoot)))
-  return Object.keys(NETWORK_MAPPING).filter((slug) => present.has(slug))
+  return Object.entries(NETWORK_MAPPING)
+    .filter(([slug]) => present.has(slug))
+    .map(([slug, chainId]) => ({ slug, chainId }))
 }
 
 /**
@@ -121,12 +132,8 @@ class EthereumListsCollector extends BaseCollector {
 
     const slugs = await includedSlugsOnDisk()
     const networks: IncludedNetwork[] = []
-    for (const slug of slugs) {
-      const resolution = resolveChainId(slug)
-      if (resolution.status !== 'included') {
-        continue
-      }
-      const network = await this.discoverNetwork(slug, resolution.chainId, row, signal)
+    for (const { slug, chainId } of slugs) {
+      const network = await this.discoverNetwork(slug, chainId, row, signal)
       if (network) {
         networks.push(network)
       }
