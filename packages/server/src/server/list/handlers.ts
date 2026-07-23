@@ -4,8 +4,11 @@
  *
  * `/list/merged/default` — tokens across all providers for one chain (chainId required).
  * `/list/{provider}/{key}` — single provider list in its native order.
- * `/list/tokensByChain/{chainId}` — all tokens for a chain, ordered by provider ranking
- * via `applyOrder(sorted: true)` with separate sources query for providerKey/listKey.
+ * `/list/tokensByChain/{chainId}` — all tokens for a chain, ordered by provider ranking.
+ *
+ * Both chain-scoped endpoints read through `getTokensByChainRanked`, which returns one
+ * row per token in ranking order; tokensByChain adds a separate lightweight query for
+ * the providerKey/listKey `sources` field and caches the assembled body.
  */
 import createError from 'http-errors'
 import * as db from '../../db'
@@ -54,8 +57,24 @@ export const merged: RequestHandler = async (req, res, next) => {
       ),
     )
   }
-  const whereClause = and(dsql`${s.network.chainId} != 'asset-0'`, eq(s.network.chainId, resolution.chainId))!
-  const tokens = await db.applyOrder(orderId, whereClause, 'listToken')
+  // Same ranked query tokensByChain uses. This endpoint previously went through
+  // applyOrder's dense_rank window, which materializes every list_token row for the
+  // chain and sorts them globally — the exact query that was replaced there for being
+  // too slow on large chains. It never stopped being too slow here: Ethereum, Binance
+  // Smart Chain and every other chain of that size returned a 500 at the sixty-second
+  // ceiling, and only PulseChain answered at all. The handler already documented this
+  // failure a few lines above but guarded only the case where no chain was named.
+  //
+  // Selection is equivalent — one row per token, best-ranked list wins — with two
+  // deliberate differences carried over from the newer query: rows come back in
+  // provider-ranking order rather than unordered, and a list entry whose image
+  // actually resolves is preferred over one whose does not. normalizeTokens is
+  // already written against that second rule; its "first usable image" pick names
+  // this query as its counterpart.
+  //
+  // asset-0 is the internal bookkeeping sentinel, excluded by the where clause this
+  // replaces. Keep answering an empty list for it rather than serving sentinel rows.
+  const tokens = resolution.chainId === 'asset-0' ? [] : await db.getTokensByChainRanked(resolution.chainId, orderId)
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)

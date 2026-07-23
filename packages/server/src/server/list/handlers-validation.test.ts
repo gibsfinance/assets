@@ -105,7 +105,8 @@ describe('merged handler', () => {
     vi.mocked(db.getListOrderId)
       .mockReset()
       .mockResolvedValue('order-1' as never)
-    vi.mocked(db.applyOrder)
+    vi.mocked(db.applyOrder).mockReset()
+    vi.mocked(db.getTokensByChainRanked)
       .mockReset()
       .mockResolvedValue([
         {
@@ -148,6 +149,49 @@ describe('merged handler', () => {
     const prefixedBody = prefixed.res.json.mock.calls[0][0]
     expect(bareBody.tokens).toHaveLength(1)
     expect(bareBody.tokens).toEqual(prefixedBody.tokens)
+  })
+
+  it('reads through the ranked query rather than the dense_rank window', async () => {
+    // Production regression: this handler ran applyOrder's dense_rank window, which
+    // materializes every list_token row for the chain and sorts them globally. That is
+    // the same query tokensByChain moved off for being too slow on large chains, and
+    // here it meant /list/merged answered 500 at the sixty-second ceiling for Ethereum,
+    // Binance Smart Chain and everything else of that size — only PulseChain returned.
+    // Asserting the call target, not a timing, is what keeps this from regressing:
+    // whichever query is wired up is the whole difference between 200 and 500.
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([
+      {
+        chainId: 'eip155-1',
+        providedId: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599',
+        decimals: 8,
+        symbol: 'WBTC',
+        name: 'Wrapped Bitcoin',
+        imageHash: 'hash2',
+        ext: '.png',
+        mode: 'save',
+        uri: null,
+        providerKey: 'trustwallet',
+        listKey: 'wallet-ethereum',
+      },
+    ] as never)
+    const { res, next } = await callMerged({ chainId: 'eip155-1' })
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', 'order-1')
+    expect(db.applyOrder).not.toHaveBeenCalled()
+    expect(res.json.mock.calls[0][0].tokens).toHaveLength(1)
+  })
+
+  it('answers an empty list for the asset-0 sentinel without querying for it', async () => {
+    // asset-0 is internal bookkeeping, not a chain — /networks and /stats both strip it.
+    // The where clause the ranked query replaced excluded it explicitly, so an empty
+    // list is the behaviour being preserved; without the guard the sentinel's own rows
+    // would be served to a caller who asked for a chain.
+    const { res, next } = await callMerged({ chainId: 'asset-0' })
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(res.json.mock.calls[0][0].tokens).toEqual([])
   })
 
   it('rejects with 404 when the requested order id has no matching list order', async () => {
