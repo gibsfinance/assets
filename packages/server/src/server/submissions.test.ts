@@ -699,6 +699,33 @@ describe('GET /submissions/approved', () => {
     expect(chain.set).toHaveBeenCalledWith(expect.objectContaining({ imageMode: 'save' }))
   })
 
+  it('reports any mode other than save as link, so the collector never guesses', async () => {
+    const rows = [
+      {
+        id: 'uuid-low',
+        url: 'https://example.com/list.json',
+        providerKey: 'user-carol',
+        listKey: 'carols-list',
+        // auto with too few subscribers to earn image storage — resolveImageMode
+        // leaves it alone, so the row reaches the response still set to 'auto'.
+        imageMode: 'auto',
+        subscriberCount: 1,
+        lastAccessedAt: new Date().toISOString(),
+        lastContentHash: null,
+        status: 'approved',
+      },
+    ]
+    chain.then = vi.fn((resolve: (v: unknown) => void) => resolve(rows))
+
+    const res = await httpRequest(port, 'GET', '/api/lists/submissions/approved', undefined, ADMIN_HEADERS)
+
+    expect(res.status).toBe(200)
+    const items = res.body as unknown as unknown[]
+    // The collector only understands 'save' and 'link'; leaking 'auto' here
+    // would hand it a third value it has no branch for.
+    expect((items[0] as Record<string, unknown>).imageMode).toBe('link')
+  })
+
   it('returns empty array when no approved submissions', async () => {
     chain.then = vi.fn((resolve: (v: unknown) => void) => resolve([]))
 

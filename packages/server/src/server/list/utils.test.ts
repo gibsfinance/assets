@@ -131,6 +131,37 @@ describe('normalizeTokens', () => {
     expect(result[1].address).toBe('0xbbb')
   })
 
+  it('falls back to the first duplicate when none of them resolve a usable logoURI', () => {
+    // Counterpart to "prefer the row with a usable image" below: when no
+    // duplicate has one, the `?? tkns[0]` fallback must still pick a row
+    // (by input order) rather than leaving the group unresolved.
+    const tokens = [
+      makeToken({ providedId: '0xaaa', name: 'No Image First', imageHash: undefined, ext: undefined }),
+      makeToken({ providedId: '0xaaa', name: 'No Image Second', imageHash: undefined, ext: undefined }),
+    ]
+
+    const result = normalizeTokens(tokens as any)
+
+    expect(result).toHaveLength(1)
+    expect((result[0] as any).name).toBe('No Image First')
+    expect(result[0].logoURI).toBeUndefined()
+  })
+
+  it('prefers the duplicate with a usable logoURI even when it is not first', () => {
+    const tokens = [
+      makeToken({ providedId: '0xaaa', name: 'No Image', imageHash: undefined, ext: undefined }),
+      makeToken({ providedId: '0xaaa', name: 'Has Image', imageHash: 'abc123', ext: '.png' }),
+    ]
+
+    const result = normalizeTokens(tokens as any)
+
+    expect(result).toHaveLength(1)
+    // Picking the imaged row for metadata, not just for logoURI, is what keeps
+    // the address from being dropped downstream by a logoURI-required filter.
+    expect((result[0] as any).name).toBe('Has Image')
+    expect(result[0].logoURI).toBe('/image/direct/abc123.png')
+  })
+
   it('returns base58 (Solana, Tron) ids with their case intact', () => {
     // The token-image URL and any copy-paste of the returned address must round-trip.
     // A bare .toLowerCase() here would hand back an unusable, non-existent mint.
@@ -712,6 +743,13 @@ describe('parseListFilters', () => {
   it('converts default to a real boolean', () => {
     expect(parseListFilters({ default: 'true' })).toEqual({ default: true })
     expect(parseListFilters({ default: 'false' })).toEqual({ default: false })
+  })
+
+  it('skips a query key whose value is undefined rather than rejecting it', () => {
+    // Express query objects can carry an explicit `undefined` for a param that
+    // was declared but never sent. Without the skip this would hit the
+    // non-empty-string guard and 400 on a request that supplied nothing.
+    expect(parseListFilters({ default: 'true', chain_id: undefined })).toEqual({ default: true })
   })
 
   // Bare chain ids now pass through untouched. The original fix prefixed them here

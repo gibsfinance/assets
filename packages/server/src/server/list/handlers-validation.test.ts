@@ -45,9 +45,45 @@ vi.mock('../../log/App', () => {
   const noop: any = new Proxy(function () {}, { get: () => noop, apply: () => noop })
   return { createTerminal: () => noop, forceRerender: () => {} }
 })
+// getFilteredLists (behind `all`) is the only code in this file that inspects
+// drizzle-orm's output directly (the merged/tokensByChain whereClauses pass
+// straight into the already-mocked db.applyOrder without being examined) —
+// safe to mock file-wide with marker objects, so the query-builder assertions
+// below can tell eq from inArray from or apart.
+vi.mock('drizzle-orm', () => ({
+  eq: vi.fn((col: unknown, val: unknown) => ({ op: 'eq', col, val })),
+  and: vi.fn((...conds: unknown[]) => ({ op: 'and', conds })),
+  or: vi.fn((...conds: unknown[]) => ({ op: 'or', conds })),
+  inArray: vi.fn((col: unknown, vals: unknown[]) => ({ op: 'inArray', col, vals })),
+  asc: vi.fn((col: unknown) => ({ op: 'asc', col })),
+  sql: Object.assign(
+    vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ op: 'sql', strings: [...strings], values })),
+    { join: vi.fn(), raw: vi.fn() },
+  ),
+}))
+// respondWithList (behind versioned/providerKeyed) is exercised end-to-end,
+// with real drizzle chain internals, in utils.test.ts — mocked here so this
+// file only asserts what versioned/providerKeyed themselves build (the merged
+// list object and the 404 branches), not respondWithList's own logic.
+vi.mock('./utils', async () => {
+  const actual = await vi.importActual<typeof import('./utils')>('./utils')
+  return { ...actual, respondWithList: vi.fn(async (res: { json: (b: unknown) => void }) => res.json({ ok: true })) }
+})
 
 import * as db from '../../db'
-import { merged, tokensByChain, all } from './handlers'
+import * as listUtils from './utils'
+import { getDrizzle } from '../../db/drizzle'
+import { bumpSubscriberCount } from '../../collect/user-submissions'
+import { merged, tokensByChain, all, versioned, providerKeyed } from './handlers'
+
+/** Chainable drizzle query-builder mock matching getFilteredLists' call shape. */
+function makeQueryChain() {
+  const chain: Record<string, unknown> = {}
+  for (const method of ['select', 'from', 'leftJoin', 'where', '$dynamic']) {
+    chain[method] = vi.fn().mockReturnValue(chain)
+  }
+  return chain
+}
 
 const STALE_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -113,6 +149,31 @@ describe('merged handler', () => {
     expect(bareBody.tokens).toHaveLength(1)
     expect(bareBody.tokens).toEqual(prefixedBody.tokens)
   })
+
+  it('rejects with 404 when the requested order id has no matching list order', async () => {
+    vi.mocked(db.getListOrderId).mockResolvedValue(null as never)
+    const { res, next } = await callMerged({ chainId: '369' })
+
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(404)
+    expect(error.message).toBe('order id missing')
+    expect(res.json).not.toHaveBeenCalled()
+  })
+
+  it('rejects a bare chainId that several populated namespaces claim', async () => {
+    vi.mocked(db.getChainIdsByReference).mockResolvedValueOnce([
+      { chainId: 'solana-42', hasTokens: true },
+      { chainId: 'tvm-42', hasTokens: true },
+    ] as never)
+
+    const { res, next } = await callMerged({ chainId: '42' })
+
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('solana-42')
+    expect(error.message).toContain('tvm-42')
+    expect(res.json).not.toHaveBeenCalled()
+  })
 })
 
 describe('tokensByChain handler', () => {
@@ -142,6 +203,15 @@ describe('tokensByChain handler', () => {
     const error = next.mock.calls[0][0] as { status: number; message: string }
     expect(error.status).toBe(400)
     expect(error.message).toContain('banana')
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty chainId before any validation runs', async () => {
+    const { res, next } = await callTokensByChain('')
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toBe('chainId required')
     expect(db.getCachedRequest).not.toHaveBeenCalled()
     expect(res.send).not.toHaveBeenCalled()
   })
@@ -266,6 +336,72 @@ describe('tokensByChain handler', () => {
       expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('public, max-age='))
     })
   })
+
+  describe('cache miss — builds fresh and writes back', () => {
+    beforeEach(() => {
+      vi.mocked(db.getCachedRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+      vi.mocked(db.getTokensByChainRanked)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.getTokenSourcesByChain)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.insertCacheRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+    })
+
+    it('serves a public cache-control (not no-store) for an ordinary cold request', async () => {
+      // no-store is reserved for the admin-refresh response — an ordinary
+      // visitor hitting a genuinely empty cache must still get a cacheable body.
+      const { res, next } = await callTokensByChain('eip155-369')
+      expect(next).not.toHaveBeenCalled()
+      expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('public, max-age='))
+      expect(res.send).toHaveBeenCalled()
+    })
+  })
+
+  describe('stale cache — serves immediately, revalidates in the background', () => {
+    const staleCachedRow = () => ({
+      value: '{"tokens":[]}',
+      // Older than FRESH_TTL_MS (6h) but still inside STALE_TTL_MS (24h) —
+      // servable now, but due for a rebuild.
+      expiresAt: new Date(Date.now() + STALE_TTL_MS - 7 * 60 * 60 * 1000),
+    })
+
+    beforeEach(() => {
+      vi.mocked(db.getCachedRequest)
+        .mockReset()
+        .mockResolvedValue(staleCachedRow() as never)
+      vi.mocked(db.getTokensByChainRanked).mockReset()
+      vi.mocked(db.getTokenSourcesByChain)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.insertCacheRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+    })
+
+    it('serves the stale body immediately and kicks off a background rebuild', async () => {
+      vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+      const { res, next } = await callTokensByChain('eip155-369')
+
+      expect(next).not.toHaveBeenCalled()
+      expect(res.send).toHaveBeenCalledWith('{"tokens":[]}')
+      // The rebuild is fire-and-forget, so it may still be pending at this point —
+      // wait for it rather than asserting synchronously.
+      await vi.waitFor(() => expect(db.getTokensByChainRanked).toHaveBeenCalled())
+    })
+
+    it('logs, and does not throw, when the background revalidation build fails', async () => {
+      vi.mocked(db.getTokensByChainRanked).mockRejectedValue(new Error('query timeout'))
+      // The response must still succeed even though the background rebuild will fail.
+      await expect(callTokensByChain('eip155-369')).resolves.toBeDefined()
+      await vi.waitFor(() => expect(db.getTokensByChainRanked).toHaveBeenCalled())
+    })
+  })
 })
 
 describe('all handler', () => {
@@ -276,5 +412,219 @@ describe('all handler', () => {
       all({ query: { default: 'banana' } } as never, res as never, next as never) as unknown as Promise<void>,
     ).rejects.toMatchObject({ status: 400 })
     expect(res.json).not.toHaveBeenCalled()
+  })
+
+  const callAll = async (query: Record<string, unknown>) => {
+    const res = mockResponse()
+    await all({ query } as never, res as never, undefined as never)
+    return res
+  }
+
+  it('skips the WHERE clause entirely when no filters are given', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({})
+
+    expect(chain.where).not.toHaveBeenCalled()
+  })
+
+  it('builds an equality condition for a recognized scalar filter', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({ key: 'extended' })
+
+    expect(chain.where).toHaveBeenCalledWith({
+      op: 'and',
+      conds: [{ op: 'eq', col: expect.anything(), val: 'extended' }],
+    })
+  })
+
+  it('builds an inArray condition when a filter repeats as a list', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({ key: ['extended', 'default'] })
+
+    expect(chain.where).toHaveBeenCalledWith({
+      op: 'and',
+      conds: [{ op: 'inArray', col: expect.anything(), vals: ['extended', 'default'] }],
+    })
+  })
+
+  it('ignores a filter key with no matching column instead of building a bogus condition', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    // parseListFilters passes any string key through untouched; only recognized
+    // keys reach a column in getFilteredLists' map.
+    await callAll({ notARealFilter: 'whatever' })
+
+    expect(chain.where).not.toHaveBeenCalled()
+  })
+
+  it('matches a bare numeric chain_id by reference (split_part), not by exact equality', async () => {
+    // ?chain_id=501 must reach solana-501 as well as any future eip155-501 — a
+    // bare number carries no namespace, so it cannot be an exact-match filter.
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({ chain_id: '501' })
+
+    expect(chain.where).toHaveBeenCalledWith({
+      op: 'and',
+      conds: [
+        {
+          op: 'or',
+          conds: [{ op: 'sql', strings: expect.any(Array), values: [expect.anything(), '501'] }],
+        },
+      ],
+    })
+  })
+
+  it('matches an explicitly namespaced chain_id by exact equality', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({ chain_id: 'solana-501' })
+
+    expect(chain.where).toHaveBeenCalledWith({
+      op: 'and',
+      conds: [{ op: 'or', conds: [{ op: 'eq', col: expect.anything(), val: 'solana-501' }] }],
+    })
+  })
+
+  it('ORs several chain_id values together rather than requiring all of them at once', async () => {
+    const chain = makeQueryChain()
+    vi.mocked(getDrizzle).mockReturnValue(chain as never)
+
+    await callAll({ chain_id: ['369', 'solana-501'] })
+
+    const whereMock = chain.where as ReturnType<typeof vi.fn>
+    const call = whereMock.mock.calls[0][0] as { conds: { conds: unknown[] }[] }
+    expect(call.conds[0].conds).toHaveLength(2)
+  })
+})
+
+describe('versioned handler', () => {
+  const callVersioned = async (params: Record<string, string>, query: Record<string, unknown> = {}) => {
+    const res = mockResponse()
+    const next = vi.fn()
+    await versioned({ params, query } as never, res as never, next as never)
+    return { res, next }
+  }
+
+  beforeEach(() => {
+    vi.mocked(listUtils.respondWithList).mockClear()
+  })
+
+  it('rejects with 404 when no list matches the requested version', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([
+      { list: { major: 1, minor: 0, patch: 0 }, image: {}, provider: {}, list_token: {} },
+      // A row with no `list` at all — getLists' outer join can produce this shape,
+      // and the optional chaining on row.list must not throw when it does.
+      { list: undefined, image: {}, provider: {}, list_token: {} },
+    ] as never)
+
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })
+
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(404)
+    expect(listUtils.respondWithList).not.toHaveBeenCalled()
+  })
+
+  it('rejects with 404 when no version segment is present at all', async () => {
+    // req.params.version is undefined on a malformed request — the `|| ''`
+    // fallback must produce ['', undefined, undefined] rather than throwing.
+    vi.mocked(db.getLists).mockResolvedValue([
+      { list: { major: 1, minor: 0, patch: 0 }, image: {}, provider: {}, list_token: {} },
+    ] as never)
+
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended' })
+
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(404)
+  })
+
+  it('merges list, image, provider, and list_token fields for the matching version', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([
+      {
+        list: { major: 1, minor: 2, patch: 3, name: 'Extended' },
+        image: { imageHash: 'hash1' },
+        provider: { key: 'pulsex' },
+        list_token: { tokenId: 'tok-1' },
+      },
+    ] as never)
+
+    await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' })
+
+    const [, list] = vi.mocked(listUtils.respondWithList).mock.calls[0]
+    expect(list).toMatchObject({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      name: 'Extended',
+      imageHash: 'hash1',
+      key: 'pulsex',
+      tokenId: 'tok-1',
+    })
+  })
+})
+
+describe('providerKeyed handler', () => {
+  const callProviderKeyed = async (params: Record<string, string>, query: Record<string, unknown> = {}) => {
+    const res = mockResponse()
+    const next = vi.fn()
+    await providerKeyed({ params, query } as never, res as never, next as never)
+    return { res, next }
+  }
+
+  beforeEach(() => {
+    vi.mocked(listUtils.respondWithList).mockClear()
+    vi.mocked(bumpSubscriberCount)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+  })
+
+  it('rejects with the documented JSON 404 shape when no list matches', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([] as never)
+
+    const { next } = await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' })
+
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(404)
+    expect(JSON.parse(error.message)).toEqual({ providerKey: 'unknown-provider', listKey: 'extended' })
+  })
+
+  it('bumps the subscriber count for a user-submitted list', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([
+      { list: {}, image: {}, provider: { key: 'user-abc123' }, list_token: {} },
+    ] as never)
+
+    await callProviderKeyed({ providerKey: 'user-abc123', listKey: 'default' })
+
+    expect(bumpSubscriberCount).toHaveBeenCalledWith('user-abc123')
+  })
+
+  it('does not bump the subscriber count for a non-user-submitted list', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([
+      { list: {}, image: {}, provider: { key: 'pulsex' }, list_token: {} },
+    ] as never)
+
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' })
+
+    expect(bumpSubscriberCount).not.toHaveBeenCalled()
+  })
+
+  it('logs and swallows a subscriber-count bump failure instead of failing the response', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([
+      { list: {}, image: {}, provider: { key: 'user-abc123' }, list_token: {} },
+    ] as never)
+    vi.mocked(bumpSubscriberCount).mockRejectedValueOnce(new Error('bump failed'))
+
+    const { next } = await callProviderKeyed({ providerKey: 'user-abc123', listKey: 'default' })
+
+    // The response still succeeds — a subscriber-count failure is not a list-serving failure.
+    expect(next).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(bumpSubscriberCount).toHaveBeenCalled())
   })
 })

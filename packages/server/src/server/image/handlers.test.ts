@@ -67,6 +67,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { maybeResize } from './resize'
 import type { Response, Request } from 'express'
+import type { ParsedQs } from 'qs'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -192,6 +193,14 @@ describe('image handlers', () => {
 
     it('handles raster as a group', () => {
       expect(parseFormatPreference('raster')).toEqual([['.png', '.jpg', '.jpeg', '.webp', '.gif']])
+    })
+
+    // Express's qs parser produces a plain object (not a string or array) for
+    // bracket-notation query params like ?format[foo]=bar — neither the string
+    // nor the array branch applies, so it must fall through to the empty case
+    // rather than throwing on a mismatched shape.
+    it('treats a non-string, non-array query shape as empty', () => {
+      expect(parseFormatPreference({ foo: 'bar' } as unknown as ParsedQs)).toEqual([])
     })
 
     it('treats svg and jpeg as aliases', () => {
@@ -864,6 +873,25 @@ describe('image handlers', () => {
       expect(res.send).toHaveBeenCalled()
     })
 
+    it('returns early without sending the original when maybeResize already served a variant', async () => {
+      const img = makeImage()
+      const chain = makeDrizzleChain([img])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(true as any)
+
+      const req = mockRequest({
+        params: { imageHash: 'abc123.webp' },
+        query: { as: 'webp' },
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      // sendImage must not also fire — that would double-write the response.
+      expect(res.contentType).not.toHaveBeenCalled()
+    })
+
     it('calls next with 404 when hash not found', async () => {
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
@@ -904,6 +932,28 @@ describe('image handlers', () => {
       await bestGuessNetworkImageFromOnOnChainInfo(req, res, next)
 
       expect(res.send).toHaveBeenCalled()
+    })
+
+    it('returns early without sending the original when maybeResize already served a variant', async () => {
+      const fakeRow = {
+        image: makeImage(),
+        network: { networkId: 'eip155:1' },
+      }
+      const chain = makeDrizzleChain([fakeRow])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(true as any)
+
+      const req = mockRequest({
+        params: { chainId: '1' },
+        query: { as: 'webp' },
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, next)
+
+      // sendImage must not also fire — that would double-write the response.
+      expect(res.contentType).not.toHaveBeenCalled()
     })
 
     it('throws 404 when network icon not found', async () => {
@@ -1004,7 +1054,7 @@ describe('image handlers', () => {
       )
     })
 
-    it('throws when both ordered and unordered queries find nothing', async () => {
+    it('reports a not-found error when both ordered and unordered queries find nothing', async () => {
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)
@@ -1016,8 +1066,14 @@ describe('image handlers', () => {
       const res = mockResponse()
       const next = vi.fn()
 
-      // The second getListImage(false) call throws NotFound (no .catch)
-      await expect(getImageAndFallback(req, res, next)).rejects.toThrow(/list image missing/)
+      await getImageAndFallback(req, res, next)
+
+      // A miss on both lookups is a 404, not an unhandled rejection. Both
+      // lookups swallow not-found so the handler owns the response, matching
+      // getImageByQuery — the sibling handler doing the same two-step lookup.
+      const [error] = next.mock.calls[0] as [{ status: number }]
+      expect(error.status).toBe(404)
+      expect(res.send).not.toHaveBeenCalled()
     })
 
     it('falls back to unordered query when ordered fails', async () => {
@@ -1055,6 +1111,37 @@ describe('image handlers', () => {
 
       // Should have found an image on the second attempt
       expect(res.send).toHaveBeenCalled()
+    })
+
+    it('lets the resize pipeline own the response when it handles the request', async () => {
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      vi.mocked(getDrizzle).mockReturnValue(
+        makeDrizzleChain([
+          {
+            provider: { key: 'test' },
+            list: { listId: '1' },
+            list_token: { tokenId: '1' },
+            token: { networkId: 'eip155:1' },
+            image: makeImage(),
+          },
+        ]) as any,
+      )
+      // A satisfied resize has already written the response body; sending the
+      // original image afterwards would append a second body to the same
+      // response, so the handler has to stop here.
+      vi.mocked(maybeResize).mockResolvedValue(true as any)
+
+      const req = mockRequest({
+        params: { chainId: '1', address: TEST_ADDRESS, order: 'someorder' },
+        query: { as: 'webp' },
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageAndFallback(req, res, next)
+
+      expect(res.send).not.toHaveBeenCalled()
+      expect(next).not.toHaveBeenCalled()
     })
   })
 
@@ -1126,6 +1213,23 @@ describe('image handlers', () => {
       await tryMultiple(req as any, res, next)
 
       expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 406 }))
+    })
+
+    // Every element the array-building step produces goes through `.toString()`,
+    // so a genuinely non-string entry only reaches the loop when an array item's
+    // own `.toString()` override defies its contract and returns a non-string —
+    // the guard exists for exactly that malformed-input case.
+    it('rejects a non-string entry surviving the array-building step', async () => {
+      const malformed = { toString: () => 12345 }
+      const req = mockRequest({
+        query: { i: [malformed] as unknown as string[] },
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await tryMultiple(req as any, res, next)
+
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 406, message: 'invalid i' }))
     })
 
     it('serves image when address lookup succeeds', async () => {
@@ -1427,6 +1531,20 @@ describe('image handlers', () => {
 
       // Should not throw — CAIP-2 format is valid
       await handler(req, res, vi.fn())
+    })
+
+    // Distinct from chainId=0 (asset-0, a valid namespace) — an entirely absent
+    // chainId must fail fast rather than fall through to the address validator.
+    it('rejects an empty chainId with 400 before validating the address', async () => {
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '', address: TEST_ADDRESS },
+        query: {},
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/chainId/)
+      expect(db.applyOrder).not.toHaveBeenCalled()
     })
   })
 })
