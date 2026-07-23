@@ -36,6 +36,18 @@ describe('resolveChains', () => {
     expect(skipped.find((s) => s.name === 'Tezos')!.reason).toBe('not-curated')
   })
 
+  it('keeps the first catalog entry for a slug and ignores a later duplicate', () => {
+    // The catalog is attacker/registry-supplied and not guaranteed unique on
+    // slug. If a later duplicate silently overwrote the map, the resolved
+    // image could flip between builds depending on catalog ordering alone.
+    const duplicateSlugCatalog: CatalogEntry[] = [
+      { name: 'Bitcoin', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin-first.png' },
+      { name: 'Bitcoin Duplicate', symbol: 'BTC', slug: 'bitcoin', img_url: 'https://h/32/bitcoin-second.png' },
+    ]
+    const { resolved } = resolveChains([[0, 2147483648, 'BTC', 'Bitcoin']], duplicateSlugCatalog)
+    expect(resolved[0].imageUrl).toBe('https://h/128/bitcoin-first.png')
+  })
+
   it('upscales the icon url', () => {
     const { resolved } = resolveChains(coinTypes, catalog)
     expect(resolved.find((r) => r.name === 'Bitcoin')!.imageUrl).toBe('https://h/128/bitcoin.png')
@@ -126,6 +138,33 @@ describe('resolveChains', () => {
     // logo would be silently unservable.
     for (const { namespace } of Object.values(NAMESPACE_BY_COIN_TYPE)) {
       expect(NON_EVM_NAMESPACES.has(namespace), `namespace ${namespace} is not in NON_EVM_NAMESPACES`).toBe(true)
+    }
+  })
+
+  it('prefers an explicit iconUrl override over the pinned catalog slug', () => {
+    // No curated entry currently sets iconUrl, so this exercises the override
+    // path directly by adding one temporarily. If iconUrl is ever ignored in
+    // favor of the slug lookup, this must fail even with an empty catalog.
+    const reference = 900001
+    NAMESPACE_BY_COIN_TYPE[reference] = {
+      namespace: 'test-namespace',
+      iconSlug: 'does-not-exist-in-catalog',
+      iconUrl: 'https://example.com/pinned-icon.png',
+    }
+    try {
+      const { resolved, skipped } = resolveChains([[reference, 0, 'TST', 'Test Coin']], [])
+      expect(resolved).toEqual([
+        {
+          identifier: 'test-namespace-900001',
+          namespace: 'test-namespace',
+          reference,
+          name: 'Test Coin',
+          imageUrl: 'https://example.com/pinned-icon.png',
+        },
+      ])
+      expect(skipped).toHaveLength(0)
+    } finally {
+      Reflect.deleteProperty(NAMESPACE_BY_COIN_TYPE, reference)
     }
   })
 

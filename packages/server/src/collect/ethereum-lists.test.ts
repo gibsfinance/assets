@@ -1,5 +1,32 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as path from 'path'
+import * as paths from '../paths'
 import { NETWORK_MAPPING, parseTokenRecord, resolveChainId, resolveLogo } from './ethereum-lists-parse'
+import { harness } from './__testing__/collector-harness'
+import { fakeFilesystem } from './__testing__/fake-filesystem'
+
+vi.mock('fs', () => ({ promises: fakeFilesystem.promises }))
+vi.mock('../db', () => harness.dbModule)
+vi.mock('../utils', () => harness.utilsModule)
+// ethereum-lists.ts pulls `limitBy` from `@gibs/utils` and calls it as `limitBy(key, count).map(items, fn)`.
+// The real `@gibs/utils` `limitBy` returns a `promise-limit` instance, which has a
+// `.map` method; the shared harness's `limitBy` mock returns a bare async function
+// instead (matching every other collector's `limitBy(items, fn)` call shape), so it
+// does not have `.map` and cannot be reused as-is here. Worth upstreaming: give the
+// harness's `limitBy` mock a `.map` method so every calling convention works.
+vi.mock('@gibs/utils', () => ({
+  ...harness.gibsUtilsModule,
+  limitBy: <T>(_key: string, _count = 16) => ({
+    map: async (items: T[], fn: (item: T) => Promise<unknown>) => Promise.all(items.map(fn)),
+  }),
+}))
+
+beforeEach(() => {
+  harness.reset()
+  fakeFilesystem.reset()
+})
+
+import ethereumLists, { collect } from './ethereum-lists'
 
 /**
  * The slug -> chain-id map is transcribed by hand from the source repository's
@@ -127,5 +154,239 @@ describe('parseTokenRecord', () => {
   it('defaults logoURI to an empty string when no logo is present', () => {
     // A token with no logo still ingests; the empty string signals no image.
     expect(parseTokenRecord(valid, 1)?.logoURI).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EthereumListsCollector — walks the ethereum-lists/tokens submodule on disk.
+// ---------------------------------------------------------------------------
+
+const tokensRoot = path.join(paths.submodules, 'ethereum-lists-tokens', 'tokens')
+const ethFolder = path.join(tokensRoot, 'eth')
+const bscFolder = path.join(tokensRoot, 'bsc')
+
+const buildRecord = (overrides: Record<string, unknown> = {}) => ({
+  symbol: 'NANI',
+  name: 'Nani Token',
+  address: '0x00000000000007c8612ba63df8ddefd9e6077c97',
+  decimals: 18,
+  logo: { src: 'https://example.com/nani.png' },
+  ...overrides,
+})
+
+describe('EthereumListsCollector discover', () => {
+  it('registers only the on-disk folders present in the authoritative chain-id map', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth', 'bsc', 'not-a-mapped-chain', '.DS_Store'])
+    fakeFilesystem.setDirectory(ethFolder, ['0xeth-token.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, '0xeth-token.json'), JSON.stringify(buildRecord()))
+    fakeFilesystem.setDirectory(bscFolder, ['0xbsc-token.json'])
+    fakeFilesystem.setFile(
+      path.join(bscFolder, '0xbsc-token.json'),
+      JSON.stringify(
+        buildRecord({ address: '0x00000000000000000000000000000000000bsc', symbol: 'BSC', name: 'Bsc Token' }),
+      ),
+    )
+
+    const manifest = await ethereumLists.discover(new AbortController().signal)
+
+    expect(harness.state.providers).toEqual([
+      { providerId: 'provider:ethereum-lists', key: 'ethereum-lists', name: 'Ethereum Lists', description: null },
+    ])
+    expect(manifest).toHaveLength(1)
+    expect(manifest[0]?.providerKey).toBe('ethereum-lists')
+    // "not-a-mapped-chain" is absent from NETWORK_MAPPING and must never surface as a list.
+    expect(manifest[0]?.lists.map((list) => list.listKey).sort()).toEqual(['tokens-bsc', 'tokens-eth'])
+    expect(harness.state.lists.map((list) => list.key).sort()).toEqual(['tokens-bsc', 'tokens-eth'])
+    // One network for chain 1 (eth), one for chain 56 (bsc), plus the shared default
+    // asset-0 network every inmemory-tokenlist.discover() call also creates.
+    expect(harness.state.networks.size).toBe(3)
+  })
+
+  it('excludes non-json files and skips a file that fails to read, is malformed, or fails validation', async () => {
+    const goodPath = path.join(ethFolder, 'good.json')
+    const unreadablePath = path.join(ethFolder, 'unreadable.json')
+    const malformedPath = path.join(ethFolder, 'malformed.json')
+    const invalidPath = path.join(ethFolder, 'invalid.json')
+    const readmePath = path.join(ethFolder, 'readme.md')
+
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, [
+      'good.json',
+      'unreadable.json',
+      'malformed.json',
+      'invalid.json',
+      'readme.md',
+    ])
+    fakeFilesystem.setFile(goodPath, JSON.stringify(buildRecord()))
+    // unreadable.json is listed but never registered with setFile, so readFile rejects ENOENT.
+    fakeFilesystem.setFile(malformedPath, '{not valid json')
+    fakeFilesystem.setFile(invalidPath, JSON.stringify(buildRecord({ name: '' })))
+
+    await ethereumLists.discover(new AbortController().signal)
+    await ethereumLists.collect(new AbortController().signal)
+
+    // Only the well-formed, readable, valid record made it through to insertion.
+    expect(harness.state.tokenImages).toHaveLength(1)
+    expect(harness.state.tokenImages[0]?.token.providedId).toBe('0x00000000000007c8612ba63df8ddefd9e6077c97')
+    // The non-json file is filtered out before any read is attempted.
+    expect(fakeFilesystem.promises.readFile).not.toHaveBeenCalledWith(readmePath, 'utf8')
+    expect(fakeFilesystem.promises.readFile).toHaveBeenCalledWith(unreadablePath, 'utf8')
+    expect(fakeFilesystem.promises.readFile).toHaveBeenCalledWith(malformedPath, 'utf8')
+    expect(fakeFilesystem.promises.readFile).toHaveBeenCalledWith(invalidPath, 'utf8')
+  })
+
+  it('logs and skips a mapped folder whose directory cannot be read, without aborting the rest', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth', 'bsc'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+    // bsc is a mapped chain and present in the top-level listing, but its own folder
+    // was never registered, so `fs.promises.readdir(bscFolder)` rejects.
+
+    const manifest = await ethereumLists.discover(new AbortController().signal)
+
+    expect(manifest[0]?.lists.map((list) => list.listKey)).toEqual(['tokens-eth'])
+    expect(harness.state.lists.map((list) => list.key)).toEqual(['tokens-eth'])
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      expect.stringContaining('provider=%o'),
+      'ethereum-lists',
+      'bsc',
+      expect.any(String),
+    )
+  })
+
+  it('stringifies a non-Error value thrown while discovering a network', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    // Register no `ethFolder` directory contents at all, and force the readdir
+    // rejection to be a bare string rather than an `Error`, exercising the
+    // `String(err)` side of discoverNetwork's `err instanceof Error` check.
+    fakeFilesystem.failReaddir(ethFolder, 'disk exploded')
+
+    const manifest = await ethereumLists.discover(new AbortController().signal)
+
+    expect(manifest[0]?.lists).toEqual([])
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      expect.stringContaining('provider=%o'),
+      'ethereum-lists',
+      'eth',
+      'disk exploded',
+    )
+  })
+
+  it('skips a network whose discovery is aborted mid-flight, without treating it as an error', async () => {
+    const controller = new AbortController()
+    harness.dbModule.insertNetworkFromChainId.mockImplementationOnce(async (chainId: number, type = 'evm') => {
+      controller.abort()
+      return { networkId: `network:eip155-${chainId}`, type, chainId: `eip155-${chainId}` }
+    })
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+
+    const manifest = await ethereumLists.discover(controller.signal)
+
+    expect(manifest[0]?.lists).toEqual([])
+    expect(harness.gibsUtilsModule.failureLog).not.toHaveBeenCalled()
+  })
+})
+
+describe('EthereumListsCollector collect', () => {
+  it('inserts every discovered token across every network', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth', 'bsc'])
+    fakeFilesystem.setDirectory(ethFolder, ['0xeth-token.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, '0xeth-token.json'), JSON.stringify(buildRecord()))
+    fakeFilesystem.setDirectory(bscFolder, ['0xbsc-token.json'])
+    fakeFilesystem.setFile(
+      path.join(bscFolder, '0xbsc-token.json'),
+      JSON.stringify(
+        buildRecord({ address: '0x00000000000000000000000000000000000bsc', symbol: 'BSC', name: 'Bsc Token' }),
+      ),
+    )
+
+    await ethereumLists.discover(new AbortController().signal)
+    await ethereumLists.collect(new AbortController().signal)
+
+    expect(harness.state.tokenImages).toHaveLength(2)
+  })
+
+  it('stops processing further networks once the signal is already aborted', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+
+    await ethereumLists.discover(new AbortController().signal)
+    const controller = new AbortController()
+    controller.abort()
+    await ethereumLists.collect(controller.signal)
+
+    expect(harness.state.tokenImages).toHaveLength(0)
+  })
+
+  it('logs and continues past a network whose token processing throws, instead of aborting the run', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+    await ethereumLists.discover(new AbortController().signal)
+
+    // Force an exception out of inmemory-tokenlist.collect()'s own body (not its
+    // per-token try/catch, which never lets a single bad token abort a network) so
+    // the outer per-network try/catch in EthereumListsCollector.collectNetwork is
+    // the thing actually under test.
+    const originalMapToSetToken = harness.utilsModule.mapToSet.token
+    harness.utilsModule.mapToSet.token = () => {
+      throw new Error('mapToSet failure')
+    }
+    try {
+      await expect(ethereumLists.collect(new AbortController().signal)).resolves.toBeUndefined()
+    } finally {
+      harness.utilsModule.mapToSet.token = originalMapToSetToken
+    }
+
+    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      expect.stringContaining('provider=%o'),
+      'ethereum-lists',
+      'eth',
+      expect.any(String),
+    )
+  })
+
+  it('stringifies a non-Error value thrown while collecting a network', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+    await ethereumLists.discover(new AbortController().signal)
+
+    // Same seam as the test above, but a bare string this time — exercises the
+    // `String(err)` side of collectNetwork's `err instanceof Error` check.
+    const originalMapToSetToken = harness.utilsModule.mapToSet.token
+    harness.utilsModule.mapToSet.token = () => {
+      throw 'mapToSet exploded'
+    }
+    try {
+      await expect(ethereumLists.collect(new AbortController().signal)).resolves.toBeUndefined()
+    } finally {
+      harness.utilsModule.mapToSet.token = originalMapToSetToken
+    }
+
+    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      expect.stringContaining('provider=%o'),
+      'ethereum-lists',
+      'eth',
+      'mapToSet exploded',
+    )
+  })
+})
+
+describe('EthereumListsCollector standalone collect()', () => {
+  it('runs discover() then collect() against the same collector instance', async () => {
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['good.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, 'good.json'), JSON.stringify(buildRecord()))
+
+    await collect(new AbortController().signal)
+
+    expect(harness.state.providers.map((provider) => provider.key)).toEqual(['ethereum-lists'])
+    expect(harness.state.tokenImages).toHaveLength(1)
   })
 })
