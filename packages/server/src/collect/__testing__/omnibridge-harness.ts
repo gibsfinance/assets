@@ -206,7 +206,10 @@ export const createOmnibridgeHarness = () => {
     },
   )
 
-  const gibsUtilsModule = { erc20Read }
+  /** Records what `collect()` reports for a bridge it chose to continue past. */
+  const failureLog = vi.fn()
+
+  const gibsUtilsModule = { erc20Read, failureLog }
 
   // -- viem.getContract(...).getEvents.NewTokenRegistered -------------------
   //
@@ -265,6 +268,7 @@ export const createOmnibridgeHarness = () => {
     dbModule,
     utilsModule,
     gibsUtilsModule,
+    failureLog,
     getContract,
     getEventsMockFor,
     delayMock,

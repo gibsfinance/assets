@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import * as viem from 'viem'
-import { erc20Read } from '@gibs/utils'
+import { erc20Read, failureLog } from '@gibs/utils'
 import { delay } from '../utils/delay'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
@@ -144,11 +144,33 @@ class OmnibridgeCollector extends BaseCollector {
   async collect(signal: AbortSignal): Promise<void> {
     const { row } = term()
     try {
-      await Promise.all(
+      // Every bridge runs to completion even if one of them gives up part way.
+      //
+      // These are independent providers reading independent chains, so `Promise.all`
+      // bought nothing here and cost a great deal: it rejects the moment one bridge
+      // does and abandons the rest mid-flight. That was survivable while
+      // `iterateOverRange` skipped past a range it could not read, but it now raises
+      // on an endpoint that never recovers — the deliberate trade for no longer
+      // losing events — so a single unreachable endpoint aborted every other bridge
+      // with it. On a six-hourly worker that forfeits the whole cycle rather than
+      // the one bridge, which is how a full re-scan can sit at a standstill while
+      // the healthy bridges are perfectly capable of finishing.
+      const outcomes = await Promise.allSettled(
         this.config.map((c) => {
           return collectByBridgeConfig(c, signal)
         }),
       )
+      const failures = outcomes.filter((outcome) => outcome.status === 'rejected') as PromiseRejectedResult[]
+      for (const failure of failures) {
+        failureLog('omnibridge bridge failed, continuing with the rest: %o', failure.reason)
+      }
+      // Re-raise the first reason as-is when nothing at all got through. A run that
+      // collected nothing but reported success is worse than one that fails loudly,
+      // and rethrowing the original error rather than a summary of it keeps the
+      // reason the operator needs at the top of the stack.
+      if (failures.length > 0 && failures.length === outcomes.length) {
+        throw failures[0].reason
+      }
     } finally {
       row.complete()
     }
@@ -430,6 +452,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     configRow.unmount()
   })
 
+  // Deliberately Promise.all, not allSettled: the two directions are halves of one
+  // bridge, and a direction that gave up is a fault the operator has to see. It
+  // surfaces here and is caught one level up, where the other bridges carry on.
   await Promise.all(tasks)
 }
 

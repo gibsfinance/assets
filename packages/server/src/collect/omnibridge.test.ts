@@ -574,6 +574,37 @@ describe('omnibridge collector: collect() and the standalone factory', () => {
     await expect(collector.collect(new AbortController().signal)).resolves.toBeUndefined()
   })
 
+  it('collect() finishes the healthy bridges when another one gives up', async () => {
+    // The reason this matters: iterateOverRange now raises on an endpoint that never
+    // recovers, instead of skipping the range and carrying on. Under Promise.all that
+    // single rejection abandoned every other bridge mid-flight, so one unreachable
+    // endpoint cost the entire six-hourly cycle rather than the one bridge — which is
+    // how a forced re-scan ends up at a standstill while the other bridges are fine.
+    quietTheReverseDirection()
+    harness.setFinalizedBlock(FOREIGN_CHAIN.id, 25_000n)
+    // Distinct contract addresses so the two bridges draw on separate event mocks —
+    // the doomed one rejects every range, the healthy one answers normally.
+    const healthyHome = `0x${'c'.repeat(40)}` as Hex
+    const healthyForeign = `0x${'d'.repeat(40)}` as Hex
+    const doomed = buildConfig()
+    const healthy = buildConfig({
+      providerPrefix: 'healthy',
+      home: { address: healthyHome, chain: HOME_CHAIN, startBlock: 100 },
+      foreign: { address: healthyForeign, chain: FOREIGN_CHAIN, startBlock: 200 },
+    })
+    const collector = new OmnibridgeCollector([doomed, healthy])
+    harness.getEventsMockFor(FOREIGN_ADDRESS).mockRejectedValue(new Error('rpc unavailable'))
+    harness.getEventsMockFor(healthyForeign).mockResolvedValue([])
+    harness.getEventsMockFor(healthyHome).mockResolvedValue([])
+
+    await collector.discover(new AbortController().signal)
+    await expect(collector.collect(new AbortController().signal)).resolves.toBeUndefined()
+
+    // The healthy bridge reached the database; the failure was reported, not swallowed.
+    expect(harness.state.providers.map((p) => p.key)).toContain('healthy-bridge')
+    expect(harness.failureLog).toHaveBeenCalled()
+  })
+
   it('collect() propagates a rejection from any configured bridge', async () => {
     quietTheReverseDirection()
     harness.setFinalizedBlock(FOREIGN_CHAIN.id, 25_000n)
