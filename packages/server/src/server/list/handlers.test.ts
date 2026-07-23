@@ -140,9 +140,11 @@ describe('rankTokenRows', () => {
     )
     rows.sort(rankTokenRows)
 
-    // Sort invariant: no row may compare "greater than" its successor.
-    for (let i = 1; i < rows.length; i++) {
-      expect(rankTokenRows(rows[i - 1], rows[i])).toBeLessThanOrEqual(0)
-    }
+    // Sort invariant: no row may compare "greater than" its successor. Collected
+    // in a plain loop and asserted once — ten thousand `expect` calls cost more
+    // than the comparisons they check, and spent long enough in the framework to
+    // blow the test budget on a loaded machine.
+    const firstBreak = rows.findIndex((rowValue, i) => i > 0 && rankTokenRows(rows[i - 1], rowValue) > 0)
+    expect(firstBreak).toBe(-1)
   })
 })

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as path from 'path'
 
 const drizzle = vi.fn()
@@ -13,6 +13,13 @@ const { configMock } = vi.hoisted(() => ({
 vi.mock('../../config', () => ({ default: configMock }))
 
 describe('db/drizzle', () => {
+  // Load the module graph once, outside any test's budget — see the note in
+  // chains.test.ts. Every test here resets the registry and re-imports, so
+  // without this the first one absorbs the whole transform-and-load cost.
+  beforeAll(async () => {
+    await import('./drizzle').catch(() => {})
+  }, 60_000)
+
   beforeEach(() => {
     vi.resetModules()
     drizzle.mockReset()

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { pulsechainV4 as viemPulsechainV4 } from 'viem/chains'
 
 const collect = vi.fn()
@@ -8,6 +8,20 @@ const RPC_ENV_KEYS = ['RPC_56', 'RPC_11155111', 'RPC_943'] as const
 const originalEnv: Record<string, string | undefined> = {}
 
 describe('chains (default export)', () => {
+  // Every test below resets the module registry and re-imports, so one of them
+  // has to be the one that pays for transforming and loading this module's whole
+  // dependency graph — tens of seconds of work when the full suite is competing
+  // for cores. That cost is real and has to be paid somewhere; what matters is
+  // that it is not paid inside a test, where it exhausts the budget of whichever
+  // one happens to run first and reports as a failure of that test. Charging it
+  // to a hook with a budget that fits leaves the 5s test default intact, so a
+  // test that really does hang still fails fast. Only re-execution remains for
+  // the tests, which is cheap. The result is deliberately discarded: the mock is
+  // unconfigured here, and nothing but the module graph is wanted.
+  beforeAll(async () => {
+    await import('./chains').catch(() => {})
+  }, 60_000)
+
   beforeEach(() => {
     vi.resetModules()
     collect.mockReset()

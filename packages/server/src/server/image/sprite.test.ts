@@ -338,7 +338,10 @@ describe('sprite endpoints', () => {
   })
 
   describe('sheet header size guard', () => {
-    it('omits x-sprite-tokens when the serialized position map exceeds 4KB', async () => {
+    // Compositing 120 real images through sharp is genuinely several seconds of
+    // work, and the size guard only trips with a token map this large — so the
+    // budget, not the test, is what needs adjusting.
+    it('omits x-sprite-tokens when the serialized position map exceeds 4KB', { timeout: 15_000 }, async () => {
       // Many distinct addresses produce a token map whose JSON serialization
       // crosses the 4096-byte proxy-safe header limit.
       const tokens = Array.from({ length: 120 }, (_, i) => ({

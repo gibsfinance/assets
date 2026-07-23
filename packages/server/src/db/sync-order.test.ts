@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import type { DiscoveryManifest } from '../collect/base-collector'
 
 // ---------------------------------------------------------------------------
@@ -63,6 +63,13 @@ const loadSyncOrder = async () => {
   vi.resetModules()
   return import('./sync-order')
 }
+
+// Load the module graph once, outside any test's budget — see the note in
+// chains.test.ts. `loadSyncOrder` runs inside each test, so without this the
+// first caller absorbs the whole transform-and-load cost.
+beforeAll(async () => {
+  await import('./sync-order').catch(() => {})
+}, 60_000)
 
 const manifestOf = (entries: Record<string, string[]>): DiscoveryManifest =>
   Object.entries(entries).map(([providerKey, listKeys]) => ({
