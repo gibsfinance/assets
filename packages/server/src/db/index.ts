@@ -23,7 +23,6 @@ import type {
   InsertableListToken,
   InsertableProvider,
   InsertableToken,
-  List,
   Network,
   InsertableListOrder,
   BackfillableInsertableListOrderItem,
@@ -537,7 +536,10 @@ export const batchFetchImagesForTokens = async (
   // Use promiseLimit to control concurrency
   const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
 
-  const results = await Promise.allSettled(
+  // Every task below resolves: the body is wrapped in a total try/catch that
+  // turns any failure into a `success: false` entry, so one bad image degrades
+  // its own row instead of the batch. That is what makes plain `all` safe here.
+  const results = await Promise.all(
     tokenImages.map((item) =>
       limit(async () => {
         if (!item.uri) return null
@@ -580,7 +582,7 @@ export const batchFetchImagesForTokens = async (
 
   return results.map((result, index) => ({
     ...tokenImages[index],
-    result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason },
+    result,
   }))
 }
 
@@ -885,19 +887,19 @@ export const fetchImageAndStoreForToken = async (
         },
         tx,
       )
-      if (listId) {
-        if (
-          insertedToken.name === token.name &&
-          insertedToken.symbol === token.symbol &&
-          insertedToken.decimals === token.decimals
-        ) {
-          const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
-          if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
-            return {
-              ...existing,
-              listToken,
-              token: insertedToken,
-            }
+      // `listId` is guaranteed present — the function throws on a missing one
+      // before reaching here — so only the metadata comparison gates the reuse.
+      if (
+        insertedToken.name === token.name &&
+        insertedToken.symbol === token.symbol &&
+        insertedToken.decimals === token.decimals
+      ) {
+        const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
+        if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
+          return {
+            ...existing,
+            listToken,
+            token: insertedToken,
           }
         }
       }
@@ -1003,15 +1005,6 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
         default: dsql`excluded."default"`,
       },
     })
-    .returning()
-}
-
-// TODO: This updates ALL rows in the list table — no WHERE clause. Likely a bug; preserve behavior for now.
-export const updateList = (list: Partial<List>, tx?: DrizzleTx) => {
-  const db = tx ?? getDrizzle()
-  return db
-    .update(s.list)
-    .set(list as Record<string, unknown>)
     .returning()
 }
 
@@ -1243,33 +1236,30 @@ export const getListOrderId = async (orderParam: string) => {
   const [byKey] = await db.select().from(s.listOrder).where(eq(s.listOrder.key, orderParam)).limit(1)
   if (byKey) return byKey.listOrderId as viem.Hex
 
-  // Try as hex listOrderId
-  let hex = orderParam
-  if (viem.isHex(orderParam)) {
-    hex = orderParam
-  } else if (viem.isHex(`0x${orderParam}`)) {
-    hex = `0x${orderParam}`
-  }
+  // Try as hex listOrderId. Ids are stored unprefixed and lowercase — see
+  // `ids` above, where every generator slices the leading "0x" off a keccak
+  // hash — so both lookups below compare against that form, not the caller's.
+  const normalized = orderParam.toLowerCase()
+  const candidate = normalized.startsWith('0x') ? normalized.slice(2) : normalized
+  if (!candidate || !viem.isHex(`0x${candidate}`)) return null
 
-  if (hex && viem.toHex(viem.toBytes(hex), { size: 32 }).slice(2) !== hex) {
-    // Fragment search
-    const [listOrder] = await db
-      .select()
-      .from(s.listOrder)
-      .where(ilike(s.listOrder.listOrderId, `%${hex.replace(/^0x/, '')}%`))
-      .limit(1)
-    if (listOrder) return listOrder.listOrderId as viem.Hex
-  } else {
-    // Verify the hex order ID exists in the DB
+  const fullIdLength = 64
+  if (candidate.length === fullIdLength) {
     const [exact] = await db
       .select({ listOrderId: s.listOrder.listOrderId })
       .from(s.listOrder)
-      .where(eq(s.listOrder.listOrderId, hex))
+      .where(eq(s.listOrder.listOrderId, candidate))
       .limit(1)
-    if (exact) return exact.listOrderId as viem.Hex
+    return exact ? (exact.listOrderId as viem.Hex) : null
   }
 
-  return null
+  // Anything shorter is a prefix or fragment of an id, which only a scan can resolve.
+  const [listOrder] = await db
+    .select()
+    .from(s.listOrder)
+    .where(ilike(s.listOrder.listOrderId, `%${candidate}%`))
+    .limit(1)
+  return listOrder ? (listOrder.listOrderId as viem.Hex) : null
 }
 
 /**
