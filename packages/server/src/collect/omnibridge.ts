@@ -378,7 +378,13 @@ const iterateOverRange = async (
 ) => {
   let fromBlock = start
   let consecutiveErrors = 0
-  const maxConsecutiveErrors = 3
+  // A failed range is retried rather than skipped, so this bound is what stops a
+  // dead endpoint spinning forever. Reaching it ends the direction, which the
+  // caller recovers from on the next run because the cursor still points at the
+  // last range that genuinely succeeded — so the cost of reaching it is a delay,
+  // where the cost of skipping was losing events. That is worth more attempts
+  // than the three it took when a failure simply moved on.
+  const maxConsecutiveErrors = 5
   const minStep = 25n
   let currentStep = step
 
@@ -402,9 +408,8 @@ const iterateOverRange = async (
       fromBlock = toBlock
       consecutiveErrors = 0
 
-      if (currentStep < step && consecutiveErrors === 0) {
+      if (currentStep < step) {
         currentStep = BigInt(Math.min(Number((currentStep * 12_000n) / 10_000n), Number(step))) // 20% increase
-        // log('Increasing block range to %o blocks after success', currentStep)
       }
     } catch (error: unknown) {
       consecutiveErrors++
@@ -424,11 +429,17 @@ const iterateOverRange = async (
         if (currentStep < minStep) {
           throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`)
         }
-      } else {
-        fromBlock = fromBlock + currentStep
       }
 
-      const retryDelay = isLimitError ? 200 : 5000
+      // `fromBlock` deliberately does not move on a failure, for either flavour of
+      // error. A range that threw was never read, and the caller persists its
+      // cursor from the ranges that did succeed — so advancing past a failure
+      // retires blocks nobody looked at, and the next run resumes after them.
+      // Every event in that window is then unrecoverable short of a manual
+      // rescan. Retrying the same range instead trades that silent loss for a
+      // bounded delay, and for the endpoint that never recovers, an error the
+      // operator can see.
+      const retryDelay = isLimitError ? 200 : 5_000 * 2 ** (consecutiveErrors - 1)
       await delay(retryDelay, signal).catch(() => {})
       if (signal?.aborted) return
     }

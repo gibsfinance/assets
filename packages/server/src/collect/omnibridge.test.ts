@@ -272,7 +272,7 @@ describe('omnibridge collector: pairing native and bridged tokens', () => {
 })
 
 describe('omnibridge collector: range failure handling', () => {
-  it('skips a range that fails with a non-"limit" error and never retries it', async () => {
+  it('replays the same range after a non-"limit" error instead of skipping past it', async () => {
     quietTheReverseDirection()
     harness.setFinalizedBlock(FOREIGN_CHAIN.id, 25_000n)
     const config = buildConfig()
@@ -282,12 +282,35 @@ describe('omnibridge collector: range failure handling', () => {
     await collectByBridgeConfig(config, new AbortController().signal)
 
     const ranges = foreignEvents.mock.calls.map(([, range]) => range)
-    // The failed [200, 10199] range is never replayed — the very next call
-    // jumps straight past it to [10200, ...], so any NewTokenRegistered
-    // events inside that window are silently dropped for this run.
+    // Advancing past the window that threw would retire blocks nobody read.
+    // The cursor is persisted from the ranges that succeed, so the next run
+    // resumes after the gap and every NewTokenRegistered event inside it is
+    // lost for good — the failure has to cost a replay, not a hole.
     expect(ranges[0]).toEqual({ fromBlock: 200n, toBlock: 10199n })
-    expect(ranges[1]).toEqual({ fromBlock: 10200n, toBlock: 20199n })
-    expect(ranges.some((range) => range.fromBlock === 200n && range !== ranges[0])).toBe(false)
+    expect(ranges[1]).toEqual({ fromBlock: 200n, toBlock: 10199n })
+    // The step is untouched: a dropped connection says nothing about how many
+    // blocks the endpoint is willing to serve, so shrinking it would be guessing.
+    expect(ranges[2]).toEqual({ fromBlock: 10199n, toBlock: 20198n })
+  })
+
+  it('backs off further on each consecutive non-"limit" failure', async () => {
+    quietTheReverseDirection()
+    harness.setFinalizedBlock(FOREIGN_CHAIN.id, 25_000n)
+    const config = buildConfig()
+    const foreignEvents = harness.getEventsMockFor(FOREIGN_ADDRESS)
+    foreignEvents
+      .mockRejectedValueOnce(new Error('connection reset by peer'))
+      .mockRejectedValueOnce(new Error('connection reset by peer'))
+      .mockRejectedValueOnce(new Error('connection reset by peer'))
+      .mockResolvedValue([])
+
+    await collectByBridgeConfig(config, new AbortController().signal)
+
+    // Retrying a struggling endpoint at a fixed interval is how a rate-limited
+    // or restarting node gets held down; each successive wait has to give it
+    // more room than the last.
+    const waits = harness.delayMock.mock.calls.map(([ms]) => ms)
+    expect(waits.slice(0, 3)).toEqual([5_000, 10_000, 20_000])
   })
 
   it('halves the step and retries the same starting block on a "limit"-flavored error', async () => {
@@ -305,7 +328,7 @@ describe('omnibridge collector: range failure handling', () => {
     expect(ranges[1]).toEqual({ fromBlock: 200n, toBlock: 5199n })
   })
 
-  it('throws once a range fails three times in a row, falling back to the raw error when it has no message', async () => {
+  it('gives up on a range that keeps failing, falling back to the raw error when it has no message', async () => {
     quietTheReverseDirection()
     harness.setFinalizedBlock(FOREIGN_CHAIN.id, 25_000n)
     const config = buildConfig()
@@ -313,14 +336,20 @@ describe('omnibridge collector: range failure handling', () => {
     foreignEvents
       .mockRejectedValueOnce(new Error('rpc unavailable'))
       .mockRejectedValueOnce(new Error('still unavailable'))
+      .mockRejectedValueOnce(new Error('still unavailable'))
+      .mockRejectedValueOnce(new Error('still unavailable'))
       // A rejection with no `.message` (a bare string, as some RPC transports throw)
       // exercises the `err.message || err` fallback in the final thrown error.
       .mockRejectedValueOnce('boom')
 
+    // Since a failed range is now replayed rather than skipped, this bound is the
+    // only thing that ends the loop for an endpoint that never recovers. It has
+    // to surface as an error the operator sees: stopping here leaves the cursor
+    // on the last range that succeeded, so the next run resumes correctly.
     await expect(collectByBridgeConfig(config, new AbortController().signal)).rejects.toThrow(
-      /Failed after 3 consecutive attempts.*boom/,
+      /Failed after 5 consecutive attempts.*boom/,
     )
-    expect(foreignEvents).toHaveBeenCalledTimes(3)
+    expect(foreignEvents).toHaveBeenCalledTimes(5)
   })
 
   it('recognizes a rate-limit error carried in a `.details` field even when the message does not mention it', async () => {
@@ -347,10 +376,10 @@ describe('omnibridge collector: range failure handling', () => {
     const config = buildConfig()
     const foreignEvents = harness.getEventsMockFor(FOREIGN_ADDRESS)
 
-    // The 3-consecutive-failures throw (tested above) only fires when the same
-    // range fails three times *in a row*. Here every "limit" rejection is
+    // The consecutive-failures throw (tested above) only fires when the same
+    // range fails five times *in a row*. Here every "limit" rejection is
     // immediately followed by a success, so `consecutiveErrors` resets to 0
-    // before it ever reaches 3 — that throw never fires. But `currentStep` is
+    // before it ever reaches the bound — that throw never fires. But `currentStep` is
     // never reset by a success, only grown 20%, while each error still halves
     // it (net *0.6 per error/success cycle), so it keeps sliding down across
     // enough cycles regardless of how the errors are spaced out. 12 halvings
@@ -501,7 +530,7 @@ describe('omnibridge collector: collect() and the standalone factory', () => {
     harness.getEventsMockFor(FOREIGN_ADDRESS).mockRejectedValue(new Error('rpc unavailable'))
 
     await collector.discover(new AbortController().signal)
-    await expect(collector.collect(new AbortController().signal)).rejects.toThrow(/Failed after 3 consecutive/)
+    await expect(collector.collect(new AbortController().signal)).rejects.toThrow(/Failed after 5 consecutive/)
   })
 
   it('the standalone collect(config) factory discovers then collects', async () => {
