@@ -78,6 +78,13 @@
       "when": 1784214301186,
       "tag": "0010_add_network_title",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784300701186,
+      "tag": "0011_reset_bridge_block_cursors",
+      "breakpoints": true
     }
   ]
 }

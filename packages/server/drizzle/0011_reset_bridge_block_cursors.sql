@@ -1,0 +1,33 @@
+-- Rewind every bridge's scan cursor so the next collection re-reads each bridge
+-- from the start block configured for it in `collectables.ts`.
+--
+-- Until the change that accompanies this migration, `iterateOverRange` responded
+-- to a non-"limit" error by advancing past the block range that had just failed:
+--
+--   } else {
+--     fromBlock = fromBlock + currentStep
+--   }
+--
+-- Nothing ever went back for it. The range was never read, but the ranges after
+-- it were, and each success persists `current_home_block_number` /
+-- `current_foreign_block_number` — so the skipped window ended up behind a cursor
+-- that claimed to have covered it. Every NewTokenRegistered event inside such a
+-- window is missing from `bridge_link`, and no ordinary run will ever look there
+-- again. Any transient failure over the life of these bridges left a hole, and
+-- there is no record of where the holes are.
+--
+-- A full re-scan is the only way to close them. Both writes the collector makes
+-- are upserts keyed on a deterministic id derived from their contents —
+-- `bridge_link_id = keccak256(native_token_id || bridged_token_id || bridge_id)`
+-- and `list_token_id = keccak256(token_id || list_id)` — so re-reading a range
+-- that was already collected re-writes the same rows rather than duplicating
+-- them. Re-collection is therefore safe to repeat; it is only expensive.
+--
+-- Expect that cost on the next collection: roughly six hundred block ranges per
+-- direction, across eight directions, at ten thousand blocks each. Zero is not a
+-- sentinel here — `collectByBridgeConfig` starts from the configured start block
+-- and only moves forward if the stored cursor is greater, so a zero simply lets
+-- the configured value win.
+UPDATE "bridge" SET
+  "current_home_block_number" = 0,
+  "current_foreign_block_number" = 0;
