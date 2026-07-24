@@ -496,9 +496,12 @@ describe('fetchImageAndStoreForList', () => {
 describe('fetchImageAndStoreForNetwork', () => {
   const network = { networkId: 'network-1', chainId: 'eip155-1' } as never
 
-  it('short-circuits on a fresh cached image without opening a transaction', async () => {
+  it('skips the download and the transaction when the image is already fresh', async () => {
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }])
     harness.queueResult([{ imageHash: 'hash-1' }])
+    // The slot is still contested — see the tests below — so the incumbent lookup
+    // happens either way. It already holds exactly what this collector would write.
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-1', imageProviderKey: 'chainlist' }])
 
     const result = await fetchImageAndStoreForNetwork({
       network,
@@ -507,8 +510,55 @@ describe('fetchImageAndStoreForNetwork', () => {
       providerKey: 'chainlist',
     })
 
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(harness.queries.some((query) => query.root === 'transaction')).toBe(false)
-    expect(result).toMatchObject({ network })
+    // Nothing to change, so nothing is written. Every collector revisits every network
+    // it knows on every run; an unconditional update here is thousands of no-op writes.
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
+    expect(result?.network).toMatchObject({ imageHash: 'hash-1' })
+  })
+
+  it('still contests the network slot when the image is already fresh', async () => {
+    // The reason the ranking above was inert in production. Images stay fresh for a
+    // week (IMAGE_MAX_AGE_HOURS, default 168) and collection runs every six hours, so
+    // on all but one run in twenty-eight every collector takes the fresh path. When
+    // that path returned without contesting the slot, the comparison was unreachable:
+    // whichever collector won the very first race held the chain until its logo
+    // expired. Staging and production diverged on sixty-one chains this way, with
+    // chainlist — the deliberate last resort — holding Ethereum on one of them.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-curated' }])
+    harness.queueResult([{ imageHash: 'hash-curated' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-fallback', imageProviderKey: 'chainlist' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated' }])
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      providerKey: 'smoldapp',
+    })
+
+    const [update] = harness.queries.filter((query) => query.root === 'update')
+    const written = update.steps.find((step) => step.method === 'set')?.args[0] as Record<string, unknown>
+    expect(written).toEqual({ imageHash: 'hash-curated', imageProviderKey: 'smoldapp' })
+    expect(result?.network).toMatchObject({ imageHash: 'hash-curated' })
+  })
+
+  it('yields the slot on the fresh path when the incumbent outranks the caller', async () => {
+    // The mirror of the case above: contesting the slot must not mean taking it.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-fallback' }])
+    harness.queueResult([{ imageHash: 'hash-fallback' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated', imageProviderKey: 'smoldapp' }])
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      providerKey: 'chainlist',
+    })
+
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
+    expect(result?.network).toMatchObject({ imageHash: 'hash-curated', imageProviderKey: 'smoldapp' })
   })
 
   it('stores a fetched image and the network row inside a single transaction', async () => {

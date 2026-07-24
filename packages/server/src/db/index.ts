@@ -697,6 +697,47 @@ export const getListFromId = async (listId: string, tx?: DrizzleTx) => {
   return row
 }
 
+/**
+ * Point a network's icon slot at `imageHash` on behalf of `providerKey`, but only if
+ * that collector outranks whoever currently holds the slot.
+ *
+ * The slot used to be assigned by an unconditional update, which made the last
+ * collector to finish the winner. Six of them write network icons, and the two
+ * lowest-priority ones — chainlist and cryptocurrency-icons — are broad fallbacks
+ * meant to fill chains nobody curated; chainlist even carries the comment "kept last
+ * so any chain-specific logo outranks it". Under last-write-wins it outranked
+ * everything instead, and which icon survived came down to collection order, so two
+ * deployments of the same code served different icons for the same chain.
+ *
+ * A row whose provider is unknown — every network written before provenance was
+ * recorded — yields to the first collector that claims it, rather than being frozen
+ * in place forever. See `collectablePriority`.
+ *
+ * @returns the network row that now holds the slot, whether or not this call won it.
+ */
+const claimNetworkImageSlot = async (
+  { network, imageHash, providerKey }: { network: Network; imageHash: string; providerKey: string },
+  tx?: DrizzleTx,
+) => {
+  const db = tx ?? getDrizzle()
+  const [current] = await db.select().from(s.network).where(eq(s.network.networkId, network.networkId)).limit(1)
+  if (current?.imageHash && collectablePriority(current.imageProviderKey) < collectablePriority(providerKey)) {
+    return current
+  }
+  // Already exactly what we would write. Skipping matters at this scale: every
+  // collector revisits every network it knows on every run, so an unconditional
+  // update here is thousands of no-op writes per run.
+  if (current?.imageHash === imageHash && current.imageProviderKey === providerKey) {
+    return current
+  }
+  const [updated] = await db
+    .update(s.network)
+    .set({ imageHash, imageProviderKey: providerKey })
+    .where(eq(s.network.networkId, network.networkId))
+    .returning()
+  return updated
+}
+
 export const fetchImageAndStoreForNetwork = async (
   {
     network,
@@ -721,7 +762,17 @@ export const fetchImageAndStoreForNetwork = async (
   }
   if (_.isString(uri)) {
     const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
-    if (existing) return { network, ...existing }
+    // The bytes are already on disk, so there is nothing to download — but the slot
+    // still has to be contested. Returning here without claiming is what made the
+    // ranking above unreachable in practice: images stay fresh for a week
+    // (IMAGE_MAX_AGE_HOURS, default 168), so on all but the first run after a logo
+    // expires every collector took this path and no collector ever reached the
+    // comparison. Whichever one happened to win the very first race then held the
+    // chain indefinitely, which is the behaviour the ranking was added to end.
+    if (existing) {
+      const claimed = await claimNetworkImageSlot({ network, imageHash: existing.image.imageHash, providerKey }, tx)
+      return { network: claimed ?? network, ...existing }
+    }
   }
   const image = await fetchImage(uri, signal, providerKey, `chain-id:${network.chainId}`)
   if (!image) {
@@ -746,27 +797,10 @@ export const fetchImageAndStoreForNetwork = async (
     if (!img) {
       return
     }
-    // Take the slot only if this collector actually outranks whoever holds it.
-    //
-    // This update was unconditional, which made the last collector to finish the
-    // winner. Six of them write network icons, and the two lowest-priority ones —
-    // chainlist and cryptocurrency-icons — are broad fallbacks meant to fill chains
-    // nobody curated; chainlist even carries the comment "kept last so any
-    // chain-specific logo outranks it". Under last-write-wins it outranked everything
-    // instead, and which icon survived came down to collection order, so two
-    // deployments of the same code served different icons for the same chain.
-    //
-    // The image row is still written either way — losing the network slot is not a
-    // reason to discard bytes another list_token may reference.
-    const [current] = await innerTx.select().from(s.network).where(eq(s.network.networkId, network.networkId)).limit(1)
-    if (current?.imageHash && collectablePriority(current.imageProviderKey) < collectablePriority(providerKey)) {
-      return { network: current, ...img }
-    }
-    const [ntwrk] = await innerTx
-      .update(s.network)
-      .set({ imageHash: img.image.imageHash, imageProviderKey: providerKey })
-      .where(eq(s.network.networkId, network.networkId))
-      .returning()
+    // Take the slot only if this collector outranks whoever holds it. The image row
+    // is written either way — losing the network slot is not a reason to discard
+    // bytes another list_token may reference.
+    const ntwrk = await claimNetworkImageSlot({ network, imageHash: img.image.imageHash, providerKey }, innerTx)
     return {
       network: ntwrk,
       ...img,
@@ -1202,30 +1236,41 @@ export const getTokensWithExtensions = async (
           : dsql``
       }
     FROM "list_token"
-    FULL JOIN "image" ON "image"."image_hash" = "list_token"."image_hash"
+    -- LEFT, not FULL. The full outer half only ever produced rows with a null
+    -- list_token, which the WHERE below discards anyway, so the two are equivalent
+    -- here — but only by accident of the WHERE clause, and a full outer join is the
+    -- more expensive plan. The optional header join further down reads the same way.
+    LEFT JOIN "image" ON "image"."image_hash" = "list_token"."image_hash"
     INNER JOIN "token" ON "token"."token_id" = "list_token"."token_id"
     INNER JOIN "network" ON "network"."network_id" = "token"."network_id"
     INNER JOIN "list" ON "list"."list_id" = "list_token"."list_id"
     INNER JOIN "provider" ON "provider"."provider_id" = "list"."provider_id"
     ${
       bridgeInfo
-        ? dsql`
-      FULL JOIN "bridge_link" ON (
+        ? // Every join in this chain must be a LEFT JOIN. Only a minority of tokens
+          // are bridged, so `bridge_link` is absent for most rows; an INNER JOIN
+          // anywhere below it drops those rows outright rather than returning them
+          // without bridge columns. That is not a degraded response, it is an empty
+          // one — asking a list for `?extensions=bridgeInfo` returned zero tokens
+          // where the same list without extensions returned thousands. Requesting an
+          // extension must never remove tokens from a list.
+          dsql`
+      LEFT JOIN "bridge_link" ON (
         "bridge_link"."native_token_id" = "token"."token_id"
         OR "bridge_link"."bridged_token_id" = "token"."token_id"
       )
-      INNER JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
-      INNER JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
-      INNER JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
-      INNER JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
-      INNER JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
+      LEFT JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
+      LEFT JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
+      LEFT JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
+      LEFT JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
+      LEFT JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
     `
         : dsql``
     }
     ${
       headerUri
         ? dsql`
-      FULL JOIN "header_link" ON "header_link"."list_token_id" = "list_token"."list_token_id"
+      LEFT JOIN "header_link" ON "header_link"."list_token_id" = "list_token"."list_token_id"
     `
         : dsql``
     }

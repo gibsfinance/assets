@@ -257,6 +257,33 @@ describe('getTokensWithExtensions', () => {
     // pass — asserts the two extensions are independent, not a shared branch.
     expect(rows).toEqual([{ chainId: 'eip155-1', headerImageHash: 'hash-1' }])
   })
+
+  it('joins every bridge table with LEFT, so an unbridged token keeps its place in the list', async () => {
+    // Production regression, and the sharpest kind: asking a list for an extension
+    // emptied it. Only a minority of tokens are bridged, so `bridge_link` is null for
+    // most rows; the chain below it was INNER, which drops a row outright rather than
+    // returning it without bridge columns. /list/coingecko/base answered with 2238
+    // tokens and, with ?extensions=bridgeInfo, with none at all — and did so silently,
+    // as a 200. An extension adds fields to tokens; it must never remove tokens.
+    harness.queueResult({ rows: [{ chainId: 'eip155-1' }] })
+
+    await getTokensWithExtensions('list-1', { bridgeInfo: true })
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    const bridgeJoins = rendered.slice(rendered.indexOf('LEFT JOIN "bridge_link"'))
+    for (const join of [
+      '"bridge" ON',
+      '"network" AS "network_a"',
+      '"network" AS "network_b"',
+      '"token" AS "native_token"',
+      '"token" AS "bridged_token"',
+    ]) {
+      expect(bridgeJoins).toContain(`LEFT JOIN ${join}`)
+    }
+    // The assertion that actually holds the line: any INNER anywhere below
+    // bridge_link re-introduces the bug, whatever it happens to be joining.
+    expect(bridgeJoins).not.toContain('INNER JOIN')
+  })
 })
 
 // ---------------------------------------------------------------------------

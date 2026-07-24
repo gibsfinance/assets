@@ -8,7 +8,13 @@
  *
  * Both chain-scoped endpoints read through `getTokensByChainRanked`, which returns one
  * row per token in ranking order; tokensByChain adds a separate lightweight query for
- * the providerKey/listKey `sources` field and caches the assembled body.
+ * the providerKey/listKey `sources` field.
+ *
+ * Both also cache their assembled body through `./response-cache`. They are the same
+ * query over the same rows, and merged is the larger of the two — it keeps tokens
+ * without a logo, where tokensByChain drops them — so leaving it uncached meant the
+ * heavier endpoint was the one paying full price on every request: sixteen to
+ * twenty-two seconds against roughly one.
  */
 import createError from 'http-errors'
 import * as db from '../../db'
@@ -30,8 +36,43 @@ import {
   resolveChainIdAgainstStored,
   chainIdFilterMatch,
 } from '../../chain-id'
-import { log, timerLog } from '../../logger'
+import { timerLog } from '../../logger'
 import { refreshRequest, REFRESH_CACHE_CONTROL } from '../cache-refresh'
+import { buildAndCache, cacheRowAge, listCacheControl, serveCachedJson, writeCachedResponse } from './response-cache'
+
+export { cacheRowAge }
+
+/**
+ * Cache key for a merged list response.
+ *
+ * Everything that changes the body has to appear here, and nothing else may. The
+ * order is keyed by its resolved id rather than the `:order` path segment, so that
+ * re-syncing the default order produces new keys and the old bodies age out on their
+ * own instead of being served under a ranking that no longer exists.
+ *
+ * `chainId` is the resolved identifier, not the raw query value: `?chainId=369` and
+ * `?chainId=eip155-369` name the same chain and must not each get their own copy of a
+ * twelve-megabyte body. Extensions and decimals are sorted for the same reason —
+ * `bridgeInfo,headerUri` and `headerUri,bridgeInfo` are one response, not two.
+ */
+export const mergedCacheKey = ({
+  orderId,
+  chainId,
+  extensions,
+  decimals,
+}: {
+  orderId: string
+  chainId: string
+  extensions: Set<string>
+  decimals?: unknown
+}) => {
+  const ext = [...extensions].sort().join(',')
+  const dec = (Array.isArray(decimals) ? decimals : decimals == null ? [] : [decimals])
+    .map((value) => `${value}`)
+    .sort()
+    .join(',')
+  return `merged:${orderId}:${chainId}:${ext}:${dec}`
+}
 
 export const merged: RequestHandler = async (req, res, next) => {
   const rawChainId = req.query.chainId as string | undefined
@@ -40,6 +81,19 @@ export const merged: RequestHandler = async (req, res, next) => {
   // 500) — requiring the parameter is the honest contract.
   if (!rawChainId) {
     return next(createError.BadRequest('chainId query parameter is required'))
+  }
+  // Same reasoning as tokensByChain, and more so — this is the heavier of the two
+  // endpoints. An open refresh parameter would let anyone force the full per-chain
+  // ranked query on every request, which is a denial of service lever. Reject it
+  // rather than quietly downgrading to a cached read, so an operator who thinks they
+  // verified against fresh data is never wrong about that.
+  const refresh = refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
   }
   const extensions = utils.parseExtensions(req.query.extensions)
   const orderId = await db.getListOrderId(req.params.order)
@@ -80,17 +134,30 @@ export const merged: RequestHandler = async (req, res, next) => {
   // neither the bridge tables nor header_link, so every token came back with the
   // columns normalizeTokens reads for extensions simply absent. Against production
   // that was nothing with extensions on /list/merged against 1290 on a provider list.
-  const tokens =
-    resolution.chainId === 'asset-0'
-      ? []
-      : await db.getTokensByChainRanked(resolution.chainId, orderId, {
-          bridgeInfo: extensions.has('bridgeInfo'),
-          headerUri: extensions.has('headerUri'),
-        })
   const filters = utils.tokenFilters(req.query)
-  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json(utils.minimalList(entries))
+  const build = async () => {
+    const tokens =
+      resolution.chainId === 'asset-0'
+        ? []
+        : await db.getTokensByChainRanked(resolution.chainId, orderId, {
+            bridgeInfo: extensions.has('bridgeInfo'),
+            headerUri: extensions.has('headerUri'),
+          })
+    const entries = utils.normalizeTokens(tokens as any, filters, extensions)
+    // minimalList stamps `timestamp` with the current time, so a cached body reports
+    // when it was assembled rather than when it was served. That is the more useful
+    // of the two — it is the age of the data, which is what a consumer of a token
+    // list is actually asking about.
+    return JSON.stringify(utils.minimalList(entries))
+  }
+
+  await serveCachedJson(res, {
+    cacheKey: mergedCacheKey({ orderId, chainId: resolution.chainId, extensions, decimals: req.query.decimals }),
+    build,
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
 
 export const versioned: RequestHandler = async (req, res, next) => {
@@ -211,8 +278,6 @@ export const all: RequestHandler = async (req, res) => {
  * Server-side merge eliminates the need for N individual list fetches.
  * Supports ?limit=N (default 500, max 5000)
  */
-const FRESH_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours — serve without revalidation
-const STALE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours — serve stale while refreshing in background
 const WARM_STALE_MS = 12 * 60 * 60 * 1000 // 12 hours — periodic warmer re-builds cache rows older than this
 const DEFAULT_TOKENS_BY_CHAIN_LIMIT = 50_000 // shared by the request handler and the cache warmer
 const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
@@ -228,13 +293,8 @@ const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
  */
 export const tokensByChainCacheKey = (chainId: string, limit: number) => `tokens-by-chain:${chainId}:${limit}:`
 
-/** Cache rows only store expiresAt (= createdAt + STALE_TTL_MS), so age is derived from it. */
-export const cacheRowAge = (row: { expiresAt: Date | string | null }) =>
-  Date.now() - (new Date(row.expiresAt!).getTime() - STALE_TTL_MS)
-
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
-export const writeTokensByChainCache = (cacheKey: string, body: string) =>
-  db.insertCacheRequest({ key: cacheKey, value: body, expiresAt: new Date(Date.now() + STALE_TTL_MS) as any })
+export const writeTokensByChainCache = writeCachedResponse
 
 /** Build the JSON response body for tokensByChain (shared by fresh + revalidation paths).
  *
@@ -305,24 +365,8 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
   })
 }
 
-// Single-flight build + cache write: concurrent cold requests, stale revalidations,
-// and warmer ticks for the same key share one query pass, one serialization, and one
-// cache write — this is the only place a tokensByChain body is built or persisted.
-const inflightBuilds = new Map<string, Promise<string>>()
-
-export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> => {
-  const cacheKey = tokensByChainCacheKey(chainId, limit)
-  const existing = inflightBuilds.get(cacheKey)
-  if (existing) return existing
-  const promise = buildTokensByChainResponse(chainId, limit).then((body) => {
-    // Fire-and-forget: a cold request must not wait on the multi-megabyte cache INSERT,
-    // and a cache-write failure must not fail the response — the body is still servable.
-    writeTokensByChainCache(cacheKey, body).catch((err: unknown) => log('cache write failed for %s: %o', cacheKey, err))
-    return body
-  })
-  inflightBuilds.set(cacheKey, promise)
-  return promise.finally(() => inflightBuilds.delete(cacheKey))
-}
+export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> =>
+  buildAndCache(tokensByChainCacheKey(chainId, limit), () => buildTokensByChainResponse(chainId, limit))
 
 /**
  * Pre-warm the tokensByChain cache for the top N chains by token count.
@@ -390,38 +434,11 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
     max: MAX_TOKENS_BY_CHAIN_LIMIT,
   })
-  const cacheKey = tokensByChainCacheKey(chainId, limit)
-
-  // CDN cache-control: fresh window matches FRESH_TTL_MS; stale-while-revalidate
-  // allows CDN to serve stale for STALE_TTL_MS while we rebuild in background.
-  // Don't let CDN cache for the server's cacheSeconds (24h in prod) — stats change
-  // as new tokens are collected and the CDN would serve stale counts for a day.
-  const tokenListCacheControl = `public, max-age=${Math.floor(FRESH_TTL_MS / 1000)}, stale-while-revalidate=${Math.floor(STALE_TTL_MS / 1000)}`
-
-  // Check cache — expiresAt is the hard 1hr expiry.
-  // An authorized refresh skips the read entirely and falls through to the build
-  // path below, which also rewrites the cache row — the point of a refresh is that
-  // the next ordinary visitor gets the rebuilt body too, not just this caller.
-  const cached = refresh.authorized ? null : await db.getCachedRequest(cacheKey)
-  if (cached) {
-    res.set('cache-control', tokenListCacheControl)
-    res.set('content-type', 'application/json')
-    res.send(cached.value)
-
-    // If stale (past the fresh window), revalidate in the background — concurrent
-    // stale hits share the same in-flight build via buildAndCacheTokensByChain.
-    if (cacheRowAge(cached) > FRESH_TTL_MS) {
-      buildAndCacheTokensByChain(chainId, limit).catch((err: unknown) =>
-        log('background revalidate failed for %s: %o', cacheKey, err),
-      )
-    }
-    return
-  }
-
-  // No cache — build fresh (first request or after hard expiry)
-  const body = await buildAndCacheTokensByChain(chainId, limit)
-
-  res.set('cache-control', refresh.authorized ? REFRESH_CACHE_CONTROL : tokenListCacheControl)
-  res.set('content-type', 'application/json')
-  res.send(body)
+  await serveCachedJson(res, {
+    cacheKey: tokensByChainCacheKey(chainId, limit),
+    build: () => buildTokensByChainResponse(chainId, limit),
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
