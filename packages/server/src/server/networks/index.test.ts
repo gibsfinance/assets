@@ -40,16 +40,25 @@ vi.mock('../../db/drizzle', () => ({
 
 vi.mock('../../db/schema', () => ({ network: {} }))
 
+// A known admin token so the refresh-parameter gate has something to accept
+// and something to reject — the endpoint fails closed without one configured.
+vi.mock('../../../config', async () => {
+  const actual = await vi.importActual<{ default: Record<string, unknown> }>('../../../config')
+  return { default: { ...actual.default, adminToken: 'test-admin-token' } }
+})
+
 import { router, toPublicNetwork } from './index'
+import { errorMiddleware } from '../middleware'
 import type { Network } from '../../db/schema-types'
 
 function get(
   port: number,
   path: string,
+  headers: http.OutgoingHttpHeaders = {},
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: unknown }> {
   return new Promise((resolve, reject) => {
     http
-      .get({ hostname: '127.0.0.1', port, path }, (res) => {
+      .get({ hostname: '127.0.0.1', port, path, headers }, (res) => {
         let data = ''
         res.on('data', (chunk) => {
           data += chunk
@@ -63,6 +72,7 @@ function get(
 function startApp(): Promise<{ port: number; close: () => void }> {
   const app = express()
   app.use('/networks', router)
+  app.use(errorMiddleware)
   return new Promise((resolve) => {
     const server = app.listen(0, () => {
       const addr = server.address() as { port: number }
@@ -135,6 +145,43 @@ describe('GET /networks', () => {
         title: 'PulseChain Mainnet',
         imageHash: 'abc123hash',
       })
+    } finally {
+      close()
+    }
+  })
+
+  // Regression guard: silently serving the cached body on an unauthorized
+  // refresh would read to an operator as confirmation a deploy landed when it
+  // did not — the endpoint must fail loudly with 401 instead.
+  it('rejects an unauthenticated refresh request with 401', async () => {
+    const { port, close } = await startApp()
+    try {
+      const res = await get(port, '/networks?refresh=1')
+      expect(res.status).toBe(401)
+    } finally {
+      close()
+    }
+  })
+
+  // An authorized refresh both drops the process-local memo (so the handler
+  // actually re-reads the database) and marks the response no-store.
+  it('drops the cached memo and serves no-store for an authorized refresh', async () => {
+    const { port, close } = await startApp()
+    try {
+      const res = await get(port, '/networks?refresh=1', { authorization: 'Bearer test-admin-token' })
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('no-store')
+      expect(res.body).toEqual([
+        {
+          networkId: 'network-evm-369',
+          type: 'evm',
+          chainId: '369',
+          chainIdentifier: 'eip155-369',
+          name: 'PulseChain',
+          title: 'PulseChain Mainnet',
+          imageHash: 'abc123hash',
+        },
+      ])
     } finally {
       close()
     }

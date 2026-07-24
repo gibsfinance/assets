@@ -5,6 +5,9 @@
  * endpoints (/networks, /list), and the image pipeline (format conversion +
  * vector filtering against a known token).
  *
+ * Every request is cache-busted so results always reflect the origin, never a
+ * Cloudflare edge copy — see `bustCache`.
+ *
  * Usage:
  *   yarn smoke --url https://staging.gib.show
  *   yarn smoke --url http://localhost:3456 --chains 1,369,8453
@@ -68,12 +71,33 @@ const parseArgs = (argv: string[]): Args => {
 type StatsEntry = { chainId: string; chainIdentifier: string; count: number }
 type TokenListResponse = { chainId: number; total: number; tokens: unknown[] }
 
+/**
+ * Production sits behind a Cloudflare proxy, so an un-busted probe is answered
+ * by the edge — potentially hours stale — and this tool then reports whatever
+ * was cached rather than what was actually deployed. That has twice produced a
+ * false "deploy failed" diagnosis. A verifier that reads a stale cache cannot
+ * do its one job, so every probe forces an origin round-trip.
+ *
+ * The counter makes each URL unique even when the same path is probed twice in
+ * one run, so the second probe cannot be served the cache the first populated.
+ */
+let cacheBusterSequence = 0
+
+const bustCache = (url: string): string => {
+  const parsed = new URL(url)
+  parsed.searchParams.set('cb', `${Date.now()}-${cacheBusterSequence++}`)
+  return parsed.toString()
+}
+
+/** Belt-and-braces alongside the `cb` param — asks any intermediary to revalidate. */
+const NO_CACHE_HEADERS = { 'cache-control': 'no-cache', pragma: 'no-cache' } as const
+
 const fetchJson = async <T>(url: string, timeoutMs: number): Promise<{ data: T; elapsed: number }> => {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const start = performance.now()
   try {
-    const res = await fetch(url, { signal: controller.signal })
+    const res = await fetch(bustCache(url), { signal: controller.signal, headers: NO_CACHE_HEADERS })
     const elapsed = performance.now() - start
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as T
@@ -91,7 +115,7 @@ const fetchStatus = async (
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const start = performance.now()
   try {
-    const res = await fetch(url, { signal: controller.signal })
+    const res = await fetch(bustCache(url), { signal: controller.signal, headers: NO_CACHE_HEADERS })
     // Drain the body so keep-alive sockets are reusable
     await res.arrayBuffer()
     return {
@@ -253,10 +277,23 @@ const main = async () => {
   for (const s of toTest) {
     const label = `/list/tokens/${s.chainId}`
     const url = args.limit ? `${args.url}${label}?limit=${args.limit}` : `${args.url}${label}`
+    const tolerance = () => Math.max(1, Math.round(s.count * DRIFT_TOLERANCE))
     try {
-      const { data, elapsed } = await fetchJson<TokenListResponse>(url, args.timeoutMs)
+      let { data, elapsed } = await fetchJson<TokenListResponse>(url, args.timeoutMs)
+
+      // Cache-busting bypasses the CDN but NOT the server's own list cache, so
+      // /stats is always fresh while the list body can still be served stale
+      // (stale-while-revalidate) — which structurally widens the gap between
+      // them. That first read triggers the revalidation, so re-probing once
+      // settles a stale-cache artifact. A genuine predicate mismatch — the bug
+      // class this check exists for — survives the second read unchanged.
+      if (Math.abs(data.total - s.count) > tolerance()) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        ;({ data, elapsed } = await fetchJson<TokenListResponse>(url, args.timeoutMs))
+      }
+
       const drift = Math.abs(data.total - s.count)
-      const withinTolerance = drift <= Math.max(1, Math.round(s.count * DRIFT_TOLERANCE))
+      const withinTolerance = drift <= tolerance()
       const tag =
         drift === 0
           ? '✓'

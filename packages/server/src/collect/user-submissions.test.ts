@@ -160,6 +160,28 @@ describe('updateSubmissionStatus', () => {
     )
   })
 
+  it('records the content hash on success when one is supplied', async () => {
+    const sub = {
+      id: 'sub-1',
+      providerKey: 'user-alice',
+      status: 'approved',
+      failCount: 0,
+    }
+    chain.limit.mockResolvedValueOnce([sub])
+
+    await updateSubmissionStatus('user-alice', { success: true, contentHash: 'sha-256-of-the-list' })
+
+    // The hash is what lets a later run tell "fetched again, unchanged" from
+    // "fetched again, changed" — omitting it from the write would make every
+    // refetch look like a change.
+    expect(chain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failCount: 0,
+        lastContentHash: 'sha-256-of-the-list',
+      }),
+    )
+  })
+
   it('increments failCount on failure', async () => {
     const sub = {
       id: 'sub-1',

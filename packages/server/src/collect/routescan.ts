@@ -26,20 +26,12 @@ class RateLimitedChainProcessor {
     processorFn: (chain: Chain) => Promise<T>,
     signal: AbortSignal,
   ): Promise<T | null> {
-    if (signal.aborted) {
-      return null
-    }
-
     const timeSinceLastRequest = Date.now() - this.lastRequestTime
 
     if (timeSinceLastRequest < this.minDelayMs) {
       const delayMs = this.minDelayMs - timeSinceLastRequest
       await delay(delayMs, signal).catch(() => {})
       if (signal.aborted) return null
-    }
-
-    if (signal.aborted) {
-      return null
     }
 
     this.lastRequestTime = Date.now()

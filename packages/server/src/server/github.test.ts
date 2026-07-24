@@ -61,44 +61,87 @@ describe('GitHub OAuth proxy', () => {
 
   afterEach(() => {
     process.env = { ...originalEnv }
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
-  it('requires GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET', () => {
-    // The handler checks these env vars and returns 503 if missing
+  it('rejects a missing code with 400 before any network call is made', async () => {
+    const res = mockResponse()
+    await getTokenHandler()({ body: {} } as unknown as Request, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ error: 'Missing code parameter' })
+  })
+
+  it('rejects a non-string code with 400', async () => {
+    const res = mockResponse()
+    await getTokenHandler()({ body: { code: 123 } } as unknown as Request, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ error: 'Missing code parameter' })
+  })
+
+  it('returns 503 when GitHub OAuth client credentials are not configured', async () => {
     delete process.env.GITHUB_OAUTH_CLIENT_ID
     delete process.env.GITHUB_OAUTH_CLIENT_SECRET
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
 
-    expect(process.env.GITHUB_OAUTH_CLIENT_ID).toBeUndefined()
-    expect(process.env.GITHUB_OAUTH_CLIENT_SECRET).toBeUndefined()
+    const res = mockResponse()
+    await getTokenHandler()({ body: { code: 'abc' } } as unknown as Request, res)
+
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.json).toHaveBeenCalledWith({ error: 'GitHub OAuth not configured' })
+    // Fail before any outbound call — an unconfigured proxy must not reach GitHub.
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('validates code is a non-empty string', () => {
-    // The handler: if (!code || typeof code !== 'string')
-    const validate = (code: unknown) => !code || typeof code !== 'string'
+  it('forwards GitHub error responses (e.g. bad_verification_code) as a 400', async () => {
+    process.env.GITHUB_OAUTH_CLIENT_ID = 'id'
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'secret'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ error: 'bad_verification_code', error_description: 'the code has expired' }),
+      }),
+    )
 
-    expect(validate(undefined)).toBe(true)
-    expect(validate(null)).toBe(true)
-    expect(validate('')).toBe(true)
-    expect(validate(123)).toBe(true)
-    expect(validate('valid-code')).toBe(false)
-  })
+    const res = mockResponse()
+    await getTokenHandler()({ body: { code: 'expired' } } as unknown as Request, res)
 
-  it('constructs correct GitHub token exchange payload', () => {
-    const clientId = 'test-client-id'
-    const clientSecret = 'test-client-secret'
-    const code = 'test-auth-code'
-
-    const payload = {
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-    }
-
-    expect(payload).toEqual({
-      client_id: 'test-client-id',
-      client_secret: 'test-client-secret',
-      code: 'test-auth-code',
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'bad_verification_code',
+      error_description: 'the code has expired',
     })
+  })
+
+  it('exchanges a valid code for an access token', async () => {
+    process.env.GITHUB_OAUTH_CLIENT_ID = 'test-client-id'
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'test-client-secret'
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ access_token: 'gho_abc123' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = mockResponse()
+    await getTokenHandler()({ body: { code: 'valid-code' } } as unknown as Request, res)
+
+    // The upstream request carries the configured credentials and the caller's code —
+    // the entire point of this proxy is bridging those three into GitHub's exchange.
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://github.com/login/oauth/access_token',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          client_id: 'test-client-id',
+          client_secret: 'test-client-secret',
+          code: 'valid-code',
+        }),
+      }),
+    )
+    expect(res.json).toHaveBeenCalledWith({ access_token: 'gho_abc123' })
   })
 })

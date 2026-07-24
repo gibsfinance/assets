@@ -59,9 +59,10 @@ export const collect = _.memoize(() => {
     rpc943: rpc('pulsechainv4', 'https://rpc-testnet-pulsechain.g4mm4.io'),
   })
 
-  // because of the cirulcar dependency, this is how this is currently done
+  // because of the circular dependency, this is how this is currently done
   // get rid of the circular dependency and then you can get rid of this
-  const providers = argv.providers?.length ? () => (argv.providers || []) as Collectable[] : () => allCollectables()
+  const explicitProviders = argv.providers
+  const providers = explicitProviders?.length ? () => explicitProviders as Collectable[] : () => allCollectables()
   if (argv.mode === 'save') {
     // updateStatus({
     //   provider: 'system',

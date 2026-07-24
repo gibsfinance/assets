@@ -36,7 +36,16 @@ vi.mock('viem', async (importOriginal) => {
 })
 
 import { http, createPublicClient, getContract, encodeFunctionData, decodeFunctionResult, fromHex } from 'viem'
-import { buildTransport, loadBalance, createChainClient, multicallRead, erc20Read } from './viem'
+import {
+  buildTransport,
+  loadBalance,
+  parseRpcEndpoint,
+  parseRpcEndpoints,
+  rpcEndpointUrls,
+  createChainClient,
+  multicallRead,
+  erc20Read,
+} from './viem'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,11 +138,75 @@ describe('buildTransport', () => {
     expect(http).toHaveBeenCalledTimes(3)
   })
 
+  it('strips |<weight> suffixes before handing URLs to the http transport', () => {
+    process.env['RPC_998'] = 'https://heavy.example.com|3,https://light.example.com'
+    buildTransport(chainWithSingleRpc)({ retryCount: 0 })
+    expect(http).toHaveBeenCalledTimes(2)
+    expect(http).toHaveBeenCalledWith('https://heavy.example.com', expect.any(Object))
+    expect(http).toHaveBeenCalledWith('https://light.example.com', expect.any(Object))
+  })
+
+  it('ignores a weight on a lone endpoint and uses a plain http transport', () => {
+    process.env['RPC_998'] = 'https://only.example.com|5'
+    buildTransport(chainWithSingleRpc)
+    expect(http).toHaveBeenCalledTimes(1)
+    expect(http).toHaveBeenCalledWith('https://only.example.com', expect.any(Object))
+  })
+
   it('ignores empty segments in comma-separated env var', () => {
     process.env['RPC_998'] = 'https://only.example.com,'
     buildTransport(chainWithSingleRpc)
     // One non-empty URL → single http transport
     expect(http).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('parseRpcEndpoint', () => {
+  it('defaults an unsuffixed URL to weight 1 so existing config is unchanged', () => {
+    expect(parseRpcEndpoint('https://a.example.com')).toEqual({ url: 'https://a.example.com', weight: 1 })
+  })
+
+  it('reads a weight from the |<weight> suffix', () => {
+    expect(parseRpcEndpoint('https://a.example.com|3')).toEqual({ url: 'https://a.example.com', weight: 3 })
+  })
+
+  it('accepts a fractional weight', () => {
+    expect(parseRpcEndpoint('https://a.example.com|0.5')).toEqual({ url: 'https://a.example.com', weight: 0.5 })
+  })
+
+  it('keeps a URL that carries a query string intact', () => {
+    expect(parseRpcEndpoint('https://a.example.com/v1?key=abc|2')).toEqual({
+      url: 'https://a.example.com/v1?key=abc',
+      weight: 2,
+    })
+  })
+
+  it('trims surrounding whitespace around URL and weight', () => {
+    expect(parseRpcEndpoint('  https://a.example.com | 4 ')).toEqual({ url: 'https://a.example.com', weight: 4 })
+  })
+
+  it.each(['https://a.example.com|abc', 'https://a.example.com|0', 'https://a.example.com|-2'])(
+    'throws on a malformed weight rather than silently using 1 (%s)',
+    (spec) => {
+      // A silently-ignored weight looks like it applied while doing nothing.
+      expect(() => parseRpcEndpoint(spec)).toThrow(/invalid RPC endpoint weight/)
+    },
+  )
+
+  it('parses a whole list', () => {
+    expect(parseRpcEndpoints(['https://a.example.com|2', 'https://b.example.com'])).toEqual([
+      { url: 'https://a.example.com', weight: 2 },
+      { url: 'https://b.example.com', weight: 1 },
+    ])
+  })
+
+  it('strips weights back to plain URLs for chain configs', () => {
+    // chain.rpcUrls.default.http holds URLs only — a leaked suffix would be a
+    // malformed endpoint by the time viem tried to call it.
+    expect(rpcEndpointUrls(['https://a.example.com|2', 'https://b.example.com'])).toEqual([
+      'https://a.example.com',
+      'https://b.example.com',
+    ])
   })
 })
 
@@ -145,8 +218,12 @@ describe('loadBalance', () => {
 
   const urls = ['https://a.example.com', 'https://b.example.com', 'https://c.example.com']
 
-  /** Instantiate the transport with no outer retries so each request advances the cursor exactly once. */
-  const instantiate = (endpoints: string[]) => loadBalance(endpoints, { timeout: 1_000 })({ retryCount: 0 })
+  /** Instantiate the transport with no outer retries so each request picks exactly once. */
+  const instantiate = (endpoints: string[], weights?: number[]) =>
+    loadBalance(
+      endpoints.map((url, index) => ({ url, weight: weights?.[index] ?? 1 })),
+      { timeout: 1_000 },
+    )({ retryCount: 0 })
 
   it('round-robins consecutive requests across every endpoint in order', async () => {
     urls.forEach((url) => rpcRegistry.set(url, async () => url))
@@ -159,6 +236,59 @@ describe('loadBalance', () => {
 
     // Three endpoints, four calls → the fourth wraps back to the first.
     expect([first, second, third, fourth]).toEqual([urls[0], urls[1], urls[2], urls[0]])
+  })
+
+  it('gives a heavier endpoint proportionally more requests', async () => {
+    const [a, b] = urls
+    rpcRegistry.set(a, async () => a)
+    rpcRegistry.set(b, async () => b)
+    const transport = instantiate([a, b], [3, 1])
+
+    const served = []
+    for (let i = 0; i < 8; i++) served.push(await transport.request({ method: 'eth_blockNumber' }))
+
+    // A 3:1 weighting over 8 requests must land 6 on A and 2 on B.
+    expect(served.filter((url) => url === a)).toHaveLength(6)
+    expect(served.filter((url) => url === b)).toHaveLength(2)
+  })
+
+  it('interleaves the heavier endpoint rather than clustering it', async () => {
+    const [a, b] = urls
+    rpcRegistry.set(a, async () => a)
+    rpcRegistry.set(b, async () => b)
+    const transport = instantiate([a, b], [3, 1])
+
+    const served = []
+    for (let i = 0; i < 4; i++) served.push(await transport.request({ method: 'eth_blockNumber' }))
+
+    // Smooth weighted round-robin spreads the light endpoint through the cycle
+    // (A,A,B,A) instead of draining the heavy one first (A,A,A,B), so bursts
+    // keep hitting more than one provider.
+    expect(served).toEqual([a, a, b, a])
+  })
+
+  it('treats equal weights as plain round-robin', async () => {
+    urls.forEach((url) => rpcRegistry.set(url, async () => url))
+    const transport = instantiate(urls, [2, 2, 2])
+
+    const served = []
+    for (let i = 0; i < 3; i++) served.push(await transport.request({ method: 'eth_blockNumber' }))
+
+    expect(served).toEqual(urls)
+  })
+
+  it('fails over past a heavier endpoint that is down', async () => {
+    const [a, b] = urls
+    rpcRegistry.set(a, async () => {
+      throw new Error('fetch failed')
+    })
+    rpcRegistry.set(b, async () => b)
+    const transport = instantiate([a, b], [5, 1])
+
+    // Weighting decides who is tried FIRST, never who is reachable — a dead
+    // heavyweight must still hand off rather than absorb the whole rotation.
+    const result = await transport.request({ method: 'eth_blockNumber' })
+    expect(result).toBe(b)
   })
 
   it('fails over to the next endpoint when one raises a connection error', async () => {
@@ -532,5 +662,27 @@ describe('erc20Read', () => {
     const client = {} as any
     const target = '0x0000000000000000000000000000000000000001' as `0x${string}`
     await expect(erc20Read(chain, client, target, { signal: controller.signal })).rejects.toThrow('test abort')
+  })
+
+  it('rejects with the abort reason when the signal aborts mid-flight', async () => {
+    vi.mocked(encodeFunctionData).mockReturnValue('0xcalldata')
+    vi.mocked(getContract).mockReturnValue({
+      read: {
+        // Never settles, so the only way out is the abort listener.
+        aggregate3: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    } as unknown as ReturnType<typeof getContract>)
+
+    const controller = new AbortController()
+    const promise = erc20Read(multicallChain, stubClient, '0xTokenAddress', { signal: controller.signal })
+
+    // Distinct from the already-aborted case above: here the read is genuinely
+    // in flight, so cancellation has to arrive through the abort listener —
+    // which clears the timeout and rejects — rather than the entry guard. An
+    // abort must surface even though mustExist is false, since a cancelled
+    // read is not the same as a token that could not be read.
+    controller.abort(new Error('aborted mid-flight'))
+
+    await expect(promise).rejects.toThrow('aborted mid-flight')
   })
 })

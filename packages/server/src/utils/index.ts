@@ -11,7 +11,7 @@ import * as crypto from 'crypto'
 import * as viem from 'viem'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
-import { failures, type ChainId } from '@gibs/utils'
+import { failures, rpcEndpointUrls, type ChainId } from '@gibs/utils'
 import { toCAIP2, fromCAIP2, namespaceOf, namespaceToNetworkType } from '../chain-id'
 
 import type { TokenEntry } from '../types'
@@ -51,12 +51,13 @@ export const findChain = (chainId: number) => {
     return null
   }
 
-  // Get RPC URLs from environment variables
+  // Get RPC URLs from environment variables. Entries may carry a `|<weight>`
+  // suffix for the load balancer; a chain config holds URLs only, so strip it.
   const envKey = `RPC_${chainId}`
-  const rpcUrls = process.env[envKey]?.split(',').filter(Boolean)
+  const specs = process.env[envKey]?.split(',').filter(Boolean)
 
-  if (rpcUrls?.length) {
-    return _.set(_.cloneDeep(chain), 'rpcUrls.default.http', rpcUrls)
+  if (specs?.length) {
+    return _.set(_.cloneDeep(chain), 'rpcUrls.default.http', rpcEndpointUrls(specs))
   }
 
   return chain

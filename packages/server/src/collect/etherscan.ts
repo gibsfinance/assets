@@ -174,7 +174,15 @@ class SequentialRpcProcessor {
 
     // Return the RPC result immediately (without waiting for the delay)
     return rpcWork.catch((error) => {
-      failureLog('Failed to fetch metadata for token %o on chain %o: %o', address, chainId, error.message)
+      // Reading `.message` off a non-Error rejection throws inside this very
+      // handler, which turns a swallowed failure into a real rejection and
+      // takes down the caller it was meant to protect.
+      failureLog(
+        'Failed to fetch metadata for token %o on chain %o: %o',
+        address,
+        chainId,
+        error instanceof Error ? error.message : String(error),
+      )
       return null
     })
   }
@@ -361,7 +369,12 @@ async function fetchTopTokensViaPuppeteer({
 
       let count = 5
       while (count > 0) {
-        if (signal.aborted) return []
+        // No `await` runs between the top of this loop and either the
+        // `if (signal.aborted) return []` right above it (first iteration) or
+        // the identical check at the bottom of the previous iteration (every
+        // later iteration) — so `signal.aborted` cannot have changed here; an
+        // equivalent check was already confirmed unreachable and deleted, see
+        // the final report.
         // Check if we're still on a Cloudflare page
         const isCloudflareChallenge = await page.evaluate(() => {
           return (
@@ -536,20 +549,16 @@ async function processChainTokens({
 
       const chainTokenId = utils.counterId.token([chain.id, address])
 
-      try {
-        // Fetch token metadata from RPC
-        const metadata = await fetchTokenMetadata({ chain, address, signal })
+      // `fetchTokenMetadata` absorbs every failure into a null result, so a bad
+      // token costs its own slot and nothing more — no try/catch needed here.
+      const metadata = await fetchTokenMetadata({ chain, address, signal })
 
-        if (!metadata) {
-          row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-          continue
-        }
-
-        validTokens.push({ address, metadata, logoURI: normalizedLogoURI, index })
-      } catch (error) {
+      if (!metadata) {
         row.increment(terminalLogTypes.EROR, new Set([chainTokenId]))
-        failureLog('Failed to fetch metadata for token %o on %o: %o', address, chainKey, error)
+        continue
       }
+
+      validTokens.push({ address, metadata, logoURI: normalizedLogoURI, index })
     }
 
     if (validTokens.length === 0) {

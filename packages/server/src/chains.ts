@@ -10,7 +10,18 @@ import {
   type Chain,
 } from 'viem/chains'
 import { collect } from './args'
+import { rpcEndpointUrls } from '@gibs/utils'
 import _ from 'lodash'
+
+/**
+ * Resolve a chain's RPC URL list: CLI args first, then the env var, then viem's
+ * defaults. Entries may carry a `|<weight>` suffix for the load balancer, but a
+ * chain config holds URLs only, so the weight is stripped here.
+ */
+const resolveRpcUrls = (fromArgs: string[], envValue: string | undefined, fallback: readonly string[]): string[] => {
+  const specs = fromArgs.length ? fromArgs : envValue?.split(',').filter(Boolean) || fallback
+  return rpcEndpointUrls(specs)
+}
 
 /**
  * Creates chain configurations with custom RPC endpoints
@@ -39,7 +50,7 @@ export default _.memoize(() => {
       ...viemMainnet.rpcUrls,
       default: {
         ...viemMainnet.rpcUrls.default,
-        http: rpc1,
+        http: rpcEndpointUrls(rpc1),
       },
     },
   } as Chain
@@ -50,7 +61,7 @@ export default _.memoize(() => {
       ...viemPulsechain.rpcUrls,
       default: {
         ...viemPulsechain.rpcUrls.default,
-        http: rpc369,
+        http: rpcEndpointUrls(rpc369),
       },
     },
   } as Chain
@@ -61,7 +72,7 @@ export default _.memoize(() => {
       ...viemBSC.rpcUrls,
       default: {
         ...viemBSC.rpcUrls.default,
-        http: rpc56.length ? rpc56 : process.env.RPC_56?.split(',') || viemBSC.rpcUrls.default.http,
+        http: resolveRpcUrls(rpc56, process.env.RPC_56, viemBSC.rpcUrls.default.http),
       },
     },
   } as Chain
@@ -72,9 +83,7 @@ export default _.memoize(() => {
       ...viemSepolia.rpcUrls,
       default: {
         ...viemSepolia.rpcUrls.default,
-        http: rpc11155111.length
-          ? rpc11155111
-          : process.env.RPC_11155111?.split(',') || viemSepolia.rpcUrls.default.http,
+        http: resolveRpcUrls(rpc11155111, process.env.RPC_11155111, viemSepolia.rpcUrls.default.http),
       },
     },
   } as Chain
@@ -84,7 +93,7 @@ export default _.memoize(() => {
       ...viemPulsechainV4.rpcUrls,
       default: {
         ...viemPulsechainV4.rpcUrls.default,
-        http: rpc943.length ? rpc943 : process.env.RPC_943?.split(',') || viemPulsechainV4.rpcUrls.default.http,
+        http: resolveRpcUrls(rpc943, process.env.RPC_943, viemPulsechainV4.rpcUrls.default.http),
       },
     },
   } as Chain

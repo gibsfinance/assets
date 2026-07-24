@@ -92,4 +92,23 @@ describe('detectImageExt', () => {
   it('rejects unrecognized binary content', async () => {
     expect(await detectImageExt(Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04]), '.png')).toBeNull()
   })
+
+  // An XML declaration followed by an <svg> root parses as generic XML to
+  // file-type — it has no SVG-specific magic bytes of its own — so the source
+  // URI's extension is what disambiguates it from a real (non-image) XML file.
+  it('prefers the source extension over a generic xml classification', async () => {
+    const declaredSvg = buf(
+      '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+    )
+    expect(await detectImageExt(declaredSvg, '.svg')).toBe('.svg')
+  })
+
+  it('keeps the xml classification when the source uri already says xml', async () => {
+    const declaredSvg = buf(
+      '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+    )
+    // providedExt === detected ext here, so the disambiguation short-circuit
+    // never fires and the raw file-type result passes through.
+    expect(await detectImageExt(declaredSvg, '.xml')).toBe('.xml')
+  })
 })

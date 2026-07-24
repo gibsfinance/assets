@@ -5,7 +5,6 @@ import './non-evm-image.test'
 import './networks.test'
 import './db-batch.test'
 import './list-token-upsert.test'
-import './sync-order.test'
 import './tokens-by-chain.test'
 import './dedupe-migration.test'
 

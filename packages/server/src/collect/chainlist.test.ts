@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { harness } from './__testing__/collector-harness'
+
+vi.mock('../db', () => harness.dbModule)
+vi.mock('../fetch', () => harness.fetchModule)
+vi.mock('@gibs/utils', () => harness.gibsUtilsModule)
+
+beforeEach(() => {
+  harness.reset()
+})
+
 import { parseChains, pickIconUrl } from './chainlist-parse'
+import chainlist, { collect } from './chainlist'
 
 describe('parseChains', () => {
   it('keeps only chains with a positive integer chainId and a non-empty icon key', () => {
@@ -103,5 +114,110 @@ describe('pickIconUrl', () => {
     expect(pickIconUrl([{ width: 10 }])).toBeNull()
     expect(pickIconUrl([{ url: '' }])).toBeNull()
     expect(pickIconUrl([{ url: 42 }])).toBeNull()
+  })
+})
+
+const CHAINS_URL = 'https://chainid.network/chains.json'
+const ICON_META_BASE = 'https://raw.githubusercontent.com/ethereum-lists/chains/master/_data/icons'
+
+describe('chainlist collector', () => {
+  it('registers the provider with no token lists during discover()', async () => {
+    const manifest = await chainlist.discover(new AbortController().signal)
+
+    expect(harness.state.providers.map((p) => p.key)).toEqual(['chainlist'])
+    expect(manifest).toEqual([{ providerKey: 'chainlist', lists: [] }])
+  })
+
+  it('stores a network icon and naming for a chain with a resolvable icon', async () => {
+    harness.queueFetchResponse(CHAINS_URL, {
+      body: [{ chainId: 137, icon: 'polygon', name: 'polygon', title: 'Polygon Mainnet' }],
+    })
+    harness.queueFetchResponse(`${ICON_META_BASE}/polygon.json`, {
+      body: [{ url: 'ipfs://polygon-icon-cid', width: 32, height: 32, format: 'png' }],
+    })
+
+    await chainlist.collect(new AbortController().signal)
+
+    expect(harness.state.networkImages).toHaveLength(1)
+    expect(harness.state.networkImages[0]?.uri).toBe('ipfs://polygon-icon-cid')
+    const network = [...harness.state.networks.values()].find((n) => n.chainId === 'eip155-137')
+    expect(network?.name).toBe('polygon')
+    expect(network?.title).toBe('Polygon Mainnet')
+  })
+
+  it('skips a chain whose icon key resolves to no url, without storing a network', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { body: [{ chainId: 10, icon: 'missing-icon' }] })
+    harness.queueFetchResponse(`${ICON_META_BASE}/missing-icon.json`, { body: [] })
+
+    await collect(new AbortController().signal)
+
+    expect(harness.state.networkImages).toHaveLength(0)
+    expect(harness.state.networks.size).toBe(0)
+  })
+
+  it('treats a failed icon-metadata fetch the same as a missing icon, without throwing', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { body: [{ chainId: 25, icon: 'broken' }] })
+    harness.queueFetchResponse(`${ICON_META_BASE}/broken.json`, { status: 500, ok: false })
+
+    await collect(new AbortController().signal)
+
+    expect(harness.state.networkImages).toHaveLength(0)
+    expect(harness.state.networks.size).toBe(0)
+  })
+
+  it('skips a chain whose icon-metadata fetch rejects outright, without throwing out of collect()', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { body: [{ chainId: 42, icon: 'flaky' }] })
+    harness.queueFetchResponse(`${ICON_META_BASE}/flaky.json`, new Error('network error'))
+
+    await expect(collect(new AbortController().signal)).resolves.toBeUndefined()
+
+    expect(harness.state.networkImages).toHaveLength(0)
+    expect(harness.state.networks.size).toBe(0)
+  })
+
+  it('skips a Tron chain mis-numbered as eip155 (isFakedEvmReference) instead of throwing', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { body: [{ chainId: 728126428, icon: 'tron' }] })
+    harness.queueFetchResponse(`${ICON_META_BASE}/tron.json`, { body: [{ url: 'ipfs://tron-icon' }] })
+
+    await collect(new AbortController().signal)
+
+    expect(harness.state.networkImages).toHaveLength(0)
+    expect(harness.state.networks.size).toBe(0)
+  })
+
+  it('skips storing any chain once the signal is already aborted', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { body: [{ chainId: 1, icon: 'ethereum' }] })
+    const controller = new AbortController()
+    controller.abort()
+
+    await collect(controller.signal)
+
+    expect(harness.state.networkImages).toHaveLength(0)
+    expect(harness.state.networks.size).toBe(0)
+  })
+
+  it('does nothing when the chains.json fetch itself fails', async () => {
+    harness.queueFetchResponse(CHAINS_URL, { status: 503, ok: false })
+
+    await collect(new AbortController().signal)
+
+    expect(harness.state.networks.size).toBe(0)
+    expect(harness.state.networkImages).toHaveLength(0)
+  })
+
+  it('caches the icon-metadata lookup across repeated collect() runs for the same icon key', async () => {
+    const chainsBody = { body: [{ chainId: 1, icon: 'shared', name: 'ethereum' }] }
+    harness.queueFetchResponse(CHAINS_URL, chainsBody)
+    harness.queueFetchResponse(CHAINS_URL, chainsBody)
+    harness.queueFetchResponse(`${ICON_META_BASE}/shared.json`, { body: [{ url: 'ipfs://shared-icon' }] })
+
+    await collect(new AbortController().signal)
+    await collect(new AbortController().signal)
+
+    // One network image per run — the second run re-stores the (unchanged) icon.
+    expect(harness.state.networkImages).toHaveLength(2)
+    // chains.json is fetched fresh each run (2 calls); the icon metadata, keyed by
+    // `chainlist-icon:shared` in `cachedJSON`, is fetched only once across both runs.
+    expect(harness.fetchModule.fetch).toHaveBeenCalledTimes(3)
   })
 })

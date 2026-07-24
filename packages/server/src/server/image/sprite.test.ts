@@ -86,6 +86,7 @@ function headerValue(res: Response, name: string): string | undefined {
 
 describe('sprite endpoints', () => {
   let pngContent: Buffer
+  let svgContent: Buffer
 
   beforeAll(async () => {
     pngContent = await sharp({
@@ -93,10 +94,12 @@ describe('sprite endpoints', () => {
     })
       .png()
       .toBuffer()
+    svgContent = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>')
   })
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
   })
 
   /** Same token address listed on two chains — the multi-chain regression input */
@@ -175,6 +178,205 @@ describe('sprite endpoints', () => {
       const manifestTokens = (manifestRes.json as ReturnType<typeof vi.fn>).mock.calls[0][0].tokens
       const sheetTokens = JSON.parse(headerValue(sheetRes, 'x-sprite-tokens')!)
       expect(sheetTokens).toEqual(manifestTokens)
+    })
+  })
+
+  describe('manifest ?content=mixed', () => {
+    it('inlines an SVG token as a base64 data URI instead of a grid cell', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [{ address: ADDRESS, chainId: '1', imageHash: 'h1', ext: '.svg', content: svgContent, mode: 'save', uri: '' }],
+      )
+      const res = mockResponse()
+
+      await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const key = `1-${ADDRESS.toLowerCase()}`
+      expect(body.tokens[key]).toBe(`data:image/svg+xml;base64,${svgContent.toString('base64')}`)
+      // An inlined SVG is not a raster cell, so it must not consume a grid slot.
+      expect(body.rasterCount).toBe(0)
+      expect(body.svgCount).toBe(1)
+    })
+  })
+
+  describe('sheet rasterize (fetch-backed LINK-mode tokens)', () => {
+    function linkToken(overrides: Record<string, unknown> = {}) {
+      return {
+        address: ADDRESS,
+        chainId: '1',
+        imageHash: 'h1',
+        ext: '.png',
+        content: Buffer.alloc(0),
+        mode: 'link',
+        uri: 'https://cdn.example.com/token.png',
+        ...overrides,
+      }
+    }
+
+    it('skips a token with no content and no uri (returns null, composite omitted)', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken({ uri: '' })])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      // The lone token rasterizes to nothing, so no composite is produced, but the
+      // grid metadata still reflects one deduped slot — this is the 4x4 no-op case.
+      expect(headerValue(res, 'x-sprite-count')).toBe('1')
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('fetches remote content for a LINK-mode token and rasterizes it', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => pngContent.buffer.slice(0) }),
+      )
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(global.fetch).toHaveBeenCalledWith('https://cdn.example.com/token.png', expect.any(Object))
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('skips a token when the remote fetch responds not-ok', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('swallows a fetch rejection and omits the token from the sheet', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
+      const res = mockResponse()
+
+      // The rasterize try/catch must absorb this — a single broken remote image
+      // must not fail the whole sheet for every other token in the list.
+      await expect(sheet(mockRequest(), res, vi.fn())).resolves.not.toThrow()
+      expect(res.send).toHaveBeenCalled()
+    })
+  })
+
+  describe('resolveListId falls back to providerKey when listKey is absent', () => {
+    it('manifest resolves the list using providerKey when no listKey param is present', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [])
+      const res = mockResponse()
+
+      await manifest(mockRequest({ params: { providerKey: 'pulsex', listKey: undefined } }), res, vi.fn())
+
+      // A resolved list (not the 404 branch) proves `listKey || providerKey` found L1.
+      expect(res.status).not.toHaveBeenCalledWith(404)
+    })
+  })
+
+  describe('chainId query filter', () => {
+    it('manifest narrows the token query to the requested chain', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [])
+      const res = mockResponse()
+
+      await manifest(mockRequest({ query: { chainId: '369' } }), res, vi.fn())
+
+      const { eq } = await import('drizzle-orm')
+      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), '369')
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.spriteUrl).toContain('chainId=369')
+    })
+
+    it('sheet narrows the token query to the requested chain', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [])
+      const res = mockResponse()
+
+      await sheet(mockRequest({ query: { chainId: '369' } }), res, vi.fn())
+
+      const { eq } = await import('drizzle-orm')
+      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), '369')
+    })
+  })
+
+  describe('duplicate rows within a single query result', () => {
+    it('manifest counts an exact duplicate row once', async () => {
+      const dupe = {
+        address: ADDRESS,
+        chainId: '1',
+        imageHash: 'h1',
+        ext: '.png',
+        content: pngContent,
+        mode: 'save',
+        uri: '',
+      }
+      queueDrizzleResults([{ listId: 'L1' }], [dupe, { ...dupe }])
+      const res = mockResponse()
+
+      await manifest(mockRequest(), res, vi.fn())
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.count).toBe(1)
+    })
+
+    it('sheet counts an exact duplicate row once', async () => {
+      const dupe = {
+        address: ADDRESS,
+        chainId: '1',
+        imageHash: 'h1',
+        ext: '.png',
+        content: pngContent,
+        mode: 'save',
+        uri: '',
+      }
+      queueDrizzleResults([{ listId: 'L1' }], [dupe, { ...dupe }])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(headerValue(res, 'x-sprite-count')).toBe('1')
+    })
+  })
+
+  describe('sheet header size guard', () => {
+    // Compositing 120 real images through sharp is genuinely several seconds of
+    // work, and the size guard only trips with a token map this large — so the
+    // budget, not the test, is what needs adjusting.
+    it('omits x-sprite-tokens when the serialized position map exceeds 4KB', { timeout: 15_000 }, async () => {
+      // Many distinct addresses produce a token map whose JSON serialization
+      // crosses the 4096-byte proxy-safe header limit.
+      const tokens = Array.from({ length: 120 }, (_, i) => ({
+        address: `0x${i.toString(16).padStart(40, '0')}`,
+        chainId: '1',
+        imageHash: `h${i}`,
+        ext: '.png',
+        content: pngContent,
+        mode: 'save',
+        uri: '',
+      }))
+      queueDrizzleResults([{ listId: 'L1' }], tokens)
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(headerValue(res, 'x-sprite-tokens')).toBeUndefined()
+      // The sprite image itself is still produced and sent regardless of the header.
+      expect(res.send).toHaveBeenCalled()
+    })
+  })
+
+  describe('sheet with nothing left to render', () => {
+    it('responds 204 when every token is excluded (mixed mode drops all SVGs)', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [{ address: ADDRESS, chainId: '1', imageHash: 'h1', ext: '.svg', content: svgContent, mode: 'save', uri: '' }],
+      )
+      const res = mockResponse()
+
+      await sheet(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
+
+      expect(res.status).toHaveBeenCalledWith(204)
+      expect(res.end).toHaveBeenCalled()
+      expect(res.send).not.toHaveBeenCalled()
     })
   })
 })

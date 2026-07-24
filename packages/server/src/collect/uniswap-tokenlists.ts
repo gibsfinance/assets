@@ -126,9 +126,6 @@ class UniswapTokenListsCollector extends BaseCollector {
 
         if (signal.aborted) return
 
-        if (listKey === 'hosted' && subProviderKey === 'uniswap-agora-datafi-tokens') {
-          failureLog('%o', result.tokens)
-        }
         const list = await inmemoryTokenlist
           .collect({
             providerKey: subProviderKey,

@@ -10,16 +10,22 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('../../db', () => ({
-  getTokensByChainRanked: vi.fn(),
-  getTokenSourcesByChain: vi.fn(),
-  getTokensUnderListId: vi.fn(),
-  insertCacheRequest: vi.fn(),
-  getCachedRequest: vi.fn(),
-  getListOrderId: vi.fn(),
-  applyOrder: vi.fn(),
-  getLists: vi.fn(),
-}))
+vi.mock('../../db', async () => {
+  // Real normalizeProvidedId (isAddress ? lower : preserve) — buildTokensByChainResponse
+  // uses it to key its sources map, and stubbing it to undefined would throw.
+  const { normalizeProvidedId } = await vi.importActual<typeof import('../../db/provided-id')>('../../db/provided-id')
+  return {
+    getTokensByChainRanked: vi.fn(),
+    getTokenSourcesByChain: vi.fn(),
+    getTokensUnderListId: vi.fn(),
+    insertCacheRequest: vi.fn(),
+    getCachedRequest: vi.fn(),
+    getListOrderId: vi.fn(),
+    applyOrder: vi.fn(),
+    getLists: vi.fn(),
+    normalizeProvidedId,
+  }
+})
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/sync-order', () => ({ getDefaultListOrderId: vi.fn(() => '0xdefaultorder') }))
 vi.mock('../../collect/user-submissions', () => ({ bumpSubscriberCount: vi.fn() }))
@@ -31,6 +37,7 @@ vi.mock('../../log/App', () => {
 })
 
 import * as db from '../../db'
+import { getDefaultListOrderId } from '../../db/sync-order'
 import { tokensByChainCacheKey, cacheRowAge, writeTokensByChainCache, buildAndCacheTokensByChain } from './handlers'
 
 const STALE_TTL_MS = 24 * 60 * 60 * 1000
@@ -171,5 +178,170 @@ describe('buildAndCacheTokensByChain', () => {
     // A failing write must not surface anywhere (logged, not thrown).
     write.reject(new Error('disk full'))
     await new Promise((resolve) => setImmediate(resolve))
+  })
+
+  // A ranked token row with no usable image (no imageHash/ext, mode !== link)
+  // must not surface — the endpoint exists to hand the UI something to render.
+  const imagelessToken = {
+    chainId: 'eip155-1',
+    providedId: '0x2222222222222222222222222222222222222222',
+    decimals: 18,
+    symbol: 'NOI',
+    name: 'No Image',
+    imageHash: null,
+    ext: null,
+    mode: 'save',
+    uri: null,
+    providerKey: 'pulsex',
+    listKey: 'extended',
+  }
+  const imagedToken = (overrides: Record<string, unknown> = {}) => ({
+    chainId: 'eip155-1',
+    providedId: '0x1111111111111111111111111111111111111111',
+    decimals: 18,
+    symbol: 'TST',
+    name: 'Test Token',
+    imageHash: 'hash1',
+    ext: '.png',
+    mode: 'save',
+    uri: null,
+    providerKey: 'pulsex',
+    listKey: 'extended',
+    ...overrides,
+  })
+
+  it('filters out ranked tokens with no usable image', async () => {
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([imagedToken(), imagelessToken] as never)
+    const body = await buildAndCacheTokensByChain('eip155-1', 50_000)
+    const parsed = JSON.parse(body)
+    expect(parsed.total).toBe(1)
+    expect(parsed.tokens).toHaveLength(1)
+    expect(parsed.tokens[0].address).toBe('0x1111111111111111111111111111111111111111')
+  })
+
+  it('patches the full multi-provider source list onto each entry, keyed by normalized address', async () => {
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([imagedToken()] as never)
+    vi.mocked(db.getTokenSourcesByChain).mockResolvedValue([
+      {
+        providedId: '0x1111111111111111111111111111111111111111',
+        providerKey: 'pulsex',
+        listKey: 'extended',
+      },
+      // Same token, a second list carrying it — exercises the "existing" append
+      // branch rather than always creating a fresh single-entry array.
+      {
+        providedId: '0x1111111111111111111111111111111111111111',
+        providerKey: 'piteas',
+        listKey: 'default',
+      },
+    ] as never)
+
+    const body = await buildAndCacheTokensByChain('eip155-1', 50_000)
+    const parsed = JSON.parse(body)
+    expect(parsed.tokens[0].sources).toEqual(['pulsex/extended', 'piteas/default'])
+  })
+
+  // When no default list order has been computed yet (e.g. very early at
+  // startup), the ranked query has nothing to rank against — the response
+  // falls back to the unordered per-list-token query instead.
+  it('falls back to the unordered query when no default list order id exists yet', async () => {
+    vi.mocked(getDefaultListOrderId).mockReturnValueOnce(null as never)
+    const fallbackWhere = vi.fn().mockResolvedValue([imagedToken()])
+    vi.mocked(db.getTokensUnderListId).mockReturnValue({ where: fallbackWhere } as never)
+
+    const body = await buildAndCacheTokensByChain('eip155-1', 50_000)
+
+    expect(fallbackWhere).toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    // Source rows are skipped too — getTokenSourcesByChain has nothing to key against.
+    expect(db.getTokenSourcesByChain).not.toHaveBeenCalled()
+    expect(JSON.parse(body).tokens).toHaveLength(1)
+  })
+
+  it('leaves an entry without a matching source row untouched (no sources patched on)', async () => {
+    // No providerKey/listKey on the row itself, so normalizeTokens' own
+    // same-row sources derivation stays empty too — isolating the sourcesMap
+    // patch step, whose lookup is expected to miss here.
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([
+      imagedToken({ providerKey: undefined, listKey: undefined }),
+    ] as never)
+    // Source rows reference a different token entirely — the map lookup misses.
+    vi.mocked(db.getTokenSourcesByChain).mockResolvedValue([
+      { providedId: '0x9999999999999999999999999999999999999999', providerKey: 'pulsex', listKey: 'extended' },
+    ] as never)
+
+    const body = await buildAndCacheTokensByChain('eip155-1', 50_000)
+    const parsed = JSON.parse(body)
+    expect(parsed.tokens[0].sources).toBeUndefined()
+  })
+})
+
+describe('warmTokensByChainCache', () => {
+  beforeEach(resetDbMocks)
+
+  it('rebuilds only the top N chains by token count', async () => {
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+
+    const { warmTokensByChainCache } = await import('./handlers')
+    const stats = [
+      { chainId: 'eip155-1', count: 5000 },
+      { chainId: 'eip155-369', count: 4000 },
+      { chainId: 'eip155-56', count: 3000 },
+    ]
+    await warmTokensByChainCache(stats, 2)
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', '0xdefaultorder')
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-369', '0xdefaultorder')
+  })
+
+  it('skips a chain whose cache row is already fresh (younger than the warm-stale threshold)', async () => {
+    const { warmTokensByChainCache } = await import('./handlers')
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{}',
+      // Written moments ago — well under the 12-hour warm-stale threshold.
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    await warmTokensByChainCache([{ chainId: 'eip155-1', count: 5000 }], 5)
+
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+  })
+
+  it('rebuilds a chain whose cache row exists but has crossed the warm-stale threshold', async () => {
+    const { warmTokensByChainCache } = await import('./handlers')
+    const WARM_STALE_MS = 12 * 60 * 60 * 1000
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{}',
+      // expiresAt = createdAt + STALE_TTL_MS, so subtracting more than the warm
+      // threshold from expiresAt simulates a row written long enough ago to warm again.
+      expiresAt: new Date(Date.now() + STALE_TTL_MS - WARM_STALE_MS - 1000),
+    } as never)
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+
+    await warmTokensByChainCache([{ chainId: 'eip155-1', count: 5000 }], 5)
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', '0xdefaultorder')
+  })
+
+  it('is best-effort — an error rebuilding one chain must not stop the rest from warming', async () => {
+    const { warmTokensByChainCache } = await import('./handlers')
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked)
+      .mockRejectedValueOnce(new Error('query timeout'))
+      .mockResolvedValueOnce([] as never)
+
+    await expect(
+      warmTokensByChainCache(
+        [
+          { chainId: 'eip155-1', count: 5000 },
+          { chainId: 'eip155-369', count: 4000 },
+        ],
+        5,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
   })
 })

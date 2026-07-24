@@ -172,22 +172,37 @@ class DexscreenerCollector extends BaseCollector {
         }
         const url = new URL(info.url)
         const image = await fetch(url, { signal }).then(responseToBuffer)
-        await db.transaction(async (tx) => {
-          // Non-Ethereum-Virtual-Machine chains carry a namespaced CAIP-2 id
-          // (solana-501, ton-607); EVM chains fall back to their numeric id,
-          // which insertNetworkFromChainId normalizes to eip155-<id>.
-          const network = await db.insertNetworkFromChainId(chain.caip2 ?? chain.id, chain.type, tx)
-          await db.fetchImageAndStoreForNetwork(
-            {
-              network,
-              uri: image ?? url.href,
-              originalUri: url.href,
-              providerKey: provider.providerId,
-              signal,
-            },
-            tx,
-          )
-        })
+        try {
+          await db.transaction(async (tx) => {
+            // Non-Ethereum-Virtual-Machine chains carry a namespaced CAIP-2 id
+            // (solana-501, ton-607); EVM chains fall back to their numeric id,
+            // which insertNetworkFromChainId normalizes to eip155-<id>.
+            const network = await db.insertNetworkFromChainId(chain.caip2 ?? chain.id, chain.type, tx)
+            await db.fetchImageAndStoreForNetwork(
+              {
+                network,
+                uri: image ?? url.href,
+                originalUri: url.href,
+                // The collector's key, not its row id. Every other caller passes the
+                // key, and it is now what decides whether this icon outranks the one
+                // already in place — a provider id matches no entry in `collectables`,
+                // so it would sort last and never win a chain another collector had
+                // already claimed.
+                providerKey,
+                signal,
+              },
+              tx,
+            )
+          })
+        } catch (error) {
+          // insertNetworkFromChainId rejects a chain whose bare numeric id is actually a
+          // non-Ethereum-Virtual-Machine chain mis-numbered as eip155 (isFakedEvmReference)
+          // — chainIdToChain carries Tron this way (viem's `tron` chain, id 728126428, no
+          // caip2 override), and DexScreener's own sidebar lists Tron, so this fires on
+          // every run without this guard. Skip the one chain's icon rather than aborting
+          // the whole `.map()` batch — every other chain still gets stored.
+          failureLog('Failed to store network for %o: %o', key, error)
+        }
       })
 
       const nativeTokens = new Map<ChainType | `${ChainType}-${number}`, string[]>([
@@ -213,14 +228,22 @@ class DexscreenerCollector extends BaseCollector {
           const { eq: eqOp, and: andOp } = await import('drizzle-orm')
           const schemaMod = await import('../db/schema')
           // network.chain_id stores CAIP-2 strings (eip155-369) since the April migration,
-          // so the bare numeric id never matches — convert before querying.
+          // so the bare numeric id never matches — convert before querying. The
+          // `caip2` override has to win the same way it does where these rows are
+          // written above, because for a non-Ethereum-Virtual-Machine chain the
+          // numeric `id` is a DexScreener-internal handle rather than a chain id:
+          // Solana's is 900 and TON's is 1. Deriving from it alone looks for
+          // `eip155-900` where the row was written as `solana-501`, and asks for
+          // `eip155-1` — Ethereum mainnet — on behalf of TON. Only the type
+          // conjunct above keeps that second one from matching another chain's row
+          // outright, which is far too little to rest on.
           const [network] = (await getDrizzle()
             .select()
             .from(schemaMod.network)
             .where(
               andOp(
                 eqOp(schemaMod.network.type, chain.type),
-                eqOp(schemaMod.network.chainId, toCAIP2(chain.id.toString())),
+                eqOp(schemaMod.network.chainId, chain.caip2 ?? toCAIP2(chain.id.toString())),
               ),
             )
             .limit(1)) as Network[]

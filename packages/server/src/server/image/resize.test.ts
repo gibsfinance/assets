@@ -538,6 +538,53 @@ describe('maybeResize', () => {
   })
 
   // -------------------------------------------------------------------------
+  // A failed cache-write must not crash the request that already served the
+  // resized bytes — the fire-and-forget insertVariant().catch() is the only
+  // thing standing between a transient database error and an unhandled
+  // rejection tearing down the process.
+  // -------------------------------------------------------------------------
+  it('does not reject the response when the fire-and-forget insertVariant write fails', async () => {
+    vi.mocked(db.insertVariant).mockRejectedValueOnce(new Error('insert failed'))
+    const req = mockReq({ w: '72', as: 'webp' })
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'insert-fails-' + Date.now() })
+
+    await expect(maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })).resolves.toBe(true)
+
+    // The catch handler runs asynchronously after the response is already sent —
+    // wait for it so the rejection is observed as handled, not left dangling.
+    await vi.waitFor(() => expect(db.insertVariant).toHaveBeenCalled())
+  })
+
+  // -------------------------------------------------------------------------
+  // Same guarantee on the cache-hit path — a stale-access-bump failure must
+  // not block or crash the response that already served the cached variant.
+  // -------------------------------------------------------------------------
+  it('does not reject the response when the fire-and-forget bumpVariantAccess write fails', async () => {
+    const cachedVariant = {
+      imageHash: 'abc123',
+      width: 72,
+      height: 72,
+      format: 'webp',
+      content: Buffer.from('cached'),
+      accessCount: 5,
+      createdAt: new Date(),
+      lastAccessedAt: new Date(),
+    }
+    vi.mocked(db.getVariant).mockResolvedValue(cachedVariant as any)
+    vi.mocked(db.bumpVariantAccess).mockRejectedValueOnce(new Error('bump failed'))
+
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
+    const res = mockRes()
+    const img = makeImage()
+
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+    expect(result).toBe(true)
+
+    await vi.waitFor(() => expect(db.bumpVariantAccess).toHaveBeenCalled())
+  })
+
+  // -------------------------------------------------------------------------
   // 11. Skips insertVariant when rate limit is exhausted
   // -------------------------------------------------------------------------
   it('skips insertVariant when rate limit is exhausted', async () => {

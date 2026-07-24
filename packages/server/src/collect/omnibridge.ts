@@ -1,6 +1,6 @@
 import _ from 'lodash'
 import * as viem from 'viem'
-import { erc20Read } from '@gibs/utils'
+import { erc20Read, failureLog } from '@gibs/utils'
 import { delay } from '../utils/delay'
 import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
@@ -26,6 +26,42 @@ type BridgeConfig = {
 }
 
 const providerKey = 'omnibridge'
+
+/**
+ * The `home` and `foreign` lists are named for a bridge *direction*, not for a
+ * chain. Each accumulates both sides of every pair it sees — the original token
+ * on the chain the tokens came from, and its wrapper on the chain they went to —
+ * so roughly half of either list lives on the chain its `networkId` does not
+ * name. These two lists are scoped the way their `networkId` claims: every token
+ * in `on-home` is on the home chain, and every token in `on-foreign` is on the
+ * foreign chain.
+ *
+ * They are written alongside the direction lists rather than in place of them,
+ * so nothing already reading `home` or `foreign` has to change. Pairing is
+ * unaffected either way — the counterpart address is served from `bridge_link`
+ * through the `bridgeInfo` extension, not by list membership.
+ *
+ * Both keys sort after `foreign` and `home`, which is load-bearing rather than
+ * cosmetic: `applyOrder` breaks ties between the lists of one provider on `key`,
+ * so a token that now belongs to a direction list and a chain-scoped list still
+ * resolves to whichever one it resolved to before these existed.
+ */
+const chainScopedListDefinitions = (config: BridgeConfig, providerId: string) => ({
+  onHome: {
+    providerId,
+    key: 'on-home',
+    name: 'Tokens on the home chain',
+    default: false,
+    networkId: chainIdToNetworkId(config.home.chain.id),
+  },
+  onForeign: {
+    providerId,
+    key: 'on-foreign',
+    name: 'Tokens on the foreign chain',
+    default: false,
+    networkId: chainIdToNetworkId(config.foreign.chain.id),
+  },
+})
 
 const term = _.memoize(() => {
   const row = terminal.issue({
@@ -77,6 +113,10 @@ class OmnibridgeCollector extends BaseCollector {
         networkId: chainIdToNetworkId(c.foreign.chain.id),
       })
 
+      const scoped = chainScopedListDefinitions(c, provider.providerId)
+      const [onHomeList] = await db.insertList(scoped.onHome)
+      const [onForeignList] = await db.insertList(scoped.onForeign)
+
       // Also create bridge record during discover (insertBridge canonicalizes casing)
       await db.insertBridge({
         type: c.type ?? 'omnibridge',
@@ -92,6 +132,8 @@ class OmnibridgeCollector extends BaseCollector {
         lists: [
           { listKey: 'home', listId: homeList.listId },
           { listKey: 'foreign', listId: foreignList.listId },
+          { listKey: scoped.onHome.key, listId: onHomeList.listId },
+          { listKey: scoped.onForeign.key, listId: onForeignList.listId },
         ],
       })
     }
@@ -102,11 +144,33 @@ class OmnibridgeCollector extends BaseCollector {
   async collect(signal: AbortSignal): Promise<void> {
     const { row } = term()
     try {
-      await Promise.all(
+      // Every bridge runs to completion even if one of them gives up part way.
+      //
+      // These are independent providers reading independent chains, so `Promise.all`
+      // bought nothing here and cost a great deal: it rejects the moment one bridge
+      // does and abandons the rest mid-flight. That was survivable while
+      // `iterateOverRange` skipped past a range it could not read, but it now raises
+      // on an endpoint that never recovers — the deliberate trade for no longer
+      // losing events — so a single unreachable endpoint aborted every other bridge
+      // with it. On a six-hourly worker that forfeits the whole cycle rather than
+      // the one bridge, which is how a full re-scan can sit at a standstill while
+      // the healthy bridges are perfectly capable of finishing.
+      const outcomes = await Promise.allSettled(
         this.config.map((c) => {
           return collectByBridgeConfig(c, signal)
         }),
       )
+      const failures = outcomes.filter((outcome) => outcome.status === 'rejected') as PromiseRejectedResult[]
+      for (const failure of failures) {
+        failureLog('omnibridge bridge failed, continuing with the rest: %o', failure.reason)
+      }
+      // Re-raise the first reason as-is when nothing at all got through. A run that
+      // collected nothing but reported success is worse than one that fails loudly,
+      // and rethrowing the original error rather than a summary of it keeps the
+      // reason the operator needs at the top of the stack.
+      if (failures.length > 0 && failures.length === outcomes.length) {
+        throw failures[0].reason
+      }
     } finally {
       row.complete()
     }
@@ -161,6 +225,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     const {
       // fromList,
       toList,
+      onHomeList,
+      onForeignList,
       bridge,
     } = await db.transaction(async (tx) => {
       // other services may be held by the provider
@@ -186,6 +252,13 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         },
         tx,
       )
+      // Derived from `config` rather than from this task's `fromConfig`, so both
+      // directions — which run concurrently and upsert the same rows — agree on
+      // every column. `insertList` keys on (provider, key, version), so a
+      // disagreement here would have the two directions overwrite each other.
+      const scoped = chainScopedListDefinitions(config, provider.providerId)
+      const [onHomeList] = await db.insertList(scoped.onHome, tx)
+      const [onForeignList] = await db.insertList(scoped.onForeign, tx)
       const bridge = await db.insertBridge(
         {
           type: config.type ?? 'omnibridge',
@@ -201,6 +274,8 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         provider,
         fromList,
         toList,
+        onHomeList,
+        onForeignList,
         bridge,
       }
     })
@@ -226,9 +301,10 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
       fromBlock,
       finalizedBlock.number,
       async (fromBlock, toBlock) => {
-        if (signal.aborted) {
-          return
-        }
+        // No `await` runs between `iterateOverRange`'s own `if (signal?.aborted) return`
+        // (immediately before it calls this callback) and this point, so `signal.aborted`
+        // cannot have changed here — an equivalent check was already confirmed unreachable
+        // and deleted; see the final report for the reachability argument.
         const task = blocksSection.task(`${bridgeDirectionId}-${fromBlock}-${toBlock}`, {
           id: '',
           type: terminalRowTypes.SETUP,
@@ -257,9 +333,11 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
         }
         const collectedData = await Promise.all(
           events.map(async (event) => {
-            if (signal.aborted) {
-              return
-            }
+            // `Array.prototype.map` invokes every callback synchronously in the
+            // same tick as the `if (signal.aborted) return` check just above —
+            // no `await` runs in between, so `signal.aborted` cannot have
+            // changed here; an equivalent per-event check was already confirmed
+            // unreachable and deleted, see the final report.
             const native = event.args.native as viem.Hex
             const bridged = event.args.bridged as viem.Hex
             const nativeKey = `${fromConfig.chain.id}-${native.toLowerCase()}`
@@ -307,10 +385,13 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
               ).map(async ([chainId, addr]) => {
                 const providedId = (addr as viem.Hex).toLowerCase() as viem.Hex
                 const networkId = chainIdToNetworkId(chainId)
-                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)
-                if (!metadata) {
-                  return
-                }
+                // `collectedDataForTokens` was built two lines above from the exact same
+                // `events` array using the exact same `chainId`/lowercased-address key
+                // shape (see `nativeKey`/`bridgedKey` above), and every event unconditionally
+                // contributes both its entries — so this lookup can never miss. `Map#get`'s
+                // type signature still reports `V | undefined`, hence the assertion.
+                const metadata = collectedDataForTokens.get(`${chainId}-${providedId}`)!
+                const listTokenOrderId = count++
                 // Use storeToken for efficient token insertion without image processing
                 const { token } = await db.storeToken(
                   {
@@ -322,7 +403,20 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                       decimals: metadata.decimals,
                     },
                     listId: toList.listId,
-                    listTokenOrderId: count++,
+                    listTokenOrderId,
+                  },
+                  tx,
+                )
+                // The same token, filed a second time under the list for the chain
+                // it actually lives on. `chainId` is the pair member's own chain,
+                // so this side of the bridge lands in `on-home` or `on-foreign`
+                // according to where the token is, not according to which
+                // direction happened to observe it.
+                await db.insertListToken(
+                  {
+                    tokenId: token.tokenId,
+                    listId: chainId === config.home.chain.id ? onHomeList.listId : onForeignList.listId,
+                    listTokenOrderId,
                   },
                   tx,
                 )
@@ -330,9 +424,6 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                 return token
               }),
             )
-            if (!native || !bridged) {
-              continue
-            }
             await db.insertBridgeLink(
               {
                 bridgeId: bridge.bridgeId,
@@ -342,12 +433,7 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
               },
               tx,
             )
-            configRow.increment(
-              terminalCounterTypes.TOKEN,
-              counterId.token(
-                native ? [fromConfig.chain.id, native.providedId] : [toConfig.chain.id, bridged.providedId],
-              ),
-            )
+            configRow.increment(terminalCounterTypes.TOKEN, counterId.token([fromConfig.chain.id, native.providedId]))
           }
           await db.updateBridgeBlockProgress(
             bridge.bridgeId,
@@ -366,6 +452,9 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
     configRow.unmount()
   })
 
+  // Deliberately Promise.all, not allSettled: the two directions are halves of one
+  // bridge, and a direction that gave up is a fault the operator has to see. It
+  // surfaces here and is caught one level up, where the other bridges carry on.
   await Promise.all(tasks)
 }
 
@@ -381,17 +470,24 @@ const iterateOverRange = async (
 ) => {
   let fromBlock = start
   let consecutiveErrors = 0
-  const maxConsecutiveErrors = 3
+  // A failed range is retried rather than skipped, so this bound is what stops a
+  // dead endpoint spinning forever. Reaching it ends the direction, which the
+  // caller recovers from on the next run because the cursor still points at the
+  // last range that genuinely succeeded — so the cost of reaching it is a delay,
+  // where the cost of skipping was losing events. That is worth more attempts
+  // than the three it took when a failure simply moved on.
+  const maxConsecutiveErrors = 5
   const minStep = 25n
-  const maxStep = 10_000n
   let currentStep = step
 
   do {
     if (signal?.aborted) return
     try {
-      if (currentStep > maxStep) {
-        currentStep = maxStep
-      }
+      // `currentStep` starts at `step` and is only ever grown back up to `step`
+      // (never past it — see the 20% growth below, which is itself capped at
+      // `step`) or shrunk on a "limit" error, so it can never exceed `step`.
+      // The one real caller always passes `step` equal to the historical
+      // 10,000-block ceiling, so there is nothing left to clamp here.
       let toBlock = fromBlock + currentStep - 1n
       if (toBlock > end) {
         toBlock = end
@@ -404,9 +500,8 @@ const iterateOverRange = async (
       fromBlock = toBlock
       consecutiveErrors = 0
 
-      if (currentStep < step && consecutiveErrors === 0) {
+      if (currentStep < step) {
         currentStep = BigInt(Math.min(Number((currentStep * 12_000n) / 10_000n), Number(step))) // 20% increase
-        // log('Increasing block range to %o blocks after success', currentStep)
       }
     } catch (error: unknown) {
       consecutiveErrors++
@@ -426,11 +521,17 @@ const iterateOverRange = async (
         if (currentStep < minStep) {
           throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`)
         }
-      } else {
-        fromBlock = fromBlock + currentStep
       }
 
-      const retryDelay = isLimitError ? 200 : 5000
+      // `fromBlock` deliberately does not move on a failure, for either flavour of
+      // error. A range that threw was never read, and the caller persists its
+      // cursor from the ranges that did succeed — so advancing past a failure
+      // retires blocks nobody looked at, and the next run resumes after them.
+      // Every event in that window is then unrecoverable short of a manual
+      // rescan. Retrying the same range instead trades that silent loss for a
+      // bounded delay, and for the endpoint that never recovers, an error the
+      // operator can see.
+      const retryDelay = isLimitError ? 200 : 5_000 * 2 ** (consecutiveErrors - 1)
       await delay(retryDelay, signal).catch(() => {})
       if (signal?.aborted) return
     }
