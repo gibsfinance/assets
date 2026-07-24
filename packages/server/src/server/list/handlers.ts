@@ -207,7 +207,7 @@ export const merged: RequestHandler = async (req, res, next) => {
 /**
  * Reject an unauthorized refresh, or report an authorized one. Provider lists are the
  * same class of expensive assembly as merged and tokensByChain, so they gate `?refresh=`
- * the same way: an open refresh would let anyone force the full per-list token join on
+ * the same way: an open refresh would let anyone force a full per-list token fetch on
  * every request. A caller who thinks they verified against fresh data is told plainly
  * when their token was rejected, rather than quietly handed a cached body.
  */
@@ -225,9 +225,9 @@ export const versioned: RequestHandler = async (req, res, next) => {
   }
   const extensions = utils.parseExtensions(req.query.extensions)
   const filters = utils.tokenFilters(req.query)
-  // getLists joins every list_token row, so it is the request's real cost. It runs only
-  // inside build — a cache hit never reaches it. The version-not-found 404 therefore
-  // surfaces as a throw from build, which nextOnError turns into next(error).
+  // Resolving the version and assembling its tokens is the request's real cost, so both
+  // run only inside build — a cache hit never reaches them. The version-not-found 404
+  // therefore surfaces as a throw from build, which nextOnError turns into next(error).
   const build = async () => {
     const [major, minor, patch] = (req.params.version || '').split('.')
     const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
@@ -270,8 +270,9 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   }
   const extensions = utils.parseExtensions(req.query.extensions)
   const filters = utils.tokenFilters(req.query)
-  // getLists is the request's real cost, so it runs only inside build; a cache hit never
-  // reaches it. The list-not-found 404 surfaces as a throw, which nextOnError forwards.
+  // Resolving the list and assembling its tokens is the request's real cost, so both run
+  // only inside build; a cache hit never reaches them. The list-not-found 404 surfaces as
+  // a throw, which nextOnError forwards.
   const build = async () => {
     const rows = await db.getLists(providerKey, listKey)
     const list = rows[0]
