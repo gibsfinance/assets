@@ -41,6 +41,7 @@ import { getDrizzle, type DrizzleTx } from './drizzle'
 import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
+import { collectablePriority } from '../collect/collectable-order'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
 export { normalizeProvidedId }
@@ -745,9 +746,25 @@ export const fetchImageAndStoreForNetwork = async (
     if (!img) {
       return
     }
+    // Take the slot only if this collector actually outranks whoever holds it.
+    //
+    // This update was unconditional, which made the last collector to finish the
+    // winner. Six of them write network icons, and the two lowest-priority ones —
+    // chainlist and cryptocurrency-icons — are broad fallbacks meant to fill chains
+    // nobody curated; chainlist even carries the comment "kept last so any
+    // chain-specific logo outranks it". Under last-write-wins it outranked everything
+    // instead, and which icon survived came down to collection order, so two
+    // deployments of the same code served different icons for the same chain.
+    //
+    // The image row is still written either way — losing the network slot is not a
+    // reason to discard bytes another list_token may reference.
+    const [current] = await innerTx.select().from(s.network).where(eq(s.network.networkId, network.networkId)).limit(1)
+    if (current?.imageHash && collectablePriority(current.imageProviderKey) < collectablePriority(providerKey)) {
+      return { network: current, ...img }
+    }
     const [ntwrk] = await innerTx
       .update(s.network)
-      .set({ imageHash: img.image.imageHash })
+      .set({ imageHash: img.image.imageHash, imageProviderKey: providerKey })
       .where(eq(s.network.networkId, network.networkId))
       .returning()
     return {
@@ -1404,6 +1421,7 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
 export const getTokensByChainRanked = async (
   chainId: string,
   listOrderId: viem.Hex,
+  { bridgeInfo = false, headerUri = false }: { bridgeInfo?: boolean; headerUri?: boolean } = {},
 ): Promise<Record<string, unknown>[]> => {
   const db = getDrizzle()
 
@@ -1443,6 +1461,19 @@ export const getTokensByChainRanked = async (
       sub."listPatch",
       sub."listDefault",
       sub."listRanking"
+      ${
+        bridgeInfo
+          ? dsql`
+        , row_to_json("bridge".*) AS "bridge"
+        , row_to_json("bridge_link".*) AS "bridgeLink"
+        , row_to_json("network_a".*) AS "networkA"
+        , row_to_json("network_b".*) AS "networkB"
+        , row_to_json("native_token".*) AS "nativeToken"
+        , row_to_json("bridged_token".*) AS "bridgedToken"
+      `
+          : dsql``
+      }
+      ${headerUri ? dsql`, "header_link"."image_hash" AS "headerImageHash"` : dsql``}
     FROM (
       SELECT DISTINCT ON (${s.token.tokenId})
         ${s.network.chainId} AS "chainId",
@@ -1457,6 +1488,7 @@ export const getTokensByChainRanked = async (
         ${s.image.uri} AS uri,
         lr.provider_id AS "providerId",
         lr.key AS "listKey",
+        ${s.listToken.listTokenId} AS "listTokenId",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
         lr.major AS "listMajor",
         lr.minor AS "listMinor",
@@ -1478,13 +1510,46 @@ export const getTokensByChainRanked = async (
         lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
     ) sub
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('sub."providerId"'))}
+    ${
+      // Joined outside the DISTINCT ON, deliberately. Inside it, a token bridged to
+      // several chains would keep one link and lose the rest — DISTINCT ON returns a
+      // single row per token. Out here the ranking pick is already settled, and the
+      // fan-out is what normalizeTokens wants: it groups rows by address and folds
+      // every one of them into a single entry's bridgeInfo map.
+      bridgeInfo
+        ? dsql`
+      LEFT JOIN "bridge_link" ON (
+        "bridge_link"."native_token_id" = sub."tokenId"
+        OR "bridge_link"."bridged_token_id" = sub."tokenId"
+      )
+      LEFT JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
+      LEFT JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
+      LEFT JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
+      LEFT JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
+      LEFT JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
+    `
+        : dsql``
+    }
+    ${headerUri ? dsql`LEFT JOIN "header_link" ON "header_link"."list_token_id" = sub."listTokenId"` : dsql``}
     ORDER BY
       (sub."listRanking" / 1000) ASC,
       CASE WHEN ${usableImageSql(dsql.raw('sub.mode'), dsql.raw('sub.uri'), dsql.raw('sub.ext'))} THEN 0 ELSE 1 END ASC,
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
-  return rows.rows
+  if (!bridgeInfo) return rows.rows
+  // row_to_json hands back the database's own snake_case column names; normalizeTokens
+  // reads camelCase off these nested objects. Same conversion getTokensWithExtensions
+  // applies to the identical shape.
+  return rows.rows.map((row) => ({
+    ...row,
+    bridge: camelCaseKeys(row.bridge as Record<string, unknown> | null),
+    bridgeLink: camelCaseKeys(row.bridgeLink as Record<string, unknown> | null),
+    networkA: camelCaseKeys(row.networkA as Record<string, unknown> | null),
+    networkB: camelCaseKeys(row.networkB as Record<string, unknown> | null),
+    nativeToken: camelCaseKeys(row.nativeToken as Record<string, unknown> | null),
+    bridgedToken: camelCaseKeys(row.bridgedToken as Record<string, unknown> | null),
+  }))
 }
 
 /**

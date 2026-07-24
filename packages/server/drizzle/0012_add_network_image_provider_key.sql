@@ -1,0 +1,16 @@
+-- Records which collector supplied the icon a network is currently serving.
+--
+-- Six collectors write network icons (chainlist, cryptocurrency-icons, dexscreener,
+-- remote-tokenlist, smoldapp, trustwallet) and the write was unconditional, so the
+-- last one to finish took the slot regardless of how it ranked. The order of the
+-- `collectables` map is the priority order, and chainlist sits last with the comment
+-- "kept last so any chain-specific logo outranks it" — under a last-write-wins update
+-- it outranked everything instead. Two deployments collecting the same chains
+-- therefore drifted apart: production and staging served different icons for
+-- Ethereum, Polygon, Avalanche and Base at the same moment.
+--
+-- Leaving this null for existing rows is deliberate. The provenance of an icon
+-- already in place is genuinely unknown, and treating unknown as "lowest priority"
+-- lets the next collection run settle every network onto its highest-priority source
+-- rather than freezing whichever one happened to win the race.
+ALTER TABLE "network" ADD COLUMN IF NOT EXISTS "image_provider_key" text;

@@ -103,6 +103,14 @@ export const network = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     imageHash: text('image_hash'),
+    // Which collector supplied the icon currently in image_hash. Six collectors write
+    // network icons and the write used to be unconditional, so the last one to run won
+    // — which is why two deployments collecting the same chains ended up serving
+    // different icons. Priority comes from the order of the `collectables` map, where
+    // chainlist and cryptocurrency-icons are deliberately kept last as fallbacks; this
+    // column is what lets a write check whether it actually outranks the incumbent.
+    // Null means the icon predates this column, and any known collector may replace it.
+    imageProviderKey: text('image_provider_key'),
   },
   (table) => [
     index('network_chainid_index').using('btree', table.chainId.asc().nullsLast().op('text_ops')),

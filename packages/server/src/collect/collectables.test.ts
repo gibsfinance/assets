@@ -25,6 +25,7 @@ vi.mock('../chains', () => ({
 }))
 
 import { allCollectables, collectables } from './collectables'
+import { collectableOrder } from './collectable-order'
 
 describe('collectables', () => {
   it('builds an instance for every declared collectable key, keyed by that key', () => {
@@ -38,6 +39,16 @@ describe('collectables', () => {
       expect(typeof instance.discover, `${registryKey}.discover must be a function`).toBe('function')
       expect(typeof instance.collect, `${registryKey}.collect must be a function`).toBe('function')
     }
+  })
+
+  it('matches collectable-order.ts key for key, in the same order', () => {
+    // collectable-order.ts holds a second copy of this ordering so the database layer
+    // can rank a provider without importing every collector — importing the registry
+    // there would be circular, since every collector imports the database layer.
+    // The copy drifting is silent in production: a collector missing from that list
+    // ranks last, so it would quietly stop being able to claim a network icon from a
+    // lower-priority source. This is what makes the drift loud.
+    expect(Object.keys(collectables())).toEqual([...collectableOrder])
   })
 
   it('is memoized, so the same collector instances are reused across calls', () => {

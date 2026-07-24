@@ -74,7 +74,19 @@ export const merged: RequestHandler = async (req, res, next) => {
   //
   // asset-0 is the internal bookkeeping sentinel, excluded by the where clause this
   // replaces. Keep answering an empty list for it rather than serving sentinel rows.
-  const tokens = resolution.chainId === 'asset-0' ? [] : await db.getTokensByChainRanked(resolution.chainId, orderId)
+  //
+  // The extension flags are passed through because this endpoint used to accept
+  // `?extensions=` and quietly answer without them: the query behind it joined
+  // neither the bridge tables nor header_link, so every token came back with the
+  // columns normalizeTokens reads for extensions simply absent. Against production
+  // that was nothing with extensions on /list/merged against 1290 on a provider list.
+  const tokens =
+    resolution.chainId === 'asset-0'
+      ? []
+      : await db.getTokensByChainRanked(resolution.chainId, orderId, {
+          bridgeInfo: extensions.has('bridgeInfo'),
+          headerUri: extensions.has('headerUri'),
+        })
   const filters = utils.tokenFilters(req.query)
   const entries = utils.normalizeTokens(tokens as any, filters, extensions)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)

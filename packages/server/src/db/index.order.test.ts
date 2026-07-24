@@ -142,6 +142,67 @@ describe('getTokensByChainRanked', () => {
     expect(rendered).toContain('DISTINCT ON')
     expect(result).toEqual([{ tokenId: 'token-1' }])
   })
+
+  it('omits the extension joins entirely when neither is requested', async () => {
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
+
+    await getTokensByChainRanked('eip155-1', '0xorder' as never)
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    expect(rendered).not.toContain('bridge_link')
+    expect(rendered).not.toContain('header_link')
+  })
+
+  it('joins the extension tables outside the DISTINCT ON so a token keeps every bridge link', async () => {
+    // /list/merged accepted ?extensions= and answered without them, because the query
+    // behind it joined neither the bridge tables nor header_link — against production
+    // that was nothing with extensions there against 1290 on a provider list.
+    //
+    // The joins have to sit outside the DISTINCT ON subquery. Inside it, a token
+    // bridged to several chains would keep one link and lose the rest, since
+    // DISTINCT ON returns a single row per token. Outside, the ranking pick is already
+    // settled and the fan-out is what normalizeTokens wants — it folds every row for
+    // one address into that entry's bridgeInfo map.
+    harness.queueResult({
+      rows: [{ tokenId: 'token-1', bridge: null, bridgeLink: null, networkA: null, networkB: null }],
+    })
+
+    await getTokensByChainRanked('eip155-1', '0xorder' as never, { bridgeInfo: true, headerUri: true })
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    expect(rendered).toContain('bridge_link')
+    expect(rendered).toContain('header_link')
+    // Every table in the bridge chain joins LEFT. An INNER anywhere along it would
+    // drop every token that is not bridged, turning the extension request into a
+    // silent filter over the whole chain.
+    expect(rendered).not.toContain('INNER JOIN "bridge"')
+    // The join, not the select-list reference to the same table — the column list is
+    // emitted above the subquery, so only the join position says where it is applied.
+    expect(rendered.indexOf('DISTINCT ON')).toBeLessThan(rendered.indexOf('LEFT JOIN "bridge_link"'))
+  })
+
+  it('camelCases the nested bridge columns only when bridgeInfo was requested', async () => {
+    // row_to_json hands back the database's snake_case names; normalizeTokens reads
+    // camelCase off these nested objects, so the conversion is what makes the
+    // extension usable rather than merely present.
+    harness.queueResult({
+      rows: [
+        {
+          tokenId: 'token-1',
+          bridge: { bridge_id: 'bridge-1', home_network_id: 'network-1' },
+          bridgeLink: null,
+          networkA: null,
+          networkB: null,
+          nativeToken: null,
+          bridgedToken: null,
+        },
+      ],
+    })
+
+    const [row] = await getTokensByChainRanked('eip155-1', '0xorder' as never, { bridgeInfo: true })
+
+    expect(row.bridge).toEqual({ bridgeId: 'bridge-1', homeNetworkId: 'network-1' })
+  })
 })
 
 // ---------------------------------------------------------------------------

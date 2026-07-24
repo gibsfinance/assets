@@ -177,7 +177,10 @@ describe('merged handler', () => {
     const { res, next } = await callMerged({ chainId: 'eip155-1' })
 
     expect(next).not.toHaveBeenCalled()
-    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', 'order-1')
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', 'order-1', {
+      bridgeInfo: false,
+      headerUri: false,
+    })
     expect(db.applyOrder).not.toHaveBeenCalled()
     expect(res.json.mock.calls[0][0].tokens).toHaveLength(1)
   })

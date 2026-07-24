@@ -518,6 +518,8 @@ describe('fetchImageAndStoreForNetwork', () => {
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
+    // The incumbent lookup: this network holds no icon yet, so the write proceeds.
+    harness.queueResult([{ networkId: 'network-1', imageHash: null, imageProviderKey: null }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
 
     const result = await fetchImageAndStoreForNetwork({
@@ -531,12 +533,95 @@ describe('fetchImageAndStoreForNetwork', () => {
     expect(result?.network).toMatchObject({ imageHash: 'hash-new' })
   })
 
+  it('leaves the network icon alone when a higher-priority collector already claimed it', async () => {
+    // The write used to be unconditional, so the last of the six collectors that write
+    // network icons took the slot regardless of rank. chainlist is deliberately last in
+    // the registry — "kept last so any chain-specific logo outranks it" — and under
+    // last-write-wins it outranked everything instead. That is why two deployments of
+    // the same code served different icons for the same chain: the winner came down to
+    // collection order rather than the priority the registry declares.
+    harness.queueResult([]) // getFreshImageFromLink: link lookup misses
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://x/icon.png' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated', imageProviderKey: 'smoldapp' }])
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      providerKey: 'chainlist',
+    })
+
+    // No update issued at all, and the caller still gets the network row back.
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
+    expect(result?.network).toMatchObject({ imageHash: 'hash-curated' })
+    // The bytes are still stored — losing the network slot is no reason to discard an
+    // image some list_token may point at.
+    expect(harness.queries.filter((query) => query.root === 'insert').length).toBeGreaterThan(0)
+  })
+
+  it('takes the network icon when the incumbent came from a lower-priority collector', async () => {
+    // The mirror of the case above, and the one that repairs a chain a fallback already
+    // claimed: a curated source has to be able to displace chainlist.
+    harness.queueResult([]) // getFreshImageFromLink: link lookup misses
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://x/icon.png' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-fallback', imageProviderKey: 'chainlist' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      providerKey: 'smoldapp',
+    })
+
+    const [update] = harness.queries.filter((query) => query.root === 'update')
+    const written = update.steps.find((step) => step.method === 'set')?.args[0] as Record<string, unknown>
+    // Both columns move together. Writing the hash without the key would leave the next
+    // run comparing against stale provenance and reopen the same race.
+    expect(written).toEqual({ imageHash: 'hash-new', imageProviderKey: 'smoldapp' })
+    expect(result?.network).toMatchObject({ imageHash: 'hash-new' })
+  })
+
+  it('claims a network icon of unknown provenance rather than yielding to it', async () => {
+    // Every network row written before provenance was recorded carries a null key.
+    // Treating unknown as lowest priority is what lets the next collection run settle
+    // those rows onto a real source instead of freezing the accidental winner.
+    harness.queueResult([]) // getFreshImageFromLink: link lookup misses
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://x/icon.png' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-legacy', imageProviderKey: null }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      // Even the lowest-ranked collector outranks an icon nobody can attribute.
+      providerKey: 'chainlist',
+    })
+
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(1)
+    expect(result?.network).toMatchObject({ imageHash: 'hash-new' })
+  })
+
   it('skips the freshness cache check entirely when uri is a Buffer rather than a string', async () => {
     const buffer = PNG_BYTES
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'buffer:chainlist:chain-id:eip155-1' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: null, imageProviderKey: null }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
 
     const result = await fetchImageAndStoreForNetwork({
@@ -549,7 +634,13 @@ describe('fetchImageAndStoreForNetwork', () => {
     // A Buffer source (already-fetched bytes) has no link/url to look up a
     // fresh cache entry by — the freshness check only makes sense for a uri.
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(harness.queries.filter((query) => query.root === 'select')).toHaveLength(0)
+    // The only select is the incumbent-icon lookup the write path does inside its
+    // transaction. Naming the table rather than counting keeps this pinned to the
+    // absence of the `link` freshness lookup, which is what the case is about.
+    const selectedTables = harness.queries
+      .filter((query) => query.root === 'select')
+      .map((query) => query.steps.find((step) => step.method === 'from')?.args[0])
+    expect(selectedTables).toEqual([s.network])
     expect(result?.network).toMatchObject({ imageHash: 'hash-new' })
   })
 
@@ -560,6 +651,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage's link insert
+    harness.queueResult([{ networkId: 'network-1', imageHash: null, imageProviderKey: null }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
 
     await fetchImageAndStoreForNetwork({

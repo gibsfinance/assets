@@ -183,7 +183,12 @@ class DexscreenerCollector extends BaseCollector {
                 network,
                 uri: image ?? url.href,
                 originalUri: url.href,
-                providerKey: provider.providerId,
+                // The collector's key, not its row id. Every other caller passes the
+                // key, and it is now what decides whether this icon outranks the one
+                // already in place — a provider id matches no entry in `collectables`,
+                // so it would sort last and never win a chain another collector had
+                // already claimed.
+                providerKey,
                 signal,
               },
               tx,
