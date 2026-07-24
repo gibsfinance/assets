@@ -93,15 +93,30 @@ const mockResponse = () => ({
   send: vi.fn().mockReturnThis(),
 })
 
-const callMerged = async (query: Record<string, unknown>) => {
+const callMerged = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
   const res = mockResponse()
   const next = vi.fn()
-  await merged({ params: { order: 'default' }, query } as never, res as never, next as never)
+  await merged({ params: { order: 'default' }, query, headers } as never, res as never, next as never)
   return { res, next }
 }
 
+/**
+ * The merged body as an object. It goes out through `res.send` as a pre-serialized
+ * string, because that is the form the cache stores — a cached response and a freshly
+ * built one must be the same bytes, and `res.json` would re-serialize only one of them.
+ */
+const mergedBody = (res: ReturnType<typeof mockResponse>) => JSON.parse(res.send.mock.calls[0][0] as string)
+
 describe('merged handler', () => {
   beforeEach(() => {
+    // Cache miss by default, so these tests exercise the build path. The write is
+    // fire-and-forget, so it has to resolve or the handler rejects on `.catch`.
+    vi.mocked(db.getCachedRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
     vi.mocked(db.getListOrderId)
       .mockReset()
       .mockResolvedValue('order-1' as never)
@@ -145,8 +160,8 @@ describe('merged handler', () => {
 
     expect(bare.next).not.toHaveBeenCalled()
     expect(prefixed.next).not.toHaveBeenCalled()
-    const bareBody = bare.res.json.mock.calls[0][0]
-    const prefixedBody = prefixed.res.json.mock.calls[0][0]
+    const bareBody = mergedBody(bare.res)
+    const prefixedBody = mergedBody(prefixed.res)
     expect(bareBody.tokens).toHaveLength(1)
     expect(bareBody.tokens).toEqual(prefixedBody.tokens)
   })
@@ -182,7 +197,7 @@ describe('merged handler', () => {
       headerUri: false,
     })
     expect(db.applyOrder).not.toHaveBeenCalled()
-    expect(res.json.mock.calls[0][0].tokens).toHaveLength(1)
+    expect(mergedBody(res).tokens).toHaveLength(1)
   })
 
   it('answers an empty list for the asset-0 sentinel without querying for it', async () => {
@@ -194,7 +209,7 @@ describe('merged handler', () => {
 
     expect(next).not.toHaveBeenCalled()
     expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
-    expect(res.json.mock.calls[0][0].tokens).toEqual([])
+    expect(mergedBody(res).tokens).toEqual([])
   })
 
   it('rejects with 404 when the requested order id has no matching list order', async () => {
@@ -220,6 +235,90 @@ describe('merged handler', () => {
     expect(error.message).toContain('solana-42')
     expect(error.message).toContain('tvm-42')
     expect(res.json).not.toHaveBeenCalled()
+  })
+
+  it('serves a cached body without rebuilding it', async () => {
+    // The reason this endpoint is cached at all: the query behind it takes sixteen to
+    // twenty-two seconds on a large chain, against roughly one for the same query read
+    // from cache. If a cache hit still ran the query the endpoint would be no faster,
+    // only more complicated.
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xcached"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callMerged({ chainId: '369' })
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(mergedBody(res).tokens).toEqual([{ address: '0xcached' }])
+  })
+
+  it('keys the cache on the chain, so one chain never answers with another chain body', async () => {
+    await callMerged({ chainId: '369' })
+    await callMerged({ chainId: 'eip155-1' })
+
+    const [first, second] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(first).not.toBe(second)
+    expect(first).toContain('eip155-369')
+    expect(second).toContain('eip155-1')
+  })
+
+  it('resolves the chain before keying, so bare and prefixed ids share one cached body', async () => {
+    // Otherwise ?chainId=369 and ?chainId=eip155-369 each keep their own copy of a
+    // twelve-megabyte body — identical bytes, twice the storage, and two rebuilds.
+    await callMerged({ chainId: '369' })
+    await callMerged({ chainId: 'eip155-369' })
+
+    const [bare, prefixed] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(bare).toBe(prefixed)
+  })
+
+  it('keys the cache on extensions, and orders them so one request cannot fork into two', async () => {
+    await callMerged({ chainId: '369', extensions: 'bridgeInfo,headerUri' })
+    await callMerged({ chainId: '369', extensions: 'headerUri,bridgeInfo' })
+    await callMerged({ chainId: '369' })
+
+    const [forward, reversed, none] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    // The same two extensions in either order are one response, not two.
+    expect(forward).toBe(reversed)
+    // But requesting them is not the same response as not requesting them: the
+    // extension columns are joined into the query, so the bodies genuinely differ.
+    expect(none).not.toBe(forward)
+  })
+
+  it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
+    // This is the more expensive of the two chain-scoped endpoints. An open refresh
+    // parameter would let anyone force the full ranked query on every request.
+    const { res, next } = await callMerged({ chainId: '369', refresh: '1' })
+
+    const error = next.mock.calls[0][0] as { status: number }
+    expect(error.status).toBe(401)
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rebuilds and rewrites the cache for an authorized refresh', async () => {
+    // A refresh that only served its own caller would leave the next ordinary visitor
+    // on the stale body, which defeats the point of having the parameter.
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xstale"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callMerged(
+      { chainId: '369', refresh: '1' },
+      { authorization: 'Bearer test-admin-token' },
+    )
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).toHaveBeenCalled()
+    expect(mergedBody(res).tokens).toHaveLength(1)
+    expect(mergedBody(res).tokens[0].address).not.toBe('0xstale')
+    expect(db.insertCacheRequest).toHaveBeenCalled()
+    // And the rebuilt body must not itself be cached at the edge, or the refresh URL
+    // becomes a cache entry that hands the same body to everyone else.
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
   })
 })
 
