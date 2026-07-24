@@ -27,7 +27,7 @@ import { maybeResize, parseResizeParams } from './resize'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
-import { toCAIP2, namespaceOf, isBareNumeric } from '../../chain-id'
+import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored } from '../../chain-id'
 
 /** Chain-id namespaces whose token addresses are Ethereum-Virtual-Machine hex. */
 const EVM_NAMESPACES = new Set(['eip155', 'asset'])
@@ -372,9 +372,33 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
   sendImage(res, image, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
 }
 
+/**
+ * Resolve a network-icon chain id the way the token-list endpoints do. A bare number
+ * names no namespace, and toCAIP2 assumes eip155 — so `/image/354` asked for eip155-354,
+ * matched no row, and answered 404, while `/networks` kept advertising polkadot-354's
+ * icon under the very same bare 354. Matching the number against the networks actually
+ * stored lets the two paths name the same network. A number genuinely shared by several
+ * populated namespaces is reported as a 400 rather than resolved to one arbitrarily. An
+ * explicitly namespaced request is already an assertion about namespace, so it passes
+ * through untouched and pays no lookup. This mirrors tokensByChain and the provider-list
+ * handler; see resolveChainIdAgainstStored.
+ */
+const resolveNetworkChainId = async (chainId: string): Promise<string> => {
+  if (!isBareNumeric(chainId)) return chainId
+  const storedCandidates = await db.getChainIdsByReference(chainId)
+  const resolution = resolveChainIdAgainstStored(chainId, storedCandidates)
+  if (resolution.status === 'ambiguous') {
+    throw httpErrors.BadRequest(
+      `ambiguous chainId "${chainId}" — it exists in several namespaces (${resolution.candidates.join(', ')}); request one explicitly`,
+    )
+  }
+  return resolution.chainId
+}
+
 const bestGuessNeworkImage = async (chainIdParam: string) => {
   const { filename: chainId, exts } = splitExt(chainIdParam)
-  const { img } = await getNetworkIcon(chainId, exts)
+  const resolvedChainId = await resolveNetworkChainId(chainId)
+  const { img } = await getNetworkIcon(resolvedChainId, exts)
   if (!img) {
     throw httpErrors.NotFound('best guess network image not found')
   }
