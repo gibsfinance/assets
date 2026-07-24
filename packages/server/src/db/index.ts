@@ -1202,30 +1202,41 @@ export const getTokensWithExtensions = async (
           : dsql``
       }
     FROM "list_token"
-    FULL JOIN "image" ON "image"."image_hash" = "list_token"."image_hash"
+    -- LEFT, not FULL. The full outer half only ever produced rows with a null
+    -- list_token, which the WHERE below discards anyway, so the two are equivalent
+    -- here — but only by accident of the WHERE clause, and a full outer join is the
+    -- more expensive plan. The optional header join further down reads the same way.
+    LEFT JOIN "image" ON "image"."image_hash" = "list_token"."image_hash"
     INNER JOIN "token" ON "token"."token_id" = "list_token"."token_id"
     INNER JOIN "network" ON "network"."network_id" = "token"."network_id"
     INNER JOIN "list" ON "list"."list_id" = "list_token"."list_id"
     INNER JOIN "provider" ON "provider"."provider_id" = "list"."provider_id"
     ${
       bridgeInfo
-        ? dsql`
-      FULL JOIN "bridge_link" ON (
+        ? // Every join in this chain must be a LEFT JOIN. Only a minority of tokens
+          // are bridged, so `bridge_link` is absent for most rows; an INNER JOIN
+          // anywhere below it drops those rows outright rather than returning them
+          // without bridge columns. That is not a degraded response, it is an empty
+          // one — asking a list for `?extensions=bridgeInfo` returned zero tokens
+          // where the same list without extensions returned thousands. Requesting an
+          // extension must never remove tokens from a list.
+          dsql`
+      LEFT JOIN "bridge_link" ON (
         "bridge_link"."native_token_id" = "token"."token_id"
         OR "bridge_link"."bridged_token_id" = "token"."token_id"
       )
-      INNER JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
-      INNER JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
-      INNER JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
-      INNER JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
-      INNER JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
+      LEFT JOIN "bridge" ON "bridge"."bridge_id" = "bridge_link"."bridge_id"
+      LEFT JOIN "network" AS "network_a" ON "network_a"."network_id" = "bridge"."home_network_id"
+      LEFT JOIN "network" AS "network_b" ON "network_b"."network_id" = "bridge"."foreign_network_id"
+      LEFT JOIN "token" AS "native_token" ON "native_token"."token_id" = "bridge_link"."native_token_id"
+      LEFT JOIN "token" AS "bridged_token" ON "bridged_token"."token_id" = "bridge_link"."bridged_token_id"
     `
         : dsql``
     }
     ${
       headerUri
         ? dsql`
-      FULL JOIN "header_link" ON "header_link"."list_token_id" = "list_token"."list_token_id"
+      LEFT JOIN "header_link" ON "header_link"."list_token_id" = "list_token"."list_token_id"
     `
         : dsql``
     }
