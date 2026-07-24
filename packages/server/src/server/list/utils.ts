@@ -12,17 +12,27 @@ import createError from 'http-errors'
 import { fromCAIP2, toCAIP2, chainIdFilterMatch } from '../../chain-id'
 import * as db from '../../db'
 import * as utils from '../../utils'
-import { Response } from 'express'
 import * as viem from 'viem'
 import type { Network, Token } from '../../db/schema-types'
 import { Extensions, ServedTokenEntry, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
 import _ from 'lodash'
-import config from '../../../config'
 import { eq, asc } from 'drizzle-orm'
 import * as s from '../../db/schema'
 
-export const respondWithList = async (
-  res: Response,
+/**
+ * Assemble a single provider list's response body.
+ *
+ * Split out from the handlers so the same builder feeds the read-through cache: the
+ * provider-list endpoints go through `serveCachedJson`, whose `build` step serializes
+ * whatever this returns. The token query is the whole cost — one join over every token
+ * on the list, up to a couple of thousand rows — and it only changes when a collection
+ * run lands, which is exactly what makes the response worth caching.
+ *
+ * The chainId/decimals `filters` and the extension set trim or shape the result but do
+ * not change which list is read, so a cache key over (listId, extensions, filters) names
+ * this body exactly.
+ */
+export const buildListPayload = async (
   list: {
     listId: string
     name: string | null
@@ -37,7 +47,7 @@ export const respondWithList = async (
   },
   filters: Filter<Network & Token>[] = [],
   extensions: Set<string>,
-) => {
+): Promise<TokenList> => {
   const hasBridge = extensions.has('bridgeInfo')
   const hasHeader = extensions.has('headerUri')
   const tokens =
@@ -48,8 +58,7 @@ export const respondWithList = async (
           .where(eq(s.listToken.listId, list.listId))
           .orderBy(asc(s.listToken.listTokenOrderId))
   const tkns = normalizeTokens(tokens as unknown as TokenInfo[], filters, extensions)
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
-  res.json({
+  return {
     name: list.name || '',
     logoURI: utils.directUri(list as any),
     timestamp: new Date(list.updatedAt).toISOString(),
@@ -59,7 +68,7 @@ export const respondWithList = async (
       patch: list.patch || 0,
     },
     tokens: tkns,
-  } as TokenList)
+  } as TokenList
 }
 
 export const normalizeTokens = (

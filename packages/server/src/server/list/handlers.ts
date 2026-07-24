@@ -43,6 +43,17 @@ import { buildAndCache, cacheRowAge, listCacheControl, serveCachedJson, writeCac
 export { cacheRowAge }
 
 /**
+ * Fold a possibly-repeated query value into a stable, order-independent key fragment,
+ * so `?decimals=6&decimals=18` and `?decimals=18&decimals=6` name one cached body, not
+ * two. Absent values collapse to the empty string.
+ */
+const sortedQueryValues = (value: unknown): string =>
+  (Array.isArray(value) ? value : value == null ? [] : [value])
+    .map((entry) => `${entry}`)
+    .sort()
+    .join(',')
+
+/**
  * Cache key for a merged list response.
  *
  * Everything that changes the body has to appear here, and nothing else may. The
@@ -67,11 +78,37 @@ export const mergedCacheKey = ({
   decimals?: unknown
 }) => {
   const ext = [...extensions].sort().join(',')
-  const dec = (Array.isArray(decimals) ? decimals : decimals == null ? [] : [decimals])
-    .map((value) => `${value}`)
-    .sort()
-    .join(',')
-  return `merged:${orderId}:${chainId}:${ext}:${dec}`
+  return `merged:${orderId}:${chainId}:${ext}:${sortedQueryValues(decimals)}`
+}
+
+/**
+ * Cache key for a single provider (or versioned) list response.
+ *
+ * `listId` already encodes provider, list key, and version — a new version publishes
+ * under a fresh id, so an outdated body ages out on its own instead of being served
+ * under a version that no longer exists. Extensions and the optional chainId/decimals
+ * filters are folded in exactly as `mergedCacheKey` does: sorted, so argument order
+ * never forks the cache.
+ *
+ * The same junk-key exposure `merged` carries applies here — an unrecognized extension
+ * or filter value still mints a distinct key even when it does not change the body. It
+ * is bounded by the twenty-four-hour row expiry, the content delivery network in front,
+ * and the admin-gated refresh, and is left identical to `merged` on purpose rather than
+ * given a stricter policy of its own.
+ */
+export const listCacheKey = ({
+  listId,
+  extensions,
+  chainId,
+  decimals,
+}: {
+  listId: string
+  extensions: Set<string>
+  chainId?: unknown
+  decimals?: unknown
+}) => {
+  const ext = [...extensions].sort().join(',')
+  return `list:${listId}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`
 }
 
 export const merged: RequestHandler = async (req, res, next) => {
@@ -160,7 +197,25 @@ export const merged: RequestHandler = async (req, res, next) => {
   })
 }
 
+/**
+ * Reject an unauthorized refresh, or report an authorized one. Provider lists are the
+ * same class of expensive assembly as merged and tokensByChain, so they gate `?refresh=`
+ * the same way: an open refresh would let anyone force the full per-list token join on
+ * every request. A caller who thinks they verified against fresh data is told plainly
+ * when their token was rejected, rather than quietly handed a cached body.
+ */
+const guardListRefresh = (req: Parameters<RequestHandler>[0]) =>
+  refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+
 export const versioned: RequestHandler = async (req, res, next) => {
+  const refresh = guardListRefresh(req)
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
+  }
   const extensions = utils.parseExtensions(req.query.extensions)
   const [major, minor, patch] = (req.params.version || '').split('.')
   const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
@@ -173,10 +228,25 @@ export const versioned: RequestHandler = async (req, res, next) => {
   }
   const list = { ...match.list, ...match.image, ...match.provider, ...match.list_token }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list as any, filters, extensions)
+  await serveCachedJson(res, {
+    cacheKey: listCacheKey({
+      listId: list.listId,
+      extensions,
+      chainId: req.query.chainId,
+      decimals: req.query.decimals,
+    }),
+    build: async () => JSON.stringify(await utils.buildListPayload(list as any, filters, extensions)),
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
+  const refresh = guardListRefresh(req)
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
+  }
   const extensions = utils.parseExtensions(req.query.extensions)
   const providerKey = req.params.providerKey
   const rows = await db.getLists(providerKey, req.params.listKey)
@@ -191,12 +261,24 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
       ),
     )
   }
+  // Bump on every request, cache hit or miss — it counts subscribers, not rebuilds.
   if (providerKey.startsWith('user-')) {
     bumpSubscriberCount(providerKey).catch((e: Error) => failureLog('bump failed: %s', e.message))
   }
   const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list as any, filters, extensions)
+  await serveCachedJson(res, {
+    cacheKey: listCacheKey({
+      listId: list.listId,
+      extensions,
+      chainId: req.query.chainId,
+      decimals: req.query.decimals,
+    }),
+    build: async () => JSON.stringify(await utils.buildListPayload(list as any, filters, extensions)),
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
 
 const getFilteredLists = async (filter: Record<string, unknown>) => {
