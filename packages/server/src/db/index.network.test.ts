@@ -17,6 +17,7 @@ import {
   getListOrderId,
   getLists,
 } from './index'
+import * as s from './schema'
 
 beforeEach(() => {
   harness.reset()
@@ -279,5 +280,36 @@ describe('getLists', () => {
     // the caller explicitly asked for.
     expect(harness.queries).toHaveLength(1)
     expect(result).toEqual([])
+  })
+
+  it('sources the logo and timestamp from the list itself, not from a list_token', async () => {
+    harness.queueResult([{ listId: 'l1' }])
+
+    await getLists('trustwallet', 'wallet-ethereum')
+
+    // The response's logoURI and timestamp used to be built from an arbitrary
+    // list_token row (spread last over the list's own columns). Selecting the list's
+    // own image_hash and updated_at is exactly what fixes that — assert the projection
+    // reads those columns, not the token's.
+    const projection = harness.queries[0].steps[0].args[0] as Record<string, unknown>
+    expect(projection.imageHash).toBe(s.list.imageHash)
+    expect(projection.updatedAt).toBe(s.list.updatedAt)
+    expect(projection.imageHash).not.toBe(s.listToken.imageHash)
+    expect(projection.updatedAt).not.toBe(s.listToken.updatedAt)
+  })
+
+  it('proves the list has tokens without joining every list_token row', async () => {
+    harness.queueResult([{ listId: 'l1' }])
+
+    await getLists('trustwallet', 'wallet-ethereum')
+
+    // The old innerJoin on list_token returned one row per token (O(tokens)); the
+    // populated-list contract is now a correlated EXISTS in the WHERE clause instead.
+    const joinedTables = harness.queries[0].steps
+      .filter((step) => step.method.endsWith('Join'))
+      .map((step) => step.args[0])
+    expect(joinedTables).not.toContain(s.listToken)
+    const whereStep = harness.queries[0].steps.find((step) => step.method === 'where')
+    expect(renderSql(whereStep?.args[0])).toMatch(/EXISTS \(SELECT 1 FROM "list_token"/i)
   })
 })
