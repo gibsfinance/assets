@@ -43,6 +43,17 @@ import { buildAndCache, cacheRowAge, listCacheControl, serveCachedJson, writeCac
 export { cacheRowAge }
 
 /**
+ * Fold a possibly-repeated query value into a stable, order-independent key fragment,
+ * so `?decimals=6&decimals=18` and `?decimals=18&decimals=6` name one cached body, not
+ * two. Absent values collapse to the empty string.
+ */
+const sortedQueryValues = (value: unknown): string =>
+  (Array.isArray(value) ? value : value == null ? [] : [value])
+    .map((entry) => `${entry}`)
+    .sort()
+    .join(',')
+
+/**
  * Cache key for a merged list response.
  *
  * Everything that changes the body has to appear here, and nothing else may. The
@@ -67,11 +78,44 @@ export const mergedCacheKey = ({
   decimals?: unknown
 }) => {
   const ext = [...extensions].sort().join(',')
-  const dec = (Array.isArray(decimals) ? decimals : decimals == null ? [] : [decimals])
-    .map((value) => `${value}`)
-    .sort()
-    .join(',')
-  return `merged:${orderId}:${chainId}:${ext}:${dec}`
+  return `merged:${orderId}:${chainId}:${ext}:${sortedQueryValues(decimals)}`
+}
+
+/**
+ * Cache key for a single provider (or versioned) list response.
+ *
+ * Keyed by the request's own coordinates — provider key, list key, and version — rather
+ * than by the resolved `listId`. Deriving the id means `getLists`, whose join over every
+ * `list_token` row is the expensive part of the request (seconds on a large list): keying
+ * on it would force that query on every hit and defeat the cache. These coordinates are
+ * known from the path before any query runs, so a warm request does no database work
+ * beyond the single cache read. A `version` of `''` is the providerKeyed "latest" case,
+ * which a new publish supersedes via the six-hour fresh window rather than a new key.
+ *
+ * Extensions and the optional chainId/decimals filters are folded in exactly as
+ * `mergedCacheKey` does: sorted, so argument order never forks the cache. The same
+ * junk-key exposure `merged` carries applies here — an unrecognized extension or filter
+ * value still mints a distinct key even when it does not change the body — bounded by the
+ * twenty-four-hour row expiry, the content delivery network in front, and the admin-gated
+ * refresh, and left identical to `merged` on purpose.
+ */
+export const listCacheKey = ({
+  providerKey,
+  listKey,
+  version,
+  extensions,
+  chainId,
+  decimals,
+}: {
+  providerKey: string
+  listKey?: string
+  version?: string
+  extensions: Set<string>
+  chainId?: unknown
+  decimals?: unknown
+}) => {
+  const ext = [...extensions].sort().join(',')
+  return `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`
 }
 
 export const merged: RequestHandler = async (req, res, next) => {
@@ -160,43 +204,98 @@ export const merged: RequestHandler = async (req, res, next) => {
   })
 }
 
+/**
+ * Reject an unauthorized refresh, or report an authorized one. Provider lists are the
+ * same class of expensive assembly as merged and tokensByChain, so they gate `?refresh=`
+ * the same way: an open refresh would let anyone force the full per-list token join on
+ * every request. A caller who thinks they verified against fresh data is told plainly
+ * when their token was rejected, rather than quietly handed a cached body.
+ */
+const guardListRefresh = (req: Parameters<RequestHandler>[0]) =>
+  refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+
 export const versioned: RequestHandler = async (req, res, next) => {
-  const extensions = utils.parseExtensions(req.query.extensions)
-  const [major, minor, patch] = (req.params.version || '').split('.')
-  const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
-  const match = allLists.find(
-    (row) =>
-      String(row.list?.major) === major && String(row.list?.minor) === minor && String(row.list?.patch) === patch,
-  )
-  if (!match) {
-    return next(createError.NotFound('versioned list missing'))
+  const refresh = guardListRefresh(req)
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
   }
-  const list = { ...match.list, ...match.image, ...match.provider, ...match.list_token }
+  const extensions = utils.parseExtensions(req.query.extensions)
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list as any, filters, extensions)
+  // getLists joins every list_token row, so it is the request's real cost. It runs only
+  // inside build — a cache hit never reaches it. The version-not-found 404 therefore
+  // surfaces as a throw from build, which nextOnError turns into next(error).
+  const build = async () => {
+    const [major, minor, patch] = (req.params.version || '').split('.')
+    const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
+    const match = allLists.find(
+      (row) =>
+        String(row.list?.major) === major && String(row.list?.minor) === minor && String(row.list?.patch) === patch,
+    )
+    if (!match) {
+      throw createError.NotFound('versioned list missing')
+    }
+    const list = { ...match.list, ...match.image, ...match.provider, ...match.list_token }
+    return JSON.stringify(await utils.buildListPayload(list as any, filters, extensions))
+  }
+  await serveCachedJson(res, {
+    cacheKey: listCacheKey({
+      providerKey: req.params.providerKey,
+      listKey: req.params.listKey,
+      version: req.params.version,
+      extensions,
+      chainId: req.query.chainId,
+      decimals: req.query.decimals,
+    }),
+    build,
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
 
 export const providerKeyed: RequestHandler = async (req, res, next) => {
-  const extensions = utils.parseExtensions(req.query.extensions)
-  const providerKey = req.params.providerKey
-  const rows = await db.getLists(providerKey, req.params.listKey)
-  const first = rows[0]
-  if (!first) {
-    return next(
-      createError.NotFound(
-        JSON.stringify({
-          providerKey,
-          listKey: req.params.listKey,
-        }),
-      ),
-    )
+  const refresh = guardListRefresh(req)
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
   }
+  const providerKey = req.params.providerKey
+  const listKey = req.params.listKey
+  // Bump on every request, cache hit or miss — it counts subscribers, not rebuilds, so
+  // it runs here rather than inside the (cache-skipping) build. The update matches zero
+  // rows for a provider that does not exist, so bumping before that is known is harmless.
   if (providerKey.startsWith('user-')) {
     bumpSubscriberCount(providerKey).catch((e: Error) => failureLog('bump failed: %s', e.message))
   }
-  const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
+  const extensions = utils.parseExtensions(req.query.extensions)
   const filters = utils.tokenFilters(req.query)
-  await utils.respondWithList(res, list as any, filters, extensions)
+  // getLists is the request's real cost, so it runs only inside build; a cache hit never
+  // reaches it. The list-not-found 404 surfaces as a throw, which nextOnError forwards.
+  const build = async () => {
+    const rows = await db.getLists(providerKey, listKey)
+    const first = rows[0]
+    if (!first) {
+      throw createError.NotFound(JSON.stringify({ providerKey, listKey }))
+    }
+    const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
+    return JSON.stringify(await utils.buildListPayload(list as any, filters, extensions))
+  }
+  await serveCachedJson(res, {
+    cacheKey: listCacheKey({
+      providerKey,
+      listKey,
+      extensions,
+      chainId: req.query.chainId,
+      decimals: req.query.decimals,
+    }),
+    build,
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
 }
 
 const getFilteredLists = async (filter: Record<string, unknown>) => {

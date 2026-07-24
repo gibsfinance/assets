@@ -36,7 +36,7 @@ import {
   normalizeTokens,
   tokenFilters,
   minimalList,
-  respondWithList,
+  buildListPayload,
   parseExtensions,
   parseTokenLimit,
   parseListFilters,
@@ -825,18 +825,10 @@ describe('minimalList', () => {
   })
 })
 
-describe('respondWithList', () => {
+describe('buildListPayload', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
-
-  function createMockResponse() {
-    const res = {
-      set: vi.fn().mockReturnThis(),
-      json: vi.fn().mockReturnThis(),
-    }
-    return res as unknown as { set: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn> }
-  }
 
   function createMockQuery(tokens: unknown[]) {
     const query = {
@@ -860,18 +852,13 @@ describe('respondWithList', () => {
     patch: 3,
   }
 
-  it('queries db, normalizes tokens, and responds with JSON', async () => {
+  it('queries db and normalizes tokens into the list body', async () => {
     const tokens = [makeToken({ providedId: '0xaaa', name: 'TokenA', providerKey: 'px', listKey: 'ext' })]
     createMockQuery(tokens)
-    const res = createMockResponse()
 
-    await respondWithList(res as any, baseList, [], new Set())
+    const body = await buildListPayload(baseList, [], new Set())
 
     expect(mockGetTokensUnderListId).toHaveBeenCalled()
-    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
-    expect(res.json).toHaveBeenCalledTimes(1)
-
-    const body = res.json.mock.calls[0][0]
     expect(body.name).toBe('Test List')
     expect(body.version).toEqual({ major: 1, minor: 2, patch: 3 })
     expect(body.timestamp).toBe('2024-01-15T12:00:00.000Z')
@@ -881,29 +868,24 @@ describe('respondWithList', () => {
 
   it('falls back to empty name when list.name is null', async () => {
     createMockQuery([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, { ...baseList, name: null }, [], new Set())
+    const body = await buildListPayload({ ...baseList, name: null }, [], new Set())
 
-    const body = res.json.mock.calls[0][0]
     expect(body.name).toBe('')
   })
 
   it('falls back to zero version when major/minor/patch are falsy', async () => {
     createMockQuery([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, { ...baseList, major: 0, minor: 0, patch: 0 }, [], new Set())
+    const body = await buildListPayload({ ...baseList, major: 0, minor: 0, patch: 0 }, [], new Set())
 
-    const body = res.json.mock.calls[0][0]
     expect(body.version).toEqual({ major: 0, minor: 0, patch: 0 })
   })
 
   it('uses getTokensWithExtensions when bridgeInfo extension is requested', async () => {
     mockGetTokensWithExtensions.mockResolvedValue([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, baseList, [], new Set(['bridgeInfo']))
+    await buildListPayload(baseList, [], new Set(['bridgeInfo']))
 
     expect(mockGetTokensWithExtensions).toHaveBeenCalledWith('list-1', { bridgeInfo: true, headerUri: false })
     expect(mockGetTokensUnderListId).not.toHaveBeenCalled()
@@ -911,9 +893,8 @@ describe('respondWithList', () => {
 
   it('uses getTokensWithExtensions when headerUri extension is requested', async () => {
     mockGetTokensWithExtensions.mockResolvedValue([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, baseList, [], new Set(['headerUri']))
+    await buildListPayload(baseList, [], new Set(['headerUri']))
 
     expect(mockGetTokensWithExtensions).toHaveBeenCalledWith('list-1', { bridgeInfo: false, headerUri: true })
     expect(mockGetTokensUnderListId).not.toHaveBeenCalled()
@@ -921,9 +902,8 @@ describe('respondWithList', () => {
 
   it('uses getTokensUnderListId when no extensions are requested', async () => {
     createMockQuery([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, baseList, [], new Set())
+    await buildListPayload(baseList, [], new Set())
 
     expect(mockGetTokensUnderListId).toHaveBeenCalled()
     expect(mockGetTokensWithExtensions).not.toHaveBeenCalled()
@@ -935,23 +915,19 @@ describe('respondWithList', () => {
       makeToken({ providedId: '0xbbb', chainId: '1' }),
     ]
     createMockQuery(tokens)
-    const res = createMockResponse()
 
     const chainFilter = (a: any) => `${a.chainId}` === '369'
-    await respondWithList(res as any, baseList, [chainFilter], new Set())
+    const body = await buildListPayload(baseList, [chainFilter], new Set())
 
-    const body = res.json.mock.calls[0][0]
     expect(body.tokens).toHaveLength(1)
     expect(body.tokens[0].address).toBe('0xaaa')
   })
 
   it('includes logoURI from directUri in the response', async () => {
     createMockQuery([])
-    const res = createMockResponse()
 
-    await respondWithList(res as any, baseList, [], new Set())
+    const body = await buildListPayload(baseList, [], new Set())
 
-    const body = res.json.mock.calls[0][0]
     expect(body.logoURI).toBe('/image/direct/listhash.png')
   })
 })

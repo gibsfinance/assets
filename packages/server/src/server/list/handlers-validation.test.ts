@@ -61,13 +61,13 @@ vi.mock('drizzle-orm', () => ({
     { join: vi.fn(), raw: vi.fn() },
   ),
 }))
-// respondWithList (behind versioned/providerKeyed) is exercised end-to-end,
+// buildListPayload (behind versioned/providerKeyed) is exercised end-to-end,
 // with real drizzle chain internals, in utils.test.ts — mocked here so this
 // file only asserts what versioned/providerKeyed themselves build (the merged
-// list object and the 404 branches), not respondWithList's own logic.
+// list object and the 404 branches), not the payload builder's own logic.
 vi.mock('./utils', async () => {
   const actual = await vi.importActual<typeof import('./utils')>('./utils')
-  return { ...actual, respondWithList: vi.fn(async (res: { json: (b: unknown) => void }) => res.json({ ok: true })) }
+  return { ...actual, buildListPayload: vi.fn(async () => ({ ok: true })) }
 })
 
 import * as db from '../../db'
@@ -654,15 +654,26 @@ describe('all handler', () => {
 })
 
 describe('versioned handler', () => {
-  const callVersioned = async (params: Record<string, string>, query: Record<string, unknown> = {}) => {
+  const callVersioned = async (
+    params: Record<string, string>,
+    query: Record<string, unknown> = {},
+    headers: Record<string, string> = {},
+  ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await versioned({ params, query } as never, res as never, next as never)
+    await versioned({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
   beforeEach(() => {
-    vi.mocked(listUtils.respondWithList).mockClear()
+    vi.mocked(listUtils.buildListPayload).mockClear()
+    // Cache miss by default so the build path runs; the write is fire-and-forget.
+    vi.mocked(db.getCachedRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
   })
 
   it('rejects with 404 when no list matches the requested version', async () => {
@@ -673,22 +684,22 @@ describe('versioned handler', () => {
       { list: undefined, image: {}, provider: {}, list_token: {} },
     ] as never)
 
-    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })
-
-    expect((next.mock.calls[0][0] as { status: number }).status).toBe(404)
-    expect(listUtils.respondWithList).not.toHaveBeenCalled()
+    // The not-found check now lives inside the cache build, so it surfaces as a throw
+    // that nextOnError forwards to next() in production.
+    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })).rejects.toMatchObject(
+      { status: 404 },
+    )
+    expect(listUtils.buildListPayload).not.toHaveBeenCalled()
   })
 
   it('rejects with 404 when no version segment is present at all', async () => {
     // req.params.version is undefined on a malformed request — the `|| ''`
-    // fallback must produce ['', undefined, undefined] rather than throwing.
+    // fallback must produce ['', undefined, undefined] rather than throwing on split.
     vi.mocked(db.getLists).mockResolvedValue([
       { list: { major: 1, minor: 0, patch: 0 }, image: {}, provider: {}, list_token: {} },
     ] as never)
 
-    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended' })
-
-    expect((next.mock.calls[0][0] as { status: number }).status).toBe(404)
+    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended' })).rejects.toMatchObject({ status: 404 })
   })
 
   it('merges list, image, provider, and list_token fields for the matching version', async () => {
@@ -703,7 +714,7 @@ describe('versioned handler', () => {
 
     await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' })
 
-    const [, list] = vi.mocked(listUtils.respondWithList).mock.calls[0]
+    const [list] = vi.mocked(listUtils.buildListPayload).mock.calls[0]
     expect(list).toMatchObject({
       major: 1,
       minor: 2,
@@ -717,15 +728,29 @@ describe('versioned handler', () => {
 })
 
 describe('providerKeyed handler', () => {
-  const callProviderKeyed = async (params: Record<string, string>, query: Record<string, unknown> = {}) => {
+  const callProviderKeyed = async (
+    params: Record<string, string>,
+    query: Record<string, unknown> = {},
+    headers: Record<string, string> = {},
+  ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await providerKeyed({ params, query } as never, res as never, next as never)
+    await providerKeyed({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
   beforeEach(() => {
-    vi.mocked(listUtils.respondWithList).mockClear()
+    vi.mocked(listUtils.buildListPayload).mockClear()
+    // getLists runs inside build now, so its call count must reset between tests — the
+    // cache-hit test asserts it is never reached.
+    vi.mocked(db.getLists).mockReset()
+    // Cache miss by default so the build path runs; the write is fire-and-forget.
+    vi.mocked(db.getCachedRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
     vi.mocked(bumpSubscriberCount)
       .mockReset()
       .mockResolvedValue(undefined as never)
@@ -734,9 +759,11 @@ describe('providerKeyed handler', () => {
   it('rejects with the documented JSON 404 shape when no list matches', async () => {
     vi.mocked(db.getLists).mockResolvedValue([] as never)
 
-    const { next } = await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' })
-
-    const error = next.mock.calls[0][0] as { status: number; message: string }
+    // The not-found check runs inside the cache build now, so it throws rather than
+    // calling next directly; nextOnError forwards it in production.
+    const error = (await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' }).catch(
+      (e) => e,
+    )) as { status: number; message: string }
     expect(error.status).toBe(404)
     expect(JSON.parse(error.message)).toEqual({ providerKey: 'unknown-provider', listKey: 'extended' })
   })
@@ -772,5 +799,84 @@ describe('providerKeyed handler', () => {
     // The response still succeeds — a subscriber-count failure is not a list-serving failure.
     expect(next).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(bumpSubscriberCount).toHaveBeenCalled())
+  })
+
+  // The point of caching this endpoint: getLists plus the per-list token join was
+  // seconds on the largest lists, paid on every request. A hit must skip getLists and
+  // the build entirely — which is why the key is the request's own coordinates, known
+  // before any query runs, rather than the resolved list id.
+  const listRows = () => [{ list: { listId: 'l1' }, image: {}, provider: { key: 'pulsex' }, list_token: {} }] as never
+
+  it('serves a cached provider list without touching getLists or rebuilding', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xcached"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' })
+
+    expect(next).not.toHaveBeenCalled()
+    // The whole point of keying on request coordinates: a hit never runs the query.
+    expect(db.getLists).not.toHaveBeenCalled()
+    expect(listUtils.buildListPayload).not.toHaveBeenCalled()
+    expect(JSON.parse(res.send.mock.calls[0][0] as string).tokens).toEqual([{ address: '0xcached' }])
+  })
+
+  it('keys on the request coordinates and orders extensions so one request cannot fork into two', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { extensions: 'headerUri,bridgeInfo' })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { extensions: 'bridgeInfo,headerUri' })
+
+    const [forward, reversed] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(forward).toBe(reversed)
+    expect(forward).toBe('list:pulsex:extended::bridgeInfo,headerUri::')
+  })
+
+  it('folds the chainId and decimals filters into the key, so a filtered body is never served unfiltered', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { chainId: '1' })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, {})
+
+    const [filtered, unfiltered] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(filtered).toBe('list:pulsex:extended:::1:')
+    expect(unfiltered).toBe('list:pulsex:extended::::')
+    expect(filtered).not.toBe(unfiltered)
+  })
+
+  it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
+    // Provider lists are the same expensive assembly as merged; an open refresh would
+    // let anyone force the full per-list join on every request.
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    const { res, next } = await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { refresh: '1' })
+
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(401)
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rebuilds, rewrites, and marks no-store for an authorized refresh', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xstale"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callProviderKeyed(
+      { providerKey: 'pulsex', listKey: 'extended' },
+      { refresh: '1' },
+      { authorization: 'Bearer test-admin-token' },
+    )
+
+    expect(next).not.toHaveBeenCalled()
+    // The persisted row is bypassed, the body is rebuilt, and the rebuild is written
+    // back so the next ordinary visitor gets the fresh value too.
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(listUtils.buildListPayload).toHaveBeenCalled()
+    expect(db.insertCacheRequest).toHaveBeenCalled()
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
   })
 })

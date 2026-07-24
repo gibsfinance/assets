@@ -7,6 +7,7 @@ vi.mock('../../db/tables', () => ({
 vi.mock('../../db', () => ({
   applyOrder: vi.fn(),
   getListOrderId: vi.fn(),
+  getChainIdsByReference: vi.fn(async () => []),
 }))
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/schema', () => ({
@@ -62,6 +63,7 @@ import {
 } from './handlers'
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
+import * as utils from '../../utils'
 import { inArray } from 'drizzle-orm'
 import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
@@ -129,6 +131,11 @@ function makeDrizzleChain(result: unknown[] = []) {
 describe('image handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // A bare-numeric network-icon lookup resolves the number against the stored
+    // networks; default to "no other namespace holds it" so tests that do not care
+    // about resolution keep meaning eip155. Reset explicitly because mockResolvedValue
+    // implementations survive clearAllMocks and would otherwise leak between tests.
+    vi.mocked(db.getChainIdsByReference).mockReset().mockResolvedValue([])
   })
 
   // -----------------------------------------------------------------------
@@ -981,6 +988,75 @@ describe('image handlers', () => {
       const next = vi.fn()
 
       await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, next)).rejects.toThrow(/not found/)
+    })
+
+    it('resolves a bare non-Ethereum-Virtual-Machine chain number to its stored namespace before lookup', async () => {
+      // /networks publishes polkadot-354 as the bare number 354 for backwards
+      // compatibility. Feeding that number straight back to the icon endpoint assumed
+      // eip155-354, matched no row, and answered 404 — while /networks kept advertising
+      // the hash. Resolve the number the same way the token-list endpoints do, so both
+      // paths name the same network instead of disagreeing.
+      vi.mocked(db.getChainIdsByReference).mockResolvedValue([{ chainId: 'polkadot-354', hasTokens: false }])
+      const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'polkadot:354' } }])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({ params: { chainId: '354' }, query: {} })
+      const res = mockResponse()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())
+
+      expect(db.getChainIdsByReference).toHaveBeenCalledWith('354')
+      // The resolved identifier, not the bare number, is what reaches the lookup.
+      expect(vi.mocked(utils.chainIdToNetworkId)).toHaveBeenCalledWith('polkadot-354')
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('keeps a bare number meaning eip155 when an Ethereum-Virtual-Machine network holds it', async () => {
+      // The collision case: both eip155-2 and bip122-2 exist. A bare 2 must stay
+      // Ethereum's chain, never silently switch to the Bitcoin-namespace network, exactly
+      // as /list/tokens/2 does.
+      vi.mocked(db.getChainIdsByReference).mockResolvedValue([
+        { chainId: 'eip155-2', hasTokens: true },
+        { chainId: 'bip122-2', hasTokens: true },
+      ])
+      const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'eip155:2' } }])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({ params: { chainId: '2' }, query: {} })
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, mockResponse(), vi.fn())
+
+      expect(vi.mocked(utils.chainIdToNetworkId)).toHaveBeenCalledWith('eip155-2')
+    })
+
+    it('rejects a genuinely ambiguous bare number instead of guessing a namespace', async () => {
+      // Two populated non-Ethereum-Virtual-Machine namespaces and no eip155: serving one
+      // chain's icon under the other's number would be a lie. A 400 tells the caller to
+      // name the namespace explicitly.
+      vi.mocked(db.getChainIdsByReference).mockResolvedValue([
+        { chainId: 'bip122-7', hasTokens: true },
+        { chainId: 'solana-7', hasTokens: true },
+      ])
+
+      const req = mockRequest({ params: { chainId: '7' }, query: {} })
+
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, mockResponse(), vi.fn())).rejects.toThrow(/ambiguous/)
+    })
+
+    it('passes an explicitly namespaced request through without a reference lookup', async () => {
+      // polkadot-354 is already an assertion about namespace, so no resolution is needed
+      // — and none should happen, or an explicit request would pay a query it does not use.
+      const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'polkadot:354' } }])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({ params: { chainId: 'polkadot-354' }, query: {} })
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, mockResponse(), vi.fn())
+
+      expect(db.getChainIdsByReference).not.toHaveBeenCalled()
     })
   })
 
