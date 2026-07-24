@@ -1145,29 +1145,54 @@ export const getTokensUnderListId = () => {
     .$dynamic()
 }
 
+/**
+ * Resolve a provider's lists (one row per version, newest first), with the metadata the
+ * list endpoints serve. Returns only lists that have at least one token — the same
+ * "populated lists" contract the old query enforced with an innerJoin on `list_token`.
+ *
+ * That join returned ONE ROW PER TOKEN (thousands for a large list) purely to prove the
+ * list was non-empty, and it made the endpoint O(tokens): getLists, not the token-body
+ * query, was the multi-second cost. It is replaced by a correlated `EXISTS`, which stops
+ * at the first token and returns one row per list.
+ *
+ * Columns are selected explicitly rather than spread from `SELECT *`. The old callers did
+ * `{ ...list, ...image, ...provider, ...list_token }`, and because `list_token` was spread
+ * last and carries its own `image_hash` and `updated_at`, the response's `logoURI` was
+ * built from an ARBITRARY token's image hash (with the list logo's extension — a
+ * mismatched url) and its `timestamp` was an arbitrary token's update time. Selecting
+ * `list.image_hash` and `list.updated_at` here is what fixes both: the logo is the list's
+ * own, and the timestamp is when the list changed. `name` stays the provider's, matching
+ * the prior precedence (provider was spread after list), deliberately unchanged.
+ */
 export const getLists = async (providerKey: string, listKey: string) => {
   const db = getDrizzle()
+  const hasTokens = dsql`EXISTS (SELECT 1 FROM ${s.listToken} WHERE ${eq(s.listToken.listId, s.list.listId)})`
+  const query = (whereClause: SQL | undefined) =>
+    db
+      .select({
+        listId: s.list.listId,
+        name: s.provider.name,
+        imageHash: s.list.imageHash,
+        ext: s.image.ext,
+        mode: s.image.mode,
+        uri: s.image.uri,
+        updatedAt: s.list.updatedAt,
+        major: s.list.major,
+        minor: s.list.minor,
+        patch: s.list.patch,
+      })
+      .from(s.provider)
+      .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
+      .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
+      .where(whereClause ? and(whereClause, hasTokens) : hasTokens)
+      .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
     : and(eq(s.provider.key, providerKey), eq(s.list.default, true))
-  const rows = await db
-    .select()
-    .from(s.provider)
-    .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
-    .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
-    .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
-    .where(whereClause)
-    .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+  const rows = await query(whereClause)
   // Fall back to any list for this provider if no default exists
   if (rows.length === 0 && !listKey) {
-    return db
-      .select()
-      .from(s.provider)
-      .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
-      .innerJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
-      .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
-      .where(eq(s.provider.key, providerKey))
-      .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
+    return query(eq(s.provider.key, providerKey))
   }
   return rows
 }

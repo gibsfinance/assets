@@ -232,14 +232,12 @@ export const versioned: RequestHandler = async (req, res, next) => {
     const [major, minor, patch] = (req.params.version || '').split('.')
     const allLists = await db.getLists(req.params.providerKey, req.params.listKey)
     const match = allLists.find(
-      (row) =>
-        String(row.list?.major) === major && String(row.list?.minor) === minor && String(row.list?.patch) === patch,
+      (row) => String(row.major) === major && String(row.minor) === minor && String(row.patch) === patch,
     )
     if (!match) {
       throw createError.NotFound('versioned list missing')
     }
-    const list = { ...match.list, ...match.image, ...match.provider, ...match.list_token }
-    return JSON.stringify(await utils.buildListPayload(list as any, filters, extensions))
+    return JSON.stringify(await utils.buildListPayload(match, filters, extensions))
   }
   await serveCachedJson(res, {
     cacheKey: listCacheKey({
@@ -276,12 +274,11 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
   // reaches it. The list-not-found 404 surfaces as a throw, which nextOnError forwards.
   const build = async () => {
     const rows = await db.getLists(providerKey, listKey)
-    const first = rows[0]
-    if (!first) {
+    const list = rows[0]
+    if (!list) {
       throw createError.NotFound(JSON.stringify({ providerKey, listKey }))
     }
-    const list = { ...first.list, ...first.image, ...first.provider, ...first.list_token }
-    return JSON.stringify(await utils.buildListPayload(list as any, filters, extensions))
+    return JSON.stringify(await utils.buildListPayload(list, filters, extensions))
   }
   await serveCachedJson(res, {
     cacheKey: listCacheKey({

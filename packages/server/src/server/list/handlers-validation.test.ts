@@ -677,12 +677,8 @@ describe('versioned handler', () => {
   })
 
   it('rejects with 404 when no list matches the requested version', async () => {
-    vi.mocked(db.getLists).mockResolvedValue([
-      { list: { major: 1, minor: 0, patch: 0 }, image: {}, provider: {}, list_token: {} },
-      // A row with no `list` at all — getLists' outer join can produce this shape,
-      // and the optional chaining on row.list must not throw when it does.
-      { list: undefined, image: {}, provider: {}, list_token: {} },
-    ] as never)
+    // getLists returns one flat projection row per version.
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 0, patch: 0 }] as never)
 
     // The not-found check now lives inside the cache build, so it surfaces as a throw
     // that nextOnError forwards to next() in production.
@@ -695,35 +691,34 @@ describe('versioned handler', () => {
   it('rejects with 404 when no version segment is present at all', async () => {
     // req.params.version is undefined on a malformed request — the `|| ''`
     // fallback must produce ['', undefined, undefined] rather than throwing on split.
-    vi.mocked(db.getLists).mockResolvedValue([
-      { list: { major: 1, minor: 0, patch: 0 }, image: {}, provider: {}, list_token: {} },
-    ] as never)
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 0, patch: 0 }] as never)
 
     await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended' })).rejects.toMatchObject({ status: 404 })
   })
 
-  it('merges list, image, provider, and list_token fields for the matching version', async () => {
+  it('passes the matching version projection to the payload builder', async () => {
+    // getLists now returns a flat projection sourced from the list itself (logo and
+    // timestamp from the list, not from an arbitrary list_token). The matching row is
+    // handed straight to buildListPayload — no per-table spread.
     vi.mocked(db.getLists).mockResolvedValue([
       {
-        list: { major: 1, minor: 2, patch: 3, name: 'Extended' },
-        image: { imageHash: 'hash1' },
-        provider: { key: 'pulsex' },
-        list_token: { tokenId: 'tok-1' },
+        listId: 'l1',
+        name: 'PulseX',
+        imageHash: 'listlogohash',
+        ext: '.png',
+        mode: 'save',
+        uri: null,
+        updatedAt: '2024-01-01T00:00:00Z',
+        major: 1,
+        minor: 2,
+        patch: 3,
       },
     ] as never)
 
     await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' })
 
     const [list] = vi.mocked(listUtils.buildListPayload).mock.calls[0]
-    expect(list).toMatchObject({
-      major: 1,
-      minor: 2,
-      patch: 3,
-      name: 'Extended',
-      imageHash: 'hash1',
-      key: 'pulsex',
-      tokenId: 'tok-1',
-    })
+    expect(list).toMatchObject({ major: 1, minor: 2, patch: 3, name: 'PulseX', imageHash: 'listlogohash' })
   })
 })
 
