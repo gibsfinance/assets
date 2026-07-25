@@ -128,43 +128,12 @@ describe('applyOrder', () => {
 // ---------------------------------------------------------------------------
 
 describe('getTokensByChainRanked', () => {
-  /**
-   * The ranked query runs inside a transaction that first raises work_mem, so the
-   * harness records three entries — the transaction, the SET LOCAL, then the query
-   * itself — and consumes two queued results. These helpers keep every test below
-   * pointed at the query rather than at an index that shifts whenever the preamble
-   * changes.
-   */
-  const queueRankedResult = (value: unknown) => {
-    harness.queueResult({ rows: [] }) // consumed by SET LOCAL work_mem
-    harness.queueResult(value)
-  }
-  const rankedQuerySql = () => renderSql((harness.queries[2].steps[0].args as unknown[])[0])
-
-  it('raises work_mem for its own transaction so neither sort spills to disk', async () => {
-    // This query sorts twice — once to reduce list entries to one row per token, once
-    // to rank the survivors. Measured against a partially collected Ethereum, those
-    // sorts wanted 11MB and 8MB against a 4MB server default, so both ran as external
-    // merges and the disk spill was the whole of the query's runtime.
-    //
-    // SET LOCAL, not SET: work_mem is granted per sort node per connection, so raising
-    // it server-wide multiplies the reservation by every concurrent sort. Scoping it to
-    // this transaction is what makes the larger grant safe.
-    queueRankedResult({ rows: [{ tokenId: 'token-1' }] })
-
-    await getTokensByChainRanked('eip155-1', '0xorder' as never)
-
-    expect(harness.queries[0].root).toBe('transaction')
-    const preamble = renderSql((harness.queries[1].steps[0].args as unknown[])[0])
-    expect(preamble).toMatch(/SET LOCAL work_mem = '\d+(kB|MB|GB)'/)
-  })
-
   it('pre-aggregates list_order_item duplicates with MIN(ranking) before joining to tokens', async () => {
-    queueRankedResult({ rows: [{ tokenId: 'token-1' }] })
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
 
     const result = await getTokensByChainRanked('eip155-1', '0xorder' as never)
 
-    const rendered = rankedQuerySql()
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
     // Without the MIN(ranking) aggregation, list_order_item's known duplicate
     // rows (up to 141 per list) multiply every list_token row in the join and
     // the query times out on Ethereum's token count — this is the entire
@@ -175,11 +144,11 @@ describe('getTokensByChainRanked', () => {
   })
 
   it('omits the extension joins entirely when neither is requested', async () => {
-    queueRankedResult({ rows: [{ tokenId: 'token-1' }] })
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
 
     await getTokensByChainRanked('eip155-1', '0xorder' as never)
 
-    const rendered = rankedQuerySql()
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
     expect(rendered).not.toContain('bridge_link')
     expect(rendered).not.toContain('header_link')
   })
@@ -194,13 +163,13 @@ describe('getTokensByChainRanked', () => {
     // DISTINCT ON returns a single row per token. Outside, the ranking pick is already
     // settled and the fan-out is what normalizeTokens wants — it folds every row for
     // one address into that entry's bridgeInfo map.
-    queueRankedResult({
+    harness.queueResult({
       rows: [{ tokenId: 'token-1', bridge: null, bridgeLink: null, networkA: null, networkB: null }],
     })
 
     await getTokensByChainRanked('eip155-1', '0xorder' as never, { bridgeInfo: true, headerUri: true })
 
-    const rendered = rankedQuerySql()
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
     expect(rendered).toContain('bridge_link')
     expect(rendered).toContain('header_link')
     // Every table in the bridge chain joins LEFT. An INNER anywhere along it would
@@ -216,7 +185,7 @@ describe('getTokensByChainRanked', () => {
     // row_to_json hands back the database's snake_case names; normalizeTokens reads
     // camelCase off these nested objects, so the conversion is what makes the
     // extension usable rather than merely present.
-    queueRankedResult({
+    harness.queueResult({
       rows: [
         {
           tokenId: 'token-1',

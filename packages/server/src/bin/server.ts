@@ -42,9 +42,10 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
     const warmup = getStats()
       .then(async (stats) => {
         log('stats cache warmed')
-        // Sequential, not concurrent: each warm runs the same expensive ranked query
-        // with a raised work_mem, and overlapping them multiplies the memory reserved
-        // at exactly the moment the server is still proving itself ready.
+        // Sequential, not concurrent: each warm runs the same ranked query, which sorts
+        // well over a million list entries for Ethereum alone, and overlapping them
+        // multiplies the load on the database at exactly the moment the server is still
+        // proving itself ready.
         await warmTokensByChainCache(stats)
         log('tokensByChain cache warmed for top chains')
         await warmMergedCache(stats)
