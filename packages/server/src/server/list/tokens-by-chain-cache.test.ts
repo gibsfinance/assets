@@ -345,3 +345,108 @@ describe('warmTokensByChainCache', () => {
     expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
   })
 })
+
+/**
+ * The merged endpoint is the heavier of the two chain-scoped ones and was the only
+ * one left unwarmed, so a real user could still land on its multi-second cold build
+ * — most reliably right after a deploy, since startup clears the whole cache.
+ */
+describe('warmMergedCache', () => {
+  // resetDbMocks leaves the two cache accessors alone, and these tests assert on
+  // which key reached them — so calls from earlier describes would be read as this
+  // warmer's own. Reset both here rather than widening the shared helper, which the
+  // describes above depend on as it stands.
+  beforeEach(() => {
+    resetDbMocks()
+    vi.mocked(db.getCachedRequest).mockReset()
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+  })
+
+  it('writes rows under the exact key an unqualified merged request produces', async () => {
+    // The warmer and the request handler must agree byte-for-byte on the key. If they
+    // drift, the warmer still reports success while every request continues to miss —
+    // a silent failure that looks exactly like a warmer that is working.
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+
+    const { warmMergedCache, mergedCacheKey } = await import('./handlers')
+    await warmMergedCache([{ chainId: 'eip155-1', count: 5000 }], 1)
+
+    const expectedKey = mergedCacheKey({
+      orderId: '0xdefaultorder',
+      chainId: 'eip155-1',
+      extensions: new Set<string>(),
+      decimals: undefined,
+    })
+    expect(vi.mocked(db.getCachedRequest).mock.calls[0][0]).toBe(expectedKey)
+    expect(vi.mocked(db.insertCacheRequest).mock.calls[0][0]).toMatchObject({ key: expectedKey })
+  })
+
+  it('rebuilds only the top N chains by token count', async () => {
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+
+    const { warmMergedCache } = await import('./handlers')
+    await warmMergedCache(
+      [
+        { chainId: 'eip155-1', count: 5000 },
+        { chainId: 'eip155-369', count: 4000 },
+        { chainId: 'eip155-56', count: 3000 },
+      ],
+      2,
+    )
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
+    expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', '0xdefaultorder', {
+      bridgeInfo: false,
+      headerUri: false,
+    })
+  })
+
+  it('skips a chain whose cache row is still younger than the warm-stale threshold', async () => {
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { warmMergedCache } = await import('./handlers')
+    await warmMergedCache([{ chainId: 'eip155-1', count: 5000 }], 5)
+
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+  })
+
+  it('is best-effort — a chain that fails to build must not stop the rest from warming', async () => {
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked)
+      .mockRejectedValueOnce(new Error('query timeout'))
+      .mockResolvedValueOnce([] as never)
+
+    const { warmMergedCache } = await import('./handlers')
+    await expect(
+      warmMergedCache(
+        [
+          { chainId: 'eip155-1', count: 5000 },
+          { chainId: 'eip155-369', count: 4000 },
+        ],
+        5,
+      ),
+    ).resolves.toBeUndefined()
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(2)
+  })
+
+  it('does nothing when no default order has been synced yet', async () => {
+    // Startup order matters: the warmer runs after syncDefaultOrder, but if that has
+    // not produced an id there is no ranking to build against, and warming under a
+    // placeholder key would poison the cache with bodies ranked by nothing.
+    vi.mocked(getDefaultListOrderId).mockReturnValueOnce(undefined as never)
+
+    const { warmMergedCache } = await import('./handlers')
+    await warmMergedCache([{ chainId: 'eip155-1', count: 5000 }], 5)
+
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+  })
+})

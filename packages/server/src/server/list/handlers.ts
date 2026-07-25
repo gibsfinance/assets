@@ -118,6 +118,70 @@ export const listCacheKey = ({
   return `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`
 }
 
+/**
+ * Assemble the merged list body for one chain. Shared by the request handler and the
+ * cache warmer so a warmed row is byte-identical to a request-built one — if these
+ * ever diverged, the warmer would fill the cache with bodies no request could read.
+ */
+const buildMergedResponse = async ({
+  chainId,
+  orderId,
+  extensions,
+  filters,
+}: {
+  chainId: string
+  orderId: string
+  extensions: Set<string>
+  filters: ReturnType<typeof utils.tokenFilters>
+}) => {
+  const tokens =
+    chainId === 'asset-0'
+      ? []
+      : await db.getTokensByChainRanked(chainId, orderId as never, {
+          bridgeInfo: extensions.has('bridgeInfo'),
+          headerUri: extensions.has('headerUri'),
+        })
+  const entries = utils.normalizeTokens(tokens as any, filters, extensions)
+  // minimalList stamps `timestamp` with the current time, so a cached body reports
+  // when it was assembled rather than when it was served. That is the more useful
+  // of the two — it is the age of the data, which is what a consumer of a token
+  // list is actually asking about.
+  return JSON.stringify(utils.minimalList(entries))
+}
+
+/**
+ * Pre-warm the merged cache for the top N chains by token count.
+ *
+ * `/list/merged/:order` is the heavier of the two chain-scoped endpoints — it keeps
+ * tokens without a logo where tokensByChain drops them — but only tokensByChain was
+ * being warmed, so merged was the one endpoint whose cold build a real user could
+ * still land on. Startup clears the whole cache (see bin/server.ts), which means
+ * every deploy left merged cold until someone happened to request it and waited out
+ * the full build.
+ *
+ * Warms the canonical shape only: default order, no extensions, no filters. That is
+ * the key an unqualified `?chainId=` request produces, and warming the filtered
+ * variants would multiply the work by a key space nobody is asking for.
+ */
+export const warmMergedCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
+  const orderId = getDefaultListOrderId()
+  if (!orderId) return
+  const extensions = new Set<string>()
+  const filters = utils.tokenFilters({})
+  for (const { chainId: rawChainId } of stats.slice(0, topN)) {
+    try {
+      const chainId = toCAIP2(rawChainId)
+      const cacheKey = mergedCacheKey({ orderId, chainId, extensions, decimals: undefined })
+      const existing = await db.getCachedRequest(cacheKey)
+      if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
+      await buildAndCache(cacheKey, () => buildMergedResponse({ chainId, orderId, extensions, filters }))
+    } catch {
+      // best-effort, exactly as the tokensByChain warmer treats it — a chain that
+      // cannot be built must not take down startup or the periodic tick.
+    }
+  }
+}
+
 export const merged: RequestHandler = async (req, res, next) => {
   const rawChainId = req.query.chainId as string | undefined
   // Without a chain filter the dense_rank CTE materializes every chain's
@@ -179,25 +243,10 @@ export const merged: RequestHandler = async (req, res, next) => {
   // columns normalizeTokens reads for extensions simply absent. Against production
   // that was nothing with extensions on /list/merged against 1290 on a provider list.
   const filters = utils.tokenFilters(req.query)
-  const build = async () => {
-    const tokens =
-      resolution.chainId === 'asset-0'
-        ? []
-        : await db.getTokensByChainRanked(resolution.chainId, orderId, {
-            bridgeInfo: extensions.has('bridgeInfo'),
-            headerUri: extensions.has('headerUri'),
-          })
-    const entries = utils.normalizeTokens(tokens as any, filters, extensions)
-    // minimalList stamps `timestamp` with the current time, so a cached body reports
-    // when it was assembled rather than when it was served. That is the more useful
-    // of the two — it is the age of the data, which is what a consumer of a token
-    // list is actually asking about.
-    return JSON.stringify(utils.minimalList(entries))
-  }
 
   await serveCachedJson(res, {
     cacheKey: mergedCacheKey({ orderId, chainId: resolution.chainId, extensions, decimals: req.query.decimals }),
-    build,
+    build: () => buildMergedResponse({ chainId: resolution.chainId, orderId, extensions, filters }),
     cacheControl: listCacheControl,
     bypassCache: refresh.authorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
