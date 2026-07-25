@@ -51,16 +51,30 @@ const imageMaxAgeMs = imageMaxAgeHours * 60 * 60 * 1000
  * LOCAL` confines the grant to the one transaction that needs it, and the
  * single-flight cache build already bounds how many of those exist at once.
  *
- * Size it against the largest chain: a sort needs roughly 400 bytes per input
- * row, and spilling is only avoided when the whole sort fits. Raise it via
- * RANKED_QUERY_WORK_MEM once you know both the row count and the memory the
- * database instance can actually spare.
+ * Sizing is arithmetic, not guesswork. Measured across two dataset sizes, the
+ * deduplicating sort takes ~345 bytes per list_token row for the chain and the
+ * ranking sort ~302 bytes per surviving token, both consistent to within one
+ * percent. The deduplicating sort is therefore the binding one, and spilling is
+ * avoided only when the whole sort fits:
+ *
+ *     required ≈ 345 bytes × list_token rows for the largest chain
+ *
+ * The default below covers roughly 1.5 million rows, chosen against the ~1M
+ * Ethereum holds (see the comment in getTokensByChainRanked). Recompute it if
+ * that grows.
+ *
+ * CAUTION: this is a per-sort ceiling, not a reservation — Postgres allocates
+ * only what a given sort actually needs, so small chains still cost little. But
+ * the exposure is real when several large builds overlap, and the right value
+ * depends on memory the database instance can spare. Lower it with
+ * RANKED_QUERY_WORK_MEM on a small instance; the fallback is the old behaviour,
+ * which was slow rather than broken.
  *
  * The value is interpolated into the SET statement, which accepts no bind
  * parameters, so it must be a bare Postgres memory literal. Anything else throws
  * here rather than reaching the server.
  */
-const rankedQueryWorkMem = process.env.RANKED_QUERY_WORK_MEM || '256MB'
+const rankedQueryWorkMem = process.env.RANKED_QUERY_WORK_MEM || '512MB'
 if (!/^\d+(kB|MB|GB)$/.test(rankedQueryWorkMem)) {
   throw new Error(
     `RANKED_QUERY_WORK_MEM must be a Postgres memory literal such as "256MB", received "${rankedQueryWorkMem}"`,
