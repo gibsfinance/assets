@@ -33,13 +33,42 @@ export const FRESH_TTL_MS = 6 * 60 * 60 * 1000
 export const STALE_TTL_MS = 24 * 60 * 60 * 1000
 
 /**
+ * Namespace every cached body carries, bumped when a change alters what a response
+ * contains for unchanged data.
+ *
+ * This is what lets startup keep the cache instead of deleting it. The rows were being
+ * dropped wholesale on every boot to guarantee a deploy could never serve a body built
+ * by older code — correct, but it threw away the layer that is expensive to rebuild
+ * (about forty seconds of ranked queries for the warmed chains) while leaving the
+ * content delivery network, the layer that actually serves users, holding the same old
+ * bodies for up to a day. Invalidation was pointed at the wrong tier.
+ *
+ * Changing this string retires every key at once, so old rows are simply never read
+ * again and age out under their own expiry. Bump it when a response's shape or content
+ * changes for input that did not — a new field, a different filter, a ranking rule. Do
+ * not bump it for a change that only affects speed.
+ */
+export const RESPONSE_SHAPE_VERSION = 'v2'
+
+/** Prefix a key with the shape namespace. Every cache key builder goes through this. */
+export const namespacedCacheKey = (key: string) => `${RESPONSE_SHAPE_VERSION}:${key}`
+
+/**
  * `cache-control` for a cached list body.
  *
  * Not the server's `cacheSeconds` (a day in production): lists change as tokens are
  * collected, and a content delivery network holding one for a day would serve counts
  * that are a day out of date with no way to correct them.
+ *
+ * `s-maxage` is stated separately from `max-age` because a shared cache is the one that
+ * needs pinning. Cloudflare's Browser Cache TTL setting rewrites the `max-age` sent
+ * downstream — measured against production, a body this file marks fresh for six hours
+ * arrived at the client claiming twenty-four — but it honours `s-maxage` for its own
+ * edge lifetime. Stating it keeps the edge on the same six-hour cadence as the collector
+ * and the warmer no matter what the dashboard says, which is what makes the warm
+ * schedule observable to anyone at all.
  */
-export const listCacheControl = `public, max-age=${Math.floor(FRESH_TTL_MS / 1000)}, stale-while-revalidate=${Math.floor(STALE_TTL_MS / 1000)}`
+export const listCacheControl = `public, max-age=${Math.floor(FRESH_TTL_MS / 1000)}, s-maxage=${Math.floor(FRESH_TTL_MS / 1000)}, stale-while-revalidate=${Math.floor(STALE_TTL_MS / 1000)}`
 
 /** Cache rows only store expiresAt (= createdAt + STALE_TTL_MS), so age is derived from it. */
 export const cacheRowAge = (row: { expiresAt: Date | string | null }) =>

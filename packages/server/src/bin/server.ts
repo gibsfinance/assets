@@ -6,15 +6,23 @@ import { log } from '../logger'
 import { app, setReady } from '../server/app'
 import { listen } from '../server'
 import { getStats } from '../server/stats'
-import { warmTokensByChainCache, warmMergedCache } from '../server/list/handlers'
+import { warmTokensByChainCache, warmMergedCache, warmProviderListCache } from '../server/list/handlers'
+import { purgeCdnCache } from '../server/cdn-purge'
 
 // Start HTTP server immediately so the load balancer can probe /health (503 until ready).
 // Warm-up runs in the background; setReady() flips /health to 200 when done.
 listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
   .then(async () => {
     await db.migrate()
-    await db.clearCache()
-    log('cache cleared')
+    // Only expired rows go. This used to delete every cached response on boot, to
+    // guarantee a deploy never served a body built by older code — which it achieved by
+    // destroying the layer that is expensive to rebuild while leaving the content
+    // delivery network, the layer users actually reach, holding those same old bodies
+    // for up to a day. Invalidation now runs the other way round: keys carry a shape
+    // version (see RESPONSE_SHAPE_VERSION) so a change that alters a response retires
+    // its keys deliberately, and the edge is purged below.
+    const purged = await db.purgeExpiredCache()
+    log('expired cache rows purged: %d', purged.rowCount ?? 0)
     const keys = allCollectables()
     const manifests = await buildManifestsFromDB(keys)
     await syncDefaultOrder(keys, manifests)
@@ -50,6 +58,12 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
         log('tokensByChain cache warmed for top chains')
         await warmMergedCache(stats)
         log('merged cache warmed for top chains')
+        await warmProviderListCache()
+        log('provider list cache warmed for the largest lists')
+        // Purged last, once this process can answer every warmed path from cache. Purging
+        // earlier would invite the edge to refill from an origin still building, turning
+        // one cold build into a burst of them.
+        await purgeCdnCache()
       })
       .catch((err: unknown) => log('warmup failed: %o', err))
     let readinessTimer: NodeJS.Timeout | undefined
@@ -68,20 +82,23 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
       setReady()
       log('server ready')
     })
-    // Keep the top-N chain caches warm — 12h staleness threshold inside, for both the
-    // tokensByChain and merged bodies. Without this, a quiet 24h on any top chain drops
-    // the row from cache and the next user pays the full cold-build cost (~19s for
-    // Ethereum on merged, measured against production). The 6h interval is half the staleness
-    // threshold: rows go stale at 12h, get rebuilt within 6h of that, and never reach
-    // the 24h hard expiry — checking hourly just re-ran the stats query 11 times per
-    // rebuild for nothing (its cache TTL is 1h, so every tick recomputed it).
+    // Keep the warmed rows fresh rather than merely unexpired. The staleness threshold
+    // inside each warmer is now the six-hour freshness window itself, so this interval
+    // and that threshold are the same number and rows are rebuilt as they fall out of
+    // freshness — they previously went stale at 6h but were not rebuilt until 12h, which
+    // left every user in between served a stale body and paying for the background
+    // revalidation the warmer was meant to have done already. Six hours also matches the
+    // collection cron, so a tick lands against data that has actually changed; checking
+    // hourly just re-ran the stats query eleven times per rebuild for nothing, its own
+    // cache being a one-hour one.
     const warmTimer = setInterval(
       async () => {
         try {
           const stats = await getStats()
           await warmTokensByChainCache(stats)
           await warmMergedCache(stats)
-          log('periodic tokensByChain and merged warm complete')
+          await warmProviderListCache()
+          log('periodic warm complete')
         } catch (err) {
           log('periodic warm failed: %o', err)
         }

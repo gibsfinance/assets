@@ -66,8 +66,18 @@ describe('listCacheControl', () => {
     // correct it, which is why this header is computed from the collection cadence
     // instead: fresh for one run, stale-but-servable for a day after.
     expect(listCacheControl).toBe(
-      `public, max-age=${FRESH_TTL_MS / 1000}, stale-while-revalidate=${STALE_TTL_MS / 1000}`,
+      `public, max-age=${FRESH_TTL_MS / 1000}, s-maxage=${FRESH_TTL_MS / 1000}, stale-while-revalidate=${STALE_TTL_MS / 1000}`,
     )
+  })
+
+  it('states s-maxage separately so a shared cache is not left on the rewritten max-age', () => {
+    // Cloudflare's Browser Cache TTL setting rewrites the max-age sent downstream: a body
+    // this module marks fresh for six hours arrived at the client claiming twenty-four,
+    // measured against production. It honours s-maxage for its own edge lifetime, so
+    // stating that explicitly is what actually pins the edge to the collection cadence.
+    // Without it the warmer refreshes on a schedule no user can observe.
+    expect(listCacheControl).toContain(`s-maxage=${FRESH_TTL_MS / 1000}`)
+    expect(FRESH_TTL_MS).toBeLessThan(STALE_TTL_MS)
   })
 })
 

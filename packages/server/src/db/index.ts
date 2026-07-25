@@ -1515,6 +1515,12 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * token writes has rows, so it supersedes, and the difference is briefly missing. Fully
  * closing that needs the list row and its tokens to land in one transaction, which is a
  * change to the collector rather than to this query.
+ *
+ * The inner `list_token` is aliased because two callers — getTokenSourcesByChain and
+ * getLargestLists — already join that table in the query this fragment is dropped into.
+ * Unaliased, the subquery's own FROM shadows the outer join and the predicate happens to
+ * mean the right thing; aliasing says so outright instead of leaving a correct result
+ * resting on scope resolution.
  */
 const latestListVersionSql: SQL = dsql`
   NOT EXISTS (
@@ -1522,7 +1528,7 @@ const latestListVersionSql: SQL = dsql`
     WHERE newer.provider_id = ${s.list.providerId}
       AND newer.key = ${s.list.key}
       AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
-      AND EXISTS (SELECT 1 FROM ${s.listToken} WHERE ${s.listToken.listId} = newer.list_id)
+      AND EXISTS (SELECT 1 FROM ${s.listToken} member WHERE member.list_id = newer.list_id)
   )`
 
 /**
@@ -1703,6 +1709,34 @@ export const getTokenSourcesByChain = async (
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .where(and(eq(s.network.chainId, chainId), latestListVersionSql))
+}
+
+/**
+ * The (provider, list) pairs whose responses cost the most to assemble, largest first.
+ *
+ * Used by the provider-list cache warmer to decide what is worth warming. There is no
+ * request-count telemetry to rank by popularity, so this ranks by the thing that is
+ * actually measurable and actually hurts: how much a cold build has to assemble. Token
+ * count tracks that closely — coingecko/ethereum, the largest, takes 3.38s cold against
+ * 0.47s for kleros/exchange.
+ *
+ * Counts only the newest version of each list, matching what the ranked queries serve,
+ * so a list with a long tail of superseded versions is not promoted for rows no response
+ * contains.
+ */
+export const getLargestLists = async (limit: number): Promise<{ providerKey: string; listKey: string }[]> => {
+  const db = getDrizzle()
+  const rows = await db.execute<{ providerKey: string; listKey: string }>(dsql`
+    SELECT ${s.provider.key} AS "providerKey", ${s.list.key} AS "listKey"
+    FROM ${s.list}
+    INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+    INNER JOIN ${s.listToken} ON ${eq(s.listToken.listId, s.list.listId)}
+    WHERE ${latestListVersionSql}
+    GROUP BY ${s.provider.key}, ${s.list.key}
+    ORDER BY COUNT(*) DESC
+    LIMIT ${limit}
+  `)
+  return rows.rows
 }
 
 /**

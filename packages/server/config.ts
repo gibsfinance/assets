@@ -34,6 +34,21 @@ if (!+(cacheSeconds as string)) {
 const imageMaxAgeHours = +(process.env.IMAGE_MAX_AGE_HOURS as string) || 24 * 7
 const imageMaxAgeMs = imageMaxAgeHours * 60 * 60 * 1000
 
+/**
+ * Credentials for purging the content delivery network cache after a deploy.
+ *
+ * Both must be set for a purge to happen; either one missing makes it a logged no-op, so
+ * a local or self-hosted deployment with no Cloudflare in front behaves exactly as it
+ * did before. The token needs only the Zone / Cache Purge permission on the zone named
+ * by CLOUDFLARE_ZONE_ID.
+ *
+ * Without these, a deploy that changes what a response contains is invisible to users
+ * for as long as the edge holds the old body — measured at 15.7 hours against
+ * production, and up to roughly two days once stale-while-revalidate is counted.
+ */
+const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN
+const cloudflareZoneId = process.env.CLOUDFLARE_ZONE_ID
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -42,4 +57,6 @@ export default {
   cacheSeconds,
   adminToken,
   imageMaxAgeMs,
+  cloudflareApiToken,
+  cloudflareZoneId,
 }

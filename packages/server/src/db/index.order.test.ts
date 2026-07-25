@@ -179,7 +179,12 @@ describe('getTokensByChainRanked', () => {
     const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
     // The existence check has to be on the *newer* row. Testing the outer row instead
     // would silently invert this into "drop every list that has no tokens".
-    expect(rendered).toMatch(/EXISTS \(SELECT 1 FROM "list_token" WHERE "list_token"\."list_id" = newer\.list_id\)/)
+    //
+    // Aliased, because getTokenSourcesByChain and getLargestLists both join list_token
+    // in the query this fragment lands in. Unaliased it still resolves correctly, by
+    // shadowing, which is a correct answer resting on something no reader should have to
+    // check.
+    expect(rendered).toMatch(/EXISTS \(SELECT 1 FROM "list_token" member WHERE member\.list_id = newer\.list_id\)/)
   })
 
   it('omits the extension joins entirely when neither is requested', async () => {
