@@ -1477,6 +1477,39 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
   dsql`((${mode} = 'link' AND COALESCE(${uri}, '') <> '') OR (${mode} <> 'link' AND COALESCE(${ext}, '') <> ''))`
 
 /**
+ * Restricts `list` to the newest version of each list, where a list is identified by
+ * its (provider_id, key) pair and versions are ordered by (major, minor, patch).
+ *
+ * Every collection run that sees a changed list writes a new `list` row and keeps the
+ * old one, along with all of its `list_token` rows. Nothing ever removed them, so the
+ * superseded versions dominate: on Ethereum they are 1,067,093 of the 1,246,904
+ * `list_token` rows on staging and 505,756 of 685,898 on production, while the newest
+ * versions come to roughly 180,000 rows in both. The genuine working set is that
+ * 180,000; the rest is accumulation that grows with every run.
+ *
+ * Those rows were never able to change an answer. The ranking already sorts
+ * `major DESC, minor DESC, patch DESC` and `DISTINCT ON (token_id)` keeps the first
+ * row, so a superseded version only ever won when no newer version carried the token.
+ * Filtering here decides that case the same way the sort would if the row were absent,
+ * and stops the other million rows from being read, joined and sorted to be discarded.
+ *
+ * The one behavioural consequence is deliberate: a token that its source list has since
+ * removed stops being served. That is 909 of 98,374 tokens on Ethereum. They are
+ * delistings, and continuing to serve them was the accident.
+ *
+ * Ties cannot arise. Verified against both deployed databases: all 1,193 distinct
+ * (provider_id, key) pairs have fully distinct versions, and none has two rows sharing
+ * the highest one, so exactly one row survives per pair.
+ */
+const latestListVersionSql: SQL = dsql`
+  NOT EXISTS (
+    SELECT 1 FROM ${s.list} newer
+    WHERE newer.provider_id = ${s.list.providerId}
+      AND newer.key = ${s.list.key}
+      AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
+  )`
+
+/**
  * High-performance ranked token query for /list/tokens/:chainId.
  *
  * Uses DISTINCT ON (token_id) over a flat join, with list rankings pre-aggregated
@@ -1510,6 +1543,7 @@ export const getTokensByChainRanked = async (
         AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
         AND ${eq(s.listOrderItem.listKey, s.list.key)}
       )
+      WHERE ${latestListVersionSql}
       GROUP BY ${s.list.listId}
     )
     SELECT
@@ -1635,6 +1669,12 @@ export const getTokenSourcesByChain = async (
   // SELECT DISTINCT dedupes (token, provider, list) triples — a token in multiple
   // versions of the same list would otherwise produce duplicate rows. For Ethereum
   // this drops ~1M rows to a fraction of that.
+  //
+  // Filtered to the newest list version for the same reason as getTokensByChainRanked,
+  // and it has to be the same filter: this query decides which lists a token is
+  // reported as belonging to, and that ranking query decides which tokens exist at all.
+  // Were only one of them filtered, a response could name a source list for a token the
+  // other half had already dropped.
   return db
     .selectDistinct({
       providedId: s.token.providedId,
@@ -1646,7 +1686,7 @@ export const getTokenSourcesByChain = async (
     .innerJoin(s.network, eq(s.network.networkId, s.token.networkId))
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
-    .where(eq(s.network.chainId, chainId))
+    .where(and(eq(s.network.chainId, chainId), latestListVersionSql))
 }
 
 /**
