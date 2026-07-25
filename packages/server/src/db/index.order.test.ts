@@ -165,6 +165,23 @@ describe('getTokensByChainRanked', () => {
     expect(rendered).toMatch(/\(newer\.major, newer\.minor, newer\.patch\) >/)
   })
 
+  it('lets only a version that holds tokens supersede an older one', async () => {
+    // Collection commits the list row in discover() and writes its list_token rows in a
+    // later phase, so a new version exists and is empty for as long as that phase runs.
+    // On version number alone the empty row wins and takes the populated older version
+    // out of the answer with it. Seven lists were in exactly that state on both
+    // databases — coingecko/sanko, eos-evm, bitrock, airdao, defiverse, alienx, meld —
+    // hiding ten memberships across seven chains until this guard was added.
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
+
+    await getTokensByChainRanked('eip155-1', '0xorder' as never)
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    // The existence check has to be on the *newer* row. Testing the outer row instead
+    // would silently invert this into "drop every list that has no tokens".
+    expect(rendered).toMatch(/EXISTS \(SELECT 1 FROM "list_token" WHERE "list_token"\."list_id" = newer\.list_id\)/)
+  })
+
   it('omits the extension joins entirely when neither is requested', async () => {
     harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
 

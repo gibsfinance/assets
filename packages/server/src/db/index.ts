@@ -1500,6 +1500,21 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * Ties cannot arise. Verified against both deployed databases: all 1,193 distinct
  * (provider_id, key) pairs have fully distinct versions, and none has two rows sharing
  * the highest one, so exactly one row survives per pair.
+ *
+ * Only a version that actually holds tokens is allowed to supersede one, which is what
+ * the inner EXISTS is for. Collection commits the `list` row in `discover()` and writes
+ * its `list_token` rows in a later phase, so a new version exists and is empty for as
+ * long as that phase takes. Without the guard the empty row would win on version number
+ * and take the populated older one out of the answer with it. This is not hypothetical:
+ * seven lists sit in exactly that state on both databases right now — coingecko/sanko,
+ * eos-evm, bitrock, airdao, defiverse, alienx and meld — holding sixteen memberships
+ * between them that would otherwise vanish. Keeping both rows is harmless because the
+ * empty one contributes nothing to the join.
+ *
+ * It narrows the window rather than closing it. A version caught halfway through its
+ * token writes has rows, so it supersedes, and the difference is briefly missing. Fully
+ * closing that needs the list row and its tokens to land in one transaction, which is a
+ * change to the collector rather than to this query.
  */
 const latestListVersionSql: SQL = dsql`
   NOT EXISTS (
@@ -1507,6 +1522,7 @@ const latestListVersionSql: SQL = dsql`
     WHERE newer.provider_id = ${s.list.providerId}
       AND newer.key = ${s.list.key}
       AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
+      AND EXISTS (SELECT 1 FROM ${s.listToken} WHERE ${s.listToken.listId} = newer.list_id)
   )`
 
 /**
