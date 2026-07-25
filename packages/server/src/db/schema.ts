@@ -54,7 +54,6 @@ export const provider = pgTable(
   },
   (table) => [
     index().using('btree', table.key.asc().nullsLast().op('text_ops')),
-    index('provider_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     unique('provider_key_unique').on(table.key),
   ],
 )
@@ -73,7 +72,6 @@ export const image = pgTable(
   },
   (table) => [
     index().using('btree', table.ext.asc().nullsLast().op('text_ops')),
-    index('image_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
     index().using('btree', table.mode.asc().nullsLast().op('text_ops')),
     index().using('btree', table.uri.asc().nullsLast().op('text_ops')),
   ],
@@ -115,7 +113,6 @@ export const network = pgTable(
   (table) => [
     index('network_chainid_index').using('btree', table.chainId.asc().nullsLast().op('text_ops')),
     index('network_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
-    index('network_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
     foreignKey({
       columns: [table.imageHash],
@@ -144,7 +141,6 @@ export const token = pgTable(
   (table) => [
     index().using('btree', table.decimals.asc().nullsLast().op('int2_ops')),
     index().using('btree', table.name.asc().nullsLast().op('text_ops')),
-    index('token_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index('idx_token_network_token').using(
       'btree',
       table.networkId.asc().nullsLast().op('text_ops'),
@@ -152,7 +148,6 @@ export const token = pgTable(
     ),
     index('token_providedid_index').using('btree', table.providedId.asc().nullsLast().op('citext_ops')),
     index().using('btree', table.symbol.asc().nullsLast().op('text_ops')),
-    index('token_tokenid_index').using('btree', table.tokenId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
     unique('token_network_provided_unique').on(table.networkId, table.providedId),
     foreignKey({
@@ -195,7 +190,6 @@ export const list = pgTable(
   (table) => [
     index('list_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
     index().using('btree', table.key.asc().nullsLast().op('text_ops')),
-    index('list_listid_index').using('btree', table.listId.asc().nullsLast().op('text_ops')),
     index('list_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index('list_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     foreignKey({
@@ -240,8 +234,6 @@ export const listToken = pgTable(
   (table) => [
     index('list_token_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
     index('list_token_listid_index').using('btree', table.listId.asc().nullsLast().op('text_ops')),
-    index('list_token_listtokenid_index').using('btree', table.listTokenId.asc().nullsLast().op('text_ops')),
-    index('list_token_tokenid_index').using('btree', table.tokenId.asc().nullsLast().op('text_ops')),
     index('idx_list_token_token_list').using(
       'btree',
       table.tokenId.asc().nullsLast().op('text_ops'),
@@ -310,7 +302,6 @@ export const tag = pgTable(
     index().using('btree', table.description.asc().nullsLast().op('text_ops')),
     index().using('btree', table.key.asc().nullsLast().op('text_ops')),
     index().using('btree', table.name.asc().nullsLast().op('text_ops')),
-    index('tag_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     foreignKey({
       columns: [table.providerId],
       foreignColumns: [provider.providerId],
@@ -372,7 +363,6 @@ export const metadata = pgTable(
   },
   (table) => [
     index('metadata_listid_index').using('btree', table.listId.asc().nullsLast().op('text_ops')),
-    index('metadata_metadataid_index').using('btree', table.metadataId.asc().nullsLast().op('text_ops')),
     index('metadata_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index('metadata_providedid_index').using('btree', table.providedId.asc().nullsLast().op('citext_ops')),
     index('metadata_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
@@ -418,7 +408,6 @@ export const listOrder = pgTable(
   },
   (table) => [
     index().using('btree', table.key.asc().nullsLast().op('text_ops')),
-    index('list_order_listorderid_index').using('btree', table.listOrderId.asc().nullsLast().op('text_ops')),
     index('list_order_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
     foreignKey({
@@ -447,7 +436,6 @@ export const listOrderItem = pgTable(
   (table) => [
     index('list_order_item_listid_index').using('btree', table.listId.asc().nullsLast().op('text_ops')),
     index('list_order_item_listkey_index').using('btree', table.listKey.asc().nullsLast().op('text_ops')),
-    index('list_order_item_listorderid_index').using('btree', table.listOrderId.asc().nullsLast().op('text_ops')),
     index('list_order_item_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
     index().using('btree', table.ranking.asc().nullsLast().op('int8_ops')),
     index('idx_list_order_item_join').using(
@@ -500,7 +488,6 @@ export const bridge = pgTable(
     bridgeLinkOrderId: integer('bridge_link_order_id').default(0).notNull(),
   },
   (table) => [
-    index('bridge_bridgeid_index').using('btree', table.bridgeId.asc().nullsLast().op('text_ops')),
     index('bridge_currentforeignblocknumber_index').using(
       'btree',
       table.currentForeignBlockNumber.asc().nullsLast().op('int8_ops'),
@@ -551,7 +538,6 @@ export const bridgeLink = pgTable(
   (table) => [
     index('bridge_link_bridgedtokenid_index').using('btree', table.bridgedTokenId.asc().nullsLast().op('text_ops')),
     index('bridge_link_bridgeid_index').using('btree', table.bridgeId.asc().nullsLast().op('text_ops')),
-    index('bridge_link_bridgelinkid_index').using('btree', table.bridgeLinkId.asc().nullsLast().op('text_ops')),
     index('bridge_link_nativetokenid_index').using('btree', table.nativeTokenId.asc().nullsLast().op('text_ops')),
     index('bridge_link_transactionhash_index').using('btree', table.transactionHash.asc().nullsLast().op('text_ops')),
     foreignKey({
@@ -592,7 +578,6 @@ export const headerLink = pgTable(
   },
   (table) => [
     index('header_link_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
-    index('header_link_listtokenid_index').using('btree', table.listTokenId.asc().nullsLast().op('text_ops')),
     foreignKey({
       columns: [table.listTokenId],
       foreignColumns: [listToken.listTokenId],

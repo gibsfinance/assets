@@ -92,6 +92,13 @@
       "when": 1784304000000,
       "tag": "0012_add_network_image_provider_key",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784390400000,
+      "tag": "0013_drop_redundant_indexes",
+      "breakpoints": true
     }
   ]
 }

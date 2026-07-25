@@ -143,6 +143,45 @@ describe('getTokensByChainRanked', () => {
     expect(result).toEqual([{ tokenId: 'token-1' }])
   })
 
+  it('reduces the ranking common-table-expression to the newest version of each list', async () => {
+    // Superseded list versions are never able to change the answer — the ranking
+    // already sorts major/minor/patch descending and DISTINCT ON keeps the first row —
+    // but nothing stopped them being read, joined and sorted first. On Ethereum they
+    // were 1,067,093 of 1,246,904 list_token rows, and dropping them took the query
+    // from 23.3s to 10.5s against staging.
+    //
+    // The filter has to sit in the common-table-expression, not in the outer query.
+    // The whole point is that these rows never reach the join and the two sorts; a
+    // predicate applied after the DISTINCT ON would sort them and then discard them.
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
+
+    await getTokensByChainRanked('eip155-1', '0xorder' as never)
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    expect(rendered).toContain('NOT EXISTS')
+    expect(rendered.indexOf('NOT EXISTS')).toBeLessThan(rendered.indexOf('DISTINCT ON'))
+    // Compared as a row, so a higher minor never loses to a lower one with the same
+    // major. Comparing the parts independently would let 2.0.0 and 1.9.0 both survive.
+    expect(rendered).toMatch(/\(newer\.major, newer\.minor, newer\.patch\) >/)
+  })
+
+  it('lets only a version that holds tokens supersede an older one', async () => {
+    // Collection commits the list row in discover() and writes its list_token rows in a
+    // later phase, so a new version exists and is empty for as long as that phase runs.
+    // On version number alone the empty row wins and takes the populated older version
+    // out of the answer with it. Seven lists were in exactly that state on both
+    // databases — coingecko/sanko, eos-evm, bitrock, airdao, defiverse, alienx, meld —
+    // hiding ten memberships across seven chains until this guard was added.
+    harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
+
+    await getTokensByChainRanked('eip155-1', '0xorder' as never)
+
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    // The existence check has to be on the *newer* row. Testing the outer row instead
+    // would silently invert this into "drop every list that has no tokens".
+    expect(rendered).toMatch(/EXISTS \(SELECT 1 FROM "list_token" WHERE "list_token"\."list_id" = newer\.list_id\)/)
+  })
+
   it('omits the extension joins entirely when neither is requested', async () => {
     harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
 
@@ -298,6 +337,22 @@ describe('getTokenSourcesByChain', () => {
 
     expect(harness.queries[0].root).toBe('selectDistinct')
     expect(result).toEqual([{ providedId: '0xabc', providerKey: 'trustwallet', listKey: 'wallet' }])
+  })
+
+  it('restricts membership to the newest version of each list', async () => {
+    // This query names the lists a token is reported as belonging to, while
+    // getTokensByChainRanked decides which tokens exist at all. They have to apply the
+    // same version filter: if only the ranking query were filtered, a response could
+    // still cite a source list for a token the ranking had already dropped, and if only
+    // this one were, a token would arrive with no sources at all.
+    harness.queueResult([{ providedId: '0xabc', providerKey: 'trustwallet', listKey: 'wallet' }])
+
+    await getTokenSourcesByChain('eip155-1')
+
+    const where = harness.queries[0].steps.find((step) => step.method === 'where')
+    const rendered = renderSql((where?.args as unknown[])[0])
+    expect(rendered).toContain('NOT EXISTS')
+    expect(rendered).toContain('newer')
   })
 })
 
