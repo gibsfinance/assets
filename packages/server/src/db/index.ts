@@ -1499,7 +1499,16 @@ export const getTokensByChainRanked = async (
   // triple. Without deduplication, the LEFT JOIN multiplies list_token rows by 3-141x,
   // ballooning the sort to millions of rows and timing out Ethereum (1M list_token rows).
   // Pre-aggregating with MIN(ranking) in a CTE gives exactly one row per list.
-  const rows = await db.execute<Record<string, unknown>>(dsql`
+  const rows = await db.transaction(async (tx) => {
+    // Both sorts below outgrow the 4MB server default and spill to temporary files —
+    // measured on a partially collected Ethereum, the deduplicating sort wanted 11MB
+    // and the ranking sort 8MB, and production holds an order of magnitude more rows.
+    // An external merge sort costs several times what the same sort costs in memory,
+    // and it is the whole of this query's runtime. SET LOCAL scopes the larger grant
+    // to this transaction, so no other connection reserves it. See config.ts for why
+    // this is not simply raised server-wide.
+    await tx.execute(dsql.raw(`SET LOCAL work_mem = '${config.rankedQueryWorkMem}'`))
+    return tx.execute<Record<string, unknown>>(dsql`
     WITH list_ranks AS MATERIALIZED (
       SELECT ${s.list.listId}, ${s.list.key}, ${s.list.major}, ${s.list.minor},
              ${s.list.patch}, ${s.list.default}, ${s.list.providerId},
@@ -1607,6 +1616,7 @@ export const getTokensByChainRanked = async (
       sub."listMajor" DESC, sub."listMinor" DESC, sub."listPatch" DESC,
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
+  })
   if (!bridgeInfo) return rows.rows
   // row_to_json hands back the database's own snake_case column names; normalizeTokens
   // reads camelCase off these nested objects. Same conversion getTokensWithExtensions
