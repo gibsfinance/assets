@@ -1006,18 +1006,83 @@ describe('fetchImageAndStoreForToken', () => {
     expect(result.token).toMatchObject({ tokenId: 'token-1' })
   })
 
-  it('falls through to a full re-fetch when the fresh cache exists but no matching list-token row does', async () => {
+  it('rewrites the list-token row against the cached image rather than downloading it again', async () => {
+    // Missing the short-circuit means the list-token row is stale, not that the bytes
+    // are. Re-downloading here is what made a version bump so expensive: list_id hashes
+    // the version tuple, so a bump gives every token an empty list_id, getListToken can
+    // never match, and all of them landed on this path and re-fetched an image the line
+    // above had just confirmed fresh — at up to three seconds of timeout apiece.
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }]) // getFreshImageFromLink: link
     harness.queueResult([{ imageHash: 'hash-1' }]) // getFreshImageFromLink: image
     harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken (cache-hit branch)
     harness.queueResult([]) // getListToken: no matching row
+    harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken (unconditional)
+    harness.queueResult([{ listTokenId: 'lt-2', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-1' }]) // insertListToken
+
+    const result = await fetchImageAndStoreForToken({
+      listId: 'list-1',
+      listTokenOrderId: 5,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      token: baseToken,
+      providerKey: 'trustwallet',
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    // Six queries, not eight: no insertImage image/link pair either, because both rows
+    // already hold exactly what that upsert would write.
+    expect(harness.queries).toHaveLength(6)
+    expect(result.listToken).toMatchObject({ listTokenId: 'lt-2' })
+    // The cached hash, carried through — not a newly minted one.
+    expect(result.image).toMatchObject({ imageHash: 'hash-1' })
+  })
+
+  // Drift in ANY of the three compared fields has to skip the short-circuit.
+  // Exercising only one of them would let a regression in the other two
+  // through — upstream corrections arrive in whichever field was wrong.
+  it.each([
+    ['decimals', { tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 6 }],
+    ['name', { tokenId: 'token-1', name: 'Coin Classic', symbol: 'COIN', decimals: 18 }],
+    ['symbol', { tokenId: 'token-1', name: 'Coin', symbol: 'CN', decimals: 18 }],
+  ])(
+    'rewrites against the cached image, without even checking list-token order, when the stored %s has drifted',
+    async (_field, storedToken) => {
+      harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }]) // getFreshImageFromLink: link
+      harness.queueResult([{ imageHash: 'hash-1' }]) // getFreshImageFromLink: image
+      harness.queueResult([storedToken]) // insertToken (cache-hit branch)
+      harness.queueResult([storedToken]) // insertToken (unconditional)
+      harness.queueResult([{ listTokenId: 'lt-2', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-1' }]) // insertListToken
+
+      const result = await fetchImageAndStoreForToken({
+        listId: 'list-1',
+        listTokenOrderId: 5,
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        token: baseToken,
+        providerKey: 'trustwallet',
+      })
+
+      // Exactly 5 queries: no getListToken select — the metadata mismatch skips straight
+      // past that check — and no image download or insert, since drifted metadata says
+      // nothing about whether the logo moved.
+      expect(harness.queries).toHaveLength(5)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(result.listToken).toMatchObject({ listTokenId: 'lt-2' })
+    },
+  )
+
+  it('still downloads when the cached image has gone stale', async () => {
+    // The counterpart to the two above: reuse is conditional on getFreshImageFromLink
+    // finding something. An expired or absent link still takes the full path, which is
+    // what keeps a changed logo from being pinned to its old bytes forever.
+    harness.queueResult([]) // getFreshImageFromLink: no fresh link
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage: link insert
-    harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken (unconditional)
-    harness.queueResult([{ listTokenId: 'lt-2', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-new' }]) // insertListToken
+    harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken
+    harness.queueResult([{ listTokenId: 'lt-3', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-new' }]) // insertListToken
 
     const result = await fetchImageAndStoreForToken({
       listId: 'list-1',
@@ -1029,46 +1094,8 @@ describe('fetchImageAndStoreForToken', () => {
     })
 
     expect(fetchMock).toHaveBeenCalled()
-    expect(result.listToken).toMatchObject({ listTokenId: 'lt-2' })
     expect(result.image).toMatchObject({ imageHash: 'hash-new' })
   })
-
-  // Drift in ANY of the three compared fields has to skip the short-circuit.
-  // Exercising only one of them would let a regression in the other two
-  // through — upstream corrections arrive in whichever field was wrong.
-  it.each([
-    ['decimals', { tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 6 }],
-    ['name', { tokenId: 'token-1', name: 'Coin Classic', symbol: 'COIN', decimals: 18 }],
-    ['symbol', { tokenId: 'token-1', name: 'Coin', symbol: 'CN', decimals: 18 }],
-  ])(
-    'falls through to a full re-fetch, without even checking list-token order, when the stored %s has drifted',
-    async (_field, storedToken) => {
-      harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }]) // getFreshImageFromLink: link
-      harness.queueResult([{ imageHash: 'hash-1' }]) // getFreshImageFromLink: image
-      harness.queueResult([storedToken]) // insertToken (cache-hit branch)
-      fetchMock.mockResolvedValue(new Response(PNG_BYTES))
-      detectImageExt.mockResolvedValue('.png')
-      sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
-      harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
-      harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage: link insert
-      harness.queueResult([storedToken]) // insertToken (unconditional)
-      harness.queueResult([{ listTokenId: 'lt-2', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-new' }]) // insertListToken
-
-      const result = await fetchImageAndStoreForToken({
-        listId: 'list-1',
-        listTokenOrderId: 5,
-        uri: 'https://x/icon.png',
-        originalUri: 'https://x/icon.png',
-        token: baseToken,
-        providerKey: 'trustwallet',
-      })
-
-      // Exactly 7 queries: no getListToken select — the metadata mismatch skips
-      // straight past that check to the bottom, full-refetch path.
-      expect(harness.queries).toHaveLength(7)
-      expect(result.listToken).toMatchObject({ listTokenId: 'lt-2' })
-    },
-  )
 
   it('stores the token without an image when there is no uri to fetch at all', async () => {
     harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken

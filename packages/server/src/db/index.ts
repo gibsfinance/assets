@@ -927,8 +927,13 @@ export const fetchImageAndStoreForToken = async (
       .limit(1)
     return row
   }
+  // Hoisted so the fall-through below can reuse what this resolved. The early return
+  // needs three things to line up — fresh bytes, unchanged metadata, and an existing
+  // list_token at the same order — and when any one of them misses, only the list_token
+  // half of the work is actually stale. The bytes are still fresh.
+  let existing: Awaited<ReturnType<typeof getFreshImageFromLink>> = null
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
+    existing = await getFreshImageFromLink(uri, maxImageAge, tx)
     if (existing) {
       const insertedToken = await insertToken(
         {
@@ -958,7 +963,27 @@ export const fetchImageAndStoreForToken = async (
   }
   // list must have already been inserted to db by this point
   let img!: Awaited<ReturnType<typeof insertImage>>
-  if (uri && originalUri) {
+  if (existing) {
+    // Fresh bytes are already on disk and `link` already points at them, so there is
+    // nothing to download and nothing to write — insertImage would upsert both rows to
+    // the values they already hold. Only the missing-marker sweep is worth repeating: a
+    // previous run may have recorded a miss for this list before another list fetched
+    // the image successfully, and that marker is now wrong.
+    //
+    // Re-fetching here instead is what made a version bump so expensive. The early
+    // return above cannot fire on a new version — getListToken is keyed on the new,
+    // empty list_id — so every token fell to this branch and downloaded an image the
+    // line above had just confirmed fresh, at up to three seconds of timeout each.
+    img = existing
+    if (originalUri) {
+      await removeMissing({
+        imageHash: existing.image.imageHash,
+        originalUri,
+        providerKey,
+        listId,
+      })
+    }
+  } else if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
       // Deliberate: a failed image fetch records the miss but still stores the token
