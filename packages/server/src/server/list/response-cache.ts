@@ -47,6 +47,15 @@ export const STALE_TTL_MS = 24 * 60 * 60 * 1000
  * again and age out under their own expiry. Bump it when a response's shape or content
  * changes for input that did not — a new field, a different filter, a ranking rule. Do
  * not bump it for a change that only affects speed.
+ *
+ * Bumping it invalidates this tier only. The edge still holds bodies built by the old
+ * shape for up to `s-maxage`, so a shape change wants a manual purge in the Cloudflare
+ * dashboard to take effect sooner than six hours. That purge is deliberately not
+ * automated here: it is a deploy-time action, and the only trigger available to this
+ * process is its own startup, which also fires on every crash-loop restart — dumping the
+ * edge and aiming full traffic at an origin that is already failing. Nor is a zone-wide
+ * purge credential something an internet-facing process should be holding for one call
+ * it makes once at boot.
  */
 export const RESPONSE_SHAPE_VERSION = 'v2'
 

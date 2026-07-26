@@ -7,7 +7,6 @@ import { app, setReady } from '../server/app'
 import { listen } from '../server'
 import { getStats } from '../server/stats'
 import { warmTokensByChainCache, warmMergedCache, warmProviderListCache } from '../server/list/handlers'
-import { purgeCdnCache } from '../server/cdn-purge'
 
 // Start HTTP server immediately so the load balancer can probe /health (503 until ready).
 // Warm-up runs in the background; setReady() flips /health to 200 when done.
@@ -60,10 +59,6 @@ listen(process.env.PORT ? parseInt(process.env.PORT) : 3000)
         log('merged cache warmed for top chains')
         await warmProviderListCache()
         log('provider list cache warmed for the largest lists')
-        // Purged last, once this process can answer every warmed path from cache. Purging
-        // earlier would invite the edge to refill from an origin still building, turning
-        // one cold build into a burst of them.
-        await purgeCdnCache()
       })
       .catch((err: unknown) => log('warmup failed: %o', err))
     let readinessTimer: NodeJS.Timeout | undefined
