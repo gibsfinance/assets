@@ -1046,6 +1046,13 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
     })
     .onConflictDoUpdate({
       target: s.list.listId,
+      // `tokens_collected_at` is deliberately absent. A conflict here means the same
+      // version — `list_id` hashes the version tuple, so a bump inserts instead of
+      // conflicting — and a version that has already published must not be pulled back
+      // out of view just because collection ran over it again. Re-collecting an existing
+      // version only upserts its tokens, which never removes anything, so what is
+      // published stays correct throughout. Adding it to this set would blank the marker
+      // on every run and hide every list until its collection finished.
       set: {
         listId: dsql`excluded.list_id`,
         providerId: dsql`excluded.provider_id`,
@@ -1056,6 +1063,28 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
         default: dsql`excluded."default"`,
       },
     })
+    .returning()
+}
+
+/**
+ * Publish a list version: mark it as having finished writing its `list_token` rows.
+ *
+ * This is the single atomic step that swings readers from the previous version to this
+ * one. Call it only after the whole token list has been walked — see latestListVersionSql
+ * for why a version must not become visible before then. Individual token failures are
+ * not a reason to withhold it: the collect loop logs and skips them, so "walked the whole
+ * list" is the honest guarantee, and withholding on one bad token would strand the list on
+ * a stale version indefinitely. An abort or a throw out of the loop must skip this.
+ *
+ * Idempotent, and re-collecting an already-published version simply refreshes the
+ * timestamp.
+ */
+export const markListTokensCollected = async (listId: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return await db
+    .update(s.list)
+    .set({ tokensCollectedAt: dsql`CURRENT_TIMESTAMP` })
+    .where(eq(s.list.listId, listId))
     .returning()
 }
 
@@ -1501,26 +1530,30 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * (provider_id, key) pairs have fully distinct versions, and none has two rows sharing
  * the highest one, so exactly one row survives per pair.
  *
- * Only a version that actually holds tokens is allowed to supersede one, which is what
- * the inner EXISTS is for. Collection commits the `list` row in `discover()` and writes
- * its `list_token` rows in a later phase, so a new version exists and is empty for as
- * long as that phase takes. Without the guard the empty row would win on version number
- * and take the populated older one out of the answer with it. This is not hypothetical:
- * seven lists sit in exactly that state on both databases right now — coingecko/sanko,
- * eos-evm, bitrock, airdao, defiverse, alienx and meld — holding sixteen memberships
- * between them that would otherwise vanish. Keeping both rows is harmless because the
- * empty one contributes nothing to the join.
+ * Only a version that has finished collecting is allowed to supersede one, which is what
+ * the `tokens_collected_at` test is for. Collection commits the `list` row in `discover()`
+ * and writes its `list_token` rows in a later phase, so a new version exists and is
+ * incomplete for as long as that phase takes. Without the guard the unfinished row wins on
+ * version number and takes the complete older one out of the answer with it.
  *
- * It narrows the window rather than closing it. A version caught halfway through its
- * token writes has rows, so it supersedes, and the difference is briefly missing. Fully
- * closing that needs the list row and its tokens to land in one transaction, which is a
- * change to the collector rather than to this query.
+ * This condition was originally `EXISTS (a list_token for the newer row)`, which fixed only
+ * the empty case — seven lists were sitting in it — and left the partial one open: a version
+ * caught halfway through its writes has rows, so it superseded, and everything it had not
+ * rewritten yet went missing. That window is not brief. The early return in
+ * fetchImageAndStoreForToken that normally avoids the network is gated on finding an
+ * existing `list_token` for this `list_id`, and a fresh version has none, so every token
+ * takes the full path including a fetch with a three-second timeout.
  *
- * The inner `list_token` is aliased because two callers — getTokenSourcesByChain and
- * getLargestLists — already join that table in the query this fragment is dropped into.
- * Unaliased, the subquery's own FROM shadows the outer join and the predicate happens to
- * mean the right thing; aliasing says so outright instead of leaving a correct result
- * resting on scope resolution.
+ * `collect()` sets the marker in one row update once it has walked the whole list, so the
+ * switchover is atomic even though the rows behind it were written piecemeal. Migration
+ * 0014 backfilled exactly those lists that already held a token, which makes this
+ * equivalent to the old predicate at deploy and stricter only as later runs go by.
+ *
+ * Worth knowing before extending this: around fifteen collectors write `list` rows without
+ * going through inmemory-tokenlist, and none of them sets the marker. That is safe only
+ * because they all pass a constant version, so no second row ever exists for their
+ * (provider, key) pairs and this subquery has nothing to find. Give one of them a real
+ * version and its lists freeze at whatever is already published — set the marker there too.
  */
 const latestListVersionSql: SQL = dsql`
   NOT EXISTS (
@@ -1528,7 +1561,7 @@ const latestListVersionSql: SQL = dsql`
     WHERE newer.provider_id = ${s.list.providerId}
       AND newer.key = ${s.list.key}
       AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
-      AND EXISTS (SELECT 1 FROM ${s.listToken} member WHERE member.list_id = newer.list_id)
+      AND newer.tokens_collected_at IS NOT NULL
   )`
 
 /**

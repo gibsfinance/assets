@@ -165,26 +165,28 @@ describe('getTokensByChainRanked', () => {
     expect(rendered).toMatch(/\(newer\.major, newer\.minor, newer\.patch\) >/)
   })
 
-  it('lets only a version that holds tokens supersede an older one', async () => {
+  it('lets only a version that has finished collecting supersede an older one', async () => {
     // Collection commits the list row in discover() and writes its list_token rows in a
-    // later phase, so a new version exists and is empty for as long as that phase runs.
-    // On version number alone the empty row wins and takes the populated older version
-    // out of the answer with it. Seven lists were in exactly that state on both
-    // databases — coingecko/sanko, eos-evm, bitrock, airdao, defiverse, alienx, meld —
-    // hiding ten memberships across seven chains until this guard was added.
+    // later phase, so a new version exists and is incomplete for as long as that phase
+    // runs. On version number alone the unfinished row wins and takes the complete older
+    // version out of the answer with it.
+    //
+    // Testing for tokens rather than for completion — which this did until the publish
+    // marker existed — only covers the empty case. A version halfway through its writes
+    // holds tokens, so it supersedes, and everything it has not rewritten yet goes
+    // missing for as long as collection takes. That is tens of minutes on a large list.
     harness.queueResult({ rows: [{ tokenId: 'token-1' }] })
 
     await getTokensByChainRanked('eip155-1', '0xorder' as never)
 
     const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
-    // The existence check has to be on the *newer* row. Testing the outer row instead
-    // would silently invert this into "drop every list that has no tokens".
-    //
-    // Aliased, because getTokenSourcesByChain and getLargestLists both join list_token
-    // in the query this fragment lands in. Unaliased it still resolves correctly, by
-    // shadowing, which is a correct answer resting on something no reader should have to
-    // check.
-    expect(rendered).toMatch(/EXISTS \(SELECT 1 FROM "list_token" member WHERE member\.list_id = newer\.list_id\)/)
+    // The marker has to be read off the *newer* row. Testing the outer row instead would
+    // silently invert this into "drop every list that has not finished collecting",
+    // which would hide first-time lists entirely rather than serving them progressively.
+    expect(rendered).toMatch(/newer\.tokens_collected_at IS NOT NULL/)
+    // And it must remain a completion test, not a population test: a row can hold tokens
+    // for tens of minutes before it is complete, which is the whole failure being closed.
+    expect(rendered).not.toMatch(/FROM "list_token" member/)
   })
 
   it('omits the extension joins entirely when neither is requested', async () => {

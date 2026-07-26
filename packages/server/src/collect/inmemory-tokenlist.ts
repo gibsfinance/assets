@@ -199,6 +199,13 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
         failureLog('token %o/%o failed: %o', providerKey, chainTokenId, (err as Error).message)
       }
     }
+
+    // Publish. Every token has been attempted, so this version is now the best answer
+    // available and readers may switch to it. Reached only by falling out of the loop:
+    // the aborts above return instead, which correctly leaves a half-written version
+    // unpublished and readers on the previous one. Individual token failures were logged
+    // and skipped, and do not withhold publication — see markListTokensCollected.
+    await db.markListTokensCollected(list.listId)
   } finally {
     // Only complete the row if we created it (not passed from caller)
     if (!ro) {
