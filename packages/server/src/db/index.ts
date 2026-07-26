@@ -1030,6 +1030,77 @@ export const fetchImageAndStoreForToken = async (
   }
 }
 
+/**
+ * How many logos to download at once in `prewarmImages`.
+ *
+ * Matches the ceiling `batchFetchImagesForTokens` already uses, and is bounded by what a
+ * provider's image host will tolerate rather than by anything local — the work is a fetch
+ * with a three-second timeout, so raising this trades politeness for wall clock.
+ */
+const IMAGE_PREWARM_CONCURRENCY = 8
+
+/**
+ * Download every logo a list needs, concurrently, before anything walks its tokens.
+ *
+ * A collect loop stores tokens one at a time because each one writes several related rows,
+ * and that is fine for database work — but it also made every image download wait for the
+ * one before it. A list whose logos are cold spent almost all of its time asleep on a
+ * socket, in series, at up to three seconds each.
+ *
+ * This resolves the same images up front and out of order, so the loop that follows finds
+ * every link already fresh and does no network work at all (see fetchImageAndStoreForToken,
+ * which reuses a fresh link rather than re-fetching). Two things make it cheaper than the
+ * sum of its parts: URIs are deduplicated first, and lists routinely point many tokens at
+ * one logo; and a URI that fails is reported back so the caller can stop asking for it,
+ * instead of every token re-attempting the same dead host.
+ *
+ * Deliberately not transactional. Each image is independent, nothing downstream reads these
+ * rows until the list is published, and holding a transaction open across the downloads is
+ * the exact thing this is built to avoid.
+ */
+export const prewarmImages = async ({
+  uris,
+  providerKey,
+  listId,
+  signal,
+  maxImageAge = defaultImageMaxAge,
+  concurrency = IMAGE_PREWARM_CONCURRENCY,
+}: {
+  uris: (string | null | undefined)[]
+  providerKey: string
+  listId: string | null
+  signal?: AbortSignal
+  maxImageAge?: number
+  concurrency?: number
+}): Promise<{ distinct: number; fetched: number; missing: Set<string> }> => {
+  const distinct = [...new Set(uris.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0))]
+  const limit = promiseLimit(concurrency)
+  const missing = new Set<string>()
+  let fetched = 0
+  await Promise.all(
+    distinct.map((uri) =>
+      limit(async () => {
+        if (signal?.aborted) return
+        // Already on disk and inside its freshness window — nothing to do, and the loop
+        // downstream will find exactly this row.
+        if (await getFreshImageFromLink(uri, maxImageAge)) return
+        const image = await fetchImage(uri, signal, providerKey)
+        if (!image) {
+          // Recorded here rather than left for the loop, because the caller blanks these
+          // URIs on the strength of this set. The token is still stored, image-less, which
+          // is what happened before when the fetch failed inside the loop instead.
+          missing.add(uri)
+          await writeMissing({ providerKey, originalUri: uri, listId })
+          return
+        }
+        await insertImage({ providerKey, originalUri: uri, image, listId })
+        fetched += 1
+      }),
+    ),
+  )
+  return { distinct: distinct.length, fetched, missing }
+}
+
 export const insertListToken = async (listToken: InsertableListToken | InsertableListToken[], tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const items = Array.isArray(listToken) ? listToken : [listToken]

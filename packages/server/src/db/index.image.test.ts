@@ -38,6 +38,7 @@ import {
   fetchAndInsertHeader,
   batchFetchImagesForTokens,
   fetchImageAndStoreForToken,
+  prewarmImages,
 } from './index'
 import * as s from './schema'
 
@@ -1184,5 +1185,91 @@ describe('fetchImageAndStoreForToken', () => {
     const linkInsert = harness.queries.filter((query) => query.root === 'insert')[1]
     const row = linkInsert.steps.find((step) => step.method === 'values')?.args[0] as { uri: string }
     expect(row.uri).toBe('https://x/icon.png')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// prewarmImages
+// ---------------------------------------------------------------------------
+
+describe('prewarmImages', () => {
+  it('downloads each distinct uri once, ignoring empty and absent ones', async () => {
+    // Lists routinely point many tokens at one logo — every wrapped variant of an asset,
+    // every chain a bridged token lives on. Downloading per token rather than per uri is
+    // the difference between one request and several hundred for the same bytes.
+    harness.queueResult([]) // getFreshImageFromLink: link miss for a.png
+    harness.queueResult([]) // getFreshImageFromLink: link miss for b.png
+    // A fresh Response per call: these downloads run concurrently and a body can only be
+    // read once, so a single shared instance would leave the second caller with nothing.
+    fetchMock.mockImplementation(async () => new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-a' }])
+    harness.queueResult([{ uri: 'https://x/a.png' }])
+    harness.queueResult([{ imageHash: 'hash-b' }])
+    harness.queueResult([{ uri: 'https://x/b.png' }])
+
+    const result = await prewarmImages({
+      uris: ['https://x/a.png', 'https://x/b.png', 'https://x/a.png', null, undefined, ''],
+      providerKey: 'trustwallet',
+      listId: 'list-1',
+    })
+
+    expect(result.distinct).toBe(2)
+    expect(result.fetched).toBe(2)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not download a uri whose bytes are already fresh', async () => {
+    // The whole point of running before the write loop is that the loop then finds every
+    // link fresh. Re-downloading here would move the cost rather than remove it.
+    harness.queueResult([{ uri: 'https://x/a.png', imageHash: 'hash-a' }]) // link hit
+    harness.queueResult([{ imageHash: 'hash-a' }]) // image hit
+
+    const result = await prewarmImages({
+      uris: ['https://x/a.png'],
+      providerKey: 'trustwallet',
+      listId: 'list-1',
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.fetched).toBe(0)
+    expect(result.missing.size).toBe(0)
+  })
+
+  it('reports a uri it could not fetch so the caller stops asking for it', async () => {
+    // Returned rather than swallowed: the write loop blanks these, which is what keeps a
+    // dead host from being retried once per token that references it.
+    harness.queueResult([]) // getFreshImageFromLink: miss
+    fetchMock.mockRejectedValue(new Error('ENOTFOUND'))
+
+    const result = await prewarmImages({
+      uris: ['https://dead/a.png'],
+      providerKey: 'trustwallet',
+      listId: 'list-1',
+    })
+
+    expect(result.missing.has('https://dead/a.png')).toBe(true)
+    expect(result.fetched).toBe(0)
+    // The miss is still recorded on disk, exactly as a failure inside the loop recorded it.
+    expect(fsPromises.writeFile).toHaveBeenCalled()
+  })
+
+  it('stops starting new downloads once the signal aborts', async () => {
+    // Prewarming a large list is the longest-running thing in a collect run, so a shutdown
+    // that only took effect at the end of it would not be a shutdown.
+    const controller = new AbortController()
+    controller.abort()
+
+    const result = await prewarmImages({
+      uris: ['https://x/a.png', 'https://x/b.png'],
+      providerKey: 'trustwallet',
+      listId: 'list-1',
+      signal: controller.signal,
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.fetched).toBe(0)
+    expect(harness.queries).toHaveLength(0)
   })
 })

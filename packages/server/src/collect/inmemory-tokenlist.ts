@@ -3,7 +3,18 @@ import { terminalCounterTypes, TerminalRowProxy, terminalRowTypes } from '../log
 import * as types from '../types'
 import * as utils from '../utils'
 import type { List, Network, Provider } from '../db/schema-types'
+import type { DrizzleTx } from '../db/drizzle'
 import { failureLog } from '@gibs/utils'
+
+/**
+ * How many tokens share one transaction in `collect()`.
+ *
+ * Trades round trips against how much work a single bad entry forces the replay path to
+ * redo. Small enough that a transaction stays short — every entry is database-only by the
+ * time the loop runs, since prewarmImages has already done the downloading — and large
+ * enough that the begin/commit overhead stops dominating.
+ */
+const TOKEN_WRITE_CHUNK = 250
 
 type CollectInput = {
   providerKey: string
@@ -155,56 +166,115 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
       terminalCounterTypes.TOKEN,
       utils.mapToSet.token(tokenList.tokens, (t) => [t.chainId, t.address]),
     )
-    for (const [i, entry] of tokenList.tokens.entries()) {
-      // Callers may pass module-level token arrays shared across collect runs —
-      // never mutate the entries; normalize into locals instead.
+
+    // Resolve every entry first, so the write loop below is pure database work and can be
+    // grouped. Callers may pass module-level token arrays shared across collect runs —
+    // never mutate the entries; normalize into locals instead.
+    const planned = tokenList.tokens.flatMap((entry, index) => {
       const address = db.normalizeProvidedId(entry.address)
-      const chainTokenId = utils.counterId.token([entry.chainId, address])
-      if (signal.aborted) return
-      const network = networks.get(entry.chainId)!
+      const network = networks.get(entry.chainId)
       if (!network) {
         failureLog('no network found for %o %o', tokenList, entry)
-        continue
+        return []
       }
-      try {
-        await db.transaction(async (tx) => {
-          const token = {
+      // Skip blacklisted images, then fix malformed URLs
+      const logoURI = blacklist.has(entry.logoURI as string) ? '' : entry.logoURI
+      return [
+        {
+          chainTokenId: utils.counterId.token([entry.chainId, address]),
+          listTokenOrderId: index,
+          uri: logoURI?.replace('hhttps://', 'https://') || null,
+          token: {
             name: entry.name,
             symbol: entry.symbol,
             decimals: entry.decimals,
             networkId: network.networkId,
             providedId: address,
+          },
+        },
+      ]
+    })
+    if (signal.aborted) return
+
+    // Download the logos concurrently and up front. Without this the loop below waits on
+    // one socket at a time; with it, every entry finds its link already fresh and writes
+    // without touching the network. A URI that could not be fetched is blanked rather than
+    // left in place, so the loop does not re-attempt a host prewarming just proved dead —
+    // the token is still stored, image-less, exactly as a failure inside the loop stored it.
+    const { missing } = await db.prewarmImages({
+      uris: planned.map((entry) => entry.uri),
+      providerKey,
+      listId: list.listId,
+      signal,
+    })
+    const entries = planned.map((entry) => (entry.uri && missing.has(entry.uri) ? { ...entry, uri: null } : entry))
+    if (signal.aborted) return
+
+    /** Write one entry. Shared by the grouped path and the one-at-a-time replay below. */
+    const store = async (entry: (typeof entries)[number], tx?: DrizzleTx) =>
+      await db.fetchImageAndStoreForToken(
+        {
+          listId: list.listId,
+          uri: entry.uri,
+          originalUri: entry.uri,
+          providerKey,
+          token: entry.token,
+          listTokenOrderId: entry.listTokenOrderId,
+        },
+        tx,
+      )
+
+    for (let start = 0; start < entries.length; start += TOKEN_WRITE_CHUNK) {
+      if (signal.aborted) return
+      const chunk = entries.slice(start, start + TOKEN_WRITE_CHUNK)
+      try {
+        // The fast path: one transaction for the whole chunk rather than one per token,
+        // which removes a begin/commit round trip per entry. Safe to group only because
+        // the version stays unpublished until this loop finishes, so no reader can
+        // observe a chunk mid-write.
+        const stored = await db.transaction(async (tx) => {
+          const written: typeof chunk = []
+          for (const entry of chunk) {
+            // Checked per entry, not just per chunk: an abort is a shutdown, and carrying
+            // on to the end of a two-hundred-and-fifty token chunk defeats it. Whatever
+            // this transaction has already written still commits, which costs nothing —
+            // the version is never published on this path, so no reader sees it, and the
+            // next run upserts straight over it.
+            if (signal.aborted) return written
+            await store(entry, tx)
+            written.push(entry)
           }
-
-          // Skip blacklisted images
-          const logoURI = blacklist.has(entry.logoURI as string) ? '' : entry.logoURI
-
-          // Fix malformed URLs and store token image
-          const path = logoURI?.replace('hhttps://', 'https://') || null
-          await db.fetchImageAndStoreForToken(
-            {
-              listId: list.listId,
-              uri: path,
-              originalUri: path,
-              providerKey,
-              token,
-              listTokenOrderId: i,
-            },
-            tx,
-          )
+          return written
         })
-        row.increment(terminalCounterTypes.TOKEN, chainTokenId)
+        for (const entry of stored) {
+          row.increment(terminalCounterTypes.TOKEN, entry.chainTokenId)
+        }
       } catch (err) {
-        row.increment('erred', chainTokenId)
-        failureLog('token %o/%o failed: %o', providerKey, chainTokenId, (err as Error).message)
+        // A failed statement aborts its whole transaction, so one bad entry would take the
+        // other few hundred down with it. Replay the chunk one transaction at a time to
+        // find out which — slow, but only for a chunk that already failed, and it restores
+        // exactly the per-token isolation the ungrouped loop had.
+        failureLog('chunk %o/%o failed, replaying singly: %o', providerKey, listKey, (err as Error).message)
+        for (const entry of chunk) {
+          if (signal.aborted) return
+          try {
+            await db.transaction(async (tx) => await store(entry, tx))
+            row.increment(terminalCounterTypes.TOKEN, entry.chainTokenId)
+          } catch (innerErr) {
+            row.increment('erred', entry.chainTokenId)
+            failureLog('token %o/%o failed: %o', providerKey, entry.chainTokenId, (innerErr as Error).message)
+          }
+        }
       }
     }
 
     // Publish. Every token has been attempted, so this version is now the best answer
-    // available and readers may switch to it. Reached only by falling out of the loop:
-    // the aborts above return instead, which correctly leaves a half-written version
-    // unpublished and readers on the previous one. Individual token failures were logged
-    // and skipped, and do not withhold publication — see markListTokensCollected.
+    // available and readers may switch to it. The abort check is the load-bearing half:
+    // an abort inside a chunk leaves the loop with entries never written, and publishing
+    // that is precisely the half-written version this marker exists to hide. Individual
+    // token failures were logged and skipped, and do not withhold publication — see
+    // markListTokensCollected.
+    if (signal.aborted) return
     await db.markListTokensCollected(list.listId)
   } finally {
     // Only complete the row if we created it (not passed from caller)
