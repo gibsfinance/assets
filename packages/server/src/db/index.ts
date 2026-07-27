@@ -40,6 +40,7 @@ import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
 import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
+import { noteListTokensWritten } from './publication'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 import { collectablePriority } from '../collect/collectable-order'
 
@@ -1108,7 +1109,7 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
     listTokenId: dsql`''` as unknown as string,
     ...lt,
   }))
-  return await db
+  const written = await db
     .insert(s.listToken)
     .values(values)
     .onConflictDoUpdate({
@@ -1126,6 +1127,14 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
       },
     })
     .returning()
+  // Every `list_token` insert in the codebase funnels through here, which is what lets
+  // publication be derived rather than remembered — see ./publication. Noting the rows
+  // that came back rather than the ones asked for keeps the ledger honest about what the
+  // statement actually touched. A no-op outside a tracked collector run.
+  for (const row of written) {
+    noteListTokensWritten(row.listId)
+  }
+  return written
 }
 
 export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
@@ -1174,6 +1183,12 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
  *
  * Idempotent, and re-collecting an already-published version simply refreshes the
  * timestamp.
+ *
+ * Calling this is optional. A collector that says nothing still has its lists published by
+ * ./publication once its collect phase finishes; what an explicit call buys is granularity,
+ * publishing one list the moment it is done instead of waiting for the rest of the run.
+ * That matters for inmemory-tokenlist, which is invoked once per list and is the only
+ * caller that bumps versions.
  */
 export const markListTokensCollected = async (listId: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
@@ -1645,11 +1660,12 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * 0014 backfilled exactly those lists that already held a token, which makes this
  * equivalent to the old predicate at deploy and stricter only as later runs go by.
  *
- * Worth knowing before extending this: around fifteen collectors write `list` rows without
- * going through inmemory-tokenlist, and none of them sets the marker. That is safe only
- * because they all pass a constant version, so no second row ever exists for their
- * (provider, key) pairs and this subquery has nothing to find. Give one of them a real
- * version and its lists freeze at whatever is already published — set the marker there too.
+ * Every list is covered, not just the ones inmemory-tokenlist walks. The dozen collectors
+ * that write `list` rows directly say nothing about publication; ./publication derives it
+ * for them from the `list_token` writes they made, and publishes the lot when their
+ * collect phase finishes. So a collector may be given a real version without the author
+ * knowing this predicate exists, which is the point — the previous arrangement was safe
+ * only for as long as every one of them kept passing a constant version.
  */
 const latestListVersionSql: SQL = dsql`
   NOT EXISTS (

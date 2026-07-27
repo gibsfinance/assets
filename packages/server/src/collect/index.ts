@@ -7,6 +7,7 @@ import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
 import type { DiscoveryManifest } from './base-collector'
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
+import { withListPublication } from '../db/publication'
 import { getDrizzle } from '../db/drizzle'
 import { sql as dsql } from 'drizzle-orm'
 
@@ -130,7 +131,9 @@ const rawTwoPhase = async (
     console.log(`Starting collector for ${provider}`)
     const startTime = Date.now()
     try {
-      await collector.collect(utils.controller.signal)
+      // Publishes every list this collector wrote, once it has finished writing them all.
+      // See ../db/publication — the collectors themselves say nothing about publication.
+      await withListPublication(utils.controller.signal, () => collector.collect(utils.controller.signal))
       const duration = ((Date.now() - startTime) / 1000).toFixed(1)
       console.log(`Collector ${provider} completed successfully in ${duration}s`)
       if (provider.startsWith('user-')) {
@@ -207,7 +210,8 @@ const terminalTwoPhase = async (
     } else {
       utils.terminalRow.increment('running', provider)
       try {
-        await collector.collect(utils.controller.signal)
+        // See the raw path above, and ../db/publication.
+        await withListPublication(utils.controller.signal, () => collector.collect(utils.controller.signal))
         utils.terminalRow.increment('success', provider)
         if (provider.startsWith('user-')) {
           await updateSubmissionStatus(provider, { success: true })
