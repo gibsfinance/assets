@@ -521,6 +521,10 @@ export const storeToken = async (
 /**
  * Batch fetch and store images for multiple list tokens.
  * Used to separate image fetching from token insertion for better performance.
+ *
+ * A logo already on disk and inside its freshness window is reused rather than
+ * downloaded again — see the guard in the loop below for why that is not merely an
+ * optimisation.
  */
 export const batchFetchImagesForTokens = async (
   tokenImages: {
@@ -529,11 +533,22 @@ export const batchFetchImagesForTokens = async (
     originalUri: string | null
     providerKey: string
     signal?: AbortSignal
+    /** Overrides the shared freshness window for this item. Defaults to IMAGE_MAX_AGE_HOURS. */
+    maxImageAge?: number
   }[],
   tx?: DrizzleTx,
 ) => {
   if (!tokenImages.length) return []
   const db = tx ?? getDrizzle()
+
+  /**
+   * Point a list_token at the image it should serve. Runs on both the reuse and the
+   * download path: cached bytes say nothing about whether *this* list_token — which
+   * may belong to a list version created minutes ago — already references them.
+   */
+  const linkListTokenToImage = async (listTokenId: string, imageHash: string) => {
+    await db.update(s.listToken).set({ imageHash }).where(eq(s.listToken.listTokenId, listTokenId))
+  }
 
   // Use promiseLimit to control concurrency
   const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
@@ -547,6 +562,21 @@ export const batchFetchImagesForTokens = async (
         if (!item.uri) return null
 
         try {
+          // Every other fetch path in this module checks for a fresh link before going to
+          // the network — fetchImageAndStoreForToken, fetchImageAndStoreForNetwork,
+          // fetchAndInsertHeader, prewarmImages. This one did not, so it re-downloaded
+          // every logo it had ever seen on every run, sanitized the bytes again, and
+          // rewrote rows that were already byte-identical. The freshness window exists
+          // precisely so a collect cron does not do that.
+          //
+          // Only the download is skipped. The list_token still gets linked below, because
+          // cached bytes tell us nothing about whether this list_token points at them yet.
+          const fresh = await getFreshImageFromLink(item.uri, item.maxImageAge ?? defaultImageMaxAge, tx)
+          if (fresh) {
+            await linkListTokenToImage(item.listTokenId, fresh.image.imageHash)
+            return { listTokenId: item.listTokenId, success: true, image: fresh.image }
+          }
+
           const resolved = await resolveImage(item.uri, item.signal, item.providerKey)
           if (!resolved) return null
 
@@ -568,10 +598,7 @@ export const batchFetchImagesForTokens = async (
           const { image } = imageResult
 
           // Update the list token with the image hash
-          await db
-            .update(s.listToken)
-            .set({ imageHash: image.imageHash })
-            .where(eq(s.listToken.listTokenId, item.listTokenId))
+          await linkListTokenToImage(item.listTokenId, image.imageHash)
 
           return { listTokenId: item.listTokenId, success: true, image }
         } catch (error) {

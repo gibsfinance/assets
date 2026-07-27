@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDrizzleHarness, createLogAppMock, renderSql } from './__testing__/drizzle-harness'
+import { createDrizzleHarness, createLogAppMock, renderSql, sqlParams } from './__testing__/drizzle-harness'
 
 const harness = createDrizzleHarness()
 vi.mock('./drizzle', () => ({ getDrizzle: () => harness.db }))
@@ -877,6 +877,7 @@ describe('batchFetchImagesForTokens', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // getFreshImageFromLink: no cached link, so the download runs
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ listTokenId: 'lt-1' }]) // update .set(imageHash).where(...)
@@ -899,6 +900,9 @@ describe('batchFetchImagesForTokens', () => {
     fetchMock.mockResolvedValueOnce(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    // One freshness miss per item — both are checked before either downloads.
+    harness.queueResult([])
+    harness.queueResult([])
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon-2.png' }])
     harness.queueResult([{ listTokenId: 'lt-2' }])
@@ -928,6 +932,7 @@ describe('batchFetchImagesForTokens', () => {
     // a real buffer), but insertImage's independent detectImageExt call then
     // fails — the one path where insertImage, not resolveImage, is the rejector.
     detectImageExt.mockResolvedValueOnce('.png').mockResolvedValueOnce(null)
+    harness.queueResult([]) // freshness miss, so the download path is the one under test
 
     const result = await batchFetchImagesForTokens([
       { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
@@ -944,6 +949,9 @@ describe('batchFetchImagesForTokens', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    // Miss the freshness check first, so the error under test comes from the write
+    // path rather than from the lookup that now precedes it.
+    harness.queueResult([])
     harness.queueRejection(new Error('connection terminated unexpectedly'))
 
     const result = await batchFetchImagesForTokens([
@@ -952,6 +960,102 @@ describe('batchFetchImagesForTokens', () => {
 
     expect(result[0].result).toMatchObject({ listTokenId: 'lt-1', success: false })
     expect((result[0].result as { error: Error }).error).toBeInstanceOf(Error)
+  })
+
+  it('reuses a logo already inside its freshness window instead of downloading it again', async () => {
+    // The reason this matters is cost, not tidiness: this batch path is the one etherscan
+    // uses, and without the check it re-downloaded, re-sanitized and rewrote every logo it
+    // had ever seen on every collect run. The freshness window exists to stop exactly that,
+    // and every sibling fetch path in the module already honours it.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-cached' }])
+    harness.queueResult([{ imageHash: 'hash-cached', ext: '.png' }])
+    harness.queueResult([{ listTokenId: 'lt-1' }])
+
+    const result = await batchFetchImagesForTokens([
+      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+    ])
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(sanitizeImage).not.toHaveBeenCalled()
+    // No image or link row is rewritten — the stored bytes are already the answer.
+    expect(harness.queries.filter((query) => query.root === 'insert')).toHaveLength(0)
+    expect(result[0].result).toMatchObject({ listTokenId: 'lt-1', success: true })
+    expect((result[0].result as { image: { imageHash: string } }).image.imageHash).toBe('hash-cached')
+  })
+
+  it('still links the list_token on a cache hit, because cached bytes do not imply a link', async () => {
+    // The half of the work that is never redundant. A cache hit means the image is on
+    // disk; it says nothing about whether this list_token — which may belong to a list
+    // version created minutes ago — references it yet. Skipping this update would leave
+    // the new version's tokens icon-less, which is worse than the re-download it saves.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-cached' }])
+    harness.queueResult([{ imageHash: 'hash-cached', ext: '.png' }])
+    harness.queueResult([{ listTokenId: 'lt-1' }])
+
+    await batchFetchImagesForTokens([
+      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+    ])
+
+    const updateQuery = harness.queries.find((query) => query.root === 'update')
+    const setStep = updateQuery?.steps.find((step) => step.method === 'set')
+    const whereStep = updateQuery?.steps.find((step) => step.method === 'where')
+    expect(setStep?.args[0]).toEqual({ imageHash: 'hash-cached' })
+    expect(sqlParams(whereStep?.args[0])).toEqual(['lt-1'])
+  })
+
+  it('downloads when the link is fresh but its image row is gone', async () => {
+    // A link outliving its image would otherwise strand the token on a hash that resolves
+    // to nothing. getFreshImageFromLink reports the pair as absent, and this asserts the
+    // batch path treats that as a miss rather than trusting the link alone.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-orphaned' }])
+    harness.queueResult([]) // the image row it pointed at is gone
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://x/icon.png' }])
+    harness.queueResult([{ listTokenId: 'lt-1' }])
+
+    const result = await batchFetchImagesForTokens([
+      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((result[0].result as { image: { imageHash: string } }).image.imageHash).toBe('hash-new')
+  })
+
+  it('narrows the freshness window when an item supplies its own maxImageAge', async () => {
+    // A caller that knows a provider rotates icons faster than the shared week-long
+    // default needs a way to say so per item, matching the maxImageAge every sibling
+    // fetch path already accepts. Asserted on the bound cutoff rather than on the call,
+    // because the cutoff is the only thing the database actually sees.
+    harness.queueResult([])
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://x/icon.png' }])
+    harness.queueResult([{ listTokenId: 'lt-1' }])
+
+    const before = Date.now()
+    await batchFetchImagesForTokens([
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        maxImageAge: 60_000,
+      },
+    ])
+    const after = Date.now()
+
+    const linkQuery = harness.queries.find((query) => query.root === 'select')
+    const whereStep = linkQuery?.steps.find((step) => step.method === 'where')
+    const [uri, cutoff] = sqlParams(whereStep?.args[0])
+    expect(uri).toBe('https://x/icon.png')
+    const cutoffMs = Date.parse(cutoff as string)
+    expect(cutoffMs).toBeGreaterThanOrEqual(before - 60_000)
+    expect(cutoffMs).toBeLessThanOrEqual(after - 60_000)
   })
 })
 
