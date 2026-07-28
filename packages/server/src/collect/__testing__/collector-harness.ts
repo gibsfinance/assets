@@ -173,6 +173,12 @@ export type RecordedList = {
   major: number
   minor: number
   patch: number
+  /**
+   * The publish marker. Null until `markListTokensCollected` sets it, and — as in the
+   * real `insertList` — never cleared by a later upsert of the same version, so a test
+   * can catch a conflict-set that starts blanking it.
+   */
+  tokensCollectedAt: string | null
 }
 
 /** One call recorded from `fetchImageAndStoreForToken` — the primary "what did we insert" signal. */
@@ -276,6 +282,10 @@ export type CollectorHarnessState = {
   lists: RecordedList[]
   networks: Map<string, RecordedNetwork>
   tokenImages: RecordedTokenImage[]
+  /** Every distinct URI a collector handed to `prewarmImages`, in the order asked for. */
+  prewarmedUris: string[]
+  /** URIs `prewarmImages` should report back as unfetchable — see `setPrewarmMissing`. */
+  prewarmMissing: Set<string>
   listImages: RecordedListImage[]
   networkImages: RecordedNetworkImage[]
   imageFetches: RecordedImageFetch[]
@@ -301,6 +311,8 @@ const createEmptyState = (): CollectorHarnessState => ({
   lists: [],
   networks: new Map(),
   tokenImages: [],
+  prewarmedUris: [],
+  prewarmMissing: new Set(),
   listImages: [],
   networkImages: [],
   imageFetches: [],
@@ -460,11 +472,18 @@ export type CollectorHarnessDbModule = {
   normalizeProvidedId: Mock
   insertProvider: Mock
   insertList: Mock
+  /** Stamps the publish marker set by `markListTokensCollected` onto the recorded list row. */
+  markListTokensCollected: Mock
   insertNetworkFromChainId: Mock
   fetchImage: Mock
   fetchImageAndStoreForList: Mock
   fetchImageAndStoreForNetwork: Mock
   fetchImageAndStoreForToken: Mock
+  /**
+   * Records the URIs a collector asked to have warmed. Reports nothing missing by
+   * default; use `setPrewarmMissing` to make specific URIs come back unfetchable.
+   */
+  prewarmImages: Mock
   transaction: Mock
   /** See `storeToken`'s doc comment for the identity/upsert semantics this reproduces. */
   storeToken: Mock
@@ -595,6 +614,8 @@ export type CollectorHarness = {
   queueTokenListResponse: (key: string, response: TokenList | Error) => void
   /** Registers the `[name, symbol, decimals]` an on-chain `erc20Read(chain, client, address)` call should resolve to for `address`. */
   setErc20Metadata: (address: string, metadata: readonly [name: string, symbol: string, decimals: number]) => void
+  /** Make `prewarmImages` report these URIs back as unfetchable, so the caller blanks them. */
+  setPrewarmMissing: (uris: string[]) => void
   /** Makes the next `fetchImage(uri, ...)` call for this exact `uri` resolve to `null`, as the real function does on a failed fetch. */
   failImageFetch: (uri: string) => void
   /**
@@ -718,12 +739,24 @@ export const createCollectorHarness = (): CollectorHarness => {
       major: input.major ?? 0,
       minor: input.minor ?? 0,
       patch: input.patch ?? 0,
+      tokensCollectedAt: null,
     }
     state.lists.push(created)
     return created
   }
 
   const insertList = vi.fn(async (list: InsertableList, _tx?: DrizzleTx) => [upsertList(list)])
+
+  /**
+   * Mirrors the real `markListTokensCollected`: stamps the publish marker on an existing
+   * row. A missing row is a no-op returning nothing, exactly as the real UPDATE would.
+   */
+  const markListTokensCollected = vi.fn(async (listId: string, _tx?: DrizzleTx) => {
+    const existing = state.lists.find((list) => list.listId === listId)
+    if (!existing) return []
+    existing.tokensCollectedAt = new Date(0).toISOString()
+    return [existing]
+  })
 
   const insertNetworkFromChainId = vi.fn(async (chainId: number | string, type = 'evm', _tx?: DrizzleTx) => {
     const canonicalChainId = toCAIP2(chainId.toString())
@@ -799,6 +832,21 @@ export const createCollectorHarness = (): CollectorHarness => {
         originalUri: input.originalUri,
       })
       return { network: input.network }
+    },
+  )
+
+  /**
+   * Mirrors `prewarmImages`: deduplicates, records what was asked for, and reports back
+   * whichever of those URIs `setPrewarmMissing` has marked unfetchable. It performs no
+   * writes — the real one only populates image/link rows that this harness models through
+   * `tokenImages` instead.
+   */
+  const prewarmImages = vi.fn(
+    async (input: { uris: (string | null | undefined)[]; providerKey: string; listId: string | null }) => {
+      const distinct = [...new Set(input.uris.filter((uri): uri is string => typeof uri === 'string' && !!uri))]
+      state.prewarmedUris.push(...distinct)
+      const missing = new Set(distinct.filter((uri) => state.prewarmMissing.has(uri)))
+      return { distinct: distinct.length, fetched: distinct.length - missing.size, missing }
     },
   )
 
@@ -1073,11 +1121,13 @@ export const createCollectorHarness = (): CollectorHarness => {
     normalizeProvidedId: vi.fn(realNormalizeProvidedId),
     insertProvider,
     insertList,
+    markListTokensCollected,
     insertNetworkFromChainId,
     fetchImage,
     fetchImageAndStoreForList,
     fetchImageAndStoreForNetwork,
     fetchImageAndStoreForToken,
+    prewarmImages,
     transaction,
     storeToken,
     insertTokenBatch,
@@ -1324,6 +1374,8 @@ export const createCollectorHarness = (): CollectorHarness => {
     state.lists.length = 0
     state.networks.clear()
     state.tokenImages.length = 0
+    state.prewarmedUris.length = 0
+    state.prewarmMissing.clear()
     state.listImages.length = 0
     state.networkImages.length = 0
     state.imageFetches.length = 0
@@ -1350,6 +1402,7 @@ export const createCollectorHarness = (): CollectorHarness => {
     drizzleModule,
     queueTokenListResponse: (key, response) => state.tokenListResponses.set(key, response),
     setErc20Metadata: (address, metadata) => state.erc20Metadata.set(address.toLowerCase(), metadata),
+    setPrewarmMissing: (uris: string[]) => uris.forEach((uri) => state.prewarmMissing.add(uri)),
     failImageFetch: (uri) => state.failedImageUris.add(uri),
     queueFetchResponse: (url, response) => {
       const key = fetchQueueKey(url)

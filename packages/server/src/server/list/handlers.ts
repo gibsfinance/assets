@@ -38,7 +38,15 @@ import {
 } from '../../chain-id'
 import { timerLog } from '../../logger'
 import { refreshRequest, REFRESH_CACHE_CONTROL } from '../cache-refresh'
-import { buildAndCache, cacheRowAge, listCacheControl, serveCachedJson, writeCachedResponse } from './response-cache'
+import {
+  buildAndCache,
+  cacheRowAge,
+  FRESH_TTL_MS,
+  listCacheControl,
+  namespacedCacheKey,
+  serveCachedJson,
+  writeCachedResponse,
+} from './response-cache'
 
 export { cacheRowAge }
 
@@ -78,7 +86,7 @@ export const mergedCacheKey = ({
   decimals?: unknown
 }) => {
   const ext = [...extensions].sort().join(',')
-  return `merged:${orderId}:${chainId}:${ext}:${sortedQueryValues(decimals)}`
+  return namespacedCacheKey(`merged:${orderId}:${chainId}:${ext}:${sortedQueryValues(decimals)}`)
 }
 
 /**
@@ -115,7 +123,9 @@ export const listCacheKey = ({
   decimals?: unknown
 }) => {
   const ext = [...extensions].sort().join(',')
-  return `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`
+  return namespacedCacheKey(
+    `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`,
+  )
 }
 
 /**
@@ -155,15 +165,19 @@ const buildMergedResponse = async ({
  * `/list/merged/:order` is the heavier of the two chain-scoped endpoints — it keeps
  * tokens without a logo where tokensByChain drops them — but only tokensByChain was
  * being warmed, so merged was the one endpoint whose cold build a real user could
- * still land on. Startup clears the whole cache (see bin/server.ts), which means
- * every deploy left merged cold until someone happened to request it and waited out
- * the full build.
+ * still land on. Startup used to delete every cached row, which meant each deploy left
+ * merged cold until someone happened to request it and waited out the full build; rows
+ * now survive a restart, so this runs to refresh them rather than to rebuild from
+ * nothing.
  *
  * Warms the canonical shape only: default order, no extensions, no filters. That is
  * the key an unqualified `?chainId=` request produces, and warming the filtered
  * variants would multiply the work by a key space nobody is asking for.
  */
-export const warmMergedCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
+export const warmMergedCache = async (
+  stats: { chainId: string; count: number }[],
+  topN = WARM_CHAIN_COUNT,
+): Promise<void> => {
   const orderId = getDefaultListOrderId()
   if (!orderId) return
   const extensions = new Set<string>()
@@ -304,6 +318,59 @@ export const versioned: RequestHandler = async (req, res, next) => {
   })
 }
 
+/**
+ * How many provider lists the warmer covers.
+ *
+ * There are 1193 of them and warming all of them would cost far more than it saves —
+ * most are small enough that a cold build is already under half a second. Twenty covers
+ * the expensive tail, where coingecko/ethereum alone is 3.38s cold.
+ */
+const WARM_PROVIDER_LIST_COUNT = 20
+
+/**
+ * Pre-warm the provider-list cache for the largest lists.
+ *
+ * These were the one cached endpoint nobody warmed. Every list response was built by
+ * whichever user asked for it first, and because startup deleted the whole cache, that
+ * happened again after every deploy.
+ *
+ * Warms the canonical shape only — no extensions, no chain or decimals filter — which is
+ * the key a bare `/list/:providerKey/:listKey` produces. Warming filtered variants would
+ * multiply the work across a key space nobody has asked for.
+ *
+ * The build below has to stay identical to the one in `providerKeyed`, including the
+ * missing-list throw: a warmed body that differs from a request-built one is worse than
+ * no warm at all, because it is served in preference to the real thing.
+ */
+export const warmProviderListCache = async (topN = WARM_PROVIDER_LIST_COUNT): Promise<void> => {
+  const extensions = new Set<string>()
+  const filters = utils.tokenFilters({})
+  let lists: { providerKey: string; listKey: string }[] = []
+  try {
+    lists = await db.getLargestLists(topN)
+  } catch {
+    return
+  }
+  for (const { providerKey, listKey } of lists) {
+    try {
+      const cacheKey = listCacheKey({ providerKey, listKey, extensions, chainId: undefined, decimals: undefined })
+      const existing = await db.getCachedRequest(cacheKey)
+      if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
+      await buildAndCache(cacheKey, async () => {
+        const rows = await db.getLists(providerKey, listKey)
+        const list = rows[0]
+        if (!list) {
+          throw createError.NotFound(JSON.stringify({ providerKey, listKey }))
+        }
+        return JSON.stringify(await utils.buildListPayload(list, filters, extensions))
+      })
+    } catch {
+      // best-effort, as with the chain warmers — one unbuildable list must not stop the
+      // rest or take down startup.
+    }
+  }
+}
+
 export const providerKeyed: RequestHandler = async (req, res, next) => {
   const refresh = guardListRefresh(req)
   if (refresh.requested && !refresh.authorized) {
@@ -424,7 +491,30 @@ export const all: RequestHandler = async (req, res) => {
  * Server-side merge eliminates the need for N individual list fetches.
  * Supports ?limit=N (default 500, max 5000)
  */
-const WARM_STALE_MS = 12 * 60 * 60 * 1000 // 12 hours — periodic warmer re-builds cache rows older than this
+/**
+ * Age at which the periodic warmer rebuilds a row, deliberately equal to the freshness
+ * window rather than a separate number.
+ *
+ * It was twelve hours against a six-hour freshness window, which meant a warmed row
+ * spent between six and eighteen hours being served stale-while-revalidate: correct, but
+ * every user in that window got yesterday's body and paid for a background rebuild the
+ * warmer was supposed to have already done. Tying the two together makes the warmer's
+ * job say what it means — keep the warmed rows fresh — and matches the six-hourly
+ * collection cadence that produces new data in the first place.
+ */
+const WARM_STALE_MS = FRESH_TTL_MS
+
+/**
+ * How many chains each warmer covers.
+ *
+ * Five left the sixth through fourteenth chains cold, and they are not marginal: each
+ * holds over three hundred tokens. Measured cold against staging, chain 137 took 4.72s,
+ * 42161 3.37s, 43114 1.97s, 10 1.61s and 100 0.77s, against 0.27s to 0.37s once warm.
+ * Twelve covers every chain with a meaningful token count for roughly fifteen seconds
+ * more startup, and the readiness gate already tolerates far more than that.
+ */
+const WARM_CHAIN_COUNT = 12
+
 const DEFAULT_TOKENS_BY_CHAIN_LIMIT = 50_000 // shared by the request handler and the cache warmer
 const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
 
@@ -437,7 +527,8 @@ const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
  * distinct value needlessly forked the cache. The trailing colon is the legacy
  * empty-extensions slot, kept so already-warmed rows stay readable.
  */
-export const tokensByChainCacheKey = (chainId: string, limit: number) => `tokens-by-chain:${chainId}:${limit}:`
+export const tokensByChainCacheKey = (chainId: string, limit: number) =>
+  namespacedCacheKey(`tokens-by-chain:${chainId}:${limit}:`)
 
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
 export const writeTokensByChainCache = writeCachedResponse
@@ -521,7 +612,10 @@ export const buildAndCacheTokensByChain = (chainId: string, limit: number): Prom
  * any top-N chain whose cache row is missing or older than WARM_STALE_MS, so the
  * cache row never ages past the stale threshold even without user traffic.
  */
-export const warmTokensByChainCache = async (stats: { chainId: string; count: number }[], topN = 5): Promise<void> => {
+export const warmTokensByChainCache = async (
+  stats: { chainId: string; count: number }[],
+  topN = WARM_CHAIN_COUNT,
+): Promise<void> => {
   const top = stats.slice(0, topN)
   for (const { chainId: rawChainId } of top) {
     try {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createFakeTerminalRowProxy } from './__testing__/collector-harness'
+import { sqlParams } from '../db/__testing__/drizzle-harness'
 
 vi.mock('../utils', () => ({
   controller: new AbortController(),
@@ -38,6 +39,7 @@ import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submiss
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
 import { getDrizzle } from '../db/drizzle'
 import { failureLog } from '@gibs/utils'
+import { noteListTokensWritten } from '../db/publication'
 import { main } from './index'
 
 /** Builds a minimal `BaseCollector`-shaped fake, discover/collect independently overridable. */
@@ -46,6 +48,29 @@ const createFakeCollector = (overrides: { discover?: () => Promise<unknown>; col
   discover: vi.fn(overrides.discover ?? (async () => [{ providerKey: 'fake', lists: [{ listKey: 'default' }] }])),
   collect: vi.fn(overrides.collect ?? (async () => undefined)),
 })
+
+/**
+ * Stands in for the Drizzle handle, recording the list ids each publish statement bound.
+ *
+ * `pg_stat_activity` checks go through `execute`; the publish step goes through `update`,
+ * so the two never collide and the existing `execute` call-count assertions still hold.
+ */
+const createDrizzleMock = () => {
+  const published: string[][] = []
+  const chain: Record<string, unknown> = {
+    set: () => chain,
+    where: (condition: unknown) => {
+      published.push(sqlParams(condition) as string[])
+      return chain
+    },
+    returning: async () => [],
+  }
+  return {
+    published,
+    execute: vi.fn(async () => ({ rows: [] })),
+    update: vi.fn(() => chain),
+  }
+}
 
 const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -337,5 +362,99 @@ describe('main — terminal logger (concurrent, default)', () => {
 
     expect(failureLog).toHaveBeenCalledWith(expect.stringContaining('order sync error'), expect.anything())
     expect(failureLog).toHaveBeenCalledWith(expect.stringContaining('final order sync error'), expect.anything())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Publication
+//
+// Collectors say nothing about the publish marker; the orchestrator publishes what each
+// one wrote, once it has finished writing. See ../db/publication for why this sits here
+// rather than in thirteen collectors.
+// ---------------------------------------------------------------------------
+
+describe('main — list publication', () => {
+  /** A collector that writes tokens to the given lists, as insertListToken would. */
+  const createWritingCollector = (listIds: string[], after?: () => void) =>
+    createFakeCollector({
+      collect: async () => {
+        for (const listId of listIds) noteListTokensWritten(listId)
+        after?.()
+      },
+    })
+
+  it.each(['raw', 'terminal'] as const)('publishes every list a clean run wrote (%s logger)', async (logger) => {
+    const drizzle = createDrizzleMock()
+    vi.mocked(getDrizzle).mockReturnValue(drizzle as never)
+    vi.mocked(collectables).mockReturnValue({ a: createWritingCollector(['list-1', 'list-2']) } as never)
+
+    await main(['a'] as never, logger)
+
+    // One statement covering both lists — the cut over is singular, not per list.
+    expect(drizzle.published).toEqual([['list-1', 'list-2']])
+  })
+
+  // A collector that throws may have left any of its lists half-written, and nothing here
+  // can tell which. Readers keep the version they already have until a run succeeds.
+  it('publishes nothing for a collector that throws', async () => {
+    const drizzle = createDrizzleMock()
+    vi.mocked(getDrizzle).mockReturnValue(drizzle as never)
+    const provider = createFakeCollector({
+      collect: async () => {
+        noteListTokensWritten('list-1')
+        throw new Error('collect boom')
+      },
+    })
+    vi.mocked(collectables).mockReturnValue({ a: provider } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(drizzle.published).toEqual([])
+    // Still handled as a failure, exactly as before.
+    expect(failureLog).toHaveBeenCalled()
+  })
+
+  // Collectors treat an abort as "stop where you are and return", so a returning collector
+  // is not proof of a finished one. Publishing here would restore the half-written version
+  // the marker exists to hide.
+  it('publishes nothing when the run aborted partway', async () => {
+    const drizzle = createDrizzleMock()
+    vi.mocked(getDrizzle).mockReturnValue(drizzle as never)
+    vi.mocked(collectables).mockReturnValue({
+      a: createWritingCollector(['list-1'], () => utils.controller.abort()),
+    } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(drizzle.published).toEqual([])
+  })
+
+  // One provider's failure must not withhold another's lists, and one provider's success
+  // must not publish another's half-written ones.
+  it('keeps each provider to its own lists', async () => {
+    const drizzle = createDrizzleMock()
+    vi.mocked(getDrizzle).mockReturnValue(drizzle as never)
+    const failing = createFakeCollector({
+      collect: async () => {
+        noteListTokensWritten('doomed-list')
+        throw new Error('collect boom')
+      },
+    })
+    vi.mocked(collectables).mockReturnValue({ a: createWritingCollector(['list-1']), b: failing } as never)
+
+    await main(['a', 'b'] as never)
+
+    expect(failing.collect).toHaveBeenCalledTimes(1)
+    expect(drizzle.published).toEqual([['list-1']])
+  })
+
+  it('issues no statement for a collector that wrote no tokens', async () => {
+    const drizzle = createDrizzleMock()
+    vi.mocked(getDrizzle).mockReturnValue(drizzle as never)
+    vi.mocked(collectables).mockReturnValue({ a: createFakeCollector() } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(drizzle.update).not.toHaveBeenCalled()
   })
 })

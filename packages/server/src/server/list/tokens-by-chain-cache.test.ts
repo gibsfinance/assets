@@ -10,6 +10,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+import { RESPONSE_SHAPE_VERSION } from './response-cache'
+
 vi.mock('../../db', async () => {
   // Real normalizeProvidedId (isAddress ? lower : preserve) — buildTokensByChainResponse
   // uses it to key its sources map, and stubbing it to undefined would throw.
@@ -23,6 +25,7 @@ vi.mock('../../db', async () => {
     getListOrderId: vi.fn(),
     applyOrder: vi.fn(),
     getLists: vi.fn(),
+    getLargestLists: vi.fn(),
     normalizeProvidedId,
   }
 })
@@ -66,11 +69,11 @@ describe('tokensByChainCacheKey', () => {
     // Extensions were dropped from the key (they never changed the output —
     // the ranked query selects no bridge/header columns) but the empty
     // extensions slot must keep its position or every warmed row goes cold.
-    expect(tokensByChainCacheKey('eip155-1', 50_000)).toBe('tokens-by-chain:eip155-1:50000:')
+    expect(tokensByChainCacheKey('eip155-1', 50_000)).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:50000:`)
   })
 
   it('keys only on chainId and limit — ?extensions= can no longer fork the cache', () => {
-    expect(tokensByChainCacheKey('eip155-1', 100)).toBe('tokens-by-chain:eip155-1:100:')
+    expect(tokensByChainCacheKey('eip155-1', 100)).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:100:`)
   })
 
   it('keys on the limit, so different limits never share a cached body', () => {
@@ -448,5 +451,111 @@ describe('warmMergedCache', () => {
 
     expect(db.getCachedRequest).not.toHaveBeenCalled()
     expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+  })
+})
+
+describe('warmProviderListCache', () => {
+  // Same reasoning as warmMergedCache above: these assert on which key reached the cache
+  // accessors, so calls left over from earlier describes would be read as this warmer's.
+  beforeEach(() => {
+    resetDbMocks()
+    vi.mocked(db.getCachedRequest).mockReset()
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.getLargestLists).mockReset()
+    vi.mocked(db.getLists).mockReset()
+    // buildListPayload reaches for the token query builder, which is chainable rather
+    // than a plain promise. The warmer runs the handler's own build verbatim — that is
+    // the point of it — so the stub has to satisfy the real code path.
+    vi.mocked(db.getTokensUnderListId).mockReturnValue({
+      where: () => ({ orderBy: async () => [] }),
+    } as never)
+  })
+
+  const aList = {
+    listId: 'list-1',
+    name: 'Coingecko Ethereum',
+    imageHash: null,
+    ext: null,
+    mode: null,
+    uri: null,
+    updatedAt: '2026-07-25T00:00:00.000Z',
+    major: 1,
+    minor: 0,
+    patch: 0,
+    providerKey: 'coingecko',
+    key: 'ethereum',
+  }
+
+  it('writes rows under the exact key a bare provider-list request produces', async () => {
+    // Provider lists were the one cached endpoint nobody warmed, so this warmer is new
+    // and its key has never been proven to agree with the handler's. If it drifts the
+    // warmer still reports success while every request misses — a silent failure that
+    // looks identical to a warmer that works.
+    vi.mocked(db.getLargestLists).mockResolvedValue([{ providerKey: 'coingecko', listKey: 'ethereum' }] as never)
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getLists).mockResolvedValue([aList] as never)
+
+    const { warmProviderListCache, listCacheKey } = await import('./handlers')
+    await warmProviderListCache(1)
+
+    const expectedKey = listCacheKey({
+      providerKey: 'coingecko',
+      listKey: 'ethereum',
+      extensions: new Set<string>(),
+      chainId: undefined,
+      decimals: undefined,
+    })
+    expect(vi.mocked(db.getCachedRequest).mock.calls[0][0]).toBe(expectedKey)
+    expect(vi.mocked(db.insertCacheRequest).mock.calls[0][0]).toMatchObject({ key: expectedKey })
+  })
+
+  it('skips a list whose cached row is still inside the freshness window', async () => {
+    // The periodic tick runs on the same interval as the freshness window, so without
+    // this every tick would rebuild all twenty lists whether or not anything changed.
+    vi.mocked(db.getLargestLists).mockResolvedValue([{ providerKey: 'coingecko', listKey: 'ethereum' }] as never)
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      key: 'k',
+      value: '{}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS - 60_000),
+    } as never)
+
+    const { warmProviderListCache } = await import('./handlers')
+    await warmProviderListCache(1)
+
+    expect(db.getLists).not.toHaveBeenCalled()
+    expect(db.insertCacheRequest).not.toHaveBeenCalled()
+  })
+
+  it('keeps going when one list cannot be built', async () => {
+    // Runs inside startup and inside the periodic tick. A provider whose list has been
+    // deleted since the ranking query picked it must not stop the lists behind it, and
+    // must not take down the boot.
+    vi.mocked(db.getLargestLists).mockResolvedValue([
+      { providerKey: 'gone', listKey: 'missing' },
+      { providerKey: 'coingecko', listKey: 'ethereum' },
+    ] as never)
+    vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+    vi.mocked(db.getLists)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([aList] as never)
+
+    const { warmProviderListCache } = await import('./handlers')
+    await expect(warmProviderListCache(2)).resolves.toBeUndefined()
+
+    expect(db.getLists).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(db.insertCacheRequest).mock.calls).toHaveLength(1)
+  })
+
+  it('does nothing when the ranking query itself fails', async () => {
+    // No list of lists means nothing to warm. Throwing here would abort the startup
+    // chain before the content delivery network purge that follows it.
+    vi.mocked(db.getLargestLists).mockRejectedValue(new Error('database down'))
+
+    const { warmProviderListCache } = await import('./handlers')
+    await expect(warmProviderListCache()).resolves.toBeUndefined()
+
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
   })
 })

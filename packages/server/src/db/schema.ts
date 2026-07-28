@@ -186,6 +186,18 @@ export const list = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     default: boolean().default(false).notNull(),
+    /**
+     * When this version last finished writing its `list_token` rows — the publish
+     * marker that decides whether readers may see it.
+     *
+     * `list_id` is a hash of (provider_id, key, major, minor, patch), so a version
+     * bump inserts a brand-new empty row rather than updating the old one. Collection
+     * then fills it in over minutes to hours. Null means "still filling"; readers fall
+     * back to the last version that carries a timestamp. `collect()` sets it in a
+     * single-row update once it has walked the whole token list, which is what makes
+     * the switchover atomic even though the rows behind it were written piecemeal.
+     */
+    tokensCollectedAt: timestamp('tokens_collected_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
     index('list_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),

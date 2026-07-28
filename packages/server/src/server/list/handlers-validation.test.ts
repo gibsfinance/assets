@@ -10,6 +10,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { RESPONSE_SHAPE_VERSION } from './response-cache'
+
 vi.mock('../../db', async () => {
   // Real normalizeProvidedId (isAddress ? lower : preserve) — the merged handler
   // uses it to key its sources map, and stubbing it to undefined would throw.
@@ -378,12 +380,12 @@ describe('tokensByChain handler', () => {
 
   it('falls back to the default limit for negative values — junk limits must not fork cache keys', async () => {
     await callTokensByChain('369', { limit: '-5' })
-    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:eip155-369:50000:')
+    expect(db.getCachedRequest).toHaveBeenCalledWith(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-369:50000:`)
   })
 
   it('clamps oversized limits to the documented maximum', async () => {
     await callTokensByChain('369', { limit: '999999' })
-    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:eip155-369:100000:')
+    expect(db.getCachedRequest).toHaveBeenCalledWith(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-369:100000:`)
   })
 
   // End-to-end proof of the namespace fix, at the layer that broke. /stats reports
@@ -393,7 +395,7 @@ describe('tokensByChain handler', () => {
   it('reads a bare non-evm chain id from its own namespace, not eip155', async () => {
     vi.mocked(db.getChainIdsByReference).mockResolvedValueOnce([{ chainId: 'solana-501', hasTokens: true }] as never)
     await callTokensByChain('501')
-    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+    expect(db.getCachedRequest).toHaveBeenCalledWith(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:solana-501:50000:`)
   })
 
   // A phantom eip155 row must not shadow the namespace holding the tokens — the dev
@@ -404,7 +406,7 @@ describe('tokensByChain handler', () => {
       { chainId: 'solana-501', hasTokens: true },
     ] as never)
     await callTokensByChain('501')
-    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+    expect(db.getCachedRequest).toHaveBeenCalledWith(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:solana-501:50000:`)
   })
 
   it('rejects a bare id that several populated namespaces claim', async () => {
@@ -424,7 +426,7 @@ describe('tokensByChain handler', () => {
     vi.mocked(db.getChainIdsByReference).mockClear()
     await callTokensByChain('solana-501')
     expect(db.getChainIdsByReference).not.toHaveBeenCalled()
-    expect(db.getCachedRequest).toHaveBeenCalledWith('tokens-by-chain:solana-501:50000:')
+    expect(db.getCachedRequest).toHaveBeenCalledWith(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:solana-501:50000:`)
   })
 
   describe('admin refresh parameter', () => {
@@ -826,7 +828,7 @@ describe('providerKeyed handler', () => {
 
     const [forward, reversed] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
     expect(forward).toBe(reversed)
-    expect(forward).toBe('list:pulsex:extended::bridgeInfo,headerUri::')
+    expect(forward).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended::bridgeInfo,headerUri::`)
   })
 
   it('folds the chainId and decimals filters into the key, so a filtered body is never served unfiltered', async () => {
@@ -836,8 +838,8 @@ describe('providerKeyed handler', () => {
     await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, {})
 
     const [filtered, unfiltered] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
-    expect(filtered).toBe('list:pulsex:extended:::1:')
-    expect(unfiltered).toBe('list:pulsex:extended::::')
+    expect(filtered).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended:::1:`)
+    expect(unfiltered).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended::::`)
     expect(filtered).not.toBe(unfiltered)
   })
 

@@ -18,6 +18,7 @@ import {
   insertOrder,
   insertListToken,
 } from './index'
+import { listsWrittenInRun, withListPublication } from './publication'
 
 beforeEach(() => {
   harness.reset()
@@ -329,5 +330,46 @@ describe('insertListToken', () => {
     const insertQuery = harness.queries.find((query) => query.root === 'insert')
     const row = insertQuery?.steps.find((step) => step.method === 'values')?.args[0] as unknown[]
     expect(row).toHaveLength(2)
+  })
+
+  // This funnel is what makes publication derived rather than remembered. Every
+  // `list_token` insert in the codebase passes through here, so a collector needs to know
+  // nothing about the publish marker for its lists to be published — see ./publication.
+  // Break this link and thirteen collectors silently stop publishing.
+  it('enlists the lists it wrote for publication', async () => {
+    harness.queueResult([
+      { listTokenId: 'lt-1', listId: 'list-1' },
+      { listTokenId: 'lt-2', listId: 'list-2' },
+    ])
+    harness.queueResult([])
+    let enlisted: string[] = []
+
+    await withListPublication(new AbortController().signal, async () => {
+      await insertListToken([
+        { tokenId: 'token-1', listId: 'list-1', listTokenOrderId: 1 },
+        { tokenId: 'token-2', listId: 'list-2', listTokenOrderId: 2 },
+      ])
+      enlisted = listsWrittenInRun()
+    })
+
+    expect(enlisted.sort()).toEqual(['list-1', 'list-2'])
+  })
+
+  // Enlisting what was asked for rather than what came back would let a statement that
+  // touched nothing still mark a list publishable.
+  it('enlists the rows the statement returned, not the ones it was handed', async () => {
+    harness.queueResult([{ listTokenId: 'lt-1', listId: 'list-1' }])
+    harness.queueResult([])
+    let enlisted: string[] = []
+
+    await withListPublication(new AbortController().signal, async () => {
+      await insertListToken([
+        { tokenId: 'token-1', listId: 'list-1', listTokenOrderId: 1 },
+        { tokenId: 'token-2', listId: 'list-2', listTokenOrderId: 2 },
+      ])
+      enlisted = listsWrittenInRun()
+    })
+
+    expect(enlisted).toEqual(['list-1'])
   })
 })

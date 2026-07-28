@@ -311,10 +311,17 @@ describe('inmemory-tokenlist collect', () => {
     expect(harness.state.tokenImages[0]?.token.providedId).toBe('0xdddddddddddddddddddddddddddddddddddddddd')
   })
 
-  it('records a failed insert and continues processing the remaining tokens', async () => {
-    harness.dbModule.fetchImageAndStoreForToken.mockImplementationOnce(async () => {
-      throw new Error('boom')
-    })
+  it('records a persistently failing insert and continues processing the remaining tokens', async () => {
+    // Twice, because a failure now costs the token two attempts rather than one: it takes
+    // its chunk's transaction down with it, and the replay that follows retries it alone.
+    // Only a token that fails both times is recorded as erred.
+    harness.dbModule.fetchImageAndStoreForToken
+      .mockImplementationOnce(async () => {
+        throw new Error('boom')
+      })
+      .mockImplementationOnce(async () => {
+        throw new Error('boom')
+      })
     const tokenList = buildTokenList({
       tokens: [
         buildTokenEntry({ chainId: 1, address: '0xffffffffffffffffffffffffffffffffffffffff' }),
@@ -333,6 +340,99 @@ describe('inmemory-tokenlist collect', () => {
     expect(harness.state.tokenImages).toHaveLength(1)
     expect(harness.state.tokenImages[0]?.token.providedId).toBe('0x1234123412341234123412341234123412341234')
     expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalled()
+  })
+
+  it('replays a failed chunk one token at a time so a bad entry does not take the batch down', async () => {
+    // Grouping tokens into one transaction is what makes a large list affordable, but a
+    // failed statement aborts the transaction it is in, so without this the other entries
+    // in the chunk would be lost to a fault that had nothing to do with them.
+    harness.dbModule.fetchImageAndStoreForToken.mockImplementationOnce(async () => {
+      throw new Error('deadlock detected')
+    })
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }),
+        buildTokenEntry({ chainId: 1, address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }),
+        buildTokenEntry({ chainId: 1, address: '0xcccccccccccccccccccccccccccccccccccccccc' }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    // All three land: the transient failure is retried alone and succeeds, and its two
+    // blameless neighbours are rewritten rather than discarded with it.
+    expect(harness.state.tokenImages.map((image) => image.token.providedId)).toEqual([
+      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      '0xcccccccccccccccccccccccccccccccccccccccc',
+    ])
+    // And a chunk that recovered entirely is still a complete list, so it publishes.
+    expect(harness.state.lists[0]?.tokensCollectedAt).not.toBeNull()
+  })
+
+  it('downloads every distinct logo once, up front, before writing any token', async () => {
+    // Serialized downloads inside the write loop were the dominant cost of collecting a
+    // list. Hoisting them means the loop finds each link already fresh, and deduplicating
+    // means a list that points many tokens at one logo pays for it once.
+    const shared = 'https://example.com/shared.png'
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logoURI: shared }),
+        buildTokenEntry({ chainId: 1, address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', logoURI: shared }),
+        buildTokenEntry({
+          chainId: 1,
+          address: '0xcccccccccccccccccccccccccccccccccccccccc',
+          logoURI: 'https://example.com/other.png',
+        }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(harness.state.prewarmedUris).toEqual([shared, 'https://example.com/other.png'])
+    // Before, not after — the write loop depends on the bytes already being there.
+    expect(harness.dbModule.prewarmImages.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.dbModule.fetchImageAndStoreForToken.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('stops asking for a logo that prewarming could not fetch', async () => {
+    // Otherwise every token pointing at a dead host re-attempts it inside the write loop,
+    // at three seconds of timeout each, having just been told it is unreachable. The token
+    // is still stored — image-less — which is what a failed fetch in the loop did before.
+    const dead = 'https://dead.example.com/icon.png'
+    harness.setPrewarmMissing([dead])
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logoURI: dead }),
+        buildTokenEntry({
+          chainId: 1,
+          address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          logoURI: 'https://example.com/live.png',
+        }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(harness.state.tokenImages).toHaveLength(2)
+    expect(harness.state.tokenImages[0]?.uri).toBeNull()
+    expect(harness.state.tokenImages[1]?.uri).toBe('https://example.com/live.png')
   })
 
   it('returns without processing tokens when the signal is already aborted', async () => {
@@ -379,6 +479,101 @@ describe('inmemory-tokenlist collect', () => {
 
     // Only the first token — aborting mid-loop stops the second from being reached.
     expect(harness.state.tokenImages).toHaveLength(1)
+  })
+
+  it('publishes the list once every token has been walked', async () => {
+    // The publish marker is what swings readers off the previous version and onto this
+    // one. Until it is set, the newest-version filter keeps serving the older complete
+    // version, which is the entire point: a half-written version must never be visible.
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x111111111111111111111111111111111111111a' }),
+        buildTokenEntry({ chainId: 1, address: '0x222222222222222222222222222222222222222b' }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    const [list] = harness.state.lists
+    expect(harness.dbModule.markListTokensCollected).toHaveBeenCalledWith(list.listId)
+    expect(list.tokensCollectedAt).not.toBeNull()
+  })
+
+  it('leaves a list unpublished when the signal aborts mid-list', async () => {
+    // An abort means the remaining tokens were never attempted, so this version holds
+    // less than the one it would replace. Publishing here is what would make the
+    // partial set visible and drop everything it had not reached yet.
+    const controller = new AbortController()
+    harness.dbModule.fetchImageAndStoreForToken.mockImplementationOnce(async () => {
+      controller.abort()
+    })
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x111111111111111111111111111111111111111a' }),
+        buildTokenEntry({ chainId: 1, address: '0x222222222222222222222222222222222222222b' }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: controller.signal,
+    })
+
+    expect(harness.dbModule.markListTokensCollected).not.toHaveBeenCalled()
+    expect(harness.state.lists[0]?.tokensCollectedAt).toBeNull()
+  })
+
+  it('still publishes when an individual token fails', async () => {
+    // Deliberate, and the opposite of the abort case. The loop logs and skips a bad
+    // token, so the list is as complete as it is ever going to get; withholding on one
+    // failure would strand every reader on a stale version for as long as that token
+    // kept failing, which for a dead logo host is indefinitely.
+    harness.dbModule.fetchImageAndStoreForToken.mockRejectedValueOnce(new Error('image host down'))
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x111111111111111111111111111111111111111a' }),
+        buildTokenEntry({ chainId: 1, address: '0x222222222222222222222222222222222222222b' }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(harness.state.lists[0]?.tokensCollectedAt).not.toBeNull()
+  })
+
+  it('keeps a published version published when the same version is collected again', async () => {
+    // list_id hashes the version tuple, so re-collecting an unchanged list conflicts
+    // onto the same row. If insertList's conflict set ever started writing
+    // tokens_collected_at, that upsert would blank the marker and pull a live list out
+    // of view for the length of every subsequent run.
+    const tokenList = buildTokenList({ tokens: [buildTokenEntry({ chainId: 1 })] })
+    const input = {
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    }
+
+    await inmemoryTokenlist.collect(input)
+    const publishedAt = harness.state.lists[0]?.tokensCollectedAt
+    expect(publishedAt).not.toBeNull()
+
+    await inmemoryTokenlist.discover(input)
+
+    expect(harness.state.lists).toHaveLength(1)
+    expect(harness.state.lists[0]?.tokensCollectedAt).toBe(publishedAt)
   })
 
   it('reuses a pre-discovered state instead of discovering again', async () => {

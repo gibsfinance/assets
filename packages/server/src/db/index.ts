@@ -40,6 +40,7 @@ import * as args from '../args'
 import { getDrizzle, type DrizzleTx } from './drizzle'
 import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type AnyColumn } from 'drizzle-orm'
 import * as s from './schema'
+import { noteListTokensWritten } from './publication'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 import { collectablePriority } from '../collect/collectable-order'
 
@@ -520,6 +521,10 @@ export const storeToken = async (
 /**
  * Batch fetch and store images for multiple list tokens.
  * Used to separate image fetching from token insertion for better performance.
+ *
+ * A logo already on disk and inside its freshness window is reused rather than
+ * downloaded again — see the guard in the loop below for why that is not merely an
+ * optimisation.
  */
 export const batchFetchImagesForTokens = async (
   tokenImages: {
@@ -528,11 +533,22 @@ export const batchFetchImagesForTokens = async (
     originalUri: string | null
     providerKey: string
     signal?: AbortSignal
+    /** Overrides the shared freshness window for this item. Defaults to IMAGE_MAX_AGE_HOURS. */
+    maxImageAge?: number
   }[],
   tx?: DrizzleTx,
 ) => {
   if (!tokenImages.length) return []
   const db = tx ?? getDrizzle()
+
+  /**
+   * Point a list_token at the image it should serve. Runs on both the reuse and the
+   * download path: cached bytes say nothing about whether *this* list_token — which
+   * may belong to a list version created minutes ago — already references them.
+   */
+  const linkListTokenToImage = async (listTokenId: string, imageHash: string) => {
+    await db.update(s.listToken).set({ imageHash }).where(eq(s.listToken.listTokenId, listTokenId))
+  }
 
   // Use promiseLimit to control concurrency
   const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
@@ -546,6 +562,21 @@ export const batchFetchImagesForTokens = async (
         if (!item.uri) return null
 
         try {
+          // Every other fetch path in this module checks for a fresh link before going to
+          // the network — fetchImageAndStoreForToken, fetchImageAndStoreForNetwork,
+          // fetchAndInsertHeader, prewarmImages. This one did not, so it re-downloaded
+          // every logo it had ever seen on every run, sanitized the bytes again, and
+          // rewrote rows that were already byte-identical. The freshness window exists
+          // precisely so a collect cron does not do that.
+          //
+          // Only the download is skipped. The list_token still gets linked below, because
+          // cached bytes tell us nothing about whether this list_token points at them yet.
+          const fresh = await getFreshImageFromLink(item.uri, item.maxImageAge ?? defaultImageMaxAge, tx)
+          if (fresh) {
+            await linkListTokenToImage(item.listTokenId, fresh.image.imageHash)
+            return { listTokenId: item.listTokenId, success: true, image: fresh.image }
+          }
+
           const resolved = await resolveImage(item.uri, item.signal, item.providerKey)
           if (!resolved) return null
 
@@ -567,10 +598,7 @@ export const batchFetchImagesForTokens = async (
           const { image } = imageResult
 
           // Update the list token with the image hash
-          await db
-            .update(s.listToken)
-            .set({ imageHash: image.imageHash })
-            .where(eq(s.listToken.listTokenId, item.listTokenId))
+          await linkListTokenToImage(item.listTokenId, image.imageHash)
 
           return { listTokenId: item.listTokenId, success: true, image }
         } catch (error) {
@@ -927,8 +955,13 @@ export const fetchImageAndStoreForToken = async (
       .limit(1)
     return row
   }
+  // Hoisted so the fall-through below can reuse what this resolved. The early return
+  // needs three things to line up — fresh bytes, unchanged metadata, and an existing
+  // list_token at the same order — and when any one of them misses, only the list_token
+  // half of the work is actually stale. The bytes are still fresh.
+  let existing: Awaited<ReturnType<typeof getFreshImageFromLink>> = null
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
+    existing = await getFreshImageFromLink(uri, maxImageAge, tx)
     if (existing) {
       const insertedToken = await insertToken(
         {
@@ -958,7 +991,27 @@ export const fetchImageAndStoreForToken = async (
   }
   // list must have already been inserted to db by this point
   let img!: Awaited<ReturnType<typeof insertImage>>
-  if (uri && originalUri) {
+  if (existing) {
+    // Fresh bytes are already on disk and `link` already points at them, so there is
+    // nothing to download and nothing to write — insertImage would upsert both rows to
+    // the values they already hold. Only the missing-marker sweep is worth repeating: a
+    // previous run may have recorded a miss for this list before another list fetched
+    // the image successfully, and that marker is now wrong.
+    //
+    // Re-fetching here instead is what made a version bump so expensive. The early
+    // return above cannot fire on a new version — getListToken is keyed on the new,
+    // empty list_id — so every token fell to this branch and downloaded an image the
+    // line above had just confirmed fresh, at up to three seconds of timeout each.
+    img = existing
+    if (originalUri) {
+      await removeMissing({
+        imageHash: existing.image.imageHash,
+        originalUri,
+        providerKey,
+        listId,
+      })
+    }
+  } else if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
       // Deliberate: a failed image fetch records the miss but still stores the token
@@ -1005,6 +1058,77 @@ export const fetchImageAndStoreForToken = async (
   }
 }
 
+/**
+ * How many logos to download at once in `prewarmImages`.
+ *
+ * Matches the ceiling `batchFetchImagesForTokens` already uses, and is bounded by what a
+ * provider's image host will tolerate rather than by anything local — the work is a fetch
+ * with a three-second timeout, so raising this trades politeness for wall clock.
+ */
+const IMAGE_PREWARM_CONCURRENCY = 8
+
+/**
+ * Download every logo a list needs, concurrently, before anything walks its tokens.
+ *
+ * A collect loop stores tokens one at a time because each one writes several related rows,
+ * and that is fine for database work — but it also made every image download wait for the
+ * one before it. A list whose logos are cold spent almost all of its time asleep on a
+ * socket, in series, at up to three seconds each.
+ *
+ * This resolves the same images up front and out of order, so the loop that follows finds
+ * every link already fresh and does no network work at all (see fetchImageAndStoreForToken,
+ * which reuses a fresh link rather than re-fetching). Two things make it cheaper than the
+ * sum of its parts: URIs are deduplicated first, and lists routinely point many tokens at
+ * one logo; and a URI that fails is reported back so the caller can stop asking for it,
+ * instead of every token re-attempting the same dead host.
+ *
+ * Deliberately not transactional. Each image is independent, nothing downstream reads these
+ * rows until the list is published, and holding a transaction open across the downloads is
+ * the exact thing this is built to avoid.
+ */
+export const prewarmImages = async ({
+  uris,
+  providerKey,
+  listId,
+  signal,
+  maxImageAge = defaultImageMaxAge,
+  concurrency = IMAGE_PREWARM_CONCURRENCY,
+}: {
+  uris: (string | null | undefined)[]
+  providerKey: string
+  listId: string | null
+  signal?: AbortSignal
+  maxImageAge?: number
+  concurrency?: number
+}): Promise<{ distinct: number; fetched: number; missing: Set<string> }> => {
+  const distinct = [...new Set(uris.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0))]
+  const limit = promiseLimit(concurrency)
+  const missing = new Set<string>()
+  let fetched = 0
+  await Promise.all(
+    distinct.map((uri) =>
+      limit(async () => {
+        if (signal?.aborted) return
+        // Already on disk and inside its freshness window — nothing to do, and the loop
+        // downstream will find exactly this row.
+        if (await getFreshImageFromLink(uri, maxImageAge)) return
+        const image = await fetchImage(uri, signal, providerKey)
+        if (!image) {
+          // Recorded here rather than left for the loop, because the caller blanks these
+          // URIs on the strength of this set. The token is still stored, image-less, which
+          // is what happened before when the fetch failed inside the loop instead.
+          missing.add(uri)
+          await writeMissing({ providerKey, originalUri: uri, listId })
+          return
+        }
+        await insertImage({ providerKey, originalUri: uri, image, listId })
+        fetched += 1
+      }),
+    ),
+  )
+  return { distinct: distinct.length, fetched, missing }
+}
+
 export const insertListToken = async (listToken: InsertableListToken | InsertableListToken[], tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const items = Array.isArray(listToken) ? listToken : [listToken]
@@ -1012,7 +1136,7 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
     listTokenId: dsql`''` as unknown as string,
     ...lt,
   }))
-  return await db
+  const written = await db
     .insert(s.listToken)
     .values(values)
     .onConflictDoUpdate({
@@ -1030,6 +1154,14 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
       },
     })
     .returning()
+  // Every `list_token` insert in the codebase funnels through here, which is what lets
+  // publication be derived rather than remembered — see ./publication. Noting the rows
+  // that came back rather than the ones asked for keeps the ledger honest about what the
+  // statement actually touched. A no-op outside a tracked collector run.
+  for (const row of written) {
+    noteListTokensWritten(row.listId)
+  }
+  return written
 }
 
 export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
@@ -1046,6 +1178,13 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
     })
     .onConflictDoUpdate({
       target: s.list.listId,
+      // `tokens_collected_at` is deliberately absent. A conflict here means the same
+      // version — `list_id` hashes the version tuple, so a bump inserts instead of
+      // conflicting — and a version that has already published must not be pulled back
+      // out of view just because collection ran over it again. Re-collecting an existing
+      // version only upserts its tokens, which never removes anything, so what is
+      // published stays correct throughout. Adding it to this set would blank the marker
+      // on every run and hide every list until its collection finished.
       set: {
         listId: dsql`excluded.list_id`,
         providerId: dsql`excluded.provider_id`,
@@ -1056,6 +1195,34 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
         default: dsql`excluded."default"`,
       },
     })
+    .returning()
+}
+
+/**
+ * Publish a list version: mark it as having finished writing its `list_token` rows.
+ *
+ * This is the single atomic step that swings readers from the previous version to this
+ * one. Call it only after the whole token list has been walked — see latestListVersionSql
+ * for why a version must not become visible before then. Individual token failures are
+ * not a reason to withhold it: the collect loop logs and skips them, so "walked the whole
+ * list" is the honest guarantee, and withholding on one bad token would strand the list on
+ * a stale version indefinitely. An abort or a throw out of the loop must skip this.
+ *
+ * Idempotent, and re-collecting an already-published version simply refreshes the
+ * timestamp.
+ *
+ * Calling this is optional. A collector that says nothing still has its lists published by
+ * ./publication once its collect phase finishes; what an explicit call buys is granularity,
+ * publishing one list the moment it is done instead of waiting for the rest of the run.
+ * That matters for inmemory-tokenlist, which is invoked once per list and is the only
+ * caller that bumps versions.
+ */
+export const markListTokensCollected = async (listId: string, tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  return await db
+    .update(s.list)
+    .set({ tokensCollectedAt: dsql`CURRENT_TIMESTAMP` })
+    .where(eq(s.list.listId, listId))
     .returning()
 }
 
@@ -1501,20 +1668,31 @@ const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | 
  * (provider_id, key) pairs have fully distinct versions, and none has two rows sharing
  * the highest one, so exactly one row survives per pair.
  *
- * Only a version that actually holds tokens is allowed to supersede one, which is what
- * the inner EXISTS is for. Collection commits the `list` row in `discover()` and writes
- * its `list_token` rows in a later phase, so a new version exists and is empty for as
- * long as that phase takes. Without the guard the empty row would win on version number
- * and take the populated older one out of the answer with it. This is not hypothetical:
- * seven lists sit in exactly that state on both databases right now — coingecko/sanko,
- * eos-evm, bitrock, airdao, defiverse, alienx and meld — holding sixteen memberships
- * between them that would otherwise vanish. Keeping both rows is harmless because the
- * empty one contributes nothing to the join.
+ * Only a version that has finished collecting is allowed to supersede one, which is what
+ * the `tokens_collected_at` test is for. Collection commits the `list` row in `discover()`
+ * and writes its `list_token` rows in a later phase, so a new version exists and is
+ * incomplete for as long as that phase takes. Without the guard the unfinished row wins on
+ * version number and takes the complete older one out of the answer with it.
  *
- * It narrows the window rather than closing it. A version caught halfway through its
- * token writes has rows, so it supersedes, and the difference is briefly missing. Fully
- * closing that needs the list row and its tokens to land in one transaction, which is a
- * change to the collector rather than to this query.
+ * This condition was originally `EXISTS (a list_token for the newer row)`, which fixed only
+ * the empty case — seven lists were sitting in it — and left the partial one open: a version
+ * caught halfway through its writes has rows, so it superseded, and everything it had not
+ * rewritten yet went missing. That window is not brief. The early return in
+ * fetchImageAndStoreForToken that normally avoids the network is gated on finding an
+ * existing `list_token` for this `list_id`, and a fresh version has none, so every token
+ * takes the full path including a fetch with a three-second timeout.
+ *
+ * `collect()` sets the marker in one row update once it has walked the whole list, so the
+ * switchover is atomic even though the rows behind it were written piecemeal. Migration
+ * 0014 backfilled exactly those lists that already held a token, which makes this
+ * equivalent to the old predicate at deploy and stricter only as later runs go by.
+ *
+ * Every list is covered, not just the ones inmemory-tokenlist walks. The dozen collectors
+ * that write `list` rows directly say nothing about publication; ./publication derives it
+ * for them from the `list_token` writes they made, and publishes the lot when their
+ * collect phase finishes. So a collector may be given a real version without the author
+ * knowing this predicate exists, which is the point — the previous arrangement was safe
+ * only for as long as every one of them kept passing a constant version.
  */
 const latestListVersionSql: SQL = dsql`
   NOT EXISTS (
@@ -1522,7 +1700,7 @@ const latestListVersionSql: SQL = dsql`
     WHERE newer.provider_id = ${s.list.providerId}
       AND newer.key = ${s.list.key}
       AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
-      AND EXISTS (SELECT 1 FROM ${s.listToken} WHERE ${s.listToken.listId} = newer.list_id)
+      AND newer.tokens_collected_at IS NOT NULL
   )`
 
 /**
@@ -1703,6 +1881,34 @@ export const getTokenSourcesByChain = async (
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .where(and(eq(s.network.chainId, chainId), latestListVersionSql))
+}
+
+/**
+ * The (provider, list) pairs whose responses cost the most to assemble, largest first.
+ *
+ * Used by the provider-list cache warmer to decide what is worth warming. There is no
+ * request-count telemetry to rank by popularity, so this ranks by the thing that is
+ * actually measurable and actually hurts: how much a cold build has to assemble. Token
+ * count tracks that closely — coingecko/ethereum, the largest, takes 3.38s cold against
+ * 0.47s for kleros/exchange.
+ *
+ * Counts only the newest version of each list, matching what the ranked queries serve,
+ * so a list with a long tail of superseded versions is not promoted for rows no response
+ * contains.
+ */
+export const getLargestLists = async (limit: number): Promise<{ providerKey: string; listKey: string }[]> => {
+  const db = getDrizzle()
+  const rows = await db.execute<{ providerKey: string; listKey: string }>(dsql`
+    SELECT ${s.provider.key} AS "providerKey", ${s.list.key} AS "listKey"
+    FROM ${s.list}
+    INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, s.list.providerId)}
+    INNER JOIN ${s.listToken} ON ${eq(s.listToken.listId, s.list.listId)}
+    WHERE ${latestListVersionSql}
+    GROUP BY ${s.provider.key}, ${s.list.key}
+    ORDER BY COUNT(*) DESC
+    LIMIT ${limit}
+  `)
+  return rows.rows
 }
 
 /**
