@@ -341,6 +341,39 @@ describe('fetchImage', () => {
 // resolveImage
 // ---------------------------------------------------------------------------
 
+describe('fetchImage placeholder addresses', () => {
+  it('turns away a known placeholder address without making the request', async () => {
+    // CoinGecko exports point at missing_large.png rather than omitting logoURI,
+    // so without this every logo-less coin costs a round trip and then stores a
+    // link row for a picture of nothing.
+    const result = await fetchImage(
+      'https://assets.coingecko.com/coins/images/1/large/missing_large.png',
+      undefined,
+      'coingecko',
+    )
+
+    expect(result).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('still fetches a real logo from the same host', async () => {
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+
+    const result = await fetchImage(
+      'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+      undefined,
+      'coingecko',
+    )
+
+    expect(result).not.toBeNull()
+    expect(fetchMock).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveImage
+// ---------------------------------------------------------------------------
+
 describe('resolveImage', () => {
   it('returns null when the fetch itself fails, without attempting extension detection', async () => {
     fetchMock.mockRejectedValue(new Error('connection reset'))

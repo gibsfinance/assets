@@ -57,6 +57,36 @@ export const placeholderByteLengths: readonly number[] = [
   ...new Set(knownPlaceholders.map((placeholder) => placeholder.byteLength)),
 ]
 
+/**
+ * Filenames upstream token lists use to say "this coin has no logo".
+ *
+ * CoinGecko is the source of these: rather than omitting `logoURI`, its exports
+ * point at a `missing_*.png` under the usual assets host, so the entry looks
+ * like every other one until the name is read. Matching happens on the filename
+ * alone because the directory in front of it carries a per-coin identifier and
+ * differs on every row.
+ */
+const placeholderFileNames: ReadonlySet<string> = new Set([
+  'missing_large.png',
+  'missing_small.png',
+  'missing_thumb.png',
+])
+
+/**
+ * Whether a logo address is one an upstream list uses to mean "no logo".
+ *
+ * Cheaper than `isPlaceholderImage` and answerable before any download, but it
+ * only catches sources that name their placeholder honestly. A source that
+ * serves its placeholder under an ordinary-looking name — DexScreener returns
+ * one from `chains/iotex.png` — can only be caught by content.
+ */
+export const isPlaceholderUri = (uri: string | null | undefined): boolean => {
+  if (!uri) return false
+  const [withoutQuery] = uri.split(/[?#]/)
+  const fileName = withoutQuery.slice(withoutQuery.lastIndexOf('/') + 1).toLowerCase()
+  return placeholderFileNames.has(fileName)
+}
+
 /** Hex-encoded sha256 of an image's bytes. */
 export const contentFingerprint = (image: Buffer): string => createHash('sha256').update(image).digest('hex')
 

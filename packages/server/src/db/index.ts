@@ -14,7 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
-import { isPlaceholderImage, placeholderByteLengths } from '../image-placeholders'
+import { isPlaceholderImage, isPlaceholderUri, placeholderByteLengths } from '../image-placeholders'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import config from '../../config'
@@ -266,6 +266,12 @@ export const fetchImage = async (
     return url
   }
   if (!url) {
+    return null
+  }
+  // A list that names its placeholder honestly can be turned away before the
+  // request is made. Treated as no image at all, which is what the caller would
+  // have concluded from a 404 — every one of them already handles that.
+  if (isPlaceholderUri(url)) {
     return null
   }
   if (url.startsWith('/')) {

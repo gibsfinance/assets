@@ -3,7 +3,13 @@ import * as path from 'path'
 import { describe, it, expect } from 'vitest'
 
 import { sanitizeImage } from './sanitize'
-import { contentFingerprint, isPlaceholderImage, knownPlaceholders, placeholderByteLengths } from './image-placeholders'
+import {
+  contentFingerprint,
+  isPlaceholderImage,
+  isPlaceholderUri,
+  knownPlaceholders,
+  placeholderByteLengths,
+} from './image-placeholders'
 
 const fixture = (name: string) => fs.readFileSync(path.join(__dirname, 'harvested', 'dexscreener', name))
 
@@ -31,6 +37,35 @@ describe('isPlaceholderImage', () => {
 
   it('rejects on length before hashing, so ordinary images cost one comparison', () => {
     expect(isPlaceholderImage(Buffer.alloc(1024, 7))).toBe(false)
+  })
+})
+
+describe('isPlaceholderUri', () => {
+  it('matches on the filename, not the whole address', () => {
+    // The check this replaces compared a bare filename against the full logo
+    // address, so it could only ever have matched a list whose logoURI was
+    // literally "missing_large.png". None is. It never fired.
+    expect(isPlaceholderUri('https://assets.coingecko.com/coins/images/1/large/missing_large.png')).toBe(true)
+    expect(isPlaceholderUri('https://assets.coingecko.com/coins/images/9999/thumb/missing_thumb.png')).toBe(true)
+    expect(isPlaceholderUri('missing_large.png')).toBe(true)
+  })
+
+  it('ignores a query string or fragment after the filename', () => {
+    expect(isPlaceholderUri('https://assets.coingecko.com/coins/images/1/large/missing_large.png?v=2')).toBe(true)
+    expect(isPlaceholderUri('https://assets.coingecko.com/coins/images/1/large/missing_large.png#a')).toBe(true)
+  })
+
+  it('leaves real logo addresses alone', () => {
+    expect(isPlaceholderUri('https://assets.coingecko.com/coins/images/1/large/bitcoin.png')).toBe(false)
+    // Not a substring match: a coin whose own name contains the word must survive.
+    expect(isPlaceholderUri('https://example.test/logos/missing_large_protocol.png')).toBe(false)
+    expect(isPlaceholderUri('https://example.test/missing_large.png/real.svg')).toBe(false)
+  })
+
+  it('treats an absent address as no address rather than a placeholder', () => {
+    expect(isPlaceholderUri(null)).toBe(false)
+    expect(isPlaceholderUri(undefined)).toBe(false)
+    expect(isPlaceholderUri('')).toBe(false)
   })
 })
 

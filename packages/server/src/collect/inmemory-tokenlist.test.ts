@@ -249,9 +249,16 @@ describe('inmemory-tokenlist collect', () => {
     expect(harness.state.tokenImages[0]?.token.providedId).toBe('0xcccccccccccccccccccccccccccccccccccccccc')
   })
 
-  it('blanks out a blacklisted placeholder logo instead of storing it', async () => {
+  it('blanks out a placeholder logo instead of storing it', async () => {
+    // A whole address, the way a real export carries it. This test used to pass a
+    // bare "missing_thumb.png", which was the only shape the check it covered
+    // could match — the check compared a filename against the entire address, so
+    // against anything a list actually ships it never fired, and the test stayed
+    // green while every placeholder went through as artwork.
     const tokenList = buildTokenList({
-      tokens: [buildTokenEntry({ chainId: 1, logoURI: 'missing_thumb.png' })],
+      tokens: [
+        buildTokenEntry({ chainId: 1, logoURI: 'https://assets.coingecko.com/coins/images/1/thumb/missing_thumb.png' }),
+      ],
     })
 
     await inmemoryTokenlist.collect({
