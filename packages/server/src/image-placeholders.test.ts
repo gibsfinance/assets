@@ -82,6 +82,15 @@ describe('knownPlaceholders', () => {
     expect(entry!.byteLength).toBe(sanitized.length)
   })
 
+  it('is not empty', () => {
+    // `purgePlaceholderNetworkIcons` builds an IN clause from these lengths, and
+    // an empty list would make that clause meaningless. Asserted here rather
+    // than branched on at runtime, so emptying the list fails loudly instead of
+    // turning the sweep into a no-op nobody notices.
+    expect(knownPlaceholders.length).toBeGreaterThan(0)
+    expect(placeholderByteLengths.length).toBeGreaterThan(0)
+  })
+
   it('keeps every declared byte length reachable from the prefilter', () => {
     for (const placeholder of knownPlaceholders) {
       expect(placeholderByteLengths).toContain(placeholder.byteLength)

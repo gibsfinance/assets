@@ -765,7 +765,6 @@ export const getListFromId = async (listId: string, tx?: DrizzleTx) => {
  */
 export const purgePlaceholderNetworkIcons = async (tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
-  if (!placeholderByteLengths.length) return []
   const candidates = await db
     .select({
       networkId: s.network.networkId,
