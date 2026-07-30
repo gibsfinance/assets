@@ -14,6 +14,7 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
+import { isPlaceholderImage, placeholderByteLengths } from '../image-placeholders'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import config from '../../config'
@@ -196,6 +197,16 @@ export const insertImage = async (
 
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
   const sanitized = await sanitizeImage(image, ext)
+  // Some sources answer a logo they do not hold with a generic "no artwork"
+  // graphic under HTTP 200 rather than a 404, so it arrives here looking like
+  // any other image. Storing one is worse than storing nothing: it ranks by its
+  // provider's priority like real artwork would, and DexScreener sits high
+  // enough that its question-mark icon was outranking genuine chain logos from
+  // every fallback below it.
+  if (isPlaceholderImage(sanitized)) {
+    failureLog('placeholder image %o -> %o', providerKey, originalUri)
+    return null
+  }
   const shouldSave = args.checkShouldSave(providerKey)
   const insertable = {
     uri: originalUri,
@@ -723,6 +734,53 @@ export const getListFromId = async (listId: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const [row] = await db.select().from(s.list).where(eq(s.list.listId, listId)).limit(1)
   return row
+}
+
+/**
+ * Release every network icon slot currently pointing at a known upstream
+ * placeholder, so the run that follows can fill it with real artwork.
+ *
+ * This is the other half of the guard in `insertImage`. That guard stops new
+ * placeholders from ever being stored, which means no slot can acquire one from
+ * here on; this clears the ones written before it existed. Ranking cannot undo
+ * them on its own — `claimNetworkImageSlot` compares priorities, and DexScreener
+ * outranks every fallback that carries the real chain icons, so its question
+ * mark would keep the slot against all of them indefinitely.
+ *
+ * A released slot leaves the network with no icon at all, which is the honest
+ * answer for a chain nothing else covers: a consumer can see it is absent and
+ * fall back, whereas a question mark is indistinguishable from artwork until a
+ * person looks at it.
+ *
+ * Candidates are narrowed by byte length in the database so this hashes a
+ * handful of rows rather than every stored icon.
+ *
+ * @returns the chain identifiers whose slots were released.
+ */
+export const purgePlaceholderNetworkIcons = async (tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  if (!placeholderByteLengths.length) return []
+  const candidates = await db
+    .select({
+      networkId: s.network.networkId,
+      chainId: s.network.chainId,
+      content: s.image.content,
+    })
+    .from(s.network)
+    .innerJoin(s.image, eq(s.image.imageHash, s.network.imageHash))
+    .where(inArray(dsql`octet_length(${s.image.content})`, [...placeholderByteLengths]))
+  const stale = candidates.filter((row) => isPlaceholderImage(row.content))
+  if (!stale.length) return []
+  await db
+    .update(s.network)
+    .set({ imageHash: null, imageProviderKey: null })
+    .where(
+      inArray(
+        s.network.networkId,
+        stale.map((row) => row.networkId),
+      ),
+    )
+  return stale.map((row) => row.chainId)
 }
 
 /**

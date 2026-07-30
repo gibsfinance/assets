@@ -7,6 +7,7 @@ import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
 import type { DiscoveryManifest } from './base-collector'
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
+import { purgePlaceholderNetworkIcons } from '../db'
 import { withListPublication } from '../db/publication'
 import { getDrizzle } from '../db/drizzle'
 import { sql as dsql } from 'drizzle-orm'
@@ -60,6 +61,17 @@ export const main = async (
     }
   } catch (err) {
     failureLog('Failed to load submission collectors:', err)
+  }
+
+  // Ahead of the run rather than after it, so a chain whose icon slot is freed
+  // here can be refilled by this same pass instead of waiting for the next one.
+  try {
+    const released = await purgePlaceholderNetworkIcons()
+    if (released.length) {
+      failureLog('released %d network icon slots holding upstream placeholders: %o', released.length, released)
+    }
+  } catch (err) {
+    failureLog('Failed to purge placeholder network icons:', err)
   }
 
   const manifests = new Map<string, DiscoveryManifest>()
