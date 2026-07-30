@@ -39,8 +39,10 @@ import {
   batchFetchImagesForTokens,
   fetchImageAndStoreForToken,
   prewarmImages,
+  purgePlaceholderNetworkIcons,
 } from './index'
 import * as s from './schema'
+import { placeholderByteLengths } from '../image-placeholders'
 
 beforeEach(() => {
   harness.reset()
@@ -55,6 +57,19 @@ beforeEach(() => {
 })
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, ...Array.from({ length: 200 }, () => 0)])
+
+/**
+ * The real DexScreener "no artwork for this chain" icon, sanitized the way
+ * storage would sanitize it. Both modules are pulled in unmocked: this file
+ * replaces `fs` and `../sanitize` wholesale, and the point of the fixture is to
+ * exercise the guard against the genuine bytes rather than a stand-in.
+ */
+const sanitizedPlaceholder = async () => {
+  const { readFileSync } = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const { sanitizeImage: realSanitize } = await vi.importActual<typeof import('../sanitize')>('../sanitize')
+  const raw = readFileSync(`${__dirname}/../harvested/dexscreener/chain-placeholder.png`)
+  return { raw, sanitized: await realSanitize(raw, '.png') }
+}
 
 // ---------------------------------------------------------------------------
 // insertImage
@@ -160,6 +175,29 @@ describe('insertImage', () => {
     expect(Object.keys(conflictArgs.set).sort()).toEqual(['content', 'mode', 'uri'])
   })
 
+  it('rejects a known upstream placeholder without storing anything', async () => {
+    // DexScreener answers a chain it has no artwork for with HTTP 200 and a grey
+    // question mark, so it arrives indistinguishable from a real logo: right
+    // content type, decodes cleanly, and at 678 bytes it clears the minimum-size
+    // rule comfortably. Only the picture gives it away. Storing one is worse than
+    // storing nothing, because it then ranks by DexScreener's priority — high
+    // enough to hold thirteen chains against the fallbacks carrying their real
+    // icons.
+    const { raw, sanitized } = await sanitizedPlaceholder()
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(sanitized)
+
+    const result = await insertImage({
+      providerKey: 'dexscreener',
+      originalUri: 'https://dd.dexscreener.com/ds-data/chains/iotex.png',
+      image: raw,
+      listId: null,
+    })
+
+    expect(result).toBeNull()
+    expect(harness.queries).toHaveLength(0)
+  })
+
   it('skips writing a miss record entirely under PREVENT_WRITE_MISSING', async () => {
     detectImageExt.mockResolvedValue(null)
     process.env.PREVENT_WRITE_MISSING = '1'
@@ -173,6 +211,66 @@ describe('insertImage', () => {
     // flag is how CI/tests opt out of that side effect.
     expect(fsPromises.mkdir).not.toHaveBeenCalled()
     expect(fsPromises.writeFile).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// fetchImage
+// ---------------------------------------------------------------------------
+
+describe('purgePlaceholderNetworkIcons', () => {
+  it('releases a slot whose stored icon is a known placeholder', async () => {
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ networkId: 'network-1', chainId: 'eip155-4689', content: sanitized }])
+    harness.queueResult([])
+
+    const released = await purgePlaceholderNetworkIcons()
+
+    expect(released).toEqual(['eip155-4689'])
+    const update = harness.queries.find((query) => query.root === 'update')
+    // Both columns go, not just the hash: leaving the provider key behind would
+    // claim the slot was won by a collector that no longer holds it.
+    expect(update?.steps.find((step) => step.method === 'set')?.args[0]).toEqual({
+      imageHash: null,
+      imageProviderKey: null,
+    })
+  })
+
+  it('leaves a real icon of the same byte length alone', async () => {
+    // The database narrows candidates by length, which is a prefilter and not a
+    // verdict. A genuine logo that happens to weigh the same must survive the
+    // hash check, or the purge is deleting artwork it was written to protect.
+    const { sanitized } = await sanitizedPlaceholder()
+    const lookalike = Buffer.concat([
+      sanitized.subarray(0, sanitized.length - 1),
+      Buffer.from([sanitized[sanitized.length - 1] ^ 0xff]),
+    ])
+    harness.queueResult([{ networkId: 'network-1', chainId: 'eip155-1', content: lookalike }])
+
+    const released = await purgePlaceholderNetworkIcons()
+
+    expect(released).toEqual([])
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
+  })
+
+  it('narrows candidates by byte length in the database rather than hashing every icon', async () => {
+    harness.queueResult([])
+
+    await purgePlaceholderNetworkIcons()
+
+    const select = harness.queries.find((query) => query.root === 'select')
+    const where = select?.steps.find((step) => step.method === 'where')?.args[0]
+    // Nearly two thousand networks carry an icon; without this the purge would
+    // pull every stored image across the wire on every collect run.
+    expect(renderSql(where)).toContain('octet_length')
+    expect(sqlParams(where)).toEqual(placeholderByteLengths)
+  })
+
+  it('issues no update when nothing matches', async () => {
+    harness.queueResult([])
+
+    expect(await purgePlaceholderNetworkIcons()).toEqual([])
+    expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
   })
 })
 
@@ -236,6 +334,39 @@ describe('fetchImage', () => {
     // internal 3-second timeout would be silently ignored.
     const [, init] = fetchMock.mock.calls[0] as [string, { signal: AbortSignal }]
     expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveImage
+// ---------------------------------------------------------------------------
+
+describe('fetchImage placeholder addresses', () => {
+  it('turns away a known placeholder address without making the request', async () => {
+    // CoinGecko exports point at missing_large.png rather than omitting logoURI,
+    // so without this every logo-less coin costs a round trip and then stores a
+    // link row for a picture of nothing.
+    const result = await fetchImage(
+      'https://assets.coingecko.com/coins/images/1/large/missing_large.png',
+      undefined,
+      'coingecko',
+    )
+
+    expect(result).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('still fetches a real logo from the same host', async () => {
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+
+    const result = await fetchImage(
+      'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+      undefined,
+      'coingecko',
+    )
+
+    expect(result).not.toBeNull()
+    expect(fetchMock).toHaveBeenCalled()
   })
 })
 

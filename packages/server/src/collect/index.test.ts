@@ -25,6 +25,10 @@ vi.mock('../db/drizzle', () => ({
   getDrizzle: vi.fn(() => ({ execute: vi.fn(async () => ({ rows: [] })) })),
 }))
 
+vi.mock('../db', () => ({
+  purgePlaceholderNetworkIcons: vi.fn(async () => [] as string[]),
+}))
+
 vi.mock('@gibs/utils', () => ({
   failureLog: vi.fn(),
 }))
@@ -39,6 +43,7 @@ import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submiss
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
 import { getDrizzle } from '../db/drizzle'
 import { failureLog } from '@gibs/utils'
+import { purgePlaceholderNetworkIcons } from '../db'
 import { noteListTokensWritten } from '../db/publication'
 import { main } from './index'
 
@@ -88,6 +93,59 @@ beforeEach(() => {
   vi.mocked(syncDefaultOrder).mockResolvedValue(undefined)
   vi.mocked(startPeriodicRefresh).mockReturnValue(vi.fn())
   vi.mocked(getDrizzle).mockReturnValue({ execute: vi.fn(async () => ({ rows: [] })) } as never)
+  vi.mocked(purgePlaceholderNetworkIcons).mockResolvedValue([])
+})
+
+describe('main — placeholder icon purge', () => {
+  it('runs the purge before any provider is collected', async () => {
+    // Order is the whole point: a chain whose slot is freed here has to be
+    // refillable by this same pass, not the next one six hours later.
+    const order: string[] = []
+    vi.mocked(purgePlaceholderNetworkIcons).mockImplementation(async () => {
+      order.push('purge')
+      return []
+    })
+    const provider = createFakeCollector({
+      collect: async () => {
+        order.push('collect')
+      },
+    })
+    vi.mocked(collectables).mockReturnValue({ a: provider } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(order).toEqual(['purge', 'collect'])
+  })
+
+  it('names the chains it released', async () => {
+    vi.mocked(purgePlaceholderNetworkIcons).mockResolvedValue(['eip155-4689', 'eip155-1284'])
+    vi.mocked(collectables).mockReturnValue({} as never)
+
+    await main([] as never, 'raw')
+
+    expect(vi.mocked(failureLog).mock.calls.some((call) => String(call[0]).includes('released'))).toBe(true)
+  })
+
+  it('says nothing when there was nothing to release', async () => {
+    vi.mocked(purgePlaceholderNetworkIcons).mockResolvedValue([])
+    vi.mocked(collectables).mockReturnValue({} as never)
+
+    await main([] as never, 'raw')
+
+    expect(vi.mocked(failureLog).mock.calls.some((call) => String(call[0]).includes('released'))).toBe(false)
+  })
+
+  it('collects anyway when the purge itself fails', async () => {
+    // A stale placeholder is a cosmetic problem; skipping the entire collection
+    // run over one would not be.
+    vi.mocked(purgePlaceholderNetworkIcons).mockRejectedValue(new Error('connection reset'))
+    const provider = createFakeCollector()
+    vi.mocked(collectables).mockReturnValue({ a: provider } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(provider.collect).toHaveBeenCalled()
+  })
 })
 
 describe('main — raw logger (sequential)', () => {

@@ -5,6 +5,7 @@ import * as utils from '../utils'
 import type { List, Network, Provider } from '../db/schema-types'
 import type { DrizzleTx } from '../db/drizzle'
 import { failureLog } from '@gibs/utils'
+import { isPlaceholderUri } from '../image-placeholders'
 
 /**
  * How many tokens share one transaction in `collect()`.
@@ -160,7 +161,6 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
     const { list, networks } = state
 
     // Process tokens in batches
-    const blacklist = new Set<string>(['missing_large.png', 'missing_thumb.png'])
     row.createCounter(terminalCounterTypes.TOKEN)
     row.incrementTotal(
       terminalCounterTypes.TOKEN,
@@ -177,8 +177,11 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
         failureLog('no network found for %o %o', tokenList, entry)
         return []
       }
-      // Skip blacklisted images, then fix malformed URLs
-      const logoURI = blacklist.has(entry.logoURI as string) ? '' : entry.logoURI
+      // Drop the "this coin has no logo" addresses before they become link rows,
+      // then fix malformed URLs. This used to compare a bare filename against a
+      // whole logo address, so it never once matched — every CoinGecko-style
+      // missing_large.png went through as if it were artwork.
+      const logoURI = isPlaceholderUri(entry.logoURI as string) ? '' : entry.logoURI
       return [
         {
           chainTokenId: utils.counterId.token([entry.chainId, address]),
