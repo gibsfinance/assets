@@ -217,6 +217,22 @@ export const nameToKey = (name: string) => {
   return name.toLowerCase().split(' ').join('')
 }
 
+/**
+ * Energi has no definition in viem, and the name it would be looked up under
+ * belongs to someone else: viem's `energy` is Energy Web Chain, chain 246, an
+ * unrelated network. Mapping DexScreener's `energi` onto it filed Energi's
+ * artwork and tokens against Energy Web Chain's row. Defined here rather than
+ * dropped so the key keeps meaning what DexScreener means by it.
+ */
+const energiMainnet = defineChain({
+  id: 39797,
+  name: 'Energi Mainnet',
+  network: 'energi',
+  nativeCurrency: { name: 'Energi', symbol: 'NRG', decimals: 18 },
+  rpcUrls: { default: { http: ['https://nodeapi.energi.network'] } },
+  blockExplorers: { default: { name: 'Energi Explorer', url: 'https://explorer.energi.network' } },
+})
+
 const evmChains = Object.entries(chains)
   .map(([name, chain]) => {
     return [nameToKey(name), { ...chain, type: 'evm' }] as const
@@ -231,7 +247,6 @@ const evmChains = Object.entries(chains)
     ['degenchain', { ...chains.degen, type: 'evm' }],
     ['flowevm', { ...chains.flowMainnet, type: 'evm' }],
     ['stepnetwork', { ...chains.step, type: 'evm' }],
-    ['energi', { ...chains.energy, type: 'evm' }],
     ['seiv2', { ...chains.sei, type: 'evm' }],
     ['conflux', { ...chains.confluxESpace, type: 'evm' }],
   ])
@@ -248,6 +263,9 @@ const evmChains = Object.entries(chains)
  */
 export const chainIdToChain = new Map<string, Chain & { type: ChainType; caip2?: string }>([
   ...evmChains,
+  // Kept out of `evmChains` above because that array's element type is inferred
+  // from viem's own chain definitions, which a hand-written one cannot satisfy.
+  ['energi', { ...energiMainnet, type: 'evm' }],
   [
     'solana',
     defineChain({
