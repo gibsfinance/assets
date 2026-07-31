@@ -439,6 +439,22 @@ export const getImageFromLink = async (uri: string, tx?: DrizzleTx) => {
 /**
  * Check whether a cached image link is still fresh based on link.updated_at.
  * Returns the existing {link, image} if fresh, null if stale or missing.
+ *
+ * A fresh link whose bytes are a known upstream placeholder counts as missing.
+ * This is the single funnel through which a stored image is reused instead of
+ * downloaded, and every caller reuses it by claiming a slot or linking a token —
+ * neither of which passes through `insertImage`, where the placeholder guard
+ * lives. Without this check, the guard only ever sees the first download of a
+ * given address: once a placeholder is on disk it is fresh for a week
+ * (IMAGE_MAX_AGE_HOURS) and re-attaches itself on every run in between, which is
+ * exactly what was observed in production — a sweep released twenty-one chain
+ * icon slots and DexScreener took nineteen of them straight back from cache,
+ * without a single network request.
+ *
+ * Reporting it as absent sends the caller down the download path, where
+ * `insertImage` rejects it once and the chain is recorded as having no artwork.
+ * That costs one request per placeholder address per run, against twenty-one
+ * addresses.
  */
 export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
@@ -451,6 +467,7 @@ export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, tx?: 
   if (!link) return null
   const [image] = await db.select().from(s.image).where(eq(s.image.imageHash, link.imageHash)).limit(1)
   if (!image) return null
+  if (image.content && isPlaceholderImage(image.content)) return null
   return { link, image }
 }
 

@@ -441,6 +441,41 @@ describe('getFreshImageFromLink', () => {
     const result = await getFreshImageFromLink('https://x/icon.png', 1000)
     expect(result).toBeNull()
   })
+
+  it('reports a fresh link to a stored placeholder as missing', async () => {
+    // The guard in insertImage only ever sees the first download of an address.
+    // Once a placeholder is stored it stays fresh for a week, and every run in
+    // between reuses it from here — no request, no insert, no guard. Measured in
+    // production: a sweep released twenty-one chain icon slots and nineteen were
+    // taken straight back from cache within the same run.
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ uri: 'https://dd.dexscreener.com/ds-data/chains/iotex.png', imageHash: 'hash-1' }])
+    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    const result = await getFreshImageFromLink('https://dd.dexscreener.com/ds-data/chains/iotex.png', 1000)
+    expect(result).toBeNull()
+  })
+
+  it('returns a fresh link to real artwork', async () => {
+    // The counterpart to the above: rejecting on content must not reject content
+    // that is merely stored, or every cached logo would be re-downloaded forever.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }])
+    harness.queueResult([{ imageHash: 'hash-1', content: PNG_BYTES }])
+    const result = await getFreshImageFromLink('https://x/icon.png', 1000)
+    expect(result).toEqual({
+      link: { uri: 'https://x/icon.png', imageHash: 'hash-1' },
+      image: { imageHash: 'hash-1', content: PNG_BYTES },
+    })
+  })
+
+  it('returns a link-mode row, whose image carries no content to inspect', async () => {
+    harness.queueResult([{ uri: 'https://x/icon.svg', imageHash: 'hash-2' }])
+    harness.queueResult([{ imageHash: 'hash-2', content: null }])
+    const result = await getFreshImageFromLink('https://x/icon.svg', 1000)
+    expect(result).toEqual({
+      link: { uri: 'https://x/icon.svg', imageHash: 'hash-2' },
+      image: { imageHash: 'hash-2', content: null },
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
