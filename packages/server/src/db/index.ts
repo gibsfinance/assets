@@ -806,6 +806,87 @@ export const purgePlaceholderNetworkIcons = async (tx?: DrizzleTx) => {
 }
 
 /**
+ * Every table that can hold a reference to an image.
+ *
+ * `image_variant` is deliberately absent. It is a cache derived from an image
+ * rather than a use of one, so it never justifies keeping the image alive — it
+ * is cleared alongside the row it derives from. `link` is listed but, for a
+ * placeholder, the sweep clears its rows before the guard is ever evaluated, so
+ * the check against it only catches one written concurrently.
+ *
+ * A table missing from this list would let the sweep below delete a row that
+ * table still points at, which is why `index.image.test.ts` rebuilds the list
+ * from the schema and fails when the two disagree.
+ */
+const imageReferrers = [s.network, s.list, s.listToken, s.link, s.headerLink] as const
+
+/**
+ * `NOT EXISTS` against every referrer, correlated on `column`, so a delete can
+ * establish that nothing points at a row as part of the same statement that
+ * removes it.
+ *
+ * Deciding this in a separate read first would be a real hazard rather than a
+ * stylistic one: two of the five foreign keys onto `image` are declared
+ * `ON DELETE CASCADE`, so a row that acquired a reference between the read and
+ * the delete would not raise an error — it would take a `list` or `header_link`
+ * row down with it.
+ */
+const unreferencedBy = (column: AnyColumn): SQL[] =>
+  imageReferrers.map((table) => dsql`not exists (select 1 from ${table} where ${table.imageHash} = ${column})`)
+
+/**
+ * Delete every stored placeholder image nothing points at any more, along with
+ * any resized copies cached from it.
+ *
+ * `purgePlaceholderNetworkIcons` frees the slot but leaves the row behind, so
+ * the bytes accumulate — one image per address a source served its placeholder
+ * from, each still fetchable through `/image/direct/<hash>` and each still
+ * holding space in the variant cache. Reclaiming them here is what makes the
+ * sweep self-healing: the next source that starts answering with a placeholder
+ * is cleared by the run that notices it, with no manual step against the
+ * database afterwards.
+ *
+ * A row something still genuinely uses is left alone. The read path already
+ * refuses to reuse it, so it is inert where it sits, and removing it would
+ * either break a foreign key or cascade into the referring row. It becomes
+ * collectable on a later run once the last reference goes.
+ *
+ * `link` is the exception, and it has to be, because a link row is not a use of
+ * an image — it is the collect-time fetch cache, read by nothing outside
+ * collection, and `getFreshImageFromLink` already refuses to hand a placeholder
+ * back through it. Left standing it would pin its image against the delete
+ * below permanently rather than temporarily: `insertImage` writes the link row
+ * in the same call that stores the image, and the conflict set on that upsert
+ * never re-points `image_hash`, so the reference is frozen at first write and
+ * no later run can clear it. Every placeholder ever stored would keep its bytes
+ * forever, which is the outcome this function exists to prevent.
+ *
+ * @returns the hashes of the images deleted.
+ */
+export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
+  const db = tx ?? getDrizzle()
+  const candidates = await db
+    .select({ imageHash: s.image.imageHash, content: s.image.content })
+    .from(s.image)
+    .where(inArray(dsql`octet_length(${s.image.content})`, [...placeholderByteLengths]))
+  const stale = candidates.filter((row) => isPlaceholderImage(row.content)).map((row) => row.imageHash)
+  if (!stale.length) return []
+  // The cached fetch result for an address that answers with a placeholder is
+  // never worth keeping — re-reading it is precisely what has to stop.
+  await db.delete(s.link).where(inArray(s.link.imageHash, stale))
+  // Variants go next. Their foreign key onto `image` carries no ON DELETE
+  // clause, so the image cannot leave while a resized copy of it remains.
+  await db
+    .delete(s.imageVariant)
+    .where(and(inArray(s.imageVariant.imageHash, stale), ...unreferencedBy(s.imageVariant.imageHash)))
+  const deleted = await db
+    .delete(s.image)
+    .where(and(inArray(s.image.imageHash, stale), ...unreferencedBy(s.image.imageHash)))
+    .returning({ imageHash: s.image.imageHash })
+  return deleted.map((row) => row.imageHash)
+}
+
+/**
  * Point a network's icon slot at `imageHash` on behalf of `providerKey`, but only if
  * that collector outranks whoever currently holds the slot.
  *

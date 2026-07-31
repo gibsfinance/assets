@@ -27,6 +27,7 @@ vi.mock('../db/drizzle', () => ({
 
 vi.mock('../db', () => ({
   purgePlaceholderNetworkIcons: vi.fn(async () => [] as string[]),
+  purgeUnreferencedPlaceholderImages: vi.fn(async () => [] as string[]),
 }))
 
 vi.mock('@gibs/utils', () => ({
@@ -43,7 +44,7 @@ import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submiss
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
 import { getDrizzle } from '../db/drizzle'
 import { failureLog } from '@gibs/utils'
-import { purgePlaceholderNetworkIcons } from '../db'
+import { purgePlaceholderNetworkIcons, purgeUnreferencedPlaceholderImages } from '../db'
 import { noteListTokensWritten } from '../db/publication'
 import { main } from './index'
 
@@ -94,6 +95,7 @@ beforeEach(() => {
   vi.mocked(startPeriodicRefresh).mockReturnValue(vi.fn())
   vi.mocked(getDrizzle).mockReturnValue({ execute: vi.fn(async () => ({ rows: [] })) } as never)
   vi.mocked(purgePlaceholderNetworkIcons).mockResolvedValue([])
+  vi.mocked(purgeUnreferencedPlaceholderImages).mockResolvedValue([])
 })
 
 describe('main — placeholder icon purge', () => {
@@ -115,6 +117,56 @@ describe('main — placeholder icon purge', () => {
     await main(['a'] as never, 'raw')
 
     expect(order).toEqual(['purge', 'collect'])
+  })
+
+  it('deletes the released images only after the slots holding them are freed', async () => {
+    // Releasing the slot is what leaves the image unreferenced, so the reverse
+    // order would find every one of them still in use and reclaim nothing —
+    // for as long as the ordering stayed wrong, which is forever.
+    const order: string[] = []
+    vi.mocked(purgePlaceholderNetworkIcons).mockImplementation(async () => {
+      order.push('release')
+      return []
+    })
+    vi.mocked(purgeUnreferencedPlaceholderImages).mockImplementation(async () => {
+      order.push('delete')
+      return []
+    })
+    vi.mocked(collectables).mockReturnValue({} as never)
+
+    await main([] as never, 'raw')
+
+    expect(order).toEqual(['release', 'delete'])
+  })
+
+  it('counts the stored images it reclaimed', async () => {
+    vi.mocked(purgeUnreferencedPlaceholderImages).mockResolvedValue(['hash-1', 'hash-2'])
+    vi.mocked(collectables).mockReturnValue({} as never)
+
+    await main([] as never, 'raw')
+
+    expect(vi.mocked(failureLog).mock.calls.some((call) => String(call[0]).includes('deleted'))).toBe(true)
+  })
+
+  it('says nothing when there was nothing to reclaim', async () => {
+    vi.mocked(purgeUnreferencedPlaceholderImages).mockResolvedValue([])
+    vi.mocked(collectables).mockReturnValue({} as never)
+
+    await main([] as never, 'raw')
+
+    expect(vi.mocked(failureLog).mock.calls.some((call) => String(call[0]).includes('deleted'))).toBe(false)
+  })
+
+  it('collects anyway when reclaiming the stored images fails', async () => {
+    // Same reasoning as a failed slot release: leftover bytes nobody points at
+    // are not worth abandoning a collection run over.
+    vi.mocked(purgeUnreferencedPlaceholderImages).mockRejectedValue(new Error('deadlock detected'))
+    const provider = createFakeCollector()
+    vi.mocked(collectables).mockReturnValue({ a: provider } as never)
+
+    await main(['a'] as never, 'raw')
+
+    expect(provider.collect).toHaveBeenCalled()
   })
 
   it('names the chains it released', async () => {

@@ -40,8 +40,11 @@ import {
   fetchImageAndStoreForToken,
   prewarmImages,
   purgePlaceholderNetworkIcons,
+  purgeUnreferencedPlaceholderImages,
 } from './index'
 import * as s from './schema'
+import { getTableName, is } from 'drizzle-orm'
+import { PgTable } from 'drizzle-orm/pg-core'
 import { placeholderByteLengths } from '../image-placeholders'
 
 beforeEach(() => {
@@ -271,6 +274,155 @@ describe('purgePlaceholderNetworkIcons', () => {
 
     expect(await purgePlaceholderNetworkIcons()).toEqual([])
     expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
+  })
+})
+
+describe('purgeUnreferencedPlaceholderImages', () => {
+  const deletes = () => harness.queries.filter((query) => query.root === 'delete')
+  const targetOf = (query: (typeof harness.queries)[number] | undefined) =>
+    getTableName(query?.steps[0]?.args[0] as PgTable)
+  /** The two deletes that must prove nothing references a row before removing it. */
+  const guardedDeletes = () => deletes().filter((query) => targetOf(query) !== 'link')
+  const whereOf = (query: (typeof harness.queries)[number] | undefined) =>
+    query?.steps.find((step) => step.method === 'where')?.args[0]
+
+  it('deletes a stored placeholder that nothing points at', async () => {
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([]) // link delete
+    harness.queueResult([]) // variant delete
+    harness.queueResult([{ imageHash: 'hash-1' }]) // image delete, returning
+
+    expect(await purgeUnreferencedPlaceholderImages()).toEqual(['hash-1'])
+  })
+
+  it('clears the cached fetch result first, or the image can never be reclaimed at all', async () => {
+    // insertImage writes the link row in the same call that stores the image,
+    // and that upsert's conflict set never re-points image_hash — so the
+    // reference is frozen at first write. Treated as a use rather than as the
+    // cache it is, it would hold every placeholder ever stored in place
+    // permanently and the sweep would delete nothing, ever.
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([])
+    harness.queueResult([])
+    harness.queueResult([{ imageHash: 'hash-1' }])
+
+    await purgeUnreferencedPlaceholderImages()
+
+    // The rest of the order matters too: image_variant's foreign key onto image
+    // carries no ON DELETE clause, so the image cannot go while a resized copy
+    // remains — and a variant left behind would keep serving the placeholder
+    // out of the resize cache after its source row was gone.
+    expect(deletes().map(targetOf)).toEqual(['link', 'image_variant', 'image'])
+    // Unconditional on the referrer guards: a link row pointing at a
+    // placeholder is worthless whatever else happens to hold the image.
+    expect(renderSql(whereOf(deletes()[0]))).not.toContain('not exists')
+  })
+
+  it('leaves a real image of the same byte length alone', async () => {
+    // The length filter is a prefilter, not a verdict. A genuine logo weighing
+    // the same as the placeholder must survive the hash check or the sweep is
+    // deleting the artwork the whole exercise exists to protect.
+    const { sanitized } = await sanitizedPlaceholder()
+    const lookalike = Buffer.concat([
+      sanitized.subarray(0, sanitized.length - 1),
+      Buffer.from([sanitized[sanitized.length - 1] ^ 0xff]),
+    ])
+    harness.queueResult([{ imageHash: 'hash-1', content: lookalike }])
+
+    expect(await purgeUnreferencedPlaceholderImages()).toEqual([])
+    expect(deletes()).toHaveLength(0)
+  })
+
+  it('issues no delete when nothing matches', async () => {
+    harness.queueResult([])
+
+    expect(await purgeUnreferencedPlaceholderImages()).toEqual([])
+    expect(deletes()).toHaveLength(0)
+  })
+
+  it('narrows candidates by byte length in the database rather than hashing every stored image', async () => {
+    harness.queueResult([])
+
+    await purgeUnreferencedPlaceholderImages()
+
+    const where = whereOf(harness.queries.find((query) => query.root === 'select'))
+    expect(renderSql(where)).toContain('octet_length')
+    expect(sqlParams(where)).toEqual(placeholderByteLengths)
+  })
+
+  it('guards both reclaiming deletes against every table in the schema that can reference an image', async () => {
+    // Derived from the schema rather than restated, so adding a table with an
+    // image_hash column fails here instead of silently letting the sweep delete
+    // a row that table still points at. Two of those foreign keys cascade, so
+    // the failure would take the referring row with it rather than erroring.
+    const referrers = Object.values(s)
+      .filter((value) => is(value, PgTable) && 'imageHash' in value)
+      .map((table) => getTableName(table as PgTable))
+      .filter((name) => name !== 'image' && name !== 'image_variant')
+    expect(referrers.length).toBeGreaterThan(0)
+
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([])
+    harness.queueResult([])
+    harness.queueResult([{ imageHash: 'hash-1' }])
+
+    await purgeUnreferencedPlaceholderImages()
+
+    expect(guardedDeletes()).toHaveLength(2)
+    for (const query of guardedDeletes()) {
+      const rendered = renderSql(whereOf(query))
+      for (const name of referrers) {
+        expect(rendered, `${name} is not guarded against`).toContain(`from "${name}"`)
+      }
+    }
+  })
+
+  it('correlates every guard against the table its own delete targets', async () => {
+    // Both deletes carry the same five subqueries, and each must correlate on
+    // the image_hash of the table it is deleting from. Correlating the variant
+    // delete against `image` instead is not merely wrong, it is invalid SQL —
+    // `image` appears in no FROM clause that subquery can reach, and Postgres
+    // rejects the statement outright.
+    //
+    // Read out of the NOT EXISTS clauses specifically rather than the whole
+    // WHERE: the inArray term names the same column, so a substring check
+    // against the rendered statement passes whatever the correlation says.
+    const correlationsIn = (sql: string) => [...sql.matchAll(/= "(\w+)"\."image_hash"\)/g)].map(([, table]) => table)
+
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([])
+    harness.queueResult([])
+    harness.queueResult([{ imageHash: 'hash-1' }])
+
+    await purgeUnreferencedPlaceholderImages()
+
+    for (const query of guardedDeletes()) {
+      const target = targetOf(query)
+      const correlations = correlationsIn(renderSql(whereOf(query)))
+      expect(correlations.length, `${target} delete carries no correlated guard`).toBeGreaterThan(0)
+      expect(new Set(correlations), `${target} delete correlates elsewhere`).toEqual(new Set([target]))
+    }
+  })
+
+  it('reports what the delete actually removed, not what it set out to remove', async () => {
+    // The candidate list is everything that looked deletable before the guards
+    // ran; the returning clause is what survived them. Reporting the former
+    // would announce images as reclaimed while they sit untouched, still
+    // referenced, and still served.
+    const { sanitized } = await sanitizedPlaceholder()
+    harness.queueResult([
+      { imageHash: 'unreferenced', content: sanitized },
+      { imageHash: 'still-in-use', content: sanitized },
+    ])
+    harness.queueResult([])
+    harness.queueResult([])
+    harness.queueResult([{ imageHash: 'unreferenced' }])
+
+    expect(await purgeUnreferencedPlaceholderImages()).toEqual(['unreferenced'])
   })
 })
 
