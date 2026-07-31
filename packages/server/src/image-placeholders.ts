@@ -45,6 +45,15 @@ export const knownPlaceholders: readonly KnownPlaceholder[] = [
     fingerprint: 'a27284ae7ebe270ca5583dff1cbfb7489f3609a74c88d183b4a66233ff3ad734',
     byteLength: 903,
   },
+  {
+    note:
+      'An earlier rendering of the same DexScreener question mark, no longer served upstream but ' +
+      'still held by rows stored while it was. Same sanitized length as the current one and a ' +
+      'different fingerprint, which is the case the length prefilter alone cannot decide. Fixture: ' +
+      'src/harvested/dexscreener/chain-placeholder-legacy.png',
+    fingerprint: '28ef5d27d789fd31e644ed1f7254f44aa5b728aa178e393bc72b5da2ef631d10',
+    byteLength: 903,
+  },
 ]
 
 const fingerprints: ReadonlySet<string> = new Set(knownPlaceholders.map((placeholder) => placeholder.fingerprint))

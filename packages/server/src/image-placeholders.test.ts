@@ -74,12 +74,23 @@ describe('knownPlaceholders', () => {
   // library that changes its encoder output would silently stop every entry
   // from matching. Deriving both fields from the committed fixture here turns
   // that into a failing test rather than a guard that quietly does nothing.
-  it('agrees with the fixture it was derived from', async () => {
-    const sanitized = await sanitizeImage(fixture('chain-placeholder.png'), '.png')
-    const entry = knownPlaceholders.find((candidate) => candidate.note.includes('DexScreener'))
+  it.each([
+    ['chain-placeholder.png', 'DexScreener chain icon'],
+    ['chain-placeholder-legacy.png', 'An earlier rendering'],
+  ])('agrees with the fixture %s it was derived from', async (file, noteStart) => {
+    const sanitized = await sanitizeImage(fixture(file), '.png')
+    const entry = knownPlaceholders.find((candidate) => candidate.note.startsWith(noteStart))
     expect(entry).toBeDefined()
     expect(entry!.fingerprint).toBe(contentFingerprint(sanitized))
     expect(entry!.byteLength).toBe(sanitized.length)
+  })
+
+  it('keeps every entry distinct, so a duplicate cannot masquerade as coverage', () => {
+    // Two entries share a byte length here, which is exactly the case the
+    // prefilter cannot resolve on its own — the fingerprints have to differ or
+    // one of them is dead weight that will never match anything.
+    const fingerprints = knownPlaceholders.map((entry) => entry.fingerprint)
+    expect(new Set(fingerprints).size).toBe(fingerprints.length)
   })
 
   it('is not empty', () => {
@@ -97,11 +108,14 @@ describe('knownPlaceholders', () => {
     }
   })
 
-  it('sanitizes idempotently, so stored copies match the same fingerprint', async () => {
-    // Stored content has already been sanitized once. If a second pass changed
-    // the bytes, the database sweep would never recognize its own rows.
-    const once = await sanitizeImage(fixture('chain-placeholder.png'), '.png')
-    const twice = await sanitizeImage(once, '.png')
-    expect(contentFingerprint(twice)).toBe(contentFingerprint(once))
-  })
+  it.each(['chain-placeholder.png', 'chain-placeholder-legacy.png'])(
+    'sanitizes %s idempotently, so stored copies match the same fingerprint',
+    async (file) => {
+      // Stored content has already been sanitized once. If a second pass changed
+      // the bytes, the database sweep would never recognize its own rows.
+      const once = await sanitizeImage(fixture(file), '.png')
+      const twice = await sanitizeImage(once, '.png')
+      expect(contentFingerprint(twice)).toBe(contentFingerprint(once))
+    },
+  )
 })
