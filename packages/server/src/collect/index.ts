@@ -7,7 +7,7 @@ import { failureLog } from '@gibs/utils'
 import { forceRerender } from '../log/App'
 import type { DiscoveryManifest } from './base-collector'
 import { syncDefaultOrder, startPeriodicRefresh } from '../db/sync-order'
-import { purgePlaceholderNetworkIcons } from '../db'
+import { purgePlaceholderNetworkIcons, purgeUnreferencedPlaceholderImages } from '../db'
 import { withListPublication } from '../db/publication'
 import { getDrizzle } from '../db/drizzle'
 import { sql as dsql } from 'drizzle-orm'
@@ -70,8 +70,14 @@ export const main = async (
     if (released.length) {
       failureLog('released %d network icon slots holding upstream placeholders: %o', released.length, released)
     }
+    // Second, and in this order: releasing the slots above is what leaves those
+    // images unreferenced and therefore collectable on this same pass.
+    const deleted = await purgeUnreferencedPlaceholderImages()
+    if (deleted.length) {
+      failureLog('deleted %d stored placeholder images nothing referenced', deleted.length)
+    }
   } catch (err) {
-    failureLog('Failed to purge placeholder network icons:', err)
+    failureLog('Failed to purge placeholder images:', err)
   }
 
   const manifests = new Map<string, DiscoveryManifest>()
