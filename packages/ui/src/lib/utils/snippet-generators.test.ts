@@ -97,6 +97,25 @@ const parseModule = (code: string): void => {
   })
 }
 
+type AstNode = { type?: string; [key: string]: unknown }
+
+/**
+ * Walk every JSX attribute in a parsed snippet, reporting its name and the raw
+ * value node. Lets a test assert what an attribute *means* — a string literal
+ * versus an expression — rather than only that the module parses.
+ */
+const traverseJsxAttributes = (node: AstNode, visit: (name: string, value: AstNode) => void): void => {
+  if (!node || typeof node !== 'object') return
+  if (node.type === 'JSXAttribute') {
+    const name = (node.name as AstNode | undefined)?.name
+    if (typeof name === 'string') visit(name, node.value as AstNode)
+  }
+  for (const child of Object.values(node)) {
+    if (Array.isArray(child)) child.forEach((c) => traverseJsxAttributes(c as AstNode, visit))
+    else if (child && typeof child === 'object') traverseJsxAttributes(child as AstNode, visit)
+  }
+}
+
 /** Parse an HTML fragment with jsdom. */
 const parseHtml = (html: string): Document => {
   const dom = new JSDOM(`<!DOCTYPE html><html><body>${html}</body></html>`)
@@ -169,6 +188,57 @@ describe('generateSdkSnippet', () => {
       buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' }),
     )
     expect(circleCode).not.toContain('shape="square"')
+  })
+
+  /*
+   * Parsing alone cannot catch this one. `chainId={solana-501}` IS valid syntax —
+   * it is the subtraction `solana - 501`, so the module parses and then throws
+   * ReferenceError the moment it runs. These assert what the attribute means,
+   * not merely that it parses.
+   */
+  describe('chain id attribute', () => {
+    const chainIdValue = (code: string): AstNode | null => {
+      const ast = parse(code, {
+        sourceType: 'module',
+        plugins: ['jsx', 'typescript'],
+        allowImportExportEverywhere: true,
+      })
+      let found: AstNode | null = null
+      traverseJsxAttributes(ast as unknown as AstNode, (name, value) => {
+        if (name === 'chainId') found = value
+      })
+      return found
+    }
+
+    it('emits a namespaced identifier as a string, not an expression', () => {
+      const code = generateSdkSnippet(
+        'solana-501',
+        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' }),
+      )
+      expect(code).toContain('chainId="solana-501"')
+      expect(chainIdValue(code)).toMatchObject({ type: 'StringLiteral', value: 'solana-501' })
+    })
+
+    it('keeps a bare chain id a number so existing snippets are unchanged', () => {
+      const code = generateSdkSnippet(
+        '369',
+        ADDRESS,
+        buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' }),
+      )
+      expect(code).toContain('chainId={369}')
+      expect(chainIdValue(code)).toMatchObject({ type: 'JSXExpressionContainer' })
+    })
+
+    it.each(['solana-501', 'bip122-0', 'eip155-1'])('parses and stays a single value for %s', (chainId) => {
+      const code = generateSdkSnippet(
+        chainId,
+        ADDRESS,
+        buildAppearance({ shape: 'circle', shadow: 'none', padding: 0, background: 'transparent' }),
+      )
+      expect(() => parseModule(code)).not.toThrow()
+      expect(chainIdValue(code)).toMatchObject({ type: 'StringLiteral', value: chainId })
+    })
   })
 })
 
