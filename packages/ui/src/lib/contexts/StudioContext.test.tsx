@@ -106,11 +106,22 @@ describe('selectToken', () => {
 })
 
 describe('selectChain', () => {
-  it('sets the chain id while keeping the already-selected token', () => {
+  // A token belongs to one chain. Keeping the selection across a chain change
+  // left the studio previewing an Ethereum address while claiming to be on
+  // Solana, and generating a snippet for a token that does not exist there.
+  it('clears the selected token when moving to a different chain', () => {
     const { result } = renderStudio()
     act(() => result.current.selectToken(TOKEN))
-    act(() => result.current.selectChain('1'))
-    expect(result.current.selectedChainId).toBe('1')
+    act(() => result.current.selectChain('eip155-1'))
+    expect(result.current.selectedChainId).toBe('eip155-1')
+    expect(result.current.selectedToken).toBeNull()
+  })
+
+  it('keeps the token when the same chain is re-selected', () => {
+    const { result } = renderStudio()
+    act(() => result.current.selectToken(TOKEN))
+    act(() => result.current.selectChain('eip155-369'))
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.selectedToken).toEqual(TOKEN)
   })
 

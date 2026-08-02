@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
+import { useChainTokens } from '../hooks/useChainTokens'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
@@ -295,64 +295,7 @@ export default function StudioBrowser({
   )
 
   /* ----- Fetch all tokens for a chain in one request --------------------- */
-  interface ApiToken {
-    chainId: number
-    address: string
-    name: string
-    symbol: string
-    decimals: number
-    logoURI?: string
-    sources?: string[]
-  }
-
-  const { data: chainData, isLoading: isLoadingLists } = useQuery({
-    queryKey: ['tokensByChain', selectedChainId],
-    queryFn: async () => {
-      // enabled: !!selectedChainId below guarantees a chain is selected here
-      const response = await fetch(getApiUrl(`/list/tokens/${toChainIdentifier(selectedChainId!)}`))
-      if (!response.ok) throw new Error(`${response.status}`)
-      return response.json() as Promise<{
-        chainId: number
-        total: number
-        tokens: ApiToken[]
-      }>
-    },
-    enabled: !!selectedChainId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-  })
-
-  const mergedTokens = useMemo(() => {
-    if (!chainData?.tokens) return []
-    // Every token in the response belongs to the chain that was requested, so stamp
-    // each with the identifier it was fetched under. The response carries only the
-    // bare number, and rebuilding an identifier from that assumes
-    // Ethereum-Virtual-Machine — which asked for Solana's tokens under eip155-501
-    // and got a 400 for every icon.
-    return chainData.tokens.map((token) => {
-      const chainIdentifier = selectedIdentifier ?? toChainIdentifier(token.chainId)
-      const sources = token.sources ?? []
-      const primarySource = sources[0] ?? 'merged'
-      const listReferences = sources.map((src) => ({
-        sourceList: src,
-        imageUri: getApiUrl(`/image/${chainIdentifier}/${token.address}`),
-        imageFormat: '',
-      }))
-      return {
-        chainId: token.chainId,
-        chainIdentifier,
-        address: token.address,
-        name: token.name,
-        symbol: token.symbol,
-        decimals: token.decimals,
-        hasIcon: !!token.logoURI,
-        sourceList: primarySource,
-        listReferences: listReferences.length > 0 ? listReferences : undefined,
-      }
-    })
-  }, [chainData, selectedIdentifier])
-
-  const serverTotal = chainData?.total ?? null
+  const { tokens: mergedTokens, total: serverTotal, isLoading: isLoadingLists } = useChainTokens(selectedChainId)
 
   useEffect(() => {
     clearTokens()

@@ -137,7 +137,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       selectedChainId: chainId,
-      selectedToken: chainId ? s.selectedToken : null,
+      // A token belongs to exactly one chain. Carrying the selection across a
+      // chain change left USD Coin's Ethereum address selected while the studio
+      // said Solana, so the preview and every generated snippet described a
+      // token that does not exist there. Re-selecting the same chain keeps it.
+      selectedToken: chainId && chainId === s.selectedChainId ? s.selectedToken : null,
     }))
   }, [])
 

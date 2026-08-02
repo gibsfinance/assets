@@ -9,6 +9,7 @@ import TokenDetailModal from '../components/TokenDetailModal'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useStudio } from '../contexts/StudioContext'
+import { useChainTokens } from '../hooks/useChainTokens'
 import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
@@ -47,6 +48,7 @@ export default function Studio() {
   // chain namespaces.
   const rawUrlChain = searchParams.get('chain')
   const urlChain = rawUrlChain || null
+  const urlToken = searchParams.get('token') ?? null
   const urlEditor = searchParams.get('editor') ?? null
 
   // URL → context: keep context in sync with URL (context is a read cache)
@@ -54,6 +56,26 @@ export default function Studio() {
     if (urlChain !== selectedChainId) selectChain(urlChain)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlChain])
+
+  /*
+   * The `token` param was written on every selection but never read back, so a
+   * shared or reloaded studio link restored the chain and dropped the token —
+   * the configurator sat on "Select a token to preview" and the snippet fell
+   * back to the zero address, while the URL claimed otherwise.
+   *
+   * The URL carries only an address; a token's name, symbol, and namespace come
+   * from the chain's list, so this waits for that list rather than synthesizing
+   * a half-populated token. Comparing addresses case-insensitively because
+   * Ethereum-Virtual-Machine addresses are commonly checksummed in one place and
+   * lowercased in another.
+   */
+  const { tokens: chainTokens } = useChainTokens(urlChain)
+  useEffect(() => {
+    if (!urlToken) return
+    if (selectedToken?.address.toLowerCase() === urlToken.toLowerCase()) return
+    const match = chainTokens.find((token) => token.address.toLowerCase() === urlToken.toLowerCase())
+    if (match) selectToken(match)
+  }, [urlToken, chainTokens, selectedToken, selectToken])
 
   useEffect(() => {
     if (urlEditor === 'new' && !editorOpen) openNewEditor()
