@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import CodeBlock from '../components/CodeBlock'
 import DocsSidebar, { type DocsSidebarSection } from '../components/DocsSidebar'

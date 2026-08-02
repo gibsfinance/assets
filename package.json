@@ -57,6 +57,7 @@
     "tar-fs": ">=3.1.2",
     "serialize-javascript": ">=7.0.5",
     "immutable": ">=4.3.8",
-    "ws": ">=8.21.0"
+    "ws": ">=8.21.0",
+    "@esbuild-kit/core-utils/esbuild": ">=0.25.12"
   }
 }
