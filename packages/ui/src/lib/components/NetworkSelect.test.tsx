@@ -129,8 +129,7 @@ describe('NetworkSelect', () => {
    */
   describe('search', () => {
     const openDrawer = () => fireEvent.click(screen.getByText('Choose a network...'))
-    const search = (value: string) =>
-      fireEvent.change(screen.getByLabelText('Search networks'), { target: { value } })
+    const search = (value: string) => fireEvent.change(screen.getByLabelText('Search networks'), { target: { value } })
 
     it('narrows the list to matching networks', async () => {
       renderNetworkSelect()
@@ -193,6 +192,70 @@ describe('NetworkSelect', () => {
       openDrawer()
 
       expect(await screen.findByText('Ethereum')).toBeTruthy()
+    })
+  })
+
+  /**
+   * The scroll offset is owned jointly by the scroll container and the
+   * virtualizer's own state, and closing the drawer unmounts neither. Scrolling
+   * 8,000 pixels into the 52,000-pixel list, closing, and reopening brought the
+   * drawer back mid-alphabet under a freshly cleared search box that claimed to
+   * be listing all 1,900 networks. Typing was worse: the ranked list rebuilt
+   * beneath a stale offset, so the best match for the query being typed rendered
+   * thousands of pixels above the viewport.
+   *
+   * Both are fixed by remounting the list whenever it becomes a different list,
+   * which is what these assert — a remounted list cannot carry an old offset.
+   * Resetting from an effect was tried first and does not work: on open it runs
+   * before the panel's DOM exists, and moving the container without the
+   * virtualizer desynchronizes them into a drawer that paints nothing at all.
+   */
+  describe('scroll position', () => {
+    const openDrawer = () => fireEvent.click(screen.getByText('Choose a network...'))
+    const closeDrawer = () => fireEvent.keyDown(document, { key: 'Escape' })
+    const search = (value: string) => fireEvent.change(screen.getByLabelText('Search networks'), { target: { value } })
+    const scroller = () => document.querySelector<HTMLElement>('div.overflow-y-auto')
+
+    it('reopens at the top of the list rather than where the last visit left off', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      const scrolled = scroller()
+      expect(scrolled).toBeTruthy()
+      scrolled!.scrollTop = 8000
+
+      closeDrawer()
+      openDrawer()
+      await screen.findByText('Ethereum')
+
+      expect(scroller()!.scrollTop).toBe(0)
+    })
+
+    it('returns to the top when a search rebuilds the list, so the best match is on screen', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      const scrolled = scroller()
+      scrolled!.scrollTop = 8000
+
+      search('bitcoin')
+      await screen.findByText('Bitcoin')
+
+      expect(scroller()!.scrollTop).toBe(0)
+    })
+
+    it('leaves the offset alone while the same list is being scrolled', async () => {
+      // The reset must key on the list changing, not fire on every render — a
+      // drawer that snapped back to the top mid-scroll would be unusable.
+      renderNetworkSelect()
+      openDrawer()
+      await screen.findByText('Ethereum')
+
+      const list = scroller()!
+      list.scrollTop = 8000
+      fireEvent.scroll(list)
+
+      expect(scroller()!.scrollTop).toBe(8000)
     })
   })
 })
