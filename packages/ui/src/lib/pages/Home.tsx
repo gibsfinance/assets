@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { countSupportedNetworks } from '../utils/network-metrics'
