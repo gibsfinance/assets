@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { tokenChainIdentifier } from '../utils/chain-identifier'
 import type { Token, StudioAppearance, BadgeConfig, CodeFormat, CodeMode } from '../types'
 
 interface StudioState {
@@ -123,7 +124,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       selectedToken: token,
-      selectedChainId: String(token.chainId),
+      // The namespaced identifier, not String(token.chainId): selecting a Solana
+      // token used to set the chain to "501", which every consumer then read as
+      // eip155-501 — quietly moving the studio to a different chain than the one
+      // the token came from.
+      selectedChainId: tokenChainIdentifier(token),
       activeTab: 'configure',
     }))
   }, [])

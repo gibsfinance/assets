@@ -80,13 +80,19 @@ const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
 const STATS = [
-  { chainId: '1', count: 500 },
-  { chainId: '369', count: 200 },
+  { chainId: '1', chainIdentifier: 'eip155-1', count: 500 },
+  { chainId: '369', chainIdentifier: 'eip155-369', count: 200 },
+  { chainId: '501', chainIdentifier: 'solana-501', count: 300 },
 ]
 
 const NETWORKS = [
-  { type: 'evm', chainId: '1', networkId: '1' },
-  { type: 'evm', chainId: '369', networkId: '369' },
+  { type: 'evm', chainId: '1', chainIdentifier: 'eip155-1', networkId: '1', name: 'Ethereum' },
+  { type: 'evm', chainId: '369', chainIdentifier: 'eip155-369', networkId: '369', name: 'PulseChain' },
+  // Shares the number 501 with Columbus testnet (eip155-501) and is not
+  // Ethereum-Virtual-Machine — the two conditions that used to hide it.
+  { type: 'solana', chainId: '501', chainIdentifier: 'solana-501', networkId: '501', name: 'Solana' },
+  // Carried for its logo alone: listed, but with no tokens to browse.
+  { type: 'bip122', chainId: '0', chainIdentifier: 'bip122-0', networkId: '0', name: 'Bitcoin' },
 ]
 
 const PROVIDERS = [
@@ -158,6 +164,19 @@ const PULSECHAIN_TOKENS: ApiToken[] = [
   },
 ]
 
+/** Base58, not hex — the address shape the browser used to be unable to reach. */
+const SOLANA_TOKENS: ApiToken[] = [
+  {
+    chainId: 501,
+    address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    name: 'USD Coin',
+    symbol: 'USDC',
+    decimals: 6,
+    logoURI: 'https://logo/usdc.png',
+    sources: ['gib/default'],
+  },
+]
+
 /**
  * Default router: resolves the three metrics endpoints plus the per-chain
  * token endpoint. Individual tests can override `tokenResponseByChain`.
@@ -166,6 +185,7 @@ function installDefaultFetch(
   tokenResponseByChain: Record<string, unknown> = {
     'eip155-1': tokensResponse(1, ETHEREUM_TOKENS),
     'eip155-369': tokensResponse(369, PULSECHAIN_TOKENS),
+    'solana-501': tokensResponse(501, SOLANA_TOKENS),
   },
 ) {
   mockFetch.mockImplementation((input: string) => {
@@ -250,6 +270,43 @@ describe('StudioBrowser', () => {
     expect(await screen.findByText('Ethereum')).toBeTruthy()
     expect(screen.getByText('PulseChain')).toBeTruthy()
     expect(screen.getByText('500 tokens')).toBeTruthy()
+  })
+
+  // Solana and Columbus testnet both answer to 501. Listing chains by the bare number
+  // gave the card Solana's count under the testnet's name and pointed it at the
+  // testnet, which holds no tokens — so the card that promised 300 led nowhere.
+  it('links a popular chain to the namespaced identifier its tokens live under', async () => {
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Solana'))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501'))
+    expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/eip155-501')
+  })
+
+  // The logo-only empty state used to key on the chain being
+  // non-Ethereum-Virtual-Machine, which hid every Solana and Tron token.
+  it('browses tokens on a non-Ethereum-Virtual-Machine chain that has them', async () => {
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Solana'))
+
+    expect(await screen.findByText('USD Coin')).toBeTruthy()
+    expect(screen.queryByText(/no tokens to browse yet/i)).toBeNull()
+  })
+
+  // Still true for a chain carried only for its logo — now decided by the token
+  // count rather than by the chain's type.
+  it('shows the logo-only state for a listed chain with no tokens', async () => {
+    const { container } = renderBrowser()
+
+    // Bitcoin has no tokens, so it never appears among popular chains; select it
+    // through the network drawer the way a user would.
+    fireEvent.click(await screen.findByText(/Choose a network/i))
+    fireEvent.click(await screen.findByText('Bitcoin'))
+
+    expect(await screen.findByText(/no tokens to browse yet/i)).toBeTruthy()
+    expect(container.querySelector('img[src*="bip122-0"]')).toBeTruthy()
   })
 
   it("selecting a popular chain fetches that chain's tokens and renders them", async () => {
@@ -344,7 +401,9 @@ describe('StudioBrowser', () => {
 
     fireEvent.click(await screen.findByText('Ethereum'))
 
-    expect(selectChain).toHaveBeenCalledWith('1')
+    // The namespaced identifier, not the bare number: it is what the chain was
+    // listed under and what the list and image endpoints take.
+    expect(selectChain).toHaveBeenCalledWith('eip155-1')
   })
 
   it('shows a loading indicator while the chain token request is in flight', async () => {

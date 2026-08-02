@@ -82,9 +82,26 @@ describe('selectToken', () => {
     const { result } = renderStudio()
     act(() => result.current.selectToken(TOKEN))
     expect(result.current.selectedToken).toEqual(TOKEN)
-    // chainId is derived from the token and stored as a string
-    expect(result.current.selectedChainId).toBe('369')
+    // The token's namespaced identifier — a bare number would be read as
+    // Ethereum-Virtual-Machine by every consumer downstream.
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.activeTab).toBe('configure')
+  })
+
+  // Solana and Columbus testnet both answer to 501. Reading the bare number moved
+  // the studio onto the testnet the moment a Solana token was picked, so the
+  // configurator and every generated URL described a different chain.
+  it('keeps a token on the chain it came from when the number is shared', () => {
+    const { result } = renderStudio()
+    act(() =>
+      result.current.selectToken({
+        ...TOKEN,
+        chainId: 501,
+        chainIdentifier: 'solana-501',
+        address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      }),
+    )
+    expect(result.current.selectedChainId).toBe('solana-501')
   })
 })
 
@@ -178,7 +195,7 @@ describe('reset', () => {
     expect(result.current.resolutionOrder).toBeNull()
     // navigation / selection survive a reset
     expect(result.current.selectedToken).toEqual(TOKEN)
-    expect(result.current.selectedChainId).toBe('369')
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.activeTab).toBe('configure')
   })
 })

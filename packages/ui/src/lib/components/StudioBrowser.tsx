@@ -7,8 +7,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
-import { toChainIdentifier, fromChainIdentifier } from '../utils/chain-identifier'
-import { getNetworkName } from '../utils/network-name'
+import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import { filterTokensBySearch, getPopularChains } from '../utils/token-search'
 import NetworkSelect from './NetworkSelect'
@@ -102,7 +101,7 @@ function VirtualTokenList({
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                   {hasIcon ? (
                     <Image
-                      src={getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`)}
+                      src={getApiUrl(`/image/${tokenChainIdentifier(token)}/${token.address}`)}
                       alt={token.symbol}
                       className="rounded-full object-contain"
                       size={28}
@@ -210,27 +209,27 @@ export default function StudioBrowser({
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
-    return getPopularChains(metrics.networks.supported, metrics.tokenList.byChain, getNetworkName, {
-      limit: POPULAR_CHAIN_COUNT,
-    })
+    return getPopularChains(metrics.networks.supported, { limit: POPULAR_CHAIN_COUNT })
   }, [metrics])
 
   const { enabledLists, tokensByList, toggleList, toggleAll, setListTokens, clearTokens } = useTokenBrowser()
 
-  /* ----- Non-Ethereum-Virtual-Machine chain detection ---------------------
-   * A curated non-Ethereum-Virtual-Machine chain (Bitcoin, Solana, etc.) has a
-   * logo but no browsable token list — the @gibs/react components are
-   * chainId:number typed and cannot represent these identifiers, so the token
-   * grid and code snippet panel are meaningless for them. Resolve the
-   * selected network from metrics (once loaded) to branch into a logo-only
-   * empty state instead of an empty/broken token browser.
+  /* ----- Logo-only chain detection ----------------------------------------
+   * Many curated chains are carried for their logo alone and have no tokens to
+   * browse, so selecting one should show the logo rather than an empty grid.
+   * Branch on the token count useMetrics resolved, not on whether the chain is
+   * Ethereum-Virtual-Machine: that stood in as a proxy for "has no tokens" and
+   * was wrong in both directions — it hid Solana's 9,633 tokens and Tron's 383,
+   * while every Ethereum-Virtual-Machine chain with an empty list still fell
+   * through to a bare "No tokens found". The list and image endpoints take the
+   * namespaced identifier, so these chains browse like any other.
    */
   const selectedIdentifier = selectedChainId ? toChainIdentifier(selectedChainId) : null
   const selectedNetwork = useMemo(
     () => metrics?.networks.supported.find((network) => network.chainIdentifier === selectedIdentifier) ?? null,
     [metrics, selectedIdentifier],
   )
-  const isNonEvmChain = !!selectedNetwork && !selectedNetwork.isEvm
+  const isLogoOnlyChain = !!selectedNetwork && selectedNetwork.tokenCount === 0
 
   /* ----- Local UI state -------------------------------------------------- */
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
@@ -269,7 +268,7 @@ export default function StudioBrowser({
         name: token.name,
         symbol: token.symbol,
         decimals: token.decimals ?? 18,
-        imageUri: token.hasIcon ? getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`) : undefined,
+        imageUri: token.hasIcon ? getApiUrl(`/image/${tokenChainIdentifier(token)}/${token.address}`) : undefined,
       }
 
       if (activeList) {
@@ -325,16 +324,23 @@ export default function StudioBrowser({
 
   const mergedTokens = useMemo(() => {
     if (!chainData?.tokens) return []
+    // Every token in the response belongs to the chain that was requested, so stamp
+    // each with the identifier it was fetched under. The response carries only the
+    // bare number, and rebuilding an identifier from that assumes
+    // Ethereum-Virtual-Machine — which asked for Solana's tokens under eip155-501
+    // and got a 400 for every icon.
     return chainData.tokens.map((token) => {
+      const chainIdentifier = selectedIdentifier ?? toChainIdentifier(token.chainId)
       const sources = token.sources ?? []
       const primarySource = sources[0] ?? 'merged'
       const listReferences = sources.map((src) => ({
         sourceList: src,
-        imageUri: getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`),
+        imageUri: getApiUrl(`/image/${chainIdentifier}/${token.address}`),
         imageFormat: '',
       }))
       return {
         chainId: token.chainId,
+        chainIdentifier,
         address: token.address,
         name: token.name,
         symbol: token.symbol,
@@ -344,7 +350,7 @@ export default function StudioBrowser({
         listReferences: listReferences.length > 0 ? listReferences : undefined,
       }
     })
-  }, [chainData])
+  }, [chainData, selectedIdentifier])
 
   const serverTotal = chainData?.total ?? null
 
@@ -456,7 +462,7 @@ export default function StudioBrowser({
       <NetworkSelect selectedChainId={selectedChainId} onSelect={handleChainSelect} />
 
       {/* Search + filter (TokenSearch embeds TokenListFilter internally) */}
-      {selectedChainId && !isNonEvmChain && (
+      {selectedChainId && !isLogoOnlyChain && (
         <TokenSearch
           count={tokenCount}
           onSearchUpdate={handleSearchUpdate}
@@ -515,7 +521,7 @@ export default function StudioBrowser({
           </div>
         )}
 
-        {selectedChainId && isNonEvmChain && (
+        {selectedChainId && isLogoOnlyChain && (
           <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
             <Image
               src={getApiUrl(`/image/${selectedNetwork!.chainIdentifier}`)}
@@ -524,29 +530,27 @@ export default function StudioBrowser({
               shape="circle"
               className="rounded-full"
             />
-            <div className="text-sm font-medium text-gray-800 dark:text-white/80">
-              {getNetworkName(selectedNetwork!.chainIdentifier)}
-            </div>
+            <div className="text-sm font-medium text-gray-800 dark:text-white/80">{selectedNetwork!.name}</div>
             <p className="max-w-xs text-sm text-gray-400 dark:text-white/40">
               This chain has a logo but no tokens to browse yet.
             </p>
           </div>
         )}
 
-        {selectedChainId && !isNonEvmChain && isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && !isLogoOnlyChain && isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
             <i className="fas fa-spinner fa-spin mr-2" />
             Loading tokens...
           </div>
         )}
 
-        {selectedChainId && !isNonEvmChain && !isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && !isLogoOnlyChain && !isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             No tokens found
           </div>
         )}
 
-        {!isNonEvmChain && filteredTokens.length > 0 && (
+        {!isLogoOnlyChain && filteredTokens.length > 0 && (
           <VirtualTokenList
             tokens={filteredTokens}
             selectedToken={selectedToken}

@@ -11,7 +11,7 @@ import { useListEditor } from '../contexts/ListEditorContext'
 import { useStudio } from '../contexts/StudioContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
-import { toChainIdentifier } from '../utils/chain-identifier'
+import { toChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
 import type { Token } from '../types'
 
 /**
@@ -76,7 +76,7 @@ export default function Studio() {
     selectToken(token) // update context immediately for configurator
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      next.set('chain', toChainIdentifier(token.chainId))
+      next.set('chain', tokenChainIdentifier(token))
       next.set('token', token.address)
       return next
     }, { replace: true })
@@ -192,7 +192,7 @@ export default function Studio() {
               <div className="flex items-center gap-2">
                 {selectedToken.hasIcon && (
                   <Image
-                    src={getApiUrl(`/image/${toChainIdentifier(selectedToken.chainId)}/${selectedToken.address}`)}
+                    src={getApiUrl(`/image/${tokenChainIdentifier(selectedToken)}/${selectedToken.address}`)}
                     alt={selectedToken.symbol}
                     size={20}
                     skeleton

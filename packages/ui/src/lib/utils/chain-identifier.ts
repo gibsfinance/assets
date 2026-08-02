@@ -25,6 +25,19 @@ export function toChainIdentifier(chainId: string | number): string {
 }
 
 /**
+ * Resolve the chain identifier to address a token by.
+ *
+ * Prefers the namespace the token was listed under and only falls back to reading
+ * the bare `chainId`, which cannot distinguish Solana's 501 from Columbus
+ * testnet's. Every token image URL should go through this: deriving from the
+ * number alone asked `/image/eip155-501/<base58 address>` for Solana's tokens,
+ * which the server rejects as a malformed Ethereum-Virtual-Machine address.
+ */
+export function tokenChainIdentifier(token: { chainId: string | number; chainIdentifier?: string }): string {
+  return token.chainIdentifier ?? toChainIdentifier(token.chainId)
+}
+
+/**
  * Extract the bare reference from a prefixed identifier: eip155-369 → 369.
  * Bare numerics pass through unchanged so callers can accept either form.
  */

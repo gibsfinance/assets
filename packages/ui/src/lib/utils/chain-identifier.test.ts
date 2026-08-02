@@ -4,7 +4,7 @@
  * entries and produce copyable URLs the docs don't match.
  */
 import { describe, it, expect } from 'vitest'
-import { toChainIdentifier, fromChainIdentifier, prefixImagePath } from './chain-identifier'
+import { toChainIdentifier, fromChainIdentifier, prefixImagePath, tokenChainIdentifier } from './chain-identifier'
 
 describe('toChainIdentifier', () => {
   it('prefixes bare EVM chain ids', () => {
@@ -51,5 +51,19 @@ describe('prefixImagePath', () => {
   it('leaves already-prefixed and non-image paths untouched', () => {
     expect(prefixImagePath('/image/eip155-1/0xabc')).toBe('/image/eip155-1/0xabc')
     expect(prefixImagePath('/list/tokens/369')).toBe('/list/tokens/369')
+  })
+})
+
+describe('tokenChainIdentifier', () => {
+  it('uses the namespace the token was listed under', () => {
+    expect(
+      tokenChainIdentifier({ chainId: 501, chainIdentifier: 'solana-501' }),
+    ).toBe('solana-501')
+  })
+
+  // Without the identifier the number alone is all there is, and eip155 is the
+  // only defensible guess — but it is a guess, which is why callers should set it.
+  it('falls back to deriving from the bare chain id', () => {
+    expect(tokenChainIdentifier({ chainId: 369 })).toBe('eip155-369')
   })
 })
