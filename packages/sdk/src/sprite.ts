@@ -1,3 +1,5 @@
+import type { ChainId } from './image'
+
 /** Options for fetching a sprite */
 export interface SpriteOptions {
   /** Icon size in pixels (default: 32) */
@@ -6,8 +8,12 @@ export interface SpriteOptions {
   cols?: number
   /** Max tokens (default: 500) */
   limit?: number
-  /** Filter to a specific chain within the list */
-  chainId?: number
+  /**
+   * Filter to a specific chain within the list — namespaced (`solana-501`) or
+   * bare (`501`). A bare number matches every chain carrying that reference,
+   * which for the eleven doubly-claimed numbers is more than one chain.
+   */
+  chainId?: ChainId
   /** 'mixed' returns SVGs as inline data URIs, rasters in the sprite grid */
   content?: 'mixed'
 }
@@ -42,13 +48,13 @@ export interface Sprite {
   manifest: SpriteManifest
   /** Full URL to the sprite sheet image */
   sheetUrl: string
-  /** Look up an icon by chainId + address */
-  getIcon(chainId: number, address: string): ResolvedIcon
+  /** Look up an icon by chainId + address. Accepts `1` or `eip155-1`. */
+  getIcon(chainId: ChainId, address: string): ResolvedIcon
   /** Get CSS background properties for a raster icon */
-  getBackgroundCSS(chainId: number, address: string): Record<string, string> | null
+  getBackgroundCSS(chainId: ChainId, address: string): Record<string, string> | null
   /** Check if a token has an icon in this sprite */
-  has(chainId: number, address: string): boolean
-  /** All token keys in the sprite */
+  has(chainId: ChainId, address: string): boolean
+  /** All token keys in the sprite, verbatim as the server served them */
   keys(): string[]
 }
 
@@ -91,8 +97,67 @@ export function getSpriteSheetUrl(
   )
 }
 
-function tokenKey(chainId: number, address: string): string {
-  return `${chainId}-${address.toLowerCase()}`
+/**
+ * A hex address, the only token id whose casing carries no meaning.
+ *
+ * Base58 ids (Solana mints, Tron addresses) never begin `0x` — the alphabet
+ * excludes `0` — so the prefix alone separates the two families, and neither
+ * form contains a dash. That makes the final dash-separated segment of a
+ * manifest key unambiguously the address, however many dashes the chain
+ * identifier ahead of it carries.
+ */
+const HEX_ADDRESS = /^0x[0-9a-fA-F]+$/
+
+/**
+ * Canonical CAIP-2 identifier, mirroring the server's `toCAIP2`.
+ *
+ * The dash form (`eip155-1`, not `eip155:1`) is what the server stores in
+ * `network.chain_id` and therefore what its sprite keys carry.
+ */
+function toCAIP2(chainId: ChainId): string {
+  const input = String(chainId)
+  if (input.includes('-')) return input
+  if (input === '0') return 'asset-0'
+  return `eip155-${input}`
+}
+
+/** Lowercase hex addresses only; base58 ids are case-significant and pass through. */
+function normalizeAddress(address: string): string {
+  return HEX_ADDRESS.test(address) ? address.toLowerCase() : address
+}
+
+/**
+ * The manifest key for a token, matching the server's `spriteKey` exactly.
+ *
+ * The chain component is the full identifier, not the bare number. The server has
+ * keyed sprites this way since chain ids became CAIP-2, but this builder emitted
+ * `1-0x…` against a manifest carrying `eip155-1-0x…`. Since `getIcon`, `has`, and
+ * `getBackgroundCSS` all declared `chainId: number`, a bare number was the only
+ * value a caller could pass without violating the signature — and it missed on
+ * every chain. Lookups only ever succeeded by passing a CAIP-2 string the types
+ * rejected. The unit tests did not catch it because their fixture manifest was
+ * hand-written in the same bare-number shape, so both halves agreed with each
+ * other and neither agreed with the server.
+ */
+function tokenKey(chainId: ChainId, address: string): string {
+  return `${toCAIP2(chainId)}-${normalizeAddress(address)}`
+}
+
+/**
+ * Case-fold a manifest key so a hex address matches whatever casing the caller
+ * passes, while a base58 id keeps every byte.
+ *
+ * Folding the whole key — as this module used to, with a blanket `toLowerCase()`
+ * over `Object.entries` — collided distinct Solana mints that differ only in case
+ * and handed `keys()` corrupted addresses. The server's own `spriteKey` carries a
+ * comment warning against precisely that.
+ */
+function foldKey(key: string): string {
+  const cut = key.lastIndexOf('-')
+  if (cut === -1) return key
+  const address = key.slice(cut + 1)
+  if (!HEX_ADDRESS.test(address)) return key
+  return `${key.slice(0, cut + 1)}${address.toLowerCase()}`
 }
 
 /** Fetch and parse a sprite manifest, returning a Sprite with lookup helpers */
@@ -105,21 +170,22 @@ export async function fetchSprite(
   const url = getSpriteUrl(baseUrl, provider, listKey, options)
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to fetch sprite manifest: ${res.status}`)
-  const raw: SpriteManifest = await res.json()
+  const manifest: SpriteManifest = await res.json()
 
-  // Normalize all token keys to lowercase for consistent lookups
-  const normalizedTokens: Record<string, SpriteTokenEntry> = {}
-  for (const [key, value] of Object.entries(raw.tokens)) {
-    normalizedTokens[key.toLowerCase()] = value
+  // The manifest is exposed exactly as served — `keys()` hands back the server's
+  // own ids. Lookups go through a separate case-folded index so tolerating hex
+  // casing never rewrites the addresses callers read back.
+  const index: Record<string, SpriteTokenEntry> = {}
+  for (const [key, value] of Object.entries(manifest.tokens)) {
+    index[foldKey(key)] = value
   }
-  const manifest: SpriteManifest = { ...raw, tokens: normalizedTokens }
 
   const sheetUrl = manifest.spriteUrl.startsWith('/')
     ? `${baseUrl}${manifest.spriteUrl}`
     : manifest.spriteUrl
 
-  function getIcon(chainId: number, address: string): ResolvedIcon {
-    const entry = manifest.tokens[tokenKey(chainId, address)]
+  function getIcon(chainId: ChainId, address: string): ResolvedIcon {
+    const entry = index[tokenKey(chainId, address)]
     if (!entry) return null
 
     if (typeof entry === 'string') {
@@ -136,7 +202,7 @@ export async function fetchSprite(
     }
   }
 
-  function getBackgroundCSS(chainId: number, address: string): Record<string, string> | null {
+  function getBackgroundCSS(chainId: ChainId, address: string): Record<string, string> | null {
     const icon = getIcon(chainId, address)
     if (!icon) return null
 
@@ -161,8 +227,8 @@ export async function fetchSprite(
     sheetUrl,
     getIcon,
     getBackgroundCSS,
-    has(chainId: number, address: string): boolean {
-      return tokenKey(chainId, address) in manifest.tokens
+    has(chainId: ChainId, address: string): boolean {
+      return tokenKey(chainId, address) in index
     },
     keys(): string[] {
       return Object.keys(manifest.tokens)

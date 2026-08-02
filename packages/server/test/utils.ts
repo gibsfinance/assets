@@ -19,6 +19,21 @@ export const get = (key: TableNames, index = 0) => {
   return inserted[key]?.[index]
 }
 
+/**
+ * Register a network the shared setup did not create, so teardown removes it too.
+ *
+ * teardown only deletes rows recorded by setup, so a test seeding its own network
+ * through insertNetworkFromChainId left that row behind for good. On the next run
+ * against the same database the insert returned the survivor, still carrying the
+ * naming a previous run had written, and assertions expecting a fresh row failed —
+ * these tests were green exactly once per database, and passed in continuous
+ * integration only because every run there starts from an empty one.
+ */
+export const trackNetwork = <T extends Network>(network: T): T => {
+  inserted.network!.push(network)
+  return network
+}
+
 export const teardown = async () => {
   const drizzle = getDrizzle()
   const providerIds = inserted.provider!.map(({ providerId }) => providerId)

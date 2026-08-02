@@ -256,7 +256,31 @@ function NetworkDialog({
               </div>
             </div>
 
-            <VirtualNetworkList networks={matches} selectedChainId={selectedChainId} onPick={onPick} />
+            {/*
+              Remount the list whenever it becomes a different list — a new visit,
+              or a new query. The scroll offset is owned jointly by the container
+              and the virtualizer's own state, and closing the drawer does not
+              unmount either: scroll 8,000 pixels into the 52,000-pixel list,
+              close, reopen, and the drawer came back at Camino C-Chain under a
+              freshly cleared search box claiming to list all 1,900 networks.
+              Typing was worse — the ranked list rebuilt beneath a stale offset, so
+              the best match for what was being typed sat 8,000 pixels above the
+              viewport.
+
+              Resetting from an effect cannot fix this: on open the effect runs
+              before this panel's DOM exists, so it moves nothing, and moving the
+              container alone desynchronizes the pair — the container reads 0 while
+              rows stay laid out at translateY(7605px) and the drawer paints
+              completely empty. Measured in the browser: zero rows intersecting the
+              viewport. A remount gives a fresh container and a virtualizer whose
+              offset starts at zero, so the two cannot disagree.
+            */}
+            <VirtualNetworkList
+              key={isOpen ? `open:${query}` : 'closed'}
+              networks={matches}
+              selectedChainId={selectedChainId}
+              onPick={onPick}
+            />
           </DialogPanel>
         </TransitionChild>
       </Dialog>

@@ -6,6 +6,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, ne, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { normalizeProvidedId } from '../../db/provided-id'
+import { chainIdFilterMatch } from '../../chain-id'
 
 const DEFAULT_SIZE = 32
 const DEFAULT_COLS = 25
@@ -52,6 +53,27 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
   } catch {
     return null
   }
+}
+
+/**
+ * Match condition for `?chainId=`, following the same rule as every list endpoint.
+ *
+ * `network.chain_id` stores CAIP-2 identifiers (`eip155-369`, `solana-501`), so a
+ * bare number names no namespace and has to match on the stored id's reference —
+ * `?chainId=501` must reach `solana-501`. Plain equality against the raw value
+ * could only ever match a chain whose identifier IS the bare number, which no row
+ * carries; every bare-numeric filter therefore returned an empty sprite. That is
+ * the only form `SpriteOptions.chainId` could produce, so the sprite chain filter
+ * had never narrowed to anything at all.
+ *
+ * An explicit identifier stays exact — `?chainId=eip155-501` never widens to Solana.
+ */
+function chainFilterCondition(chainFilter: string) {
+  const match = chainIdFilterMatch(chainFilter)
+  if (match.kind === 'reference') {
+    return dsql`split_part(${s.network.chainId}, '-', 2) = ${match.reference}`
+  }
+  return eq(s.network.chainId, match.chainId)
 }
 
 /** Resolve a list to its DB listId from provider/key path params */
@@ -117,7 +139,7 @@ export const manifest: RequestHandler = async (req, res, _next) => {
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
   let q = queryListTokens(listId)
-  if (chainFilter) q = q.where(eq(s.network.chainId, chainFilter))
+  if (chainFilter) q = q.where(chainFilterCondition(chainFilter))
 
   const tokens = await q.limit(limit)
 
@@ -180,7 +202,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
   let q = queryListTokens(listId)
-  if (chainFilter) q = q.where(eq(s.network.chainId, chainFilter))
+  if (chainFilter) q = q.where(chainFilterCondition(chainFilter))
 
   const tokens = (await q.limit(limit)) as unknown as SpriteToken[]
 
