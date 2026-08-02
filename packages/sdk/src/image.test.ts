@@ -14,16 +14,20 @@ describe('getImageUrl', () => {
     expect(url).toContain('h=72')
   })
 
-  it('adds format param', () => {
+  // The server reads the output format from `?as=` only. Asserting the param
+  // name is the whole point of this test: it used to emit `format=`, which the
+  // server ignores, so every "give me WebP" request was served the original.
+  it('asks for the output format with the param the server reads', () => {
     const url = getImageUrl(base, 1, '0xabc', { format: 'webp' })
-    expect(url).toContain('format=webp')
+    expect(url).toContain('as=webp')
+    expect(url).not.toContain('format=webp')
   })
 
   it('combines all params', () => {
     const url = getImageUrl(base, 1, '0xabc', { width: 64, height: 64, format: 'webp', providerKey: 'trustwallet' })
     expect(url).toContain('w=64')
     expect(url).toContain('h=64')
-    expect(url).toContain('format=webp')
+    expect(url).toContain('as=webp')
     expect(url).toContain('providerKey=trustwallet')
   })
 
@@ -40,6 +44,14 @@ describe('getImageUrl', () => {
     const url = getImageUrl(base, 1, '0xabc', {})
     expect(url).toBe('https://gib.show/image/1/0xabc')
   })
+
+  // A bare number names no namespace, and eleven of them name two chains each.
+  // Callers must be able to say which one they mean.
+  it('accepts a namespaced chain identifier', () => {
+    expect(getImageUrl(base, 'solana-501', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')).toBe(
+      'https://gib.show/image/solana-501/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    )
+  })
 })
 
 describe('getNetworkImageUrl', () => {
@@ -51,6 +63,10 @@ describe('getNetworkImageUrl', () => {
     const url = getNetworkImageUrl('https://gib.show', 1, { width: 48 })
     expect(url).toContain('w=48')
   })
+
+  it('accepts a namespaced chain identifier', () => {
+    expect(getNetworkImageUrl('https://gib.show', 'bip122-0')).toBe('https://gib.show/image/bip122-0')
+  })
 })
 
 describe('getThumbnailUrl', () => {
@@ -58,6 +74,6 @@ describe('getThumbnailUrl', () => {
     const url = getThumbnailUrl('https://gib.show', 1, '0xabc', 32)
     expect(url).toContain('w=64')
     expect(url).toContain('h=64')
-    expect(url).toContain('format=webp')
+    expect(url).toContain('as=webp')
   })
 })
