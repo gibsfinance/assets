@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  filterTokensBySearch,
+  searchTokens,
+  scoreTokenMatch,
+  SEARCH_RELEVANCE,
   sortTokensMainnetFirst,
   categorizeListsByScope,
   countResults,
@@ -23,9 +25,9 @@ const makeToken = (overrides: Partial<Token> = {}): Token =>
   }) as Token
 
 // ---------------------------------------------------------------------------
-// filterTokensBySearch
+// searchTokens
 // ---------------------------------------------------------------------------
-describe('filterTokensBySearch', () => {
+describe('searchTokens', () => {
   const tokens = [
     makeToken({ name: 'Wrapped Ether', symbol: 'WETH', address: '0xc02aaa' }),
     makeToken({ name: 'USD Coin', symbol: 'USDC', address: '0xa0b869' }),
@@ -33,28 +35,121 @@ describe('filterTokensBySearch', () => {
   ]
 
   it('returns all tokens for empty search', () => {
-    expect(filterTokensBySearch(tokens, '')).toHaveLength(3)
+    expect(searchTokens(tokens, '')).toHaveLength(3)
   })
 
-  it('filters by name', () => {
-    expect(filterTokensBySearch(tokens, 'ether')).toEqual([tokens[0]])
+  it('ignores surrounding whitespace', () => {
+    expect(searchTokens(tokens, '   ')).toHaveLength(3)
+    expect(searchTokens(tokens, '  dai  ')).toEqual([tokens[2]])
   })
 
-  it('filters by symbol', () => {
-    expect(filterTokensBySearch(tokens, 'usdc')).toEqual([tokens[1]])
+  it('matches on name', () => {
+    expect(searchTokens(tokens, 'ether')).toEqual([tokens[0]])
   })
 
-  it('filters by address', () => {
-    expect(filterTokensBySearch(tokens, '6b175')).toEqual([tokens[2]])
+  it('matches on symbol', () => {
+    expect(searchTokens(tokens, 'usdc')).toEqual([tokens[1]])
+  })
+
+  it('matches on address', () => {
+    expect(searchTokens(tokens, '6b175')).toEqual([tokens[2]])
   })
 
   it('is case-insensitive', () => {
-    expect(filterTokensBySearch(tokens, 'DAI')).toEqual([tokens[2]])
-    expect(filterTokensBySearch(tokens, 'dai')).toEqual([tokens[2]])
+    expect(searchTokens(tokens, 'DAI')).toEqual([tokens[2]])
+    expect(searchTokens(tokens, 'dai')).toEqual([tokens[2]])
   })
 
   it('returns empty for no matches', () => {
-    expect(filterTokensBySearch(tokens, 'zzz')).toHaveLength(0)
+    expect(searchTokens(tokens, 'zzz')).toHaveLength(0)
+  })
+
+  /*
+   * The reason this function ranks at all. Measured against the live Ethereum
+   * list, "usdc" matched 160 tokens and USD Coin came back 52nd — behind fifty
+   * Curve and Yearn pools whose names merely mention it. Nothing was missing;
+   * it was unreachable.
+   */
+  describe('relevance', () => {
+    const usdCoin = makeToken({ name: 'USD Coin', symbol: 'USDC', address: '0xa0b869' })
+    const derivatives = [
+      makeToken({ name: 'eUSD/USDC', symbol: 'eUSDUSDC', address: '0x111' }),
+      makeToken({ name: 'Curve.fi Factory Crypto Pool: ibCHF/USDC', symbol: 'ibCHFUSDC-f', address: '0x222' }),
+      makeToken({ name: 'Curve ibAUD-USDC Pool yVault', symbol: 'yvCurve-ibAUD-USDC', address: '0x333' }),
+    ]
+
+    it('puts the exact symbol first even when it arrives last', () => {
+      expect(searchTokens([...derivatives, usdCoin], 'usdc')[0]).toBe(usdCoin)
+    })
+
+    it('keeps every other match, just further down', () => {
+      expect(searchTokens([...derivatives, usdCoin], 'usdc')).toHaveLength(4)
+    })
+
+    it('ranks a symbol prefix above a symbol that merely contains the term', () => {
+      const prefix = makeToken({ name: 'USD Coin Bridged', symbol: 'USDCe', address: '0x444' })
+      const contains = makeToken({ name: 'Pool', symbol: 'eUSDUSDC', address: '0x555' })
+      expect(searchTokens([contains, prefix], 'usdc')).toEqual([prefix, contains])
+    })
+
+    it('ranks an exact symbol above a name that starts with the term', () => {
+      const bySymbol = makeToken({ name: 'Something Else', symbol: 'USDC', address: '0x666' })
+      const byName = makeToken({ name: 'USDC Vault', symbol: 'VLT', address: '0x777' })
+      expect(searchTokens([byName, bySymbol], 'usdc')).toEqual([bySymbol, byName])
+    })
+
+    /*
+     * Deliberate: a name that *starts with* the term is better evidence than a
+     * symbol that merely contains it somewhere. "USDC Vault" is plausibly what
+     * was meant; "xUSDCy" almost never is.
+     */
+    it('ranks a name prefix above a symbol that only contains the term', () => {
+      const byNamePrefix = makeToken({ name: 'USDC Vault', symbol: 'VLT', address: '0x777' })
+      const bySymbolContains = makeToken({ name: 'Something Else', symbol: 'xUSDCy', address: '0x666' })
+      expect(searchTokens([bySymbolContains, byNamePrefix], 'usdc')).toEqual([byNamePrefix, bySymbolContains])
+    })
+
+    it('puts a pasted address above everything', () => {
+      const pasted = makeToken({ name: 'Obscure', symbol: 'OBS', address: '0xa0b869' })
+      const named = makeToken({ name: '0xa0b869 Pool', symbol: 'POOL', address: '0x888' })
+      expect(searchTokens([named, pasted], '0xa0b869')[0]).toBe(pasted)
+    })
+
+    /*
+     * The incoming order is the server's ranking (list ranking → format →
+     * version), so it says which provider is trusted for a token. Ties must not
+     * disturb it — that is what makes the impostor stay behind the real one.
+     */
+    it('leaves equally relevant tokens in the order the server sent them', () => {
+      const trusted = makeToken({ name: 'USD Coin', symbol: 'USDC', address: '0xreal' })
+      const impostor = makeToken({ name: 'USD Coin', symbol: 'USDC', address: '0xfake' })
+      expect(searchTokens([trusted, impostor], 'usdc')).toEqual([trusted, impostor])
+      expect(searchTokens([impostor, trusted], 'usdc')).toEqual([impostor, trusted])
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// scoreTokenMatch
+// ---------------------------------------------------------------------------
+describe('scoreTokenMatch', () => {
+  const token = makeToken({ name: 'USD Coin', symbol: 'USDC', address: '0xa0b869' })
+
+  it.each([
+    ['0xa0b869', SEARCH_RELEVANCE.addressExact],
+    ['usdc', SEARCH_RELEVANCE.symbolExact],
+    ['usd c', SEARCH_RELEVANCE.namePrefix],
+    ['usd coin', SEARCH_RELEVANCE.nameExact],
+    ['coin', SEARCH_RELEVANCE.nameContains],
+    ['a0b8', SEARCH_RELEVANCE.addressContains],
+    ['nothing', SEARCH_RELEVANCE.none],
+  ])('scores %s as the expected tier', (term, expected) => {
+    expect(scoreTokenMatch(token, term)).toBe(expected)
+  })
+
+  it('prefers the symbol tier when a term matches both symbol and name', () => {
+    const both = makeToken({ name: 'Wrapped USDC Vault', symbol: 'USDCX', address: '0x999' })
+    expect(scoreTokenMatch(both, 'usdc')).toBe(SEARCH_RELEVANCE.symbolPrefix)
   })
 })
 

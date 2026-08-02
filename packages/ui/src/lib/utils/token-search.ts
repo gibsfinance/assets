@@ -2,21 +2,75 @@
  * @module token-search
  * Shared token filtering, sorting, and API response inspection utilities.
  *
- * Used by TokenSearch, StudioBrowser, and EndpointCard. Extracted to eliminate
- * duplicated filter/sort logic across components and enable isolated testing.
+ * Extracted from the components that used to inline this so the ranking and
+ * filtering rules can be tested on their own.
  */
 import type { NetworkInfo, Token } from '../types'
 
-/** Filter tokens by search term matching name, symbol, or address (case-insensitive) */
-export function filterTokensBySearch(tokens: Token[], searchTerm: string): Token[] {
-  const term = searchTerm.toLowerCase()
+/**
+ * How well a token answers a search term. Higher wins; 0 means no match.
+ *
+ * The tiers exist because a plain substring filter is close to useless on a
+ * large chain: "usdc" matches 160 tokens on Ethereum, and USD Coin itself came
+ * back 52nd, behind fifty Curve and Yearn pools that merely mention it. An exact
+ * symbol is almost always the token someone meant; a name that only contains the
+ * term is the weakest evidence short of the address.
+ */
+export const SEARCH_RELEVANCE = {
+  addressExact: 8,
+  symbolExact: 7,
+  symbolPrefix: 6,
+  nameExact: 5,
+  namePrefix: 4,
+  symbolContains: 3,
+  nameContains: 2,
+  addressContains: 1,
+  none: 0,
+} as const
+
+/**
+ * Score one token against an already-lowercased search term.
+ *
+ * @param token - The token to score.
+ * @param term - Lowercased, trimmed search term; must not be empty.
+ * @returns A `SEARCH_RELEVANCE` value — 0 when nothing matches.
+ */
+export function scoreTokenMatch(token: Token, term: string): number {
+  const symbol = token.symbol.toLowerCase()
+  const name = token.name.toLowerCase()
+  const address = token.address.toLowerCase()
+
+  if (address === term) return SEARCH_RELEVANCE.addressExact
+  if (symbol === term) return SEARCH_RELEVANCE.symbolExact
+  if (symbol.startsWith(term)) return SEARCH_RELEVANCE.symbolPrefix
+  if (name === term) return SEARCH_RELEVANCE.nameExact
+  if (name.startsWith(term)) return SEARCH_RELEVANCE.namePrefix
+  if (symbol.includes(term)) return SEARCH_RELEVANCE.symbolContains
+  if (name.includes(term)) return SEARCH_RELEVANCE.nameContains
+  if (address.includes(term)) return SEARCH_RELEVANCE.addressContains
+  return SEARCH_RELEVANCE.none
+}
+
+/**
+ * Match tokens against a search term, most relevant first.
+ *
+ * Ties keep their incoming order, which is the server's ranking (list ranking →
+ * format → version) and so encodes which provider is trusted for that token.
+ * `Array.prototype.sort` has been specified as stable since ES2019, which is
+ * what preserves it — do not swap in a comparator that breaks ties itself.
+ *
+ * @param tokens - Candidates, already in the server's preferred order.
+ * @param searchTerm - Raw user input; empty returns the input untouched.
+ * @returns Matching tokens ordered by relevance.
+ */
+export function searchTokens(tokens: Token[], searchTerm: string): Token[] {
+  const term = searchTerm.trim().toLowerCase()
   if (!term) return tokens
-  return tokens.filter(
-    (t) =>
-      t.name.toLowerCase().includes(term) ||
-      t.symbol.toLowerCase().includes(term) ||
-      t.address.toLowerCase().includes(term),
-  )
+  return tokens
+    .map((token) => ({ token, score: scoreTokenMatch(token, term) }))
+    .filter((scored) => scored.score > SEARCH_RELEVANCE.none)
+    .sort((a, b) => b.score - a.score)
+    .map((scored) => scored.token)
 }
 
 /** Sort tokens: mainnet (chainId 1) first, then alphabetical by name */

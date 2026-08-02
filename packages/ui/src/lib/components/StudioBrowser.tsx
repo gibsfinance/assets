@@ -9,7 +9,7 @@ import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
 import { deduplicateTokens } from '../utils/dedup-tokens'
-import { filterTokensBySearch, getPopularChains } from '../utils/token-search'
+import { searchTokens, getPopularChains } from '../utils/token-search'
 import NetworkSelect from './NetworkSelect'
 import TokenSearch from './TokenSearch'
 import Image from './Image'
@@ -345,7 +345,7 @@ export default function StudioBrowser({
     // Filter by search query
     const query = searchState?.query?.trim() || ''
     if (query) {
-      tokens = filterTokensBySearch(tokens, query)
+      tokens = searchTokens(tokens, query)
     }
 
     return tokens
