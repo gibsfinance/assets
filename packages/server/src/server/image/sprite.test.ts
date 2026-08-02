@@ -28,9 +28,16 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 import sharp from 'sharp'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { manifest, sheet, spriteKey } from './sprite'
 import { getDrizzle } from '../../db/drizzle'
 import type { Request, Response } from 'express'
+
+/** Golden sprite keys shared with @gibs/sdk — see fixtures/sprite-key-contract.json */
+const spriteKeyContract = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../../../../fixtures/sprite-key-contract.json', import.meta.url)), 'utf8'),
+) as { entries: { note: string; chainId: string; address: string; key: string }[] }
 
 describe('spriteKey', () => {
   it('lowercases Ethereum-Virtual-Machine addresses so casing never splits a cell', () => {
@@ -43,6 +50,32 @@ describe('spriteKey', () => {
   it('preserves base58 ids — the key is exposed verbatim in the manifest', () => {
     const mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     expect(spriteKey({ chainId: 'solana-501', address: mint })).toBe(`solana-501-${mint}`)
+  })
+})
+
+/**
+ * The published half of the sprite contract.
+ *
+ * @gibs/sdk reads these keys back and cannot import this module, so the shared
+ * fixture is the only thing pairing the two. It exists because the software
+ * development kit spent months building `1-0x…` against a manifest serving
+ * `eip155-1-0x…` — every lookup missed, and its own suite stayed green because
+ * the fixture manifest it asserted against was hand-written in a shape this
+ * server has never emitted. A key format change now fails here, in the software
+ * development kit suite, or in both — never silently in neither.
+ */
+describe('sprite key contract (shared fixture)', () => {
+  for (const entry of spriteKeyContract.entries) {
+    it(`emits ${entry.key} — ${entry.note}`, () => {
+      expect(spriteKey({ chainId: entry.chainId, address: entry.address })).toBe(entry.key)
+    })
+  }
+
+  it('always leads with the namespaced identifier, never the bare reference', () => {
+    for (const entry of spriteKeyContract.entries) {
+      expect(entry.key.startsWith(`${entry.chainId}-`)).toBe(true)
+      expect(/^\d+-/.test(entry.key)).toBe(false)
+    }
   })
 })
 
@@ -274,27 +307,48 @@ describe('sprite endpoints', () => {
     })
   })
 
+  /**
+   * `network.chain_id` holds CAIP-2 identifiers, so equality against a bare number
+   * matched nothing and the filter silently emptied the sprite. `SpriteOptions.chainId`
+   * was typed `number`, so a bare number was the ONLY value the software development
+   * kit could send — its chain filter had never once narrowed to a real chain.
+   * Verified against staging before the fix: ?chainId=501 and ?chainId=42161 both
+   * returned count 0 on lists holding thousands of those chains' tokens.
+   */
   describe('chainId query filter', () => {
-    it('manifest narrows the token query to the requested chain', async () => {
+    it('manifest matches a bare number on the stored identifier reference, not by equality', async () => {
       queueDrizzleResults([{ listId: 'L1' }], [])
       const res = mockResponse()
 
       await manifest(mockRequest({ query: { chainId: '369' } }), res, vi.fn())
 
-      const { eq } = await import('drizzle-orm')
-      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), '369')
+      const { eq, sql } = await import('drizzle-orm')
+      // A bare reference is a split_part() comparison; equality against '369' would
+      // only ever match a row whose identifier IS "369", and none is stored that way.
+      expect(vi.mocked(sql)).toHaveBeenCalled()
+      expect(vi.mocked(eq)).not.toHaveBeenCalledWith(expect.anything(), '369')
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
       expect(body.spriteUrl).toContain('chainId=369')
     })
 
-    it('sheet narrows the token query to the requested chain', async () => {
+    it('manifest matches an explicit identifier exactly, so solana-501 never widens', async () => {
       queueDrizzleResults([{ listId: 'L1' }], [])
       const res = mockResponse()
 
-      await sheet(mockRequest({ query: { chainId: '369' } }), res, vi.fn())
+      await manifest(mockRequest({ query: { chainId: 'solana-501' } }), res, vi.fn())
 
       const { eq } = await import('drizzle-orm')
-      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), '369')
+      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), 'solana-501')
+    })
+
+    it('sheet narrows the token query the same way the manifest does', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [])
+      const res = mockResponse()
+
+      await sheet(mockRequest({ query: { chainId: 'solana-501' } }), res, vi.fn())
+
+      const { eq } = await import('drizzle-orm')
+      expect(vi.mocked(eq)).toHaveBeenCalledWith(expect.anything(), 'solana-501')
     })
   })
 
