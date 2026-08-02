@@ -244,9 +244,10 @@ describe('client.fetchSprite', () => {
     rasterCount: 2,
     svgCount: 0,
     count: 2,
+    // Keyed as the server keys sprites: the CAIP-2 identifier, not the bare number.
     tokens: {
-      '1-0xabc': [0, 0],
-      '1-0xdef': [1, 0],
+      'eip155-1-0xabc': [0, 0],
+      'eip155-1-0xdef': [1, 0],
     },
   }
 
@@ -317,7 +318,8 @@ describe('client.fetchSprite', () => {
     const client = createClient()
     const sprite = await client.fetchSprite('uniswap', 'default')
 
-    expect(sprite.keys()).toEqual(expect.arrayContaining(['1-0xabc', '1-0xdef']))
+    // Verbatim server keys — keys() no longer rewrites what it was handed.
+    expect(sprite.keys()).toEqual(expect.arrayContaining(['eip155-1-0xabc', 'eip155-1-0xdef']))
   })
 
   it('passes options as query params to the sprite URL', async () => {

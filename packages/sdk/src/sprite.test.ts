@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { getSpriteUrl, getSpriteSheetUrl, fetchSprite } from './sprite'
 
 const BASE = 'https://gib.show'
+
+/** Golden sprite keys shared with the server — see fixtures/sprite-key-contract.json */
+const spriteKeyContract = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../../fixtures/sprite-key-contract.json', import.meta.url)), 'utf8'),
+) as {
+  entries: { note: string; chainId: string; address: string; key: string }[]
+  lookups: { note: string; chainId: number | string; address: string; key: string }[]
+}
 
 describe('getSpriteUrl', () => {
   it('builds basic sprite manifest URL', () => {
@@ -19,6 +29,13 @@ describe('getSpriteUrl', () => {
   it('includes chainId filter', () => {
     const url = getSpriteUrl(BASE, 'trustwallet', 'hosted', { chainId: 1 })
     expect(url).toContain('chainId=1')
+  })
+
+  it('passes a namespaced chainId through — the only form that can name Solana', () => {
+    // The option was typed `number`, so this was previously unexpressible: a bare
+    // 501 means eip155-501, a different chain that happens to share the number.
+    const url = getSpriteUrl(BASE, 'jupiter', 'tag-meme', { chainId: 'solana-501' })
+    expect(url).toContain('chainId=solana-501')
   })
 
   it('includes content=mixed param', () => {
@@ -50,11 +67,15 @@ describe('fetchSprite', () => {
     rasterCount: 3,
     svgCount: 1,
     count: 4,
+    // Keyed the way the server actually keys sprites: the full CAIP-2 identifier
+    // ahead of the address. The previous fixture used a bare `1-0xabc`, a shape no
+    // deployment has served since chain ids became CAIP-2 — so these tests passed
+    // while every real lookup returned null.
     tokens: {
-      '1-0xabc': [0, 0] as [number, number],
-      '1-0xdef': [1, 0] as [number, number],
-      '1-0x123': [2, 0] as [number, number],
-      '1-0x456': 'data:image/svg+xml;base64,PHN2Zz4=',
+      'eip155-1-0xabc': [0, 0] as [number, number],
+      'eip155-1-0xdef': [1, 0] as [number, number],
+      'eip155-1-0x123': [2, 0] as [number, number],
+      'eip155-1-0x456': 'data:image/svg+xml;base64,PHN2Zz4=',
     },
   }
 
@@ -130,8 +151,8 @@ describe('fetchSprite', () => {
   it('keys() returns all token keys', async () => {
     const sprite = await fetchSprite(BASE, 'coingecko', 'ethereum')
     expect(sprite.keys()).toHaveLength(4)
-    expect(sprite.keys()).toContain('1-0xabc')
-    expect(sprite.keys()).toContain('1-0x456')
+    expect(sprite.keys()).toContain('eip155-1-0xabc')
+    expect(sprite.keys()).toContain('eip155-1-0x456')
   })
 
   it('is case-insensitive for addresses', async () => {
@@ -189,7 +210,7 @@ describe('fetchSprite', () => {
       ...mockManifest,
       tokens: {
         ...mockManifest.tokens,
-        '1-0xrow2': [3, 1] as [number, number],
+        'eip155-1-0xrow2': [3, 1] as [number, number],
       },
     }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -208,7 +229,7 @@ describe('fetchSprite', () => {
       ...mockManifest,
       tokens: {
         ...mockManifest.tokens,
-        '1-0xrow2': [3, 1] as [number, number],
+        'eip155-1-0xrow2': [3, 1] as [number, number],
       },
     }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -230,8 +251,8 @@ describe('fetchSprite', () => {
     const multiChainManifest = {
       ...mockManifest,
       tokens: {
-        '1-0xabc': [0, 0] as [number, number],
-        '137-0xabc': [1, 0] as [number, number],
+        'eip155-1-0xabc': [0, 0] as [number, number],
+        'eip155-137-0xabc': [1, 0] as [number, number],
       },
     }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -264,6 +285,92 @@ describe('fetchSprite', () => {
     expect(sprite.keys()).toHaveLength(0)
     expect(sprite.has(1, '0xanything')).toBe(false)
     expect(sprite.getIcon(1, '0xanything')).toBeNull()
+  })
+})
+
+/**
+ * The consuming half of the sprite contract.
+ *
+ * The server cannot import this module and this module cannot import the server,
+ * so `fixtures/sprite-key-contract.json` is the only thing pairing them. Its keys
+ * were captured from live manifests. Before this suite existed, `tokenKey` built
+ * `1-0x…` while every manifest carried `eip155-1-0x…`, and the lookup methods
+ * declared `chainId: number` — so the only value the signature allowed was the one
+ * that never matched. The tests above stayed green because their fixture manifest
+ * was written in that same bare-number shape: both halves agreed with each other
+ * and neither agreed with the server. Asserting against captured keys is what
+ * makes that failure mode impossible to repeat.
+ */
+describe('sprite key contract (shared fixture)', () => {
+  /** A manifest carrying every golden key, each at a distinct grid position. */
+  function contractManifest() {
+    const tokens: Record<string, [number, number]> = {}
+    spriteKeyContract.entries.forEach((entry, index) => {
+      tokens[entry.key] = [index, 0]
+    })
+    return {
+      spriteUrl: '/sprite/p/l/sheet?size=32&cols=25',
+      size: 32,
+      cols: 25,
+      rows: 1,
+      rasterCount: spriteKeyContract.entries.length,
+      svgCount: 0,
+      count: spriteKeyContract.entries.length,
+      tokens,
+    }
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(contractManifest()) }),
+    )
+  })
+
+  for (const entry of spriteKeyContract.entries) {
+    it(`resolves ${entry.key} — ${entry.note}`, async () => {
+      const sprite = await fetchSprite(BASE, 'p', 'l')
+      expect(sprite.has(entry.chainId, entry.address)).toBe(true)
+      expect(sprite.getIcon(entry.chainId, entry.address)).not.toBeNull()
+    })
+  }
+
+  for (const lookup of spriteKeyContract.lookups) {
+    it(`accepts chainId ${JSON.stringify(lookup.chainId)} for ${lookup.key} — ${lookup.note}`, async () => {
+      const sprite = await fetchSprite(BASE, 'p', 'l')
+      expect(sprite.has(lookup.chainId, lookup.address)).toBe(true)
+
+      // Resolves the SAME cell the canonical key resolves — not merely "something".
+      const target = spriteKeyContract.entries.find((entry) => entry.key === lookup.key)!
+      expect(sprite.getIcon(lookup.chainId, lookup.address)).toEqual(
+        sprite.getIcon(target.chainId, target.address),
+      )
+    })
+  }
+
+  it('hands back the server keys verbatim, leaving base58 ids uncorrupted', async () => {
+    const sprite = await fetchSprite(BASE, 'p', 'l')
+    // A blanket toLowerCase() over the manifest — what this module used to do —
+    // both collides distinct Solana mints and returns callers a broken address.
+    expect(sprite.keys()).toContain('solana-501-GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g')
+    expect(sprite.keys()).toContain('tvm-195-TB6SgnNZyqz2KnFRw6yQM7AqVSCphfvBXy')
+    expect(sprite.keys()).toEqual(spriteKeyContract.entries.map((entry) => entry.key))
+  })
+
+  it('keeps base58 case significant — a lowercased mint is a different token', async () => {
+    const sprite = await fetchSprite(BASE, 'p', 'l')
+    const mint = 'GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g'
+    expect(sprite.has('solana-501', mint)).toBe(true)
+    expect(sprite.has('solana-501', mint.toLowerCase())).toBe(false)
+  })
+
+  it('does not confuse solana-501 with eip155-501, which is a different chain', async () => {
+    const sprite = await fetchSprite(BASE, 'p', 'l')
+    const mint = 'GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g'
+    expect(sprite.has('eip155-501', mint)).toBe(false)
+    // A bare 501 assumes eip155 — it cannot reach Solana, which is why the
+    // identifier is the form callers should pass.
+    expect(sprite.has(501, mint)).toBe(false)
   })
 })
 
