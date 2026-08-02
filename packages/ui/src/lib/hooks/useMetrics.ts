@@ -101,12 +101,12 @@ export function useMetrics(): {
 
   // Token counts keyed on the canonical identifier so a non-Ethereum-Virtual-Machine
   // bare reference (e.g. monero-128) never inherits an Ethereum-Virtual-Machine
-  // chain's count (e.g. Huobi chain 128).
+  // chain's count (e.g. Huobi chain 128). A bare-keyed map used to be published
+  // alongside this one; every consumer that read it collided two namespaces onto
+  // one number, so it is gone rather than deprecated.
   const byIdentifier: Record<string, number> = {}
-  const byChain: Record<string, number> = {}
-  for (const { chainId, chainIdentifier, count } of stats) {
+  for (const { chainIdentifier, count } of stats) {
     byIdentifier[chainIdentifier] = count
-    byChain[chainId] = count // legacy bare-keyed map, kept for existing consumers
   }
   const total = Object.values(byIdentifier).reduce((sum, c) => sum + c, 0)
 
@@ -129,7 +129,7 @@ export function useMetrics(): {
   })
 
   const metrics: PlatformMetrics = {
-    tokenList: { total, byChain },
+    tokenList: { total },
     networks: { supported },
   }
 

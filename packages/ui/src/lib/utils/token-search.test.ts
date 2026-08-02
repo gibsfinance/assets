@@ -8,7 +8,7 @@ import {
   parsePathParams,
   getPopularChains,
 } from './token-search'
-import type { Token } from '../types'
+import type { NetworkInfo, Token } from '../types'
 
 const makeToken = (overrides: Partial<Token> = {}): Token =>
   ({
@@ -205,53 +205,101 @@ describe('parsePathParams', () => {
 // getPopularChains
 // ---------------------------------------------------------------------------
 describe('getPopularChains', () => {
+  const makeNetwork = (overrides: Partial<NetworkInfo> = {}): NetworkInfo => ({
+    chainId: 1,
+    chainIdentifier: 'eip155-1',
+    type: 'evm',
+    name: 'Ethereum',
+    isTestnet: false,
+    tokenCount: 5000,
+    hasImage: true,
+    isEvm: true,
+    ...overrides,
+  })
+
   const networks = [
-    { chainId: 1 },
-    { chainId: 369 },
-    { chainId: 56 },
-    { chainId: 11155111 }, // testnet
+    makeNetwork(),
+    makeNetwork({ chainId: 369, chainIdentifier: 'eip155-369', name: 'PulseChain', tokenCount: 2000 }),
+    makeNetwork({ chainId: 56, chainIdentifier: 'eip155-56', name: 'BNB Smart Chain', tokenCount: 500 }),
+    makeNetwork({
+      chainId: 11155111,
+      chainIdentifier: 'eip155-11155111',
+      name: 'Sepolia Testnet',
+      isTestnet: true,
+      tokenCount: 50,
+    }),
   ]
 
-  const byChain: Record<number, number> = {
-    1: 5000,
-    369: 2000,
-    56: 500,
-    11155111: 50,
-  }
-
-  const getName = (id: number) => {
-    const names: Record<number, string> = {
-      1: 'Ethereum',
-      369: 'PulseChain',
-      56: 'BNB Smart Chain',
-      11155111: 'Sepolia Testnet',
-    }
-    return names[id] || `Chain ${id}`
-  }
-
   it('returns chains sorted by token count', () => {
-    const result = getPopularChains(networks, byChain, getName)
+    const result = getPopularChains(networks)
     expect(result[0].name).toBe('Ethereum')
     expect(result[1].name).toBe('PulseChain')
   })
 
   it('excludes testnets', () => {
-    const result = getPopularChains(networks, byChain, getName)
+    const result = getPopularChains(networks)
     expect(result.find((c) => c.name.includes('Testnet'))).toBeUndefined()
   })
 
   it('excludes chains below minTokens threshold', () => {
-    const result = getPopularChains(networks, byChain, getName, { minTokens: 1000 })
+    const result = getPopularChains(networks, { minTokens: 1000 })
     expect(result).toHaveLength(2) // only Ethereum and PulseChain
   })
 
   it('respects limit', () => {
-    const result = getPopularChains(networks, byChain, getName, { limit: 1 })
+    const result = getPopularChains(networks, { limit: 1 })
     expect(result).toHaveLength(1)
     expect(result[0].name).toBe('Ethereum')
   })
 
   it('handles empty networks', () => {
-    expect(getPopularChains([], {}, getName)).toHaveLength(0)
+    expect(getPopularChains([])).toHaveLength(0)
+  })
+
+  // Chain id 501 is Columbus testnet under eip155 and Solana under solana. Keying a
+  // card on the bare number merged the two: the testnet claimed Solana's token count
+  // and both cards navigated to the testnet, so Solana was unreachable from here.
+  it('keeps chains that share a numeric id apart', () => {
+    const result = getPopularChains([
+      makeNetwork({
+        chainId: 501,
+        chainIdentifier: 'eip155-501',
+        name: 'Columbus Test Network',
+        isTestnet: true,
+        tokenCount: 0,
+      }),
+      makeNetwork({
+        chainId: 501,
+        chainIdentifier: 'solana-501',
+        type: 'solana',
+        name: 'Solana',
+        tokenCount: 9633,
+        isEvm: false,
+      }),
+    ])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({ chainId: 'solana-501', name: 'Solana', tokenCount: 9633 })
+  })
+
+  // The old rule matched the substring "testnet", which "Columbus Test Network" and
+  // "Sepolia" do not contain. isTestnet, resolved once in useMetrics, does.
+  it('excludes a testnet whose name never says "testnet"', () => {
+    const result = getPopularChains([
+      makeNetwork({
+        chainId: 502,
+        chainIdentifier: 'eip155-502',
+        name: 'Columbus Test Network',
+        isTestnet: true,
+        tokenCount: 5000,
+      }),
+    ])
+
+    expect(result).toHaveLength(0)
+  })
+
+  it('identifies each chain by the identifier the endpoints take', () => {
+    const result = getPopularChains(networks)
+    expect(result.map((c) => c.chainId)).toEqual(['eip155-1', 'eip155-369', 'eip155-56'])
   })
 })

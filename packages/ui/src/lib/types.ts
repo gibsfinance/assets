@@ -15,6 +15,14 @@ export interface TokenListReference {
 export interface Token extends TokenInfo {
   hasIcon: boolean
   sourceList: string
+  /**
+   * Namespaced chain identifier the token was listed under, e.g. `solana-501`.
+   * `chainId` carries the bare number that the token list format mandates, and a
+   * bare number names no namespace — eleven of them are claimed by two, so
+   * deriving an identifier from it silently assumes Ethereum-Virtual-Machine.
+   * Set it wherever the namespace is known; read it via `tokenChainIdentifier`.
+   */
+  chainIdentifier?: string
   isBridgeToken?: boolean
   chainName?: string
   listReferences?: TokenListReference[]
@@ -53,10 +61,9 @@ export interface NetworkInfo {
 export interface PlatformMetrics {
   tokenList: {
     total: number
-    // string keys: built from /stats bare chain-id strings in useMetrics
-    byChain: Record<string, number>
   }
   networks: {
+    /** Per-chain token counts live on each entry's `tokenCount`, keyed by namespace. */
     supported: NetworkInfo[]
   }
 }

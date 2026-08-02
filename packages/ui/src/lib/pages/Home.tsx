@@ -2,7 +2,6 @@ import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
-import { getNetworkName } from '../utils/network-name'
 import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
 import CodeBlock from '../components/CodeBlock'
@@ -56,8 +55,6 @@ const examples = [
     displayUrl: `/list/coingecko`,
   },
 ]
-
-const testnetWhitelist = new Set(['ropsten', 'görli', 'rinkeby', 'kovan', 'sepolia', 'mumbai'])
 
 type ExamplePreviewProps = {
   type: string
@@ -152,18 +149,11 @@ export default function Home() {
   const filteredNetworks = useMemo(() => {
     if (!metricsData) return []
 
+    // Reads the name and isTestnet useMetrics resolved. This used to re-derive both
+    // from the identifier with a substring match and a hand-kept whitelist — a third
+    // testnet rule alongside isTestnet and the drawer's, and one that missed anything
+    // named "Test Network" rather than "Testnet".
     return metricsData.networks.supported
-      .map((n) => {
-        const nameKey = getNetworkName(n.chainIdentifier).toLowerCase()
-        const isTestnet = nameKey.includes('testnet') || testnetWhitelist.has(nameKey)
-        return {
-          chainId: n.chainId,
-          chainIdentifier: n.chainIdentifier,
-          name: getNetworkName(n.chainIdentifier),
-          tokenCount: n.tokenCount,
-          isTestnet,
-        }
-      })
       .filter((n) => n.tokenCount > 0)
       .filter((n) => showTestnets || !n.isTestnet)
       .sort((a, b) => {

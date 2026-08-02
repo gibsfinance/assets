@@ -5,7 +5,7 @@
  * Used by TokenSearch, StudioBrowser, and EndpointCard. Extracted to eliminate
  * duplicated filter/sort logic across components and enable isolated testing.
  */
-import type { Token } from '../types'
+import type { NetworkInfo, Token } from '../types'
 
 /** Filter tokens by search term matching name, symbol, or address (case-insensitive) */
 export function filterTokensBySearch(tokens: Token[], searchTerm: string): Token[] {
@@ -68,23 +68,28 @@ export function parsePathParams(path: string): Array<{ text: string; isParam: bo
 }
 
 /**
- * Derive popular chains from network metrics.
- * Filters out testnets and chains with fewer than `minTokens`, sorts by token count.
+ * Derive popular chains from network metrics: the busiest non-testnet chains,
+ * each identified by the namespaced identifier callers should navigate to.
+ *
+ * Reads the `chainIdentifier`, `name`, `isTestnet`, and `tokenCount` useMetrics
+ * already resolved rather than re-deriving them from the bare `chainId`, the same
+ * correction sortNetworks carries. A bare number names no namespace and eleven of
+ * them are claimed by two: keying on 501 gave Columbus testnet (eip155-501, zero
+ * tokens) Solana's 9,633, listed both under the testnet's name, and pointed both
+ * cards at the testnet — so Solana was unreachable from here and either card
+ * landed on an empty browser.
  */
 export function getPopularChains(
-  supportedNetworks: { chainId: number }[],
-  tokensByChain: Record<number, number>,
-  getChainName: (chainId: number) => string,
+  supportedNetworks: NetworkInfo[],
   { limit = 8, minTokens = 10 } = {},
 ): { chainId: string; name: string; tokenCount: number }[] {
   return supportedNetworks
+    .filter((n) => n.tokenCount >= minTokens && !n.isTestnet)
     .map((n) => ({
-      chainId: String(n.chainId),
-      name: getChainName(n.chainId),
-      tokenCount: tokensByChain[n.chainId] || 0,
+      chainId: n.chainIdentifier,
+      name: n.name,
+      tokenCount: n.tokenCount,
     }))
-    .filter((n) => n.tokenCount >= minTokens)
-    .filter((n) => !n.name.toLowerCase().includes('testnet'))
     .sort((a, b) => b.tokenCount - a.tokenCount)
     .slice(0, limit)
 }

@@ -51,7 +51,7 @@ vi.mock('../hooks/useMetrics', () => ({
           },
         ],
       },
-      tokenList: { total: 100, byChain: {} },
+      tokenList: { total: 100 },
     },
     providers: [],
     isLoading: false,
