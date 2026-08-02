@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useRef, type ReactNode, type CSSProperties } from 'react'
+import { getApiUrl } from '../utils'
+import { sizedImageUrl } from '../utils/image-size'
 
 interface FallbackProps {
   height?: number
@@ -36,6 +38,12 @@ interface ImageProps {
   shape?: 'circle' | 'rect'
   /** Make the image a link */
   href?: string
+  /**
+   * Fetch the stored asset at its original resolution instead of the rendered size
+   * (default: false). Only for surfaces that scale the image past its layout box —
+   * the Studio preview, which the user can zoom into.
+   */
+  fullResolution?: boolean
 }
 
 export default function Image({
@@ -56,6 +64,7 @@ export default function Image({
   lazyMargin = '200px',
   shape = 'circle',
   href,
+  fullResolution = false,
 }: ImageProps) {
   const [shouldFallback, setShouldFallback] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -64,6 +73,12 @@ export default function Image({
 
   const h = useMemo(() => height || size, [height, size])
   const w = useMemo(() => width || size, [width, size])
+
+  const requestUrl = useMemo(
+    () =>
+      fullResolution ? src : sizedImageUrl({ url: src, width: w, height: h, imageEndpoint: getApiUrl('/image/') }),
+    [src, w, h, fullResolution],
+  )
 
   useEffect(() => {
     if (!lazy) return
@@ -126,7 +141,7 @@ export default function Image({
 
   const imgEl = visible && !shouldFallback ? (
     <img
-      src={src}
+      src={requestUrl}
       alt={alt}
       onError={handleError}
       onLoad={handleLoad}

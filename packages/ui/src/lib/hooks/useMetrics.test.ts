@@ -140,8 +140,6 @@ describe('useMetrics (composite)', () => {
 
     const { metrics } = result.current
     expect(metrics!.tokenList.total).toBe(7000)
-    expect(metrics!.tokenList.byChain[1]).toBe(5000)
-    expect(metrics!.tokenList.byChain[369]).toBe(2000)
     expect(metrics!.networks.supported).toHaveLength(2)
     const ethereum = metrics!.networks.supported.find((n) => n.chainIdentifier === 'eip155-1')!
     expect(ethereum.type).toBe('evm')

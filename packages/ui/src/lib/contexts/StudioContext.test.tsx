@@ -82,18 +82,46 @@ describe('selectToken', () => {
     const { result } = renderStudio()
     act(() => result.current.selectToken(TOKEN))
     expect(result.current.selectedToken).toEqual(TOKEN)
-    // chainId is derived from the token and stored as a string
-    expect(result.current.selectedChainId).toBe('369')
+    // The token's namespaced identifier — a bare number would be read as
+    // Ethereum-Virtual-Machine by every consumer downstream.
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.activeTab).toBe('configure')
+  })
+
+  // Solana and Columbus testnet both answer to 501. Reading the bare number moved
+  // the studio onto the testnet the moment a Solana token was picked, so the
+  // configurator and every generated URL described a different chain.
+  it('keeps a token on the chain it came from when the number is shared', () => {
+    const { result } = renderStudio()
+    act(() =>
+      result.current.selectToken({
+        ...TOKEN,
+        chainId: 501,
+        chainIdentifier: 'solana-501',
+        address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      }),
+    )
+    expect(result.current.selectedChainId).toBe('solana-501')
   })
 })
 
 describe('selectChain', () => {
-  it('sets the chain id while keeping the already-selected token', () => {
+  // A token belongs to one chain. Keeping the selection across a chain change
+  // left the studio previewing an Ethereum address while claiming to be on
+  // Solana, and generating a snippet for a token that does not exist there.
+  it('clears the selected token when moving to a different chain', () => {
     const { result } = renderStudio()
     act(() => result.current.selectToken(TOKEN))
-    act(() => result.current.selectChain('1'))
-    expect(result.current.selectedChainId).toBe('1')
+    act(() => result.current.selectChain('eip155-1'))
+    expect(result.current.selectedChainId).toBe('eip155-1')
+    expect(result.current.selectedToken).toBeNull()
+  })
+
+  it('keeps the token when the same chain is re-selected', () => {
+    const { result } = renderStudio()
+    act(() => result.current.selectToken(TOKEN))
+    act(() => result.current.selectChain('eip155-369'))
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.selectedToken).toEqual(TOKEN)
   })
 
@@ -178,7 +206,7 @@ describe('reset', () => {
     expect(result.current.resolutionOrder).toBeNull()
     // navigation / selection survive a reset
     expect(result.current.selectedToken).toEqual(TOKEN)
-    expect(result.current.selectedChainId).toBe('369')
+    expect(result.current.selectedChainId).toBe('eip155-369')
     expect(result.current.activeTab).toBe('configure')
   })
 })

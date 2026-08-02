@@ -1,10 +1,7 @@
+import type { ChainId } from './image'
+
 /** Build URL for a specific token list */
-export function getTokenListUrl(
-  baseUrl: string,
-  provider: string,
-  key: string,
-  chainId?: number,
-): string {
+export function getTokenListUrl(baseUrl: string, provider: string, key: string, chainId?: ChainId): string {
   const base = `${baseUrl}/list/${provider}/${key}`
   return chainId ? `${base}?chainId=${chainId}` : base
 }

@@ -64,10 +64,25 @@ function badgeWrapperConfig(badge: BadgeConfig) {
 }
 
 /**
+ * Render a chain id as a JSX attribute value.
+ *
+ * A bare number stays a numeric expression (`chainId={1}`). Anything else is a
+ * namespaced identifier and has to be a string literal (`chainId="solana-501"`):
+ * emitted bare it read as `solana - 501`, so the Studio's headline copy-paste
+ * output was a ReferenceError for every non-Ethereum-Virtual-Machine chain.
+ *
+ * @param chainId - Bare number or namespaced identifier, as a string.
+ * @returns The attribute value including its braces or quotes.
+ */
+export function chainIdAttribute(chainId: string): string {
+  return /^\d+$/.test(chainId) ? `{${chainId}}` : `"${escapeHtmlAttribute(chainId)}"`
+}
+
+/**
  * Emits a `@gibs/react` SDK usage snippet (GibProvider + TokenImage).
  *
- * @param chainId    - Numeric chain id as a string (e.g. `'1'`, `'369'`)
- * @param address    - Token contract address (already validated upstream)
+ * @param chainId    - Bare chain id (`'1'`, `'369'`) or namespaced identifier (`'solana-501'`)
+ * @param address    - Token address (already validated upstream)
  * @param appearance - Studio appearance config; only `width` and `shape` are read
  */
 export function generateSdkSnippet(chainId: string, address: string, appearance: StudioAppearance): string {
@@ -78,7 +93,7 @@ export function generateSdkSnippet(chainId: string, address: string, appearance:
     ``,
     `<GibProvider>`,
     `  <TokenImage`,
-    `    chainId={${chainId}}`,
+    `    chainId=${chainIdAttribute(chainId)}`,
     `    address="${escapeHtmlAttribute(address)}"`,
     `    size={${width}}${shapeAttr}`,
     `    skeleton`,

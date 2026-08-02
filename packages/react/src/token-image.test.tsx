@@ -18,9 +18,7 @@ describe('TokenImage', () => {
         <TokenImage chainId={1} address={address} size={32} />
       </GibProvider>,
     )
-    expect(getImg(container).getAttribute('src')).toBe(
-      `https://gib.show/image/1/${address}?w=64&h=64&format=webp`,
-    )
+    expect(getImg(container).getAttribute('src')).toBe(`https://gib.show/image/1/${address}?w=64&h=64&as=webp`)
   })
 
   it('renders with 2x dimensions for Retina', () => {
@@ -34,13 +32,27 @@ describe('TokenImage', () => {
     expect(src).toContain('h=96')
   })
 
-  it('respects custom format', () => {
+  // `as`, not `format` — the server ignores `format` and serves the stored
+  // original, so this component's whole reason for defaulting to WebP was moot.
+  it('respects custom format, using the param the server reads', () => {
     const { container } = render(
       <GibProvider>
         <TokenImage chainId={1} address={address} format="png" />
       </GibProvider>,
     )
-    expect(getImg(container).getAttribute('src')).toContain('format=png')
+    const src = getImg(container).getAttribute('src') ?? ''
+    expect(src).toContain('as=png')
+    expect(src).not.toContain('format=png')
+  })
+
+  // Solana addresses are base58 and its chain number, 501, is also Columbus
+  // testnet's. Only the namespaced identifier reaches the right image.
+  it('accepts a namespaced chain identifier', () => {
+    const solana = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    const { container } = render(<TokenImage chainId="solana-501" address={solana} size={32} />)
+    expect(getImg(container).getAttribute('src')).toBe(
+      `https://gib.show/image/solana-501/${solana}?w=64&h=64&as=webp`,
+    )
   })
 
   it('uses baseUrl override when provided', () => {

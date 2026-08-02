@@ -1,5 +1,5 @@
 export { createClient, type GibClient, type GibClientOptions } from './client'
-export { getImageUrl, getNetworkImageUrl, getThumbnailUrl, type ImageOptions } from './image'
+export { getImageUrl, getNetworkImageUrl, getThumbnailUrl, type ChainId, type ImageOptions } from './image'
 export { getTokenListUrl, getNetworksUrl, getListIndexUrl } from './list'
 export {
   fetchSprite,

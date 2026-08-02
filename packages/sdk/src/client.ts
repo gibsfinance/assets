@@ -1,4 +1,4 @@
-import { getImageUrl, getNetworkImageUrl, type ImageOptions } from './image'
+import { getImageUrl, getNetworkImageUrl, type ChainId, type ImageOptions } from './image'
 import { getTokenListUrl, getNetworksUrl, getListIndexUrl } from './list'
 import { fetchSprite, getSpriteUrl, type Sprite, type SpriteOptions } from './sprite'
 import type { TokenList, NetworkInfo, ListInfo } from './types'
@@ -12,11 +12,11 @@ export interface GibClientOptions {
 
 export interface GibClient {
   /** Get the full URL for a token image */
-  imageUrl(chainId: number, address: string, options?: ImageOptions): string
+  imageUrl(chainId: ChainId, address: string, options?: ImageOptions): string
   /** Get the full URL for a network/chain image */
-  networkImageUrl(chainId: number, options?: ImageOptions): string
+  networkImageUrl(chainId: ChainId, options?: ImageOptions): string
   /** Fetch a token list */
-  fetchTokenList(provider: string, key: string, chainId?: number): Promise<TokenList>
+  fetchTokenList(provider: string, key: string, chainId?: ChainId): Promise<TokenList>
   /** Fetch all supported networks */
   fetchNetworks(): Promise<NetworkInfo[]>
   /** Fetch all available lists */
@@ -38,15 +38,15 @@ export function createClient(options: GibClientOptions = {}): GibClient {
   return {
     baseUrl,
 
-    imageUrl(chainId: number, address: string, imgOptions?: ImageOptions): string {
+    imageUrl(chainId: ChainId, address: string, imgOptions?: ImageOptions): string {
       return getImageUrl(baseUrl, chainId, address, imgOptions)
     },
 
-    networkImageUrl(chainId: number, imgOptions?: ImageOptions): string {
+    networkImageUrl(chainId: ChainId, imgOptions?: ImageOptions): string {
       return getNetworkImageUrl(baseUrl, chainId, imgOptions)
     },
 
-    async fetchTokenList(provider: string, key: string, chainId?: number): Promise<TokenList> {
+    async fetchTokenList(provider: string, key: string, chainId?: ChainId): Promise<TokenList> {
       const url = getTokenListUrl(baseUrl, provider, key, chainId)
       const res = await fetch(url)
       if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)

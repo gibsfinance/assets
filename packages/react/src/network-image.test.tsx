@@ -17,7 +17,7 @@ describe('NetworkImage', () => {
       </GibProvider>,
     )
     expect(getImg(container).getAttribute('src')).toBe(
-      'https://gib.show/image/1?w=48&h=48&format=webp',
+      'https://gib.show/image/1?w=48&h=48&as=webp',
     )
   })
 

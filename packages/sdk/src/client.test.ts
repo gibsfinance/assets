@@ -45,7 +45,12 @@ describe('createClient', () => {
     const url = client.imageUrl(1, '0xabc', { width: 72, format: 'webp' })
     expect(url).toContain('https://gib.show/image/1/0xabc')
     expect(url).toContain('w=72')
-    expect(url).toContain('format=webp')
+    expect(url).toContain('as=webp')
+  })
+
+  it('passes a namespaced chain identifier through to the URL', () => {
+    const client = createClient()
+    expect(client.networkImageUrl('solana-501')).toBe('https://gib.show/image/solana-501')
   })
 
   it('builds network image URLs via client', () => {

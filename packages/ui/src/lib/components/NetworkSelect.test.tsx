@@ -3,6 +3,27 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { createElement } from 'react'
 
 // ---------------------------------------------------------------------------
+// Virtualizer mock — @tanstack/react-virtual measures real layout, which jsdom
+// does not provide, so the production virtualizer mounts zero rows. This
+// stand-in maps every item to a virtual row so assertions run against the rows
+// the component chose to render. Same pattern as StudioBrowser.test.tsx.
+// ---------------------------------------------------------------------------
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getTotalSize: () => count * 45,
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_unused, index) => ({
+        index,
+        key: index,
+        start: index * 45,
+        size: 45,
+      })),
+    measure: () => {},
+    measureElement: () => {},
+  }),
+}))
+
+// ---------------------------------------------------------------------------
 // Image mock — render a plain <img> so network rows do not trigger real
 // network image loads. Mirrors the pattern in StudioBrowser.test.tsx.
 // ---------------------------------------------------------------------------
@@ -51,7 +72,7 @@ vi.mock('../hooks/useMetrics', () => ({
           },
         ],
       },
-      tokenList: { total: 100, byChain: {} },
+      tokenList: { total: 100 },
     },
     providers: [],
     isLoading: false,
@@ -99,5 +120,79 @@ describe('NetworkSelect', () => {
 
     expect(screen.getByText('Ethereum')).toBeTruthy()
     expect(screen.queryByText('Choose a network...')).toBeNull()
+  })
+
+  /*
+   * The drawer lists every supported network — over 1,900 of them — with no way
+   * to narrow it. Reaching anything past the first screen meant scrolling a
+   * list that mounted all of them at once.
+   */
+  describe('search', () => {
+    const openDrawer = () => fireEvent.click(screen.getByText('Choose a network...'))
+    const search = (value: string) =>
+      fireEvent.change(screen.getByLabelText('Search networks'), { target: { value } })
+
+    it('narrows the list to matching networks', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      search('bitcoin')
+
+      expect(await screen.findByText('Bitcoin')).toBeTruthy()
+      expect(screen.queryByText('Ethereum')).toBeNull()
+    })
+
+    it('finds a network by its identifier', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      search('bip122')
+
+      expect(await screen.findByText('Bitcoin')).toBeTruthy()
+      expect(screen.queryByText('Ethereum')).toBeNull()
+    })
+
+    it('finds an Ethereum-Virtual-Machine network by its chain number', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      search('1')
+
+      expect(await screen.findByText('Ethereum')).toBeTruthy()
+    })
+
+    it('says so rather than showing an empty panel when nothing matches', async () => {
+      renderNetworkSelect()
+      openDrawer()
+
+      search('zzzz')
+
+      expect(await screen.findByText(/No networks match/i)).toBeTruthy()
+    })
+
+    it('picking a filtered result still selects by identifier', async () => {
+      const onSelect = vi.fn()
+      renderNetworkSelect({ onSelect })
+      openDrawer()
+
+      search('bitcoin')
+      fireEvent.click(await screen.findByText('Bitcoin'))
+
+      expect(onSelect).toHaveBeenCalledWith('bip122-0')
+    })
+
+    // Reopening should start from the full list, not from whatever was typed
+    // last time — otherwise the drawer looks broken on the second visit.
+    it('clears the query when the drawer is reopened', async () => {
+      renderNetworkSelect()
+      openDrawer()
+      search('bitcoin')
+      expect(screen.queryByText('Ethereum')).toBeNull()
+
+      fireEvent.click(await screen.findByText('Bitcoin'))
+      openDrawer()
+
+      expect(await screen.findByText('Ethereum')).toBeTruthy()
+    })
   })
 })

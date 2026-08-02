@@ -1,12 +1,15 @@
 import { useMemo } from 'react'
 import { useGib } from './provider'
 import GibImage, { type GibImageProps } from './gib-image'
-import type { ImageOptions } from '@gibs/sdk'
+import { getImageUrl, type ChainId, type ImageOptions } from '@gibs/sdk'
 
 export interface TokenImageProps extends Omit<GibImageProps, 'src'> {
-  /** EVM chain ID */
-  chainId: number
-  /** Token contract address */
+  /**
+   * The chain, as a namespaced identifier (`'eip155-1'`, `'solana-501'`) or the
+   * bare number. Prefer the identifier — eleven numbers name two chains each.
+   */
+  chainId: ChainId
+  /** Token contract address, or the chain's native address format */
   address: string
   /** Image format (default: webp) */
   format?: ImageOptions['format']
@@ -20,7 +23,7 @@ export interface TokenImageProps extends Omit<GibImageProps, 'src'> {
  * @example
  * ```tsx
  * <GibProvider>
- *   <TokenImage chainId={1} address="0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" size={32} />
+ *   <TokenImage chainId="eip155-1" address="0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599" size={32} />
  * </GibProvider>
  * ```
  */
@@ -45,9 +48,10 @@ export function TokenImage({
   const w = width || size
   const h = height || size
 
+  // Built through the SDK rather than inline: the two used to spell the format
+  // param differently, and only the SDK's spelling is the one the server reads.
   const src = useMemo(
-    () =>
-      `${resolvedBaseUrl}/image/${chainId}/${address}?w=${w * 2}&h=${h * 2}&format=${format}`,
+    () => getImageUrl(resolvedBaseUrl, chainId, address, { width: w * 2, height: h * 2, format }),
     [resolvedBaseUrl, chainId, address, w, h, format],
   )
 
