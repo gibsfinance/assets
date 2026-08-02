@@ -627,6 +627,7 @@ function InfiniteCanvas() {
               src={imageUrl}
               alt={tokenName}
               skeleton
+              fullResolution
               shape={shape === 'circle' ? 'circle' : 'rect'}
               width={width}
               height={height}
@@ -663,6 +664,7 @@ function InfiniteCanvas() {
                     src={networkUrl}
                     alt={networkName}
                     skeleton
+                    fullResolution
                     shape={badgeShape === 'circle' ? 'circle' : 'rect'}
                     width={Math.round(badgePosition.badgeSize)}
                     height={Math.round(badgePosition.badgeSize)}
