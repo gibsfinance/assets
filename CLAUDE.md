@@ -3,12 +3,26 @@
 ## Quick Reference
 
 ```bash
-# Server tests (281 tests, vitest)
+# Server tests (vitest)
 yarn workspace server run vitest run
 yarn workspace server run vitest run --coverage
 
-# UI tests (404 tests, vitest + jsdom)
+# UI tests (vitest + jsdom)
 yarn workspace ui run test
+
+# Coverage — CI gates on this, and a passing test run does NOT imply a passing
+# coverage run. Run the coverage variant for any workspace you touched before
+# calling the change done.
+#   @gibs/sdk, @gibs/utils, @gibs/react — 100% on all four metrics. A single
+#     untested line fails the build while every test still passes.
+#   server — 99.7/99.3/99.7/99.8 (statements/branches/functions/lines) against
+#     actuals of 99.77/99.39/99.73/99.85. Margin is as thin as 0.03%, so a
+#     handful of new uncovered lines will break CI.
+#   ui — no threshold configured (currently ~59%).
+yarn workspace @gibs/sdk run vitest run --coverage
+yarn workspace @gibs/utils run vitest run --coverage
+yarn workspace @gibs/react run vitest run --coverage
+yarn workspace ui run vitest run --coverage
 
 # Lint (server only — must run from packages/server/)
 cd packages/server && yarn lint
@@ -29,7 +43,14 @@ cd packages/ui && yarn dev         # frontend
 ### ORM: Drizzle (migrated from Knex March 2026)
 - Schema: `packages/server/src/db/schema.ts` — 18 tables with custom `bytea`/`citext` types
 - Client: `packages/server/src/db/drizzle.ts` — uses `casing: 'snake_case'`
-- Migrations: `packages/server/drizzle/` — single baseline migration with `IF NOT EXISTS` guards
+- Migrations: `packages/server/drizzle/` — 15 migrations (`0000`–`0014`), the baseline plus
+  hand-written follow-ups, generally using `IF NOT EXISTS` guards
+- ⚠️ Snapshot drift: `drizzle/meta/` snapshots stop at `0010` while migrations run to `0014`,
+  because `0011`–`0014` were hand-written without regenerating a snapshot. `drizzle-kit`
+  therefore models the database as of `0010`, and `db:migrate-generate` emits a replay of
+  already-applied work — re-dropping the indexes `0013` dropped and re-adding the columns
+  `0012`/`0014` added. Nothing automated runs `generate`, so this is developer-facing only:
+  read any generated migration before committing it.
 - Old Knex files: moved to `_backup/knex/` (gitignored)
 
 ### Image Serving Pipeline
@@ -56,7 +77,10 @@ Components import from these — do not re-inline logic that's been extracted.
 
 ## CI
 
-Workflow: `.github/workflows/test.yml` — 5 jobs (lint, typecheck, build, unit-test, integration-test)
+Workflow: `.github/workflows/test.yml` — 8 job definitions (lint, typecheck, build, unit-test,
+vitest, coverage, browser-test, integration-test). `vitest` and `coverage` are matrices over the
+five workspaces, so a run reports 16 jobs. `coverage` fails independently of `vitest`: every
+test can pass while a threshold breach turns the run red.
 
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`
