@@ -149,6 +149,14 @@ export const token = pgTable(
     index('token_providedid_index').using('btree', table.providedId.asc().nullsLast().op('citext_ops')),
     index().using('btree', table.symbol.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
+    // Substring search for GET /list/search. The btree indexes above answer a prefix but
+    // not a `%term%` match, so without these the search predicate scans the whole table.
+    // Declared here so the drizzle snapshot keeps describing the real database — the
+    // migration that creates them (0016) has to be hand-written, because it guards both
+    // the extension install and the index creation behind a database that may not grant
+    // CREATE EXTENSION, and drizzle-kit emits neither guard.
+    index('token_name_trgm_index').using('gin', sql`${table.name} gin_trgm_ops`),
+    index('token_symbol_trgm_index').using('gin', sql`${table.symbol} gin_trgm_ops`),
     unique('token_network_provided_unique').on(table.networkId, table.providedId),
     foreignKey({
       columns: [table.networkId],
