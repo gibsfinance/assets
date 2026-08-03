@@ -18,7 +18,7 @@ yarn workspace ui run test
 #   server — 99.7/99.3/99.7/99.8 (statements/branches/functions/lines) against
 #     actuals of 99.77/99.39/99.73/99.85. Margin is as thin as 0.03%, so a
 #     handful of new uncovered lines will break CI.
-#   ui — 93.0/87.3/92.4/94.2 against actuals of 93.21/87.51/92.62/94.40.
+#   ui — 92.9/87.3/92.3/94.1 against actuals of 93.16/87.57/92.52/94.36.
 #     Same ~0.2 margin as the others, and for a specific reason: this workspace
 #     measures very slightly lower on the CI runner than locally, so floors set
 #     to the local figures fail by hundredths.
@@ -89,7 +89,7 @@ cd packages/ui && yarn dev         # frontend
 ### UI Utils Pattern
 Pure functions extracted from components live in `packages/ui/src/lib/utils/`:
 - `formatting.ts` — formatBytes, detectImageFormat, buildImageUrlWithSize, truncateAddress, generateRepoName
-- `token-search.ts` — filterTokensBySearch, sortTokensMainnetFirst, getPopularChains, countResults, isCacheHit, parsePathParams
+- `token-search.ts` — searchTokens, scoreTokenMatch, SEARCH_RELEVANCE, getPopularChains, countResults, isCacheHit, parsePathParams (the local filter over an already-loaded chain; the cross-chain search is `hooks/useTokenSearch.ts`)
 - `code-output.ts` — shadowToCSS, shapeToCSS, buildImageUrl, buildNetworkUrl
 - `list-order.ts` — isDefaultOrder, reorderArray, DEFAULT_PROVIDERS
 - `dedup-tokens.ts` — deduplicateTokens, mergeTokenIntoMap

@@ -23,8 +23,6 @@ export interface Token extends TokenInfo {
    * Set it wherever the namespace is known; read it via `tokenChainIdentifier`.
    */
   chainIdentifier?: string
-  isBridgeToken?: boolean
-  chainName?: string
   listReferences?: TokenListReference[]
 }
 

@@ -73,27 +73,6 @@ export function searchTokens(tokens: Token[], searchTerm: string): Token[] {
     .map((scored) => scored.token)
 }
 
-/** Sort tokens: mainnet (chainId 1) first, then alphabetical by name */
-export function sortTokensMainnetFirst(tokens: Token[]): Token[] {
-  return [...tokens].sort((a, b) => {
-    const aIsMainnet = String(a.chainId ?? '') === '1'
-    const bIsMainnet = String(b.chainId ?? '') === '1'
-    if (aIsMainnet && !bIsMainnet) return -1
-    if (!aIsMainnet && bIsMainnet) return 1
-    return a.name.localeCompare(b.name)
-  })
-}
-
-/** Categorize lists by whether they're chain-specific or global (chainId=0) */
-export function categorizeListsByScope<T extends { chainId: string }>(
-  lists: T[],
-): { global: T[]; chainSpecific: T[] } {
-  return {
-    global: lists.filter((l) => l.chainId === '0'),
-    chainSpecific: lists.filter((l) => l.chainId !== '0'),
-  }
-}
-
 /** Count results from an API response — checks .total, .tokens.length, or array length */
 export function countResults(data: unknown): number | null {
   if (!data || typeof data !== 'object') return null
