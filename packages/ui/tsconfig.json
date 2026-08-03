@@ -1,8 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    // Vite builds this package with `target: 'esnext'` (see vite.config.ts), so nothing
+    // here is ever downleveled and an ES2020 setting only misinformed the typechecker:
+    // it rejected standard-library methods that ship in the output untouched, most
+    // visibly `Array.prototype.at`, which is ES2022 and resolves fine under the root
+    // configuration. Two configurations disagreeing about which methods exist made
+    // "it typechecks" mean nothing on its own.
+    //
+    // ES2022 rather than ESNext on purpose: it is the widely-available browser baseline,
+    // and it stops the typechecker blessing proposals that browsers may not ship yet.
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",

@@ -14,8 +14,28 @@ jobs:
       - run: yarn install --immutable
       - run: cd packages/server && yarn lint
 
+  # One job per configuration, so a failure names the package that broke — the
+  # same shape as the vitest and coverage matrices below.
+  #
+  # The interface was previously not type-checked anywhere in this workflow. Its
+  # build script is a bare `vite build`, which strips types without reading them,
+  # and this job only ever pointed at the server. A type error in packages/ui
+  # therefore reached staging and master silently, caught by nothing.
+  #
+  # Note that packages/ui/tsconfig.json targets ES2020 while the root config
+  # targets ESNext, so the two disagree about which standard-library methods
+  # exist — `Array.prototype.at` is ES2022 and resolves at the root while failing
+  # here. Check against the package's own configuration, which is the one its
+  # bundler honours.
   typecheck:
+    name: typecheck (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: server, project: packages/server/tsconfig.json }
+          - { package: ui, project: packages/ui/tsconfig.json }
     steps:
       - uses: actions/checkout@v5
       - run: corepack enable
@@ -24,7 +44,7 @@ jobs:
           node-version: 24
           cache: 'yarn'
       - run: yarn install --immutable
-      - run: npx tsc --noEmit -p packages/server/tsconfig.json
+      - run: npx tsc --noEmit -p ${{ matrix.project }}
 
   build:
     runs-on: ubuntu-latest
