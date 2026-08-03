@@ -26,11 +26,6 @@ function loadStoredMode(): ThemeMode {
   return 'system'
 }
 
-function resolveIsDark(mode: ThemeMode): boolean {
-  if (mode === 'system') return resolveSystemPreference()
-  return mode === 'dark'
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(loadStoredMode)
   const [systemPreference, setSystemPreference] = useState(resolveSystemPreference)
