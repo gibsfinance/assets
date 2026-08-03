@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
+import { useMemo, useCallback, useState, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
@@ -163,21 +163,33 @@ export default function Home() {
       })
   }, [metricsData, showTestnets])
 
-  const gridRef = useRef<HTMLDivElement>(null)
   const [gridCols, setGridCols] = useState(6)
+  const gridObserver = useRef<ResizeObserver | null>(null)
 
-  useEffect(() => {
-    const el = gridRef.current
+  /**
+   * Measures how many columns the grid actually laid out, and keeps measuring as it
+   * resizes.
+   *
+   * This has to attach through a callback ref rather than an effect reading a ref object.
+   * The grid is only rendered once the metrics arrive, so an effect running on mount found
+   * nothing to observe, and with an empty dependency list it never ran again — the column
+   * count stayed on its initial 6 for the life of the page. Six is not a multiple of the
+   * four-column layout, so the row-filling below drew exactly the partial trailing row it
+   * exists to avoid, and on a two-column viewport it capped the grid at eighteen tiles
+   * instead of the three rows MAX_ROWS asks for.
+   */
+  const gridRef = useCallback((el: HTMLDivElement | null) => {
+    gridObserver.current?.disconnect()
+    gridObserver.current = null
     if (!el) return
     const detect = () => {
-      const style = getComputedStyle(el)
-      const cols = style.gridTemplateColumns.split(' ').length
+      const cols = getComputedStyle(el).gridTemplateColumns.split(' ').length
       if (cols > 0) setGridCols(cols)
     }
     detect()
     const observer = new ResizeObserver(detect)
     observer.observe(el)
-    return () => observer.disconnect()
+    gridObserver.current = observer
   }, [])
 
   const [failedChains, setFailedChains] = useState<Set<number>>(() => new Set())
