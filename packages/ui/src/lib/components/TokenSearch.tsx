@@ -189,6 +189,14 @@ export default function TokenSearch({
         console.error('Global search error:', error)
       }
     } finally {
+      // Nothing used to lower isGlobalSearching once a search finished, and the change
+      // handler returns early while it is raised — so the first search permanently froze
+      // the controlled input. The user could neither refine the query nor clear it, and
+      // the spinner spun forever. Only the search that is still the current one may
+      // lower the flag, or an aborted predecessor would clear its successor's spinner.
+      if (searchAbortControllerRef.current === abortController) {
+        setIsGlobalSearching(false)
+      }
       setIsSearching(false)
     }
 
@@ -201,12 +209,24 @@ export default function TokenSearch({
     })
   }, [query, metrics, contextProviders, onSearchUpdate])
 
+  // The debounced wrapper has to keep one identity for the life of the component.
+  // performGlobalSearch closes over `query`, so it was rebuilt on every keystroke, which
+  // rebuilt the wrapper — and the cleanup effect below then cancelled the pending
+  // invocation belonging to the previous wrapper. Every keystroke therefore scheduled a
+  // search and immediately cancelled it, so the global search never ran once. Hold the
+  // current implementation in a ref instead, so the wrapper and its pending timer
+  // survive re-renders and only the unmount cleanup can cancel it.
+  const performGlobalSearchRef = useRef(performGlobalSearch)
+  useEffect(() => {
+    performGlobalSearchRef.current = performGlobalSearch
+  }, [performGlobalSearch])
+
   const debouncedSearch = useMemo(
     () =>
       _.debounce(() => {
-        performGlobalSearch()
+        performGlobalSearchRef.current()
       }, 500),
-    [performGlobalSearch],
+    [],
   )
 
   const handleChange = useCallback(
