@@ -11,7 +11,7 @@ import * as http from 'node:http'
 import express from 'express'
 import bodyParser from 'body-parser'
 import createError from 'http-errors'
-import { errorMiddleware, JSON_BODY_LIMIT } from './middleware'
+import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middleware'
 
 /** A Drizzle-shaped error: message carries the full query text and params. */
 class FakeDrizzleQueryError extends Error {
@@ -33,6 +33,7 @@ function buildApp(): express.Express {
   app.get('/throws-not-found', (_req, _res, next) => next(createError.NotFound('image not found')))
   app.get('/throws-bad-request', (_req, _res, next) => next(createError.BadRequest('chainId')))
   app.post('/echo', (req, res) => res.json({ bytes: JSON.stringify(req.body).length }))
+  app.use(notFoundMiddleware)
   app.use(errorMiddleware)
   return app
 }
@@ -135,6 +136,45 @@ describe('middleware', () => {
       const res = await request(port, 'GET', '/throws-bad-request')
       expect(res.status).toBe(400)
       expect(res.body.error).toBe('chainId')
+    })
+  })
+
+  describe('notFoundMiddleware — unmatched routes stay JSON', () => {
+    it('answers an unmatched path with 404 as JSON, not express default HTML', async () => {
+      // The whole point. Without this middleware express's finalhandler replies with an
+      // HTML page, so a client decoding JSON breaks on the one response it is least able
+      // to handle. Asserting the content type is what makes this test fail if the
+      // middleware is unregistered — the status alone would still be 404.
+      const res = await request(port, 'GET', '/no-such-route')
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBeDefined()
+      expect(res.raw).not.toContain('<html')
+      expect(res.raw).not.toContain('Cannot GET')
+    })
+
+    it('echoes method and path so a mistyped URL is diagnosable from the response', async () => {
+      const res = await request(port, 'GET', '/typoed-endpoint')
+      expect(res.body.error).toBe('cannot GET /typoed-endpoint')
+    })
+
+    it('distinguishes a wrong method on a real path from an unknown path', async () => {
+      // /echo exists for POST only. The miss must name GET, not silently imply the path
+      // itself is unknown, since the two mistakes are fixed differently.
+      const res = await request(port, 'GET', '/echo')
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('cannot GET /echo')
+    })
+
+    it('applies to non-GET methods too', async () => {
+      const res = await request(port, 'POST', '/no-such-route', JSON.stringify({}))
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('cannot POST /no-such-route')
+    })
+
+    it('leaves matched routes untouched', async () => {
+      // Guards against a catch-all registered too early, which would swallow real routes.
+      const res = await request(port, 'POST', '/echo', JSON.stringify({ a: 1 }))
+      expect(res.status).toBe(200)
     })
   })
 

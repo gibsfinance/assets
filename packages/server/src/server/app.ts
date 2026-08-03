@@ -4,7 +4,7 @@ import cors from 'cors'
 import express from 'express'
 import responseTime from 'response-time'
 import { router } from './routes'
-import { errorMiddleware, JSON_BODY_LIMIT } from './middleware'
+import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middleware'
 
 export const app = express() as express.Express
 
@@ -30,6 +30,10 @@ app.get('/health', (_req, res) => {
 })
 
 app.use(router)
+
+// Anything the router did not claim is a 404 in this app's own JSON shape rather than
+// express's default HTML page. Must sit after the router and before the error funnel.
+app.use(notFoundMiddleware)
 
 // Final error funnel — intentional 4xx keep their message, everything else
 // is logged server-side and sanitized to a generic 500 (see middleware.ts).

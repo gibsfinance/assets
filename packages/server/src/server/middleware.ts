@@ -24,6 +24,24 @@ const isExpectedClientError = (err: unknown): err is HttpError =>
   createError.isHttpError(err) && err.expose && err.status < 500
 
 /**
+ * Catch-all for requests that matched no route.
+ *
+ * Without it express falls through to its own finalhandler, which answers with an HTML
+ * page reading "Cannot GET /foo" no matter what the client asked for. Every other failure
+ * this app produces is JSON, so a client decoding responses met a surprise content type on
+ * precisely the case it is least equipped to handle — and the default page names the
+ * framework besides. Routing the miss through http-errors gives one shape for every
+ * failure, since errorMiddleware below already renders 4xx as `{ error }`.
+ *
+ * The method and path are echoed because it is what makes a mistyped URL diagnosable from
+ * a log line, and it exposes nothing new: the client supplied both, and express's default
+ * page already returned them. JSON encoding neutralises the reflection.
+ */
+export const notFoundMiddleware = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  next(createError.NotFound(`cannot ${req.method} ${req.path}`))
+}
+
+/**
  * Final error funnel for the express app.
  *
  * Intentional client errors keep their message. Everything else — database
