@@ -286,6 +286,36 @@ describe('fetchSprite', () => {
     expect(sprite.has(1, '0xanything')).toBe(false)
     expect(sprite.getIcon(1, '0xanything')).toBeNull()
   })
+
+  it('indexes a separator-less manifest key without disturbing its neighbours', async () => {
+    // Case-folding splits on the last '-' so that only the address half is folded.
+    // A key carrying no separator has no address half, and without the guard the
+    // whole key would be taken as the address — folding a value the server may
+    // well intend as case-significant, the same class of corruption the base58
+    // handling above exists to prevent. No lookup can reach such a key either
+    // way, since every lookup key is built with a chain prefix, so the guarantee
+    // under test is the narrower one: a malformed entry is carried through as
+    // served and does not derail the rest of the index.
+    const oddManifest = {
+      ...mockManifest,
+      count: 2,
+      rasterCount: 2,
+      svgCount: 0,
+      tokens: {
+        NATIVE: [0, 0] as [number, number],
+        'eip155-1-0xABC': [1, 0] as [number, number],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(oddManifest),
+    }))
+    const sprite = await fetchSprite(BASE, 'coingecko', 'ethereum')
+    expect(sprite.keys()).toContain('NATIVE')
+    // The well-formed neighbour still folds, so either casing resolves it.
+    expect(sprite.has(1, '0xABC')).toBe(true)
+    expect(sprite.has(1, '0xabc')).toBe(true)
+  })
 })
 
 /**
