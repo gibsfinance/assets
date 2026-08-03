@@ -38,10 +38,16 @@ export default defineConfig({
       // tests; what remains uncovered is mostly unreachable defensive guards
       // and Studio.tsx.
       //
+      // 2026-08-03, later the same day: measured 93.21 / 87.51 / 92.62 / 94.40
+      // over 1566 tests. The token search moved out of TokenSearch.tsx into
+      // useTokenSearch, which is covered outright, and the browser's search
+      // wiring, icon fallback and merged-row expansion picked up tests of
+      // their own.
+      //
       // Browser-mode specs run under a separate config and are excluded above,
       // so component behaviour verified there does not count here. Raise these
       // as tests land; never lower them to make a failing run pass.
-      thresholds: { statements: 92.4, branches: 86.3, functions: 91.6, lines: 93.6 },
+      thresholds: { statements: 93.0, branches: 87.3, functions: 92.4, lines: 94.2 },
     },
   },
   resolve: {

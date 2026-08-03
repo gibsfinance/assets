@@ -68,11 +68,22 @@ export interface PlatformMetrics {
   }
 }
 
+/**
+ * What the search box tells the browser panel: the term as typed, and the
+ * outcome of searching every chain for it.
+ */
 export type SearchUpdate = {
+  /** Exactly what is in the box, untrimmed — the local filter matches on it. */
   query: string
+  /** True while the request is out, so the panel can keep showing the local filter. */
   isSearching: boolean
-  isGlobalSearching: boolean
   isError: boolean
+  /**
+   * More tokens matched than were returned. The search stops at a candidate cap,
+   * so the count past that point is genuinely unknown and there is no total to
+   * report — this is the honest signal that the list on screen is not all of it.
+   */
+  truncated: boolean
   tokens: Token[]
 }
 

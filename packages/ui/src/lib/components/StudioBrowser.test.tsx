@@ -30,8 +30,11 @@ vi.mock('@tanstack/react-virtual', () => ({
 // Image mock — render a plain <img> so token rows do not trigger real network
 // image loads or IntersectionObserver.
 // ---------------------------------------------------------------------------
+// `onError` is forwarded so the icon-failure fallback can be exercised: jsdom never
+// loads an image, so nothing else in the suite can make one fail.
 vi.mock('./Image', () => ({
-  default: ({ src, alt }: { src: string; alt?: string }) => createElement('img', { src, alt: alt ?? '' }),
+  default: ({ src, alt, onError }: { src: string; alt?: string; onError?: () => void }) =>
+    createElement('img', { src, alt: alt ?? '', onError }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -177,9 +180,13 @@ const SOLANA_TOKENS: ApiToken[] = [
   },
 ]
 
+/** An empty answer from the cross-chain search endpoint. */
+const NO_SEARCH_RESULTS = { query: '', truncated: false, tokens: [] }
+
 /**
- * Default router: resolves the three metrics endpoints plus the per-chain
- * token endpoint. Individual tests can override `tokenResponseByChain`.
+ * Default router: resolves the three metrics endpoints, the per-chain token
+ * endpoint, and the cross-chain search. Individual tests can override
+ * `tokenResponseByChain` and `searchResponse`.
  */
 function installDefaultFetch(
   tokenResponseByChain: Record<string, unknown> = {
@@ -187,6 +194,7 @@ function installDefaultFetch(
     'eip155-369': tokensResponse(369, PULSECHAIN_TOKENS),
     'solana-501': tokensResponse(501, SOLANA_TOKENS),
   },
+  searchResponse: unknown = NO_SEARCH_RESULTS,
 ) {
   mockFetch.mockImplementation((input: string) => {
     const url = String(input)
@@ -195,6 +203,7 @@ function installDefaultFetch(
     if (url.endsWith('/stats')) return ok(STATS)
     if (url.endsWith('/networks')) return ok(NETWORKS)
     if (url.endsWith('/list')) return ok(PROVIDERS)
+    if (url.includes('/list/search')) return ok(searchResponse)
 
     const match = url.match(/\/list\/tokens\/([^/?]+)/)
     if (match) {
@@ -204,7 +213,6 @@ function installDefaultFetch(
       return ok(tokensResponse(0, []))
     }
 
-    // Anything else (e.g. global search list fetches) resolves empty.
     return ok({ tokens: [] })
   })
 }
@@ -463,6 +471,49 @@ describe('StudioBrowser', () => {
     // Two extra source lists beyond the primary → "+2" badge.
     expect(screen.getByText('+2')).toBeTruthy()
   })
+
+  it('opens the other source lists behind a merged row and closes them again', async () => {
+    // The badge is the only sign that a row stands for several lists. If the toggle
+    // stops working, the extra lists are unreachable and the merge looks like a loss.
+    const dupToken: ApiToken = {
+      chainId: 1,
+      address: '0xEEEe0000000000000000000000000000000000ee',
+      name: 'Shared Token',
+      symbol: 'SHARE',
+      decimals: 18,
+      logoURI: 'https://logo/share.png',
+      sources: ['gib/default', 'other/list'],
+    }
+    installDefaultFetch({ 'eip155-1': tokensResponse(1, [dupToken]) })
+
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    // Scoped to the row itself: once expanded, the primary list is named twice — once
+    // on the row and once among the sub-rows.
+    const row = (await screen.findByText('Shared Token')).closest('div.group') as HTMLElement
+    expect(screen.queryByText('other/list')).toBeNull()
+
+    fireEvent.click(within(row).getByText('gib/default'))
+    expect(screen.getByText('other/list')).toBeTruthy()
+
+    fireEvent.click(within(row).getByText('gib/default'))
+    expect(screen.queryByText('other/list')).toBeNull()
+  })
+
+  it('falls back to the symbol when a token icon will not load', async () => {
+    // Every token claims an icon; some of the images are 404s or corrupt. Left showing
+    // a broken image, a row reads as a broken token rather than one without a logo.
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const row = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
+
+    fireEvent.error(within(row).getByRole('img'))
+
+    await waitFor(() => expect(within(row).queryByRole('img')).toBeNull())
+    expect(within(row).getByText('WE')).toBeTruthy()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -604,4 +655,216 @@ describe('StudioBrowser with the list editor open', () => {
       expect(stored.tokens.some((t) => t.symbol === 'WETH')).toBe(true)
     })
   })
+})
+
+// ---------------------------------------------------------------------------
+// The cross-chain search. The browser used to read only the query out of the
+// search state and re-filter the chain it had already loaded, so the results
+// themselves were fetched and then thrown away — a token on another chain could
+// never appear no matter what the search returned. These assert the results are
+// actually rendered, and rendered under the chain each one belongs to.
+// ---------------------------------------------------------------------------
+
+/** Hits on two chains, neither of them the one being browsed. */
+const CROSS_CHAIN_HITS = {
+  query: 'usd',
+  truncated: false,
+  tokens: [
+    {
+      chainId: 369,
+      chainIdentifier: 'eip155-369',
+      address: '0x0000000000000000000000000000000000000369',
+      name: 'Bridged Dollar',
+      symbol: 'USDC',
+      decimals: 6,
+      logoURI: 'https://logo/usdc.png',
+      sources: ['gib/default'],
+    },
+    {
+      chainId: 501,
+      chainIdentifier: 'solana-501',
+      address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      name: 'Solana Dollar',
+      symbol: 'USDC',
+      decimals: 6,
+      logoURI: 'https://logo/usdc.png',
+      sources: ['gib/default'],
+    },
+  ],
+}
+
+describe('StudioBrowser — searching across every chain', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('renders the tokens the search returned instead of re-filtering the chain on screen', async () => {
+    // The whole point of leaving the chain: a symbol the selected chain has never heard
+    // of is a question about where that token lives, and the answer is on other chains.
+    installDefaultFetch(undefined, CROSS_CHAIN_HITS)
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+
+    expect(await screen.findByText('Bridged Dollar', {}, { timeout: 5000 })).toBeTruthy()
+    expect(screen.getByText('Solana Dollar')).toBeTruthy()
+    expect(screen.queryByText('Wrapped Ether')).toBeNull()
+  }, 15_000)
+
+  it('addresses each hit by the namespace it was listed under, not the chain being browsed', async () => {
+    // Results span chains, so stamping them all with the selected chain — or rebuilding
+    // an identifier from the bare number — asks for a base58 address under eip155-501
+    // and gets a 400 for every icon. 501 is Solana's number and Columbus testnet's alike.
+    installDefaultFetch(undefined, CROSS_CHAIN_HITS)
+    const { container } = renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+    await screen.findByText('Solana Dollar', {}, { timeout: 5000 })
+
+    expect(container.querySelector('img[src*="/image/solana-501/EPjFW"]')).toBeTruthy()
+    expect(container.querySelector('img[src*="/image/eip155-369/0x0000"]')).toBeTruthy()
+    expect(container.querySelector('img[src*="/image/eip155-1/EPjFW"]')).toBeNull()
+  }, 15_000)
+
+  it('counts the list actually on screen in the placeholder', async () => {
+    // The placeholder promises a scope to search. Left reading the chain's total while
+    // cross-chain results are displayed, it names a set the user is no longer looking at.
+    installDefaultFetch(undefined, CROSS_CHAIN_HITS)
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+    await screen.findByText('Bridged Dollar', {}, { timeout: 5000 })
+
+    expect(screen.getByPlaceholderText('Search 2 tokens...')).toBeTruthy()
+  }, 15_000)
+
+  it('says when more matched than came back', async () => {
+    // There is no total to show — the search stops at a candidate cap, so the count past
+    // it is genuinely unknown. A list silently cut off reads as "your token is missing".
+    installDefaultFetch(undefined, { ...CROSS_CHAIN_HITS, truncated: true })
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+
+    expect(await screen.findByText(/More tokens matched/i, {}, { timeout: 5000 })).toBeTruthy()
+  }, 15_000)
+
+  it('says nothing about truncation when the whole answer came back', async () => {
+    installDefaultFetch(undefined, CROSS_CHAIN_HITS)
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+    await screen.findByText('Bridged Dollar', {}, { timeout: 5000 })
+
+    expect(screen.queryByText(/More tokens matched/i)).toBeNull()
+  }, 15_000)
+
+  it('narrows the loaded chain while the search is still out', async () => {
+    // A round trip is long enough to notice. Blanking the panel until it lands would
+    // make every search look like it found nothing before it found anything.
+    let releaseSearch: () => void = () => {}
+    mockFetch.mockImplementation((input: string) => {
+      const url = String(input)
+      const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+      if (url.endsWith('/stats')) return ok(STATS)
+      if (url.endsWith('/networks')) return ok(NETWORKS)
+      if (url.endsWith('/list')) return ok(PROVIDERS)
+      if (url.includes('/list/search')) {
+        return new Promise((resolve) => {
+          releaseSearch = () =>
+            resolve({ ok: true, status: 200, json: () => Promise.resolve(CROSS_CHAIN_HITS) })
+        })
+      }
+      if (url.includes('/list/tokens/')) return ok(tokensResponse(1, ETHEREUM_TOKENS))
+      return ok({ tokens: [] })
+    })
+
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+
+    // The chain's own USD Coin stands in, matched locally, with no request settled yet.
+    await waitFor(() => expect(screen.queryByText('Wrapped Ether')).toBeNull(), { timeout: 5000 })
+    expect(screen.getByText('USD Coin')).toBeTruthy()
+    expect(screen.queryByText('Bridged Dollar')).toBeNull()
+
+    // The request is only issued once typing pauses, so it cannot be released before it
+    // has been made — the stand-in's resolver does not exist until fetch is called.
+    await waitFor(
+      () => expect(mockFetch.mock.calls.some((call) => String(call[0]).includes('/list/search'))).toBe(true),
+      { timeout: 5000 },
+    )
+    releaseSearch()
+
+    expect(await screen.findByText('Bridged Dollar', {}, { timeout: 5000 })).toBeTruthy()
+    expect(screen.queryByText('USD Coin')).toBeNull()
+  }, 15_000)
+
+  it('falls back to the chain on screen when the search fails', async () => {
+    // A failed search is not an empty result. Clearing the panel would tell the user the
+    // token does not exist when what actually happened is that nothing was asked.
+    mockFetch.mockImplementation((input: string) => {
+      const url = String(input)
+      const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+      if (url.endsWith('/stats')) return ok(STATS)
+      if (url.endsWith('/networks')) return ok(NETWORKS)
+      if (url.endsWith('/list')) return ok(PROVIDERS)
+      if (url.includes('/list/search')) {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      }
+      if (url.includes('/list/tokens/')) return ok(tokensResponse(1, ETHEREUM_TOKENS))
+      return ok({ tokens: [] })
+    })
+
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+
+    await waitFor(() => expect(screen.queryByText('Wrapped Ether')).toBeNull(), { timeout: 5000 })
+    expect(screen.getByText('USD Coin')).toBeTruthy()
+    expect(screen.queryByText(/More tokens matched/i)).toBeNull()
+  }, 15_000)
+
+  it('restores the whole chain when the query is cleared', async () => {
+    installDefaultFetch(undefined, CROSS_CHAIN_HITS)
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    typeSearch('usd')
+    await screen.findByText('Bridged Dollar', {}, { timeout: 5000 })
+
+    typeSearch('')
+
+    expect(await screen.findByText('Wrapped Ether')).toBeTruthy()
+    expect(screen.queryByText('Bridged Dollar')).toBeNull()
+    expect(screen.getByPlaceholderText('Search 3 tokens...')).toBeTruthy()
+  }, 15_000)
 })
