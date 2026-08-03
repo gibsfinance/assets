@@ -18,6 +18,7 @@
  */
 import createError from 'http-errors'
 import * as db from '../../db'
+import type * as viem from 'viem'
 import type { RequestHandler } from 'express'
 import * as utils from './utils'
 import _ from 'lodash'
@@ -28,6 +29,9 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, or, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { getDefaultListOrderId } from '../../db/sync-order'
+// From the leaf rather than through `db`, so a caller that mocks the whole data layer
+// still clamps against the real cap instead of whatever the mock guessed.
+import { SEARCH_CANDIDATE_CAP } from '../../db/search'
 import {
   toCAIP2,
   fromCAIP2,
@@ -261,6 +265,171 @@ export const merged: RequestHandler = async (req, res, next) => {
   await serveCachedJson(res, {
     cacheKey: mergedCacheKey({ orderId, chainId: resolution.chainId, extensions, decimals: req.query.decimals }),
     build: () => buildMergedResponse({ chainId: resolution.chainId, orderId, extensions, filters }),
+    cacheControl: listCacheControl,
+    bypassCache: refresh.authorized,
+    bypassCacheControl: REFRESH_CACHE_CONTROL,
+  })
+}
+
+/**
+ * Shortest accepted search term.
+ *
+ * One character is rejected for two reasons. It cannot use the trigram indexes — a
+ * trigram is three characters, so a one or two character pattern degrades to a scan of
+ * the whole token table — and it selects such a large fraction of the table that the
+ * answer is not a search result, it is a sample. Two is accepted because it is a real
+ * query for a short symbol and the scan it forces is bounded by the candidate cap.
+ */
+const MIN_SEARCH_LENGTH = 2
+
+/**
+ * Longest accepted search term.
+ *
+ * Nothing in the token table is close to this long, so it costs no real query anything.
+ * It is here because the term is part of the cache key: without a ceiling, a caller can
+ * mint unbounded `cache_request` rows by varying a parameter that changes nothing about
+ * the answer. The twenty-four hour row expiry and `purgeExpiredCache` bound the damage
+ * either way, but the cheapest place to stop it is the boundary.
+ */
+const MAX_SEARCH_LENGTH = 64
+
+/** Tokens returned when the caller does not say. Enough to scroll, small enough to send. */
+const DEFAULT_SEARCH_LIMIT = 100
+
+/**
+ * Cache key for a search response.
+ *
+ * The term is lowercased, which is not a normalization to be nice about — it is what the
+ * query actually does. Every predicate behind this endpoint is case-insensitive: `ILIKE`
+ * by definition, `provided_id` because it is `citext`, and the exact-symbol tier because
+ * it compares `lower()` on both sides. "USDC" and "usdc" therefore name one body, and
+ * keying on the raw term would have stored it once per spelling.
+ *
+ * The term is percent-encoded because `:` is the key's own separator. Unencoded, a search
+ * for `a:b` with no chain filter and a search for `a` on chain `b` would produce the same
+ * key and be served each other's results.
+ */
+export const searchCacheKey = ({
+  orderId,
+  query,
+  chainId,
+  limit,
+}: {
+  orderId: string
+  query: string
+  chainId?: string
+  limit: number
+}) => namespacedCacheKey(`search:${orderId}:${encodeURIComponent(query.toLowerCase())}:${chainId ?? ''}:${limit}`)
+
+/**
+ * Assemble the search response body.
+ *
+ * Asks the query for one token more than the caller wanted, purely to answer whether
+ * there are more. A second `COUNT(*)` would be an honest total but doubles the work of
+ * every search to report a number the interface uses only to decide whether to say "and
+ * more" — and the count would be a lie anyway the moment it exceeded the candidate cap.
+ * One extra row answers the question that is actually being asked.
+ */
+const buildSearchResponse = async ({
+  query,
+  orderId,
+  chainId,
+  limit,
+}: {
+  query: string
+  orderId: viem.Hex
+  chainId?: string
+  limit: number
+}) => {
+  const rows = await db.searchTokens(query, orderId, { limit: limit + 1, chainId })
+  const entries = utils.normalizeTokens(rows as never)
+  const truncated = entries.length > limit
+  return JSON.stringify({
+    query,
+    // Stated only when the search was scoped, so the response says what it searched
+    // rather than leaving the caller to remember what it asked for.
+    ...(chainId ? { chainIdentifier: chainId } : {}),
+    // No `total`. The candidate cap means this endpoint genuinely does not know how many
+    // tokens match, and a field that reported the returned count under a name meaning
+    // "how many exist" is the kind of number people build pagination on.
+    truncated,
+    tokens: truncated ? entries.slice(0, limit) : entries,
+  })
+}
+
+/**
+ * GET /list/search?q=…
+ *
+ * Substring search over every token on every chain, ranked by how closely the term
+ * matches and then by provider ranking.
+ *
+ * This endpoint exists because the interface was doing it by fan-out: one request per
+ * provider list, all 1,193 of them downloaded in full and filtered in the browser, to
+ * answer one query. Everything here — the tiers, the candidate cap, the trigram indexes
+ * in migration 0016 — is in service of replacing that with a single request.
+ *
+ * Deliberately narrower than the list endpoints. There is no `?extensions=`, because a
+ * search result is something to pick from, not something to consume bridge metadata off.
+ * There is no `?decimals=`, because that filter runs in JavaScript over rows the database
+ * has already cut to the candidate cap, so it would quietly return fewer results than
+ * match rather than the right ones. `?chainId=` is supported because it pushes down into
+ * the query itself and narrows the search rather than the results.
+ *
+ * The ranking is the default order, not a `:order` path segment: search asks "which token
+ * did you mean", and the answer should not change with the caller's choice of ranking.
+ * Before the startup sync resolves an order id, every list ranks equally and results fall
+ * back to version and key ordering — degraded, still correct, and self-correcting once
+ * the sync lands, since the order id is part of the cache key.
+ */
+export const search: RequestHandler = async (req, res, next) => {
+  const raw = req.query.q
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return next(createError.BadRequest('q query parameter is required'))
+  }
+  const query = raw.trim()
+  if (query.length < MIN_SEARCH_LENGTH) {
+    return next(createError.BadRequest(`q must be at least ${MIN_SEARCH_LENGTH} characters`))
+  }
+  if (query.length > MAX_SEARCH_LENGTH) {
+    return next(createError.BadRequest(`q must be at most ${MAX_SEARCH_LENGTH} characters`))
+  }
+  // Same gate the chain-scoped endpoints use. This query is cheaper than theirs but far
+  // from free, and an open refresh parameter would let anyone force it on every request.
+  const refresh = refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+  if (refresh.requested && !refresh.authorized) {
+    return next(createError.Unauthorized('unauthorized'))
+  }
+  const limit = utils.parseTokenLimit(req.query.limit, {
+    fallback: DEFAULT_SEARCH_LIMIT,
+    max: SEARCH_CANDIDATE_CAP,
+  })
+
+  // Optional, and resolved exactly as merged and tokensByChain resolve it — a bare number
+  // names no namespace, so it has to be matched against the identifiers that hold rows
+  // rather than assumed to be eip155.
+  let chainId: string | undefined
+  if (req.query.chainId != null && `${req.query.chainId}` !== '') {
+    const rawChainId = `${req.query.chainId}`
+    const storedCandidates = isBareNumeric(rawChainId) ? await db.getChainIdsByReference(rawChainId) : []
+    const resolution = resolveChainIdAgainstStored(rawChainId, storedCandidates)
+    if (resolution.status === 'ambiguous') {
+      return next(
+        createError.BadRequest(
+          `ambiguous chainId "${rawChainId}" — it exists in several namespaces (${resolution.candidates.join(', ')}); request one explicitly`,
+        ),
+      )
+    }
+    chainId = resolution.chainId
+  }
+
+  const orderId = (getDefaultListOrderId() ?? '0x') as viem.Hex
+  await serveCachedJson(res, {
+    cacheKey: searchCacheKey({ orderId, query, chainId, limit }),
+    build: () => buildSearchResponse({ query, orderId, chainId, limit }),
     cacheControl: listCacheControl,
     bypassCache: refresh.authorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,

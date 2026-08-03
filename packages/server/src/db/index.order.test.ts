@@ -17,7 +17,9 @@ import {
   getTokenSourcesByChain,
   getTokenCountsByChain,
   getTokensUnderListId,
+  searchTokens,
 } from './index'
+import { SEARCH_CANDIDATE_CAP } from './search'
 import { eq } from 'drizzle-orm'
 import * as s from './schema'
 
@@ -394,5 +396,157 @@ describe('getTokensUnderListId', () => {
     expect(query.steps.some((step) => step.method === 'leftJoin')).toBe(true)
     expect(query.steps.some((step) => step.method === 'innerJoin')).toBe(true)
     expect(rows).toEqual([{ tokenId: 'token-1', imageHash: null }])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// searchTokens
+// ---------------------------------------------------------------------------
+
+describe('searchTokens', () => {
+  /** The rendered text and bound parameters of the single query this issues. */
+  const renderedSearch = () => {
+    const fragment = (harness.queries[0].steps[0].args as unknown[])[0]
+    return { sql: renderSql(fragment), params: sqlParams(fragment) }
+  }
+
+  /**
+   * Just the `matched` expression — the part that reads only `token`.
+   *
+   * Sliced at the next expression's name rather than at a punctuation sequence, because
+   * the rendered text carries the template's own newlines and indentation, so `), ` is
+   * not literally present between them.
+   */
+  const matchedSection = (sql: string) => {
+    const end = sql.indexOf('list_ranks AS')
+    expect(end).toBeGreaterThan(-1)
+    return sql.slice(0, end)
+  }
+
+  it('cuts the candidate set before anything joins to it', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never, { limit: 25 })
+
+    const { sql, params } = renderedSearch()
+    // The whole shape of this query. The LIMIT has to sit inside the `matched`
+    // expression, which reads only `token`, so the per-candidate join that follows runs
+    // over at most that many rows. Moved to the outer query it would still return the
+    // right answer — after resolving the winning list entry for every token in the
+    // table, which is the cost the cap exists to avoid.
+    const matched = matchedSection(sql)
+    expect(matched).toContain('LIMIT')
+    expect(sql.indexOf('DISTINCT ON')).toBeGreaterThan(matched.length)
+    expect(params).toContain(25)
+  })
+
+  it('scores popularity inside the candidate cut, not after it', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never)
+
+    const matched = matchedSection(renderedSearch().sql)
+    // The bug this pins cost the endpoint its usefulness. "usdc" matches 1,396 tokens
+    // that nearly all carry the symbol USDC, so the relevance tier cannot separate them.
+    // With the count applied only after the join, the cut kept the alphabetically first
+    // candidates — the answer was "Anubis Bridged USDC (Anubis)" and USD Coin was never
+    // a candidate at all. The count has to be computed and ordered on before the LIMIT.
+    expect(matched).toContain('"listCount"')
+    expect(matched.indexOf('"listCount" DESC')).toBeLessThan(matched.indexOf('LIMIT'))
+  })
+
+  it('orders by relevance, then popularity, then provider ranking', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never)
+
+    const { sql } = renderedSearch()
+    const final = sql.slice(sql.lastIndexOf('ORDER BY'))
+    // Provider ranking last of the three on purpose: it orders providers, and a search
+    // asks which token was meant. Promoting it above relevance would answer "pls" with
+    // whatever the best-ranked list happens to hold rather than the token named PLS.
+    expect(final.indexOf('b.tier')).toBeLessThan(final.indexOf('"listCount"'))
+    expect(final.indexOf('"listCount"')).toBeLessThan(final.indexOf('"listRanking"'))
+  })
+
+  it('escapes pattern syntax in the term rather than passing it to ILIKE', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('%', '0xorder' as never)
+
+    const { params } = renderedSearch()
+    // Unescaped this becomes `%%%`, which matches every token on every chain — the
+    // most expensive query the table can answer, from a one-character request.
+    expect(params).toContain('%\\%%')
+    expect(params).not.toContain('%%%')
+  })
+
+  it('matches an address exactly rather than as a substring', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('0xabc', '0xorder' as never)
+
+    const { sql, params } = renderedSearch()
+    // `provided_id` is citext, so equality is already case-insensitive. Making this a
+    // LIKE instead would mean a short address prefix matched thousands of tokens and
+    // the exact-address tier stopped meaning anything.
+    expect(sql).toContain('"provided_id" = ')
+    expect(params).toContain('0xabc')
+    expect(params).toContain('%0xabc%')
+  })
+
+  it('joins network only when a chain is named', async () => {
+    harness.queueResult({ rows: [] })
+    await searchTokens('usdc', '0xorder' as never)
+    // An unfiltered search is the common case, and the join would otherwise be paid on
+    // every request to answer a question nobody asked.
+    expect(matchedSection(renderedSearch().sql)).not.toContain('"network"')
+
+    harness.reset()
+    harness.queueResult({ rows: [] })
+    await searchTokens('usdc', '0xorder' as never, { chainId: 'eip155-369' })
+    const scoped = renderedSearch()
+    expect(matchedSection(scoped.sql)).toContain('"network"')
+    expect(scoped.params).toContain('eip155-369')
+  })
+
+  it('reduces the ranking expression to the newest completed version of each list', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never)
+
+    const { sql } = renderedSearch()
+    // Shared with the chain-scoped queries and load-bearing for the same reason: a
+    // version still being collected must not supersede the complete one beside it, or
+    // every token it has not rewritten yet vanishes from search for the duration.
+    expect(sql).toContain('NOT EXISTS')
+    expect(sql).toMatch(/newer\.tokens_collected_at IS NOT NULL/)
+  })
+
+  it('prefers a list entry whose image resolves when picking the winner for a token', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never)
+
+    const { sql } = renderedSearch()
+    // Same preference getTokensByChainRanked applies. Without it a token can win on
+    // ranking through a list entry that carries no usable image, and the search result
+    // renders as a blank tile for a token that does have a logo elsewhere.
+    expect(sql).toContain("= 'link'")
+    expect(sql.indexOf('DISTINCT ON')).toBeLessThan(sql.indexOf("= 'link'"))
+  })
+
+  it('defaults the candidate limit rather than issuing an unbounded query', async () => {
+    harness.queueResult({ rows: [] })
+
+    await searchTokens('usdc', '0xorder' as never)
+
+    expect(renderedSearch().params).toContain(SEARCH_CANDIDATE_CAP)
+  })
+
+  it('returns the rows the database produced', async () => {
+    harness.queueResult({ rows: [{ symbol: 'USDC' }] })
+    const rows = await searchTokens('usdc', '0xorder' as never)
+    expect(rows).toEqual([{ symbol: 'USDC' }])
   })
 })

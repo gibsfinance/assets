@@ -43,6 +43,7 @@ import { eq, and, lt, gte, desc, ilike, inArray, sql as dsql, type SQL, type Any
 import * as s from './schema'
 import { noteListTokensWritten } from './publication'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
+import { escapeLikePattern, SEARCH_CANDIDATE_CAP } from './search'
 import { collectablePriority } from '../collect/collectable-order'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
@@ -2042,6 +2043,160 @@ export const getTokenSourcesByChain = async (
     .innerJoin(s.list, eq(s.list.listId, s.listToken.listId))
     .innerJoin(s.provider, eq(s.provider.providerId, s.list.providerId))
     .where(and(eq(s.network.chainId, chainId), latestListVersionSql))
+}
+
+/**
+ * Substring search over every token on every chain, for GET /list/search.
+ *
+ * This exists because the interface had no server-side search to call. It fanned out
+ * instead: one request per provider list, every list downloaded in full, filtered in the
+ * browser. That is 1,193 lists and hundreds of megabytes to answer one query, and it is
+ * the reason the endpoint below is worth its complexity.
+ *
+ * Runs in two stages, and which work sits in which stage is the whole design.
+ *
+ * The first stage reads `token`, scores each match, and cuts to the candidate limit.
+ * Everything it needs to rank by has to be available here, because this is where rows
+ * are discarded: a signal applied after the cut is only sorting whatever the cut kept.
+ * That is two things. The relevance tier — exact address, then exact symbol, then symbol
+ * prefix, then name prefix, then plain substring, which is what someone typing into a
+ * search box means by "best match". And how many list entries carry the token, as a
+ * correlated count, which is what separates the token people use from the several
+ * hundred that merely share its symbol.
+ *
+ * Getting that second signal into this stage rather than the next one is the difference
+ * between the endpoint working and not. A search for "usdc" matches 1,396 tokens, nearly
+ * all of them with the symbol USDC, so the tier alone cannot separate them; ranked
+ * afterwards, the answer was "Anubis Bridged USDC (Anubis)" and USD Coin was never a
+ * candidate at all.
+ *
+ * The second stage resolves the winning list entry for the surviving candidates only,
+ * using the same DISTINCT ON preference getTokensByChainRanked uses: a list entry whose
+ * image actually resolves wins, then provider ranking, then version. Provider ranking
+ * enters the final ordering only as a tie-break, after tier and popularity — it orders
+ * providers, and a search is asking about tokens. Deciding which list entry a token is
+ * served from is the job it can actually do here, and that is the DISTINCT ON.
+ *
+ * Measured against the real table: 12ms for an address, 17ms for a long term, 57ms for
+ * "usdc", and 105ms for a two-character term, all cold and before the response cache.
+ *
+ * @param query - Raw user input; escaped here, so callers pass it through untouched.
+ * @param listOrderId - Provider ranking to resolve against, as elsewhere.
+ * @param limit - Candidate ceiling, clamped to SEARCH_CANDIDATE_CAP by the caller.
+ * @param chainId - Optional stored identifier (eip155-369) to restrict the search to.
+ */
+export const searchTokens = async (
+  query: string,
+  listOrderId: viem.Hex,
+  { limit = SEARCH_CANDIDATE_CAP, chainId }: { limit?: number; chainId?: string } = {},
+): Promise<Record<string, unknown>[]> => {
+  const db = getDrizzle()
+  const escaped = escapeLikePattern(query)
+  const contains = `%${escaped}%`
+  const startsWith = `${escaped}%`
+  const rows = await db.execute<Record<string, unknown>>(dsql`
+    WITH matched AS (
+      SELECT
+        ${s.token.tokenId} AS "tokenId",
+        ${s.token.networkId} AS "networkId",
+        CASE
+          WHEN ${s.token.providedId} = ${query} THEN 0
+          WHEN lower(${s.token.symbol}) = lower(${query}) THEN 1
+          WHEN ${s.token.symbol} ILIKE ${startsWith} THEN 2
+          WHEN ${s.token.name} ILIKE ${startsWith} THEN 3
+          ELSE 4
+        END AS tier,
+        (SELECT count(*) FROM ${s.listToken} lt WHERE lt.token_id = ${s.token.tokenId}) AS "listCount"
+      FROM ${s.token}
+      ${
+        // Joined only when asked. An unfiltered search is the common case and the join
+        // would otherwise be paid on every request to answer a question nobody asked.
+        chainId
+          ? dsql`INNER JOIN ${s.network} ON ${eq(s.network.networkId, s.token.networkId)} AND ${eq(s.network.chainId, chainId)}`
+          : dsql``
+      }
+      WHERE ${s.token.name} ILIKE ${contains}
+         OR ${s.token.symbol} ILIKE ${contains}
+         OR ${s.token.providedId} = ${query}
+      -- Popularity ahead of every textual tie-break, and computed here rather than after
+      -- the join, because this is the ordering the cut below applies. Ranked afterwards
+      -- it would be sorting whatever the cut happened to keep: a search for "usdc"
+      -- matches 1,396 tokens that mostly share the symbol, so ordering the cut by name
+      -- returned "Anubis Bridged USDC (Anubis)" and USD Coin itself was never a
+      -- candidate at all.
+      --
+      -- The count includes superseded list versions, which overstates a token that has
+      -- been in one list a long time relative to one in many lists at once. Measured
+      -- against the real table the gap is small — USD Coin scores 22 either way, and the
+      -- worst case seen was 12 against 11 — and counting distinct lists needs a join to
+      -- the list table per candidate. For a tie-break, the cheap count is the better trade.
+      --
+      -- Shorter symbols first after that: "PLS" is a likelier target than "PLSPAD" for
+      -- someone who typed "pls", and it keeps the cut deterministic between runs.
+      ORDER BY tier ASC, "listCount" DESC, length(${s.token.symbol}) ASC, ${s.token.name} ASC
+      LIMIT ${limit}
+    ),
+    list_ranks AS MATERIALIZED (
+      SELECT ${s.list.listId}, ${s.list.key}, ${s.list.major}, ${s.list.minor},
+             ${s.list.patch}, ${s.list.default}, ${s.list.providerId},
+             COALESCE(MIN(${s.listOrderItem.ranking}), 9223372036854775807) AS ranking
+      FROM ${s.list}
+      LEFT JOIN ${s.listOrderItem} ON (
+        ${s.listOrderItem.listOrderId} = ${listOrderId}
+        AND ${eq(s.listOrderItem.providerId, s.list.providerId)}
+        AND ${eq(s.listOrderItem.listKey, s.list.key)}
+      )
+      WHERE ${latestListVersionSql}
+      GROUP BY ${s.list.listId}
+    ),
+    best AS (
+      SELECT DISTINCT ON (m."tokenId")
+        m.tier,
+        ${s.network.chainId} AS "chainId",
+        ${s.token.providedId} AS "providedId",
+        ${s.token.decimals},
+        ${s.token.symbol},
+        ${s.token.name},
+        ${s.listToken.imageHash} AS "imageHash",
+        ${s.image.ext} AS ext,
+        ${s.image.mode} AS mode,
+        ${s.image.uri} AS uri,
+        lr.provider_id AS "providerId",
+        lr.key AS "listKey",
+        lr.ranking AS "listRanking",
+        m."listCount"
+      FROM matched m
+      INNER JOIN ${s.token} ON ${eq(s.token.tokenId, dsql.raw('m."tokenId"'))}
+      INNER JOIN ${s.network} ON ${eq(s.network.networkId, dsql.raw('m."networkId"'))}
+      INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, dsql.raw('m."tokenId"'))}
+      INNER JOIN list_ranks lr ON lr.list_id = ${s.listToken.listId}
+      LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
+      ORDER BY
+        m."tokenId",
+        CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
+        (lr.ranking / 1000) ASC,
+        lr.major DESC, lr.minor DESC, lr.patch DESC,
+        lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
+    )
+    SELECT
+      b."chainId", b."providedId", b.decimals, b.symbol, b.name,
+      b."imageHash", b.ext, b.mode, b.uri, b."listKey",
+      ${s.provider.key} AS "providerKey"
+    FROM best b
+    INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('b."providerId"'))}
+    -- The same keys the candidate cut used, with provider ranking inserted as a
+    -- tie-break. It sits after popularity on purpose: ranking orders *providers*, and a
+    -- search is asking which *token* was meant. Ranking still decides which list entry a
+    -- token is served from — that is the DISTINCT ON above — which is the job it is
+    -- actually able to do here.
+    ORDER BY
+      b.tier ASC,
+      b."listCount" DESC,
+      (b."listRanking" / 1000) ASC,
+      length(b.symbol) ASC,
+      b.name ASC
+  `)
+  return rows.rows
 }
 
 /**
