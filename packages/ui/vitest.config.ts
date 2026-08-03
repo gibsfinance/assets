@@ -21,23 +21,27 @@ export default defineConfig({
         'src/lib/networks.json',
         'src/main.tsx',
       ],
-      // Ratchet floors, not aspirations. The previous value was 100, roughly
-      // forty-four points above reality, so this gate failed on every run from
-      // 2026-07-22 onward and the build has not been a usable signal since. An
-      // honest low number that can regress is worth more than a high one that
-      // is always red.
+      // Ratchet floors, not aspirations. An earlier value of 100 sat roughly
+      // forty-four points above reality, failed on every run from 2026-07-22
+      // onward, and made the gate useless; the floors have been honest numbers
+      // that can actually regress ever since.
       //
       // Deliberately ~0.2 below measured, because this workspace's coverage is
-      // not identical across environments: the same 1062 tests report 55.73
+      // not identical across environments — an earlier suite reported 55.73
       // statements / 57.26 functions locally but 55.66 / 57.12 on the CI
-      // runner. Floors set to the local figures failed CI by hundredths. Leave
-      // the margin — a threshold that only passes on the machine it was
+      // runner, and floors set to the local figures failed CI by hundredths.
+      // Leave the margin: a threshold that only passes on the machine it was
       // measured on is the same trap as a 100 nobody can reach.
+      //
+      // 2026-08-03: measured 92.65 / 86.58 / 91.87 / 93.89 over 1546 tests,
+      // up from 59 percent. Every page and all but one component now have
+      // tests; what remains uncovered is mostly unreachable defensive guards
+      // and Studio.tsx.
       //
       // Browser-mode specs run under a separate config and are excluded above,
       // so component behaviour verified there does not count here. Raise these
       // as tests land; never lower them to make a failing run pass.
-      thresholds: { statements: 55.5, branches: 50.4, functions: 57, lines: 55.9 },
+      thresholds: { statements: 92.4, branches: 86.3, functions: 91.6, lines: 93.6 },
     },
   },
   resolve: {

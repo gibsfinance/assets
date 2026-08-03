@@ -18,7 +18,10 @@ yarn workspace ui run test
 #   server — 99.7/99.3/99.7/99.8 (statements/branches/functions/lines) against
 #     actuals of 99.77/99.39/99.73/99.85. Margin is as thin as 0.03%, so a
 #     handful of new uncovered lines will break CI.
-#   ui — no threshold configured (currently ~59%).
+#   ui — 92.4/86.3/91.6/93.6 against actuals of 92.65/86.58/91.87/93.89.
+#     Same ~0.2 margin as the others, and for a specific reason: this workspace
+#     measures very slightly lower on the CI runner than locally, so floors set
+#     to the local figures fail by hundredths.
 yarn workspace @gibs/sdk run vitest run --coverage
 yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
@@ -79,8 +82,14 @@ Components import from these — do not re-inline logic that's been extracted.
 
 Workflow: `.github/workflows/test.yml` — 8 job definitions (lint, typecheck, build, unit-test,
 vitest, coverage, browser-test, integration-test). `vitest` and `coverage` are matrices over the
-five workspaces, so a run reports 16 jobs. `coverage` fails independently of `vitest`: every
-test can pass while a threshold breach turns the run red.
+five workspaces and `typecheck` is a matrix over two configurations, so a run reports 17 jobs.
+`coverage` fails independently of `vitest`: every test can pass while a threshold breach turns
+the run red.
+
+Only `packages/server` and `packages/ui` are type-checked. Nothing type-checks the other three
+workspaces, and `yarn workspace ui run build` is a bare `vite build`, which strips types without
+reading them — so the `typecheck` job is the only thing standing between a type error and
+master.
 
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`
