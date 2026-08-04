@@ -143,7 +143,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { metrics: metricsData } = useMetrics()
+  const { metrics: metricsData, isError: metricsFailed } = useMetrics()
   const { showTestnets, setShowTestnets } = useSettings()
 
   const filteredNetworks = useMemo(() => {
@@ -226,6 +226,15 @@ export default function Home() {
       navigate('/studio')
     },
     [navigate],
+  )
+
+  // A pulsing placeholder is a promise that the number is on its way. Once the
+  // request has failed it is not coming, and animating forever says otherwise.
+  // Both states show dashes rather than a figure, because the honest answer to
+  // "how many networks" here is that we do not know — which is the whole reason
+  // the fetchers throw instead of resolving to an empty list.
+  const metricPlaceholder = (
+    <span className={`mb-2 block text-5xl font-bold text-gray-400 ${metricsFailed ? '' : 'animate-pulse'}`}>---</span>
   )
 
   return (
@@ -341,7 +350,7 @@ export default function Home() {
                     <span className="text-gradient-green">+</span>
                   </span>
                 ) : (
-                  <span className="mb-2 block animate-pulse text-5xl font-bold text-gray-400">---</span>
+                  metricPlaceholder
                 )}
                 <p className="text-lg text-gray-600 dark:text-gray-300">Total Tokens</p>
               </div>
@@ -351,7 +360,7 @@ export default function Home() {
                     <CountUpNumber end={mainnetNetworkCount} className="text-gradient-green" />
                   </span>
                 ) : (
-                  <span className="mb-2 block animate-pulse text-5xl font-bold text-gray-400">---</span>
+                  metricPlaceholder
                 )}
                 <p className="text-lg text-gray-600 dark:text-gray-300">Supported Networks</p>
               </div>
@@ -423,6 +432,12 @@ export default function Home() {
                     and {hiddenCount} more network{hiddenCount === 1 ? '' : 's'}
                   </p>
                 )}
+              </div>
+            ) : metricsFailed ? (
+              <div className="glass-card p-6 text-center">
+                <p className="text-lg text-gray-600 dark:text-gray-300">
+                  Could not load the network breakdown. Reload to try again.
+                </p>
               </div>
             ) : (
               <div className="glass-card p-6">

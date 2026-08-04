@@ -272,19 +272,32 @@ describe('Home — the three states of its metrics fetch', () => {
     expect(screen.queryByText('Tokens by Chain')).toBeNull()
   })
 
-  it('publishes zeros when the server answers the metrics endpoints with an error status', async () => {
-    // Documented rather than endorsed. An error status is turned into an empty list one
-    // layer down, in useMetrics, which the page cannot tell apart from a genuinely empty
-    // server — so a 500 from /stats renders as a confident "0 Supported Networks". The
-    // distinction has to be restored in useMetrics; when it is, this expectation should be
-    // changed to the placeholders asserted above rather than deleted.
+  it('admits it does not know when the server answers the metrics endpoints with an error status', async () => {
+    // This asserted zeros until useMetrics stopped turning a non-ok response into an empty
+    // list — a change this test asked for in as many words. The page could not tell that
+    // apart from a genuinely empty server, so a 500 from /stats rendered as a confident
+    // "0 Supported Networks", and the placeholders below were unreachable because an empty
+    // array is truthy. Zero is a claim; dashes are the truthful answer to a failed request.
     stubFetch({ ok: false })
-    const { container } = renderHome()
-    await waitForMetrics()
+    const { client, container } = renderHome()
+    await waitFor(() => expect(client.isFetching()).toBe(0))
 
-    expect(metricValue('Total Tokens')).toBe('0')
-    expect(metricValue('Supported Networks')).toBe('0')
+    expect(screen.getAllByText('---')).toHaveLength(2)
+    expect(screen.queryByText('Tokens by Chain')).toBeNull()
+    expect(screen.queryByText(/Could not load the network breakdown/)).not.toBeNull()
     expect(drawnNetworks(container)).toEqual([])
+  })
+
+  it('stops animating the placeholders once the request has failed for good', async () => {
+    // A pulse promises the figure is still on its way. After an outage it is not, and the
+    // two states are only distinguishable here because useMetrics publishes isError.
+    stubFetch({ ok: false })
+    const { client } = renderHome()
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+
+    for (const placeholder of screen.getAllByText('---')) {
+      expect(placeholder.className).not.toContain('animate-pulse')
+    }
   })
 })
 
