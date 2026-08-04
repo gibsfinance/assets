@@ -104,6 +104,13 @@ five workspaces and `typecheck` is a matrix over two configurations, so a run re
 `coverage` fails independently of `vitest`: every test can pass while a threshold breach turns
 the run red.
 
+Adding a route means adding it to `openapi.ts` in the same change. `openapi-coverage.test.ts`
+scans every router module for its registrations and fails on any path the definition does not
+describe, naming the route and the file it came from. It reads the source rather than the
+Express router because Express 5 discards mount paths and `image/index.ts` registers via
+`router.use`, so a stack walk would find no image endpoint and report success. A new
+`router.use` in `routes.ts` also fails it until it is added to that file's `MOUNTS`.
+
 Only `packages/server` and `packages/ui` are type-checked. Nothing type-checks the other three
 workspaces, and `yarn workspace ui run build` is a bare `vite build`, which strips types without
 reading them — so the `typecheck` job is the only thing standing between a type error and
