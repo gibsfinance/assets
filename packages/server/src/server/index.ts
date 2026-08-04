@@ -1,14 +1,9 @@
-import express from 'express'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { app } from './app'
+import { app, STATIC_PATH } from './app'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-// Add static file serving before other routes
-const staticPath = path.join(__dirname, '..', '..', '..', 'ui', 'dist')
-console.log('serving static files from', staticPath)
-app.use(express.static(staticPath))
+// Static serving itself is registered in app.ts. It cannot be registered here: this module
+// runs after app.ts has finished, so anything added now lands behind the catch-all 404 and
+// never runs.
+console.log('serving static files from', STATIC_PATH)
 
 export const main = async () => {
   return listen(process.env.PORT ? parseInt(process.env.PORT) : 3000).then(async () => {
