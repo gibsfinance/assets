@@ -1,8 +1,13 @@
 /**
- * Tests for the process entrypoint: static file mounting at import time, the
- * `listen()` promise contract (resolve on 'listening', reject on 'error'),
- * and `main()`'s port-selection ternary plus its wait on the app's own
- * 'close'/'error' events after the server starts listening.
+ * Tests for the process entrypoint: the `listen()` promise contract (resolve on
+ * 'listening', reject on 'error'), and `main()`'s port-selection ternary plus its wait on
+ * the app's own 'close'/'error' events after the server starts listening.
+ *
+ * This file used to assert that the entrypoint mounted static file serving at import time.
+ * It did, and that was the bug — this module runs after app.ts has finished, so the mount
+ * landed behind the catch-all 404 and the built interface stopped being served entirely.
+ * The assertion now runs the other way: the entrypoint must register nothing. See
+ * app.static.test.ts for the ordering this protects.
  *
  * The real `app` from ./app pulls in the whole route tree (database, sharp,
  * etc.) — this file only needs an object shaped like an Express app plus an
@@ -36,7 +41,7 @@ const fakeApp = Object.assign(makeEmitter(), {
   listen: vi.fn(() => fakeServer),
 })
 
-vi.mock('./app', () => ({ app: fakeApp }))
+vi.mock('./app', () => ({ app: fakeApp, STATIC_PATH: '/fake/ui/dist' }))
 
 describe('server entrypoint', () => {
   beforeEach(() => {
@@ -54,9 +59,13 @@ describe('server entrypoint', () => {
     vi.unstubAllEnvs()
   })
 
-  it('mounts static file serving on the app at import time', async () => {
+  it('registers no middleware at import time, which would land behind the catch-all 404', async () => {
+    // The inverse of what this test used to assert. Registering here looks equivalent to
+    // registering in app.ts and is not: this module imports app.ts, so by the time it runs
+    // the catch-all is already on the stack and anything added lands after it, where no
+    // request ever reaches. That is what stopped the interface being served.
     await import('./index')
-    expect(fakeApp.use).toHaveBeenCalled()
+    expect(fakeApp.use, 'the entrypoint registered middleware — it belongs in app.ts').not.toHaveBeenCalled()
   })
 
   describe('listen()', () => {
