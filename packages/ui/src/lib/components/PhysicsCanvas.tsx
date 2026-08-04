@@ -68,42 +68,6 @@ export default function PhysicsCanvas() {
     }
   }, [contextProviders])
 
-  const initIcons = useCallback(async () => {
-    if (!metrics) return
-
-    const config = configRef.current
-    const tokenSources = await fetchTokenSources()
-    const sources = await buildIconSources(tokenSources)
-
-    if (sources.length < 10) return
-
-    const icons: PhysicsIcon[] = []
-    for (let i = 0; i < ICON_COUNT; i++) {
-      const src = sources[i % sources.length]
-      const isMonster = Math.random() < MONSTER_CHANCE
-      const layerRoll = Math.random()
-      const layer: PhysicsIcon['layer'] = layerRoll < 0.3 ? 'background' : layerRoll < 0.65 ? 'middle' : 'foreground'
-
-      const icon = createIcon(i, src, layer, config)
-
-      if (isMonster) {
-        icon.radius = MONSTER_SIZE / 2
-        icon.mass = MONSTER_SIZE
-        icon.opacity = 0.4
-      }
-
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.src = icon.imgSrc
-      img.onload = () => {
-        icon.imgElement = img
-      }
-      icons.push(icon)
-    }
-
-    iconsRef.current = icons
-  }, [metrics, fetchTokenSources, buildIconSources])
-
   const render = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -133,6 +97,48 @@ export default function PhysicsCanvas() {
     ctx.globalAlpha = 1
   }, [])
 
+  const initIcons = useCallback(async () => {
+    if (!metrics) return
+
+    const config = configRef.current
+    const tokenSources = await fetchTokenSources()
+    const sources = await buildIconSources(tokenSources)
+
+    if (sources.length < 10) return
+
+    const icons: PhysicsIcon[] = []
+    for (let i = 0; i < ICON_COUNT; i++) {
+      const src = sources[i % sources.length]
+      const isMonster = Math.random() < MONSTER_CHANCE
+      const layerRoll = Math.random()
+      const layer: PhysicsIcon['layer'] = layerRoll < 0.3 ? 'background' : layerRoll < 0.65 ? 'middle' : 'foreground'
+
+      const icon = createIcon(i, src, layer, config)
+
+      if (isMonster) {
+        icon.radius = MONSTER_SIZE / 2
+        icon.mass = MONSTER_SIZE
+        icon.opacity = 0.4
+      }
+
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.src = icon.imgSrc
+      img.onload = () => {
+        icon.imgElement = img
+        // A visitor who asked for reduced motion gets a single still frame instead of
+        // the animation loop, and that frame is drawn during mount — before this
+        // asynchronous list resolves and long before any image has arrived. Without
+        // this redraw their canvas stayed blank permanently: reduced motion silently
+        // meant no decoration at all rather than decoration that holds still.
+        if (prefersReducedMotion.current) render()
+      }
+      icons.push(icon)
+    }
+
+    iconsRef.current = icons
+  }, [metrics, fetchTokenSources, buildIconSources, render])
+
   const loop = useCallback(() => {
     if (prefersReducedMotion.current) return
 
@@ -157,6 +163,10 @@ export default function PhysicsCanvas() {
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       configRef.current.width = window.innerWidth
       configRef.current.height = window.innerHeight
+      // Assigning to canvas.width wipes the backing store. The loop repaints on the
+      // next frame, but a reduced-motion visitor has no next frame, so one resize
+      // would otherwise leave them with a blank canvas until the page reloads.
+      if (prefersReducedMotion.current) render()
     }
 
     const handleScroll = () => {

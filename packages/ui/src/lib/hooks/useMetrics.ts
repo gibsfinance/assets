@@ -8,28 +8,43 @@ import { isTestnet } from '../utils/is-testnet'
 // Fetch functions (exported for testing)
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch JSON, treating a non-ok response as the failure it is.
+ *
+ * Each of these fetchers used to `return []` when the response was not ok. That
+ * reads as defensive and is the opposite: an empty array is a successful
+ * answer, so the query resolves, `isError` never becomes true, and every
+ * consumer renders a confident zero for something it does not know. A failed
+ * `/networks` said the platform supports no chains at all.
+ *
+ * The interface already had the honest state and could not reach it — Home
+ * renders a dashed placeholder while `metrics` is null, but `[]` is truthy, so
+ * metrics were always computed and the placeholder was dead on the error path.
+ * Throwing leaves `data` undefined, which is what puts that branch back in
+ * play, and lets React Query's retry absorb a transient failure on the way.
+ */
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(getApiUrl(path))
+  if (!response.ok) {
+    throw new Error(`Request to ${path} failed with status ${response.status}`)
+  }
+  return (await response.json()) as T
+}
+
 export async function fetchStats(): Promise<{ chainId: string; chainIdentifier: string; count: number }[]> {
-  const response = await fetch(getApiUrl('/stats'))
-  if (!response.ok) return []
-  return (await response.json()) as { chainId: string; chainIdentifier: string; count: number }[]
+  return fetchJson<{ chainId: string; chainIdentifier: string; count: number }[]>('/stats')
 }
 
 export async function fetchProvidersList(): Promise<ListDescription[]> {
-  const response = await fetch(getApiUrl('/list'))
-  if (!response.ok) return []
-  return (await response.json()) as ListDescription[]
+  return fetchJson<ListDescription[]>('/list')
 }
 
 export async function fetchNetworksList(): Promise<Network[]> {
-  const response = await fetch(getApiUrl('/networks'))
-  if (!response.ok) return []
-  return (await response.json()) as Network[]
+  return fetchJson<Network[]>('/networks')
 }
 
 export async function fetchTokenListByProvider(provider: string): Promise<Token[]> {
-  const response = await fetch(getApiUrl(`/list/${provider}`))
-  if (!response.ok) return []
-  const data = (await response.json()) as { tokens: Token[] }
+  const data = await fetchJson<{ tokens: Token[] }>(`/list/${provider}`)
   return data.tokens ?? []
 }
 
@@ -88,15 +103,19 @@ export function useMetrics(): {
   metrics: PlatformMetrics | null
   providers: ListDescription[]
   isLoading: boolean
+  isError: boolean
 } {
-  const { data: stats, isLoading: statsLoading } = useStats()
-  const { data: networks, isLoading: networksLoading } = useNetworks()
-  const { data: providers, isLoading: providersLoading } = useProviders()
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useStats()
+  const { data: networks, isLoading: networksLoading, isError: networksError } = useNetworks()
+  const { data: providers, isLoading: providersLoading, isError: providersError } = useProviders()
 
   const isLoading = statsLoading || networksLoading || providersLoading
+  // Published so a consumer can tell "still arriving" from "asked and failed".
+  // Both leave `metrics` null, and they call for different words on screen.
+  const isError = statsError || networksError || providersError
 
   if (!stats || !networks) {
-    return { metrics: null, providers: providers ?? [], isLoading }
+    return { metrics: null, providers: providers ?? [], isLoading, isError }
   }
 
   // Token counts keyed on the canonical identifier so a non-Ethereum-Virtual-Machine
@@ -133,5 +152,5 @@ export function useMetrics(): {
     networks: { supported },
   }
 
-  return { metrics, providers: providers ?? [], isLoading }
+  return { metrics, providers: providers ?? [], isLoading, isError }
 }

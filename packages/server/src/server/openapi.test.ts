@@ -34,8 +34,16 @@ describe('openapi document', () => {
     expect(openapi.info.version).toBeTruthy()
   })
 
-  it('has at least the known public surface', () => {
-    expect(operations.length).toBeGreaterThanOrEqual(18)
+  it('describes some operations at all, so the checks below are not vacuous', () => {
+    // This used to assert `>= 18` and was presented as guarding the public
+    // surface, which it could not do: adding an endpoint only ever pushes the
+    // count further above a floor, so an undocumented route was invisible to it
+    // and a documented one changed nothing. The exact count and the check that
+    // every registered route appears here both live in openapi-coverage.test.ts
+    // now. What remains is the only thing a bound was ever good for — noticing
+    // that the document is not empty, which would make every loop in this file
+    // pass without examining anything.
+    expect(operations.length).toBeGreaterThan(0)
   })
 
   it('tags every operation, and only with declared tags (sections derive from them)', () => {

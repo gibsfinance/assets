@@ -28,8 +28,17 @@ export default function ImageUpload({ onUpload, currentImage, size = 32 }: Image
         console.warn('[ImageUpload]', error)
         return
       }
-      const dataUri = await readFileAsDataUri(file)
-      onUpload(dataUri)
+      try {
+        const dataUri = await readFileAsDataUri(file)
+        onUpload(dataUri)
+      } catch (error) {
+        // A file the browser cannot read — removed from disk between choosing and
+        // reading, or permission revoked — rejects here. Previously nothing caught it:
+        // neither call site awaits handleFiles, so the rejection escaped to the window
+        // as an uncaught error while the visitor saw no feedback whatsoever, unlike
+        // every other rejected file. Report it the same way validation does.
+        console.warn('[ImageUpload]', error)
+      }
     },
     [onUpload],
   )

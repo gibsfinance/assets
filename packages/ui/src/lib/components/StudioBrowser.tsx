@@ -174,17 +174,10 @@ function VirtualTokenList({
   )
 }
 
-interface AvailableList {
-  key: string
-  name: string
-  providerKey: string
-  chainId: string
-  type?: string
-  default: boolean
-}
-
 const POPULAR_CHAIN_COUNT = 8
 const ROW_HEIGHT = 44
+/** Stable stand-in for "no results", so an absent search state keeps memo identity. */
+const NO_TOKENS: Token[] = []
 
 export default function StudioBrowser({
   onInspectToken,
@@ -196,7 +189,7 @@ export default function StudioBrowser({
   const selectedToken = studio.selectedToken
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
-  const { metrics, providers } = useMetrics()
+  const { metrics } = useMetrics()
   const {
     isOpen: editorOpen,
     activeList,
@@ -235,28 +228,6 @@ export default function StudioBrowser({
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
   const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set())
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(() => new Set())
-
-  /* ----- Derive available lists from context providers -------------------- */
-  const availableLists = useMemo(() => {
-    if (!providers.length) return []
-    const uniqueLists = new Map<string, AvailableList>()
-    providers.forEach((info) => {
-      const key = `${info.providerKey}-${info.key}-${info.chainId}`
-      if (!uniqueLists.has(key)) {
-        uniqueLists.set(key, {
-          key: info.key as string,
-          name: (info.name as string) || (info.key as string),
-          providerKey: info.providerKey as string,
-          chainId: info.chainId?.toString() || '0',
-          type: (info.chainType as string) || 'hosted',
-          default: (info.default as boolean) || false,
-        })
-      }
-    })
-    return Array.from(uniqueLists.values())
-  }, [providers])
-
-  // availableLists retained for TokenSearch global search fallback
 
   /** Add token to active list, or auto-create a new list first */
   const creatingListRef = useRef(false)
@@ -320,39 +291,49 @@ export default function StudioBrowser({
   const selectedChainNumeric = selectedChainId ? Number(fromChainIdentifier(selectedChainId)) : null
 
   /** Combined, deduped, sorted tokens for the selected chain */
-  const filteredTokens = useMemo(() => {
-    let tokens: Token[]
-    if (!selectedChainId) {
-      return []
-    }
+  const chainTokens = useMemo(() => {
+    if (!selectedChainId) return []
 
     // When data came from /list/tokens/:chainId, tokens are already deduped
     // and ordered server-side via applyOrder (list ranking → format → version)
     const merged = tokensByList.get('merged')
-    if (merged) {
-      tokens = merged
-    } else {
-      tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
-      // Client-only path: sort by popularity then alphabetical
-      tokens.sort((a, b) => {
-        const popA = a.listReferences?.length ?? 1
-        const popB = b.listReferences?.length ?? 1
-        if (popA !== popB) return popB - popA
-        return a.name.localeCompare(b.name)
-      })
-    }
+    if (merged) return merged
 
-    // Filter by search query
-    const query = searchState?.query?.trim() || ''
-    if (query) {
-      tokens = searchTokens(tokens, query)
-    }
+    const tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
+    // Client-only path: sort by popularity then alphabetical
+    return tokens.sort((a, b) => {
+      const popA = a.listReferences?.length ?? 1
+      const popB = b.listReferences?.length ?? 1
+      if (popA !== popB) return popB - popA
+      return a.name.localeCompare(b.name)
+    })
+  }, [tokensByList, enabledLists, selectedChainId])
 
-    return tokens
-  }, [tokensByList, enabledLists, selectedChainId, searchState])
+  const searchQuery = searchState?.query.trim() ?? ''
+  // One shared empty array, so "no search yet" does not hand the memo below a new
+  // dependency on every render and rebuild the list the virtualizer is measuring.
+  const globalResults = searchState?.tokens ?? NO_TOKENS
+  /*
+   * The cross-chain search answers a different question from the local filter, so its
+   * results replace the chain's list rather than being intersected with it. Narrowing
+   * them to the selected chain would hide exactly the hits worth issuing the request
+   * for: typing "PLS" while browsing Ethereum is a question about where that token
+   * lives. Until they arrive the local filter stands in, which is what keeps the panel
+   * responsive instead of blank for the length of a round trip.
+   */
+  const isShowingGlobalResults = !!searchQuery && globalResults.length > 0
+  const filteredTokens = useMemo(() => {
+    if (!searchQuery) return chainTokens
+    if (isShowingGlobalResults) return globalResults
+    return searchTokens(chainTokens, searchQuery)
+  }, [chainTokens, searchQuery, isShowingGlobalResults, globalResults])
 
-  const hasSearchQuery = !!searchState?.query?.trim()
-  const tokenCount = hasSearchQuery ? filteredTokens.length : (serverTotal ?? filteredTokens.length)
+  // The placeholder promises a scope to search, so it has to name the list actually on
+  // screen. Under a query that is however many rows are rendered; with no query the
+  // server's total, which counts the tokens the virtualizer has not asked for yet.
+  const tokenCount = searchQuery ? filteredTokens.length : (serverTotal ?? filteredTokens.length)
+  // Only the cross-chain results can be truncated; a local filter has the whole chain.
+  const isTruncated = isShowingGlobalResults && !!searchState?.truncated
 
   /* ----- Handlers -------------------------------------------------------- */
   const handleChainSelect = useCallback(
@@ -490,6 +471,19 @@ export default function StudioBrowser({
         {selectedChainId && !isLogoOnlyChain && !isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             No tokens found
+          </div>
+        )}
+
+        {/*
+         * Say so rather than presenting the first hundred as the whole answer. The
+         * search stops at a candidate cap, so there is no total to show — "more matched
+         * than fit" is the most the server honestly knows, and a list silently cut off
+         * at a round number reads as "your token is not listed".
+         */}
+        {isTruncated && (
+          <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500 dark:border-surface-3 dark:bg-surface-2 dark:text-white/40">
+            <i className="fas fa-circle-info mr-1" />
+            More tokens matched than are shown here. Type more of the name, symbol or address to narrow it down.
           </div>
         )}
 

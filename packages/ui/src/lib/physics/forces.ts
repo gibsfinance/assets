@@ -70,7 +70,15 @@ export function resolveCollision(a: PhysicsIcon, b: PhysicsIcon, damping: number
   const dvx = a.velocity.x - b.velocity.x
   const dvy = a.velocity.y - b.velocity.y
   const dvDotN = dvx * nx + dvy * ny
-  if (dvDotN > 0) return
+  // n runs from a to b, so dvDotN is positive exactly when a is closing on b — which is
+  // the case that needs an impulse. This comparison used to be `> 0`, skipping the bounce
+  // for approaching pairs and applying it to separating ones. The visible result was
+  // icons that overlapped, got pushed apart by the position correction below while
+  // keeping velocities pointed at each other, and so re-collided every frame — sticking
+  // and jittering rather than bouncing — while any pair already moving apart was flung
+  // back together. Only the guard was wrong: the impulse is standard restitution, with
+  // e = 2 * damping - 1.
+  if (dvDotN < 0) return
 
   const impulse = ((2 * dvDotN) / totalMass) * damping
   a.velocity.x -= impulse * b.mass * nx

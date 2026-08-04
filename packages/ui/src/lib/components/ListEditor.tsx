@@ -91,6 +91,11 @@ export default function ListEditor() {
 
   const handleAddToken = useCallback(async () => {
     if (!addAddress.trim() || !activeList) return
+    // Previously the error banner was only ever set, never cleared, on this path: once a
+    // duplicate was rejected the warning stayed on screen through every later successful
+    // add, so the list read as broken while it was working. Every other action in this
+    // component clears the banner before it starts; this one now does too.
+    setError(null)
     const address = addAddress.trim().toLowerCase()
     if (activeList.tokens.some((t) => t.address.toLowerCase() === address)) {
       setError('Token already in list')
@@ -246,6 +251,9 @@ export default function ListEditor() {
   const handleImageUpload = useCallback(
     async (token: LocalToken, dataUri: string) => {
       if (!activeList) return
+      // Same reason as handleAddToken: a failed upload used to leave its message behind
+      // for good, including after a later upload succeeded.
+      setError(null)
       try {
         const { imageUrl } = await submitImage(token.chainId, token.address, dataUri)
         const updatedTokens = activeList.tokens.map((t) =>

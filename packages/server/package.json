@@ -95,7 +95,6 @@
     "http-errors": "^2.0.0",
     "ink": "^4.4.1",
     "lodash": "^4.18.1",
-    "node-fetch": "^3.3.2",
     "pg": "^8.12.0",
     "promise-limit": "^2.7.0",
     "puppeteer": "^24.20.0",

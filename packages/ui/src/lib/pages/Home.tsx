@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
+import { useMemo, useCallback, useState, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
@@ -143,7 +143,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
 
 export default function Home() {
   const navigate = useNavigate()
-  const { metrics: metricsData } = useMetrics()
+  const { metrics: metricsData, isError: metricsFailed } = useMetrics()
   const { showTestnets, setShowTestnets } = useSettings()
 
   const filteredNetworks = useMemo(() => {
@@ -163,21 +163,33 @@ export default function Home() {
       })
   }, [metricsData, showTestnets])
 
-  const gridRef = useRef<HTMLDivElement>(null)
   const [gridCols, setGridCols] = useState(6)
+  const gridObserver = useRef<ResizeObserver | null>(null)
 
-  useEffect(() => {
-    const el = gridRef.current
+  /**
+   * Measures how many columns the grid actually laid out, and keeps measuring as it
+   * resizes.
+   *
+   * This has to attach through a callback ref rather than an effect reading a ref object.
+   * The grid is only rendered once the metrics arrive, so an effect running on mount found
+   * nothing to observe, and with an empty dependency list it never ran again — the column
+   * count stayed on its initial 6 for the life of the page. Six is not a multiple of the
+   * four-column layout, so the row-filling below drew exactly the partial trailing row it
+   * exists to avoid, and on a two-column viewport it capped the grid at eighteen tiles
+   * instead of the three rows MAX_ROWS asks for.
+   */
+  const gridRef = useCallback((el: HTMLDivElement | null) => {
+    gridObserver.current?.disconnect()
+    gridObserver.current = null
     if (!el) return
     const detect = () => {
-      const style = getComputedStyle(el)
-      const cols = style.gridTemplateColumns.split(' ').length
+      const cols = getComputedStyle(el).gridTemplateColumns.split(' ').length
       if (cols > 0) setGridCols(cols)
     }
     detect()
     const observer = new ResizeObserver(detect)
     observer.observe(el)
-    return () => observer.disconnect()
+    gridObserver.current = observer
   }, [])
 
   const [failedChains, setFailedChains] = useState<Set<number>>(() => new Set())
@@ -214,6 +226,15 @@ export default function Home() {
       navigate('/studio')
     },
     [navigate],
+  )
+
+  // A pulsing placeholder is a promise that the number is on its way. Once the
+  // request has failed it is not coming, and animating forever says otherwise.
+  // Both states show dashes rather than a figure, because the honest answer to
+  // "how many networks" here is that we do not know — which is the whole reason
+  // the fetchers throw instead of resolving to an empty list.
+  const metricPlaceholder = (
+    <span className={`mb-2 block text-5xl font-bold text-gray-400 ${metricsFailed ? '' : 'animate-pulse'}`}>---</span>
   )
 
   return (
@@ -329,7 +350,7 @@ export default function Home() {
                     <span className="text-gradient-green">+</span>
                   </span>
                 ) : (
-                  <span className="mb-2 block animate-pulse text-5xl font-bold text-gray-400">---</span>
+                  metricPlaceholder
                 )}
                 <p className="text-lg text-gray-600 dark:text-gray-300">Total Tokens</p>
               </div>
@@ -339,7 +360,7 @@ export default function Home() {
                     <CountUpNumber end={mainnetNetworkCount} className="text-gradient-green" />
                   </span>
                 ) : (
-                  <span className="mb-2 block animate-pulse text-5xl font-bold text-gray-400">---</span>
+                  metricPlaceholder
                 )}
                 <p className="text-lg text-gray-600 dark:text-gray-300">Supported Networks</p>
               </div>
@@ -411,6 +432,12 @@ export default function Home() {
                     and {hiddenCount} more network{hiddenCount === 1 ? '' : 's'}
                   </p>
                 )}
+              </div>
+            ) : metricsFailed ? (
+              <div className="glass-card p-6 text-center">
+                <p className="text-lg text-gray-600 dark:text-gray-300">
+                  Could not load the network breakdown. Reload to try again.
+                </p>
               </div>
             ) : (
               <div className="glass-card p-6">

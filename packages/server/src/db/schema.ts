@@ -52,10 +52,10 @@ export const provider = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
   },
-  (table) => [
-    index().using('btree', table.key.asc().nullsLast().op('text_ops')),
-    unique('provider_key_unique').on(table.key),
-  ],
+  // No standalone index on `key`: `provider_key_unique` already indexes it, so a second
+  // one is never chosen by the planner and only costs write maintenance. Dropped from the
+  // database in migration 0013, which lists the reasoning for all twenty such indexes.
+  (table) => [unique('provider_key_unique').on(table.key)],
 )
 
 export const image = pgTable(
@@ -149,6 +149,14 @@ export const token = pgTable(
     index('token_providedid_index').using('btree', table.providedId.asc().nullsLast().op('citext_ops')),
     index().using('btree', table.symbol.asc().nullsLast().op('text_ops')),
     index().using('btree', table.type.asc().nullsLast().op('text_ops')),
+    // Substring search for GET /list/search. The btree indexes above answer a prefix but
+    // not a `%term%` match, so without these the search predicate scans the whole table.
+    // Declared here so the drizzle snapshot keeps describing the real database — the
+    // migration that creates them (0016) has to be hand-written, because it guards both
+    // the extension install and the index creation behind a database that may not grant
+    // CREATE EXTENSION, and drizzle-kit emits neither guard.
+    index('token_name_trgm_index').using('gin', sql`${table.name} gin_trgm_ops`),
+    index('token_symbol_trgm_index').using('gin', sql`${table.symbol} gin_trgm_ops`),
     unique('token_network_provided_unique').on(table.networkId, table.providedId),
     foreignKey({
       columns: [table.networkId],
@@ -287,7 +295,8 @@ export const link = pgTable(
   },
   (table) => [
     index('link_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
-    index().using('btree', table.uri.asc().nullsLast().op('text_ops')),
+    // No index on `uri`: it is the primary key, so `link_pkey` already covers it.
+    // Dropped from the database in migration 0013.
     foreignKey({
       columns: [table.imageHash],
       foreignColumns: [image.imageHash],
@@ -616,7 +625,8 @@ export const cacheRequest = pgTable(
       sql`CURRENT_TIMESTAMP`,
     ),
   },
-  (table) => [index().using('btree', table.key.asc().nullsLast().op('text_ops'))],
+  // No index on `key`: it is the primary key, so `cache_request_pkey` already covers it.
+  // Dropped from the database in migration 0013.
 )
 
 export const imageVariant = pgTable(
@@ -674,11 +684,13 @@ export const listSubmission = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
   },
+  // `status` and `submittedBy` are indexed because nothing else covers them. `providerKey`
+  // and `url` are not: the two unique constraints below already index them — `url` exactly,
+  // `providerKey` as the leading column of a composite. Both standalone indexes were
+  // dropped from the database in migration 0013.
   (table) => [
-    index().using('btree', table.providerKey.asc().nullsLast().op('text_ops')),
     index().using('btree', table.status.asc().nullsLast().op('text_ops')),
     index().using('btree', table.submittedBy.asc().nullsLast().op('text_ops')),
-    index().using('btree', table.url.asc().nullsLast().op('text_ops')),
     unique('list_submission_url_unique').on(table.url),
     unique('list_submission_provider_key_list_key_unique').on(table.providerKey, table.listKey),
   ],

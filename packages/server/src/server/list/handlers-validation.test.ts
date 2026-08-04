@@ -29,6 +29,7 @@ vi.mock('../../db', async () => {
     // under which a bare number falls back to eip155 — the behaviour these tests
     // already assert. Cases that need a non-EVM chain override it per test.
     getChainIdsByReference: vi.fn(async () => []),
+    searchTokens: vi.fn(async () => []),
     normalizeProvidedId,
   }
 })
@@ -76,7 +77,9 @@ import * as db from '../../db'
 import * as listUtils from './utils'
 import { getDrizzle } from '../../db/drizzle'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
-import { merged, tokensByChain, all, versioned, providerKeyed } from './handlers'
+import { merged, tokensByChain, all, versioned, providerKeyed, search } from './handlers'
+import { SEARCH_CANDIDATE_CAP } from '../../db/search'
+import { getDefaultListOrderId } from '../../db/sync-order'
 
 /** Chainable drizzle query-builder mock matching getFilteredLists' call shape. */
 function makeQueryChain() {
@@ -875,5 +878,248 @@ describe('providerKeyed handler', () => {
     expect(listUtils.buildListPayload).toHaveBeenCalled()
     expect(db.insertCacheRequest).toHaveBeenCalled()
     expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+  })
+})
+
+describe('search handler', () => {
+  /** One matching token as searchTokens returns it, before normalizeTokens shapes it. */
+  const matchRow = (overrides: Record<string, unknown> = {}) => ({
+    chainId: 'eip155-369',
+    providedId: '0x1111111111111111111111111111111111111111',
+    decimals: 18,
+    symbol: 'TST',
+    name: 'Test Token',
+    imageHash: 'hash1',
+    ext: '.png',
+    mode: 'save',
+    uri: null,
+    providerKey: 'pulsex',
+    listKey: 'extended',
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    vi.mocked(db.getCachedRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.getChainIdsByReference)
+      .mockReset()
+      .mockResolvedValue([] as never)
+    vi.mocked(db.searchTokens)
+      .mockReset()
+      .mockResolvedValue([] as never)
+  })
+
+  const callSearch = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
+    const res = mockResponse()
+    const next = vi.fn()
+    await search({ params: {}, query, headers } as never, res as never, next as never)
+    return { res, next }
+  }
+
+  /** The response body as an object; it goes out pre-serialized, as the cache stores it. */
+  const searchBody = (res: ReturnType<typeof mockResponse>) => JSON.parse(res.send.mock.calls[0][0] as string)
+
+  it('rejects a missing term before touching the database', async () => {
+    const { res, next } = await callSearch({})
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toBe('q query parameter is required')
+    expect(db.searchTokens).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rejects a term that is only whitespace', async () => {
+    // Trimming happens before the length check, so "   " is empty, not three characters.
+    // Were it counted raw it would pass the minimum and run a search for nothing, which
+    // matches every token in the table.
+    const { next } = await callSearch({ q: '   ' })
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(400)
+    expect(db.searchTokens).not.toHaveBeenCalled()
+  })
+
+  it('rejects a repeated q parameter rather than searching for the array', async () => {
+    // Express hands back an array for ?q=a&q=b. Interpolated into a query that expects a
+    // string, that is a search for "a,b" — a term the caller never typed.
+    const { next } = await callSearch({ q: ['usdc', 'dai'] })
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(400)
+    expect(db.searchTokens).not.toHaveBeenCalled()
+  })
+
+  it('rejects a single character, which cannot use the trigram indexes', async () => {
+    const { next } = await callSearch({ q: 'a' })
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('at least 2')
+    expect(db.searchTokens).not.toHaveBeenCalled()
+  })
+
+  it('rejects a term past the length ceiling that bounds the cache key space', async () => {
+    const { next } = await callSearch({ q: 'x'.repeat(65) })
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('at most 64')
+    expect(db.searchTokens).not.toHaveBeenCalled()
+  })
+
+  it('accepts the two-character minimum and the sixty-four character maximum', async () => {
+    // The boundaries themselves, not just the values either side of them: an off-by-one
+    // in either comparison rejects a term the documentation promises is valid.
+    const short = await callSearch({ q: 'ab' })
+    expect(short.next).not.toHaveBeenCalled()
+    const long = await callSearch({ q: 'x'.repeat(64) })
+    expect(long.next).not.toHaveBeenCalled()
+    expect(db.searchTokens).toHaveBeenCalledTimes(2)
+  })
+
+  it('searches the trimmed term, not the raw one', async () => {
+    await callSearch({ q: '  usdc  ' })
+    expect(db.searchTokens).toHaveBeenCalledWith('usdc', expect.anything(), expect.anything())
+  })
+
+  it('asks for one token more than requested, so truncation is known without a second count', async () => {
+    await callSearch({ q: 'usdc', limit: '2' })
+    expect(db.searchTokens).toHaveBeenCalledWith('usdc', expect.anything(), expect.objectContaining({ limit: 3 }))
+  })
+
+  it('reports truncation and returns exactly the requested count', async () => {
+    vi.mocked(db.searchTokens).mockResolvedValue([
+      matchRow({ providedId: '0x1111111111111111111111111111111111111111' }),
+      matchRow({ providedId: '0x2222222222222222222222222222222222222222' }),
+      matchRow({ providedId: '0x3333333333333333333333333333333333333333' }),
+    ] as never)
+    const { res } = await callSearch({ q: 'usdc', limit: '2' })
+    const body = searchBody(res)
+    expect(body.truncated).toBe(true)
+    expect(body.tokens).toHaveLength(2)
+    // No total. The candidate cap means the true count is not known, and a field named
+    // for it would be built on by anyone writing pagination against this endpoint.
+    expect(body).not.toHaveProperty('total')
+  })
+
+  it('reports no truncation when the extra token was not there', async () => {
+    vi.mocked(db.searchTokens).mockResolvedValue([
+      matchRow(),
+      matchRow({ providedId: '0x2222222222222222222222222222222222222222' }),
+    ] as never)
+    const { res } = await callSearch({ q: 'usdc', limit: '2' })
+    const body = searchBody(res)
+    expect(body.truncated).toBe(false)
+    expect(body.tokens).toHaveLength(2)
+  })
+
+  it('clamps an oversized limit to the candidate cap', async () => {
+    await callSearch({ q: 'usdc', limit: '999999' })
+    expect(db.searchTokens).toHaveBeenCalledWith(
+      'usdc',
+      expect.anything(),
+      expect.objectContaining({ limit: SEARCH_CANDIDATE_CAP + 1 }),
+    )
+  })
+
+  it('falls back to the default limit for a junk value rather than forking the cache', async () => {
+    await callSearch({ q: 'usdc', limit: 'banana' })
+    expect(db.searchTokens).toHaveBeenCalledWith('usdc', expect.anything(), expect.objectContaining({ limit: 101 }))
+  })
+
+  it('searches every chain when none is named', async () => {
+    await callSearch({ q: 'usdc' })
+    const options = vi.mocked(db.searchTokens).mock.calls[0][2] as { chainId?: string }
+    expect(options.chainId).toBeUndefined()
+    const body = searchBody((await callSearch({ q: 'usdc' })).res)
+    // The scoped identifier is stated only when the search was scoped, so a caller can
+    // tell an unfiltered search from one filtered to a chain it did not ask for.
+    expect(body).not.toHaveProperty('chainIdentifier')
+  })
+
+  it('resolves a bare chain number against stored identifiers instead of assuming eip155', async () => {
+    // The failure this prevents: a bare 501 assumed to be eip155-501 reached past Solana
+    // and answered an empty result for a chain that holds 9,633 tokens.
+    vi.mocked(db.getChainIdsByReference).mockResolvedValue([{ chainId: 'solana-501', hasTokens: true }] as never)
+    const { res } = await callSearch({ q: 'usdc', chainId: '501' })
+    const options = vi.mocked(db.searchTokens).mock.calls[0][2] as { chainId?: string }
+    expect(options.chainId).toBe('solana-501')
+    expect(searchBody(res).chainIdentifier).toBe('solana-501')
+  })
+
+  it('rejects a bare chain number claimed by several namespaces', async () => {
+    // Neither candidate is the eip155 form the bare number canonicalizes to — with that
+    // form present the resolution is not ambiguous, it just picks it.
+    vi.mocked(db.getChainIdsByReference).mockResolvedValue([
+      { chainId: 'solana-42', hasTokens: true },
+      { chainId: 'tvm-42', hasTokens: true },
+    ] as never)
+    const { next } = await callSearch({ q: 'usdc', chainId: '42' })
+    const error = next.mock.calls[0][0] as { status: number; message: string }
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('ambiguous')
+    expect(db.searchTokens).not.toHaveBeenCalled()
+  })
+
+  it('treats an empty chainId as no filter rather than as a chain named ""', async () => {
+    await callSearch({ q: 'usdc', chainId: '' })
+    const options = vi.mocked(db.searchTokens).mock.calls[0][2] as { chainId?: string }
+    expect(options.chainId).toBeUndefined()
+  })
+
+  it('rejects an unauthorized refresh instead of quietly serving a cached body', async () => {
+    // Same reasoning as the chain-scoped endpoints: a caller who believes they verified
+    // against fresh data must never be wrong about that.
+    const { res, next } = await callSearch({ q: 'usdc', refresh: '1' })
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(401)
+    expect(db.searchTokens).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('keys the cache case-insensitively, because every predicate behind it is', async () => {
+    await callSearch({ q: 'USDC' })
+    await callSearch({ q: 'usdc' })
+    const keys = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(keys[0]).toBe(keys[1])
+  })
+
+  it('encodes the term into the cache key so a colon cannot forge a chain filter', async () => {
+    // `search:<order>:<term>:<chainId>:<limit>`. Unencoded, the term "a:b" with no chain
+    // filter and the term "a" on chain "b" collapse to one key and are served each
+    // other's results.
+    await callSearch({ q: 'a:b' })
+    vi.mocked(db.getChainIdsByReference).mockResolvedValue([] as never)
+    await callSearch({ q: 'ab', chainId: 'eip155-1' })
+    const keys = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(keys[0]).not.toBe(keys[1])
+    expect(keys[0]).toContain('a%3Ab')
+  })
+
+  it('serves a cached body without running the query', async () => {
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"query":"usdc","truncated":false,"tokens":[]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+    const { res, next } = await callSearch({ q: 'usdc' })
+    expect(next).not.toHaveBeenCalled()
+    expect(db.searchTokens).not.toHaveBeenCalled()
+    expect(res.send).toHaveBeenCalledWith('{"query":"usdc","truncated":false,"tokens":[]}')
+  })
+
+  it('echoes the term as searched, so a caller can match a response to a keystroke', async () => {
+    const { res } = await callSearch({ q: '  Usdc ' })
+    expect(searchBody(res).query).toBe('Usdc')
+  })
+
+  it('still answers before the startup sync has resolved an order', async () => {
+    // Search is reachable the moment the server accepts requests, which is earlier than
+    // the ranking sync finishes. Passing an id that matches no list_order_item leaves
+    // every list ranked equally and results fall back to version and key order —
+    // degraded, still correct, and never a 500 on a cold boot. It self-corrects because
+    // the order id is part of the cache key, so the degraded bodies are simply never
+    // read again once the sync lands.
+    vi.mocked(getDefaultListOrderId).mockReturnValueOnce(undefined as never)
+    const { res, next } = await callSearch({ q: 'usdc' })
+    expect(next).not.toHaveBeenCalled()
+    expect(db.searchTokens).toHaveBeenCalledWith('usdc', '0x', expect.anything())
+    expect(res.send).toHaveBeenCalled()
   })
 })

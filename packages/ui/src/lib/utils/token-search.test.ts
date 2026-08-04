@@ -3,8 +3,6 @@ import {
   searchTokens,
   scoreTokenMatch,
   SEARCH_RELEVANCE,
-  sortTokensMainnetFirst,
-  categorizeListsByScope,
   countResults,
   isCacheHit,
   parsePathParams,
@@ -150,61 +148,6 @@ describe('scoreTokenMatch', () => {
   it('prefers the symbol tier when a term matches both symbol and name', () => {
     const both = makeToken({ name: 'Wrapped USDC Vault', symbol: 'USDCX', address: '0x999' })
     expect(scoreTokenMatch(both, 'usdc')).toBe(SEARCH_RELEVANCE.symbolPrefix)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// sortTokensMainnetFirst
-// ---------------------------------------------------------------------------
-describe('sortTokensMainnetFirst', () => {
-  it('sorts mainnet tokens before others', () => {
-    const tokens = [
-      makeToken({ chainId: 369, name: 'Bbb' }),
-      makeToken({ chainId: 1, name: 'Aaa' }),
-      makeToken({ chainId: 56, name: 'Ccc' }),
-    ]
-    const sorted = sortTokensMainnetFirst(tokens)
-    expect(sorted[0].chainId).toBe(1)
-  })
-
-  it('sorts alphabetically within same chain priority', () => {
-    const tokens = [
-      makeToken({ chainId: 369, name: 'Zebra' }),
-      makeToken({ chainId: 369, name: 'Apple' }),
-    ]
-    const sorted = sortTokensMainnetFirst(tokens)
-    expect(sorted[0].name).toBe('Apple')
-    expect(sorted[1].name).toBe('Zebra')
-  })
-
-  it('does not mutate the original array', () => {
-    const tokens = [makeToken({ chainId: 369, name: 'B' }), makeToken({ chainId: 1, name: 'A' })]
-    const copy = [...tokens]
-    sortTokensMainnetFirst(tokens)
-    expect(tokens).toEqual(copy)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// categorizeListsByScope
-// ---------------------------------------------------------------------------
-describe('categorizeListsByScope', () => {
-  it('separates global and chain-specific lists', () => {
-    const lists = [
-      { chainId: '0', name: 'global' },
-      { chainId: '1', name: 'ethereum' },
-      { chainId: '0', name: 'another-global' },
-      { chainId: '369', name: 'pulsechain' },
-    ]
-    const result = categorizeListsByScope(lists)
-    expect(result.global).toHaveLength(2)
-    expect(result.chainSpecific).toHaveLength(2)
-  })
-
-  it('handles empty input', () => {
-    const result = categorizeListsByScope([])
-    expect(result.global).toHaveLength(0)
-    expect(result.chainSpecific).toHaveLength(0)
   })
 })
 

@@ -366,6 +366,53 @@ export const openapi = {
         },
       },
     },
+    '/list/search': {
+      get: {
+        tags: ['Token Endpoints'],
+        summary: 'Search tokens by name, symbol or address across every chain',
+        description:
+          'Substring match over token name and symbol, plus exact match on address, ranked by how ' +
+          'closely the term matches and then by provider ranking. Results are one entry per token, ' +
+          'the same shape the chain-scoped endpoints return.\n\n' +
+          'The result set is capped, so this reports whether it was cut (`truncated`) rather than a ' +
+          'total it cannot know. Narrow the term or pass chainId rather than paging — there is no ' +
+          'offset parameter, because a cap plus an offset would silently skip matches.\n\n' +
+          'Ranking is always the default ordering; extensions and decimals filters are not accepted.',
+        'x-example': '/list/search?q=usdc&chainId=eip155-369',
+        parameters: [
+          {
+            name: 'q',
+            in: 'query' as const,
+            required: true,
+            description: 'Search term. Between 2 and 64 characters; % and _ are matched literally.',
+            schema: { type: 'string' as const },
+          },
+          {
+            ...CHAIN_ID_QUERY_PARAM,
+            description:
+              'Restrict the search to one chain — prefixed form (eip155-369) or bare numeric (369). ' +
+              'Narrows the query itself, not just the results.',
+          },
+          {
+            name: 'limit',
+            in: 'query' as const,
+            description: 'Maximum tokens to return. Defaults to 100, capped at 1000.',
+            schema: { type: 'integer' as const },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Matching tokens, best match first.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/TokenSearch' } } },
+          },
+          '400': {
+            description: 'Missing q, a term outside the 2–64 character range, or an ambiguous chainId.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '401': REFRESH_UNAUTHORIZED_RESPONSE,
+        },
+      },
+    },
     '/list/{providerKey}': {
       get: {
         tags: ['Token Endpoints'],
@@ -928,6 +975,23 @@ export const openapi = {
           chainId: { type: 'integer', description: 'Bare numeric chain id.' },
           chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-369).' },
           total: { type: 'integer' },
+          tokens: { type: 'array', items: { $ref: '#/components/schemas/Token' } },
+        },
+      },
+      TokenSearch: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The term as searched, trimmed.' },
+          chainIdentifier: {
+            type: 'string',
+            description: 'Present only when the search was scoped to one chain (eip155-369).',
+          },
+          truncated: {
+            type: 'boolean',
+            description:
+              'True when more tokens matched than were returned. There is no total: the query stops ' +
+              'at the candidate cap, so a count past that point is not known.',
+          },
           tokens: { type: 'array', items: { $ref: '#/components/schemas/Token' } },
         },
       },

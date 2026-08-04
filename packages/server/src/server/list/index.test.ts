@@ -11,6 +11,7 @@ import request from 'supertest'
 vi.mock('./handlers', () => ({
   merged: vi.fn((_req: any, res: any) => res.json({ marker: 'merged' })),
   tokensByChain: vi.fn((_req: any, res: any) => res.json({ marker: 'tokensByChain' })),
+  search: vi.fn((_req: any, res: any) => res.json({ marker: 'search' })),
   versioned: vi.fn((_req: any, res: any) => res.json({ marker: 'versioned' })),
   providerKeyed: vi.fn((_req: any, res: any) => res.json({ marker: 'providerKeyed' })),
   all: vi.fn((_req: any, res: any) => res.json({ marker: 'all' })),
@@ -33,6 +34,15 @@ describe('/list router wiring', () => {
   it('routes /list/tokens/:chainId to tokensByChain', async () => {
     const res = await request(app).get('/list/tokens/369')
     expect(res.body).toEqual({ marker: 'tokensByChain' })
+  })
+
+  // The one route here that is genuinely fragile. `/search` is a single path segment,
+  // and so is `/:providerKey` — swap the two registrations and every search request is
+  // answered as a lookup for a provider named "search", which 404s rather than failing
+  // loudly. Ordering is the only thing keeping them apart, and ordering is invisible.
+  it('routes /list/search to search, not to the provider catch-all', async () => {
+    const res = await request(app).get('/list/search?q=usdc')
+    expect(res.body).toEqual({ marker: 'search' })
   })
 
   it('routes /list/:providerKey/:listKey/:version to versioned', async () => {

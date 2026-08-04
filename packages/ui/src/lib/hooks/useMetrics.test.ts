@@ -54,7 +54,12 @@ describe('useStats', () => {
     )
   })
 
-  it('returns empty array when /stats responds with an error', async () => {
+  it('reports an error rather than an empty result when /stats fails', async () => {
+    // This used to assert `data` equalled [], which is what made a 500 from
+    // /stats indistinguishable from a platform that genuinely tracks no chains.
+    // An empty array is a successful answer: the query resolved, isError stayed
+    // false, and the number rendered was a confident zero for something nobody
+    // knew. Leaving `data` undefined is what lets a caller say "unknown".
     mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -65,9 +70,11 @@ describe('useStats', () => {
       wrapper: createWrapper(),
     })
 
-    await waitFor(() => expect(result.current.data).toBeDefined())
+    await waitFor(() => expect(result.current.isError).toBe(true))
 
-    expect(result.current.data).toEqual([])
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.error).toBeInstanceOf(Error)
+    expect((result.current.error as Error).message).toContain('500')
   })
 })
 
