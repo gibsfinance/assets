@@ -154,15 +154,25 @@ describe('ImageUpload', () => {
     expect(clicked).toHaveBeenCalledTimes(1)
   })
 
-  it('lets the same file be chosen twice in a row', () => {
+  it('lets the same file be chosen twice in a row', async () => {
     // The input keeps its value after a change, so re-picking the file the visitor just
     // fixed would fire nothing. Clearing it is what makes a retry possible.
-    render(<ImageUpload onUpload={vi.fn()} />)
+    //
+    // The wait is not decoration and must not be removed to make this synchronous. A valid
+    // file starts a real jsdom FileReader read, and the component does not await it; a test
+    // that returns immediately leaves that read in flight past `afterEach`, where it lands
+    // in a torn-down realm and throws "Expected an Uint8Array" out of jsdom's base64 with
+    // no test left to attribute it to. Every assertion still passes and the run fails on an
+    // unhandled error — intermittently, because it depends on how fast the immediate fires.
+    // Waiting for onUpload keeps the read inside the test that started it.
+    const onUpload = vi.fn()
+    render(<ImageUpload onUpload={onUpload} />)
     const input = hiddenInput()
 
     fireEvent.change(input, { target: { files: [makeFile('image/png')] } })
 
     expect(input.value).toBe('')
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(1))
   })
 
   it('previews the image already set on the token', () => {
