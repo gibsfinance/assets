@@ -2308,6 +2308,12 @@ export const bumpVariantAccess = async (
 
 export const pruneVariants = async (minAccessCount = 3, maxAgeHours = 24, tx?: DrizzleTx): Promise<number> => {
   const db = tx ?? getDrizzle()
+  // Project one narrow column, never the whole row. A bare `.returning()` emits
+  // `RETURNING` over every column, `content` among them — so counting the evictions
+  // meant hauling the image bytes of every evicted variant out of the database and
+  // into this process's heap, to do nothing with them but read `.length`. The cost
+  // scaled with how much was being evicted, which is to say it was worst exactly when
+  // the table had grown largest and the sweep mattered most.
   const deleted = await db
     .delete(s.imageVariant)
     .where(
@@ -2316,7 +2322,7 @@ export const pruneVariants = async (minAccessCount = 3, maxAgeHours = 24, tx?: D
         lt(s.imageVariant.lastAccessedAt, dsql`NOW() - INTERVAL '${dsql.raw(String(maxAgeHours))} hours'`),
       ),
     )
-    .returning()
+    .returning({ imageHash: s.imageVariant.imageHash })
   await db.update(s.imageVariant).set({ accessCount: 0 })
   return deleted.length
 }

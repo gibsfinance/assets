@@ -94,6 +94,25 @@ describe('pruneVariants', () => {
     const updateQuery = harness.queries.find((query) => query.root === 'update')
     expect(updateQuery?.steps.find((step) => step.method === 'set')?.args[0]).toEqual({ accessCount: 0 })
   })
+
+  it('counts the evictions without fetching their image bytes', async () => {
+    // The return value feeds nothing but `.length`. A bare `.returning()` projects every
+    // column, `content` included, so counting a sweep used to pull the bytes of every
+    // evicted variant into this process — heaviest precisely when the table had grown
+    // large enough for the sweep to matter. The projection is what stops that, so it is
+    // asserted rather than left to a reviewer to notice.
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult(undefined)
+
+    await pruneVariants(3, 24)
+
+    const deleteQuery = harness.queries.find((query) => query.root === 'delete')
+    const projection = deleteQuery?.steps.find((step) => step.method === 'returning')?.args[0] as
+      | Record<string, unknown>
+      | undefined
+    expect(projection, 'the delete must project explicitly, not return whole rows').toBeDefined()
+    expect(Object.keys(projection ?? {})).not.toContain('content')
+  })
 })
 
 // ---------------------------------------------------------------------------
