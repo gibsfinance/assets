@@ -1,28 +1,17 @@
 import { root } from '../config'
-import { toChainIdentifier } from './chain-identifier'
 
-let apiBase: string | null = null
-
-export function initializeApiBase(): string {
-  if (apiBase) return apiBase
-  console.log(`🌐 API: Using server at ${root}`)
-  apiBase = root
-  return root
-}
-
+/**
+ * Resolves a server path against the configured base, which is fixed at build time.
+ *
+ * This module used to carry a lazily-assigned `apiBase` alongside an initializer that
+ * set it. Nothing ever called the initializer, so the override was always null and
+ * every caller already read `root` — and the initializer assigned `root` anyway, so
+ * calling it would not have changed an answer either. Both are gone; there is one
+ * source for the base and it is this import.
+ *
+ * @param path Server-relative path, leading slash included (for example `/list/search`).
+ * @returns The absolute request URL.
+ */
 export function getApiUrl(path: string): string {
-  const base = apiBase ?? root
-  return `${base}${path}`
-}
-
-export async function GET(params: Record<string, string>) {
-  const chainId = params.chainId
-  try {
-    const apiUrl = getApiUrl(`/list/default${chainId ? `?chainId=${toChainIdentifier(chainId)}` : ''}`)
-    const response = await fetch(apiUrl)
-    if (!response.ok) throw new Error(`API request failed: ${response.status}`)
-    return await response.json()
-  } catch (error) {
-    return { error: 'Failed to fetch token list', details: (error as Error).message }
-  }
+  return `${root}${path}`
 }

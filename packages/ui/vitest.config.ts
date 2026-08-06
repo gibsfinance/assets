@@ -53,10 +53,18 @@ export default defineConfig({
       // The floors below follow it down for that reason and no other; the
       // margin is unchanged, which is the thing to keep honest.
       //
+      // 2026-08-05: measured 93.70 / 88.00 / 92.80 / 94.88 over 1557 tests,
+      // after deleting `GET` and `initializeApiBase` from lib/utils and giving
+      // the one survivor, `getApiUrl`, tests of its own. Every figure rose,
+      // which is the opposite of the deletion above it and worth the contrast:
+      // that code was covered and above average, so removing it cost coverage,
+      // whereas this code was uncovered, so removing it and testing what stayed
+      // gained on both ends.
+      //
       // Browser-mode specs run under a separate config and are excluded above,
       // so component behaviour verified there does not count here. Raise these
       // as tests land; never lower them to make a failing run pass.
-      thresholds: { statements: 92.9, branches: 87.3, functions: 92.3, lines: 94.1 },
+      thresholds: { statements: 93.5, branches: 87.8, functions: 92.6, lines: 94.6 },
     },
   },
   resolve: {
