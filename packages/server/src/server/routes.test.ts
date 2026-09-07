@@ -31,6 +31,11 @@ vi.mock('./image/sprite', () => ({
   manifest: vi.fn((_req, res) => res.json({ marker: 'sprite-manifest' })),
 }))
 vi.mock('./openapi', () => ({ openapi: { marker: 'openapi-document' } }))
+vi.mock('./llms-txt', () => ({ LLMS_TXT: 'LLMS_TXT_MARKER' }))
+vi.mock('./docs', () => ({
+  getSkillDoc: vi.fn((_req, res) => res.json({ marker: 'skill-doc' })),
+  getTerms: vi.fn((_req, res) => res.json({ marker: 'terms' })),
+}))
 vi.mock('../../config', () => ({ default: { cacheSeconds: 3600 } }))
 
 describe('router wiring', () => {
@@ -47,6 +52,36 @@ describe('router wiring', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ marker: 'openapi-document' })
     expect(res.headers['cache-control']).toBe('public, max-age=3600')
+  })
+
+  it('serves /llms.txt as plain text with a public cache-control header', async () => {
+    const res = await request(app).get('/llms.txt')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/text\/plain/)
+    expect(res.headers['cache-control']).toBe('public, max-age=3600')
+    expect(res.text).toBe('LLMS_TXT_MARKER')
+  })
+
+  it('routes /terms to the terms handler', async () => {
+    const res = await request(app).get('/terms')
+    expect(res.body).toEqual({ marker: 'terms' })
+  })
+
+  it('routes /skills/:filename to the skill-doc handler', async () => {
+    const res = await request(app).get('/skills/api-reference.md')
+    expect(res.body).toEqual({ marker: 'skill-doc' })
+  })
+
+  it('redirects /docs to the hash-routed documentation page', async () => {
+    const res = await request(app).get('/docs')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('/#/docs')
+  })
+
+  it('redirects /studio to the hash-routed studio', async () => {
+    const res = await request(app).get('/studio')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('/#/studio')
   })
 
   it('mounts the image router at /image', async () => {

@@ -53,7 +53,18 @@ const RESIZE_PARAMS = [
   {
     name: 'as',
     in: 'query' as const,
-    description: 'Convert output format. Invalid values are silently ignored and the original format is served.',
+    description:
+      'Convert output format. svg is rejected with 404 naming the problem — it is vector and cannot be ' +
+      'produced by conversion. Every other invalid value is silently ignored and the original format is served.',
+    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
+  },
+  {
+    name: 'format',
+    in: 'query' as const,
+    deprecated: true,
+    description:
+      'Deprecated alias for `as`, kept because an earlier version of the published documentation named the ' +
+      'output-format parameter `format`. Prefer `as`; when both are present `as` wins.',
     schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
   },
   {
@@ -221,6 +232,72 @@ export const openapi = {
         responses: {
           '200': { description: 'The definition.', content: { 'application/json': { schema: { type: 'object' } } } },
         },
+      },
+    },
+    '/llms.txt': {
+      get: {
+        tags: ['Service'],
+        summary: 'A machine-readable index of the public API and guides, per the llmstxt.org convention',
+        'x-example': '/llms.txt',
+        responses: {
+          '200': {
+            description: 'Plain-text index with linked sections.',
+            content: { 'text/plain': { schema: { type: 'string' } } },
+          },
+        },
+      },
+    },
+    '/terms': {
+      get: {
+        tags: ['Service'],
+        summary: 'Terms and attribution — the licence/attribution page every image response links back to',
+        'x-example': '/terms',
+        responses: {
+          '200': { description: 'The terms page.', content: { 'text/markdown': { schema: { type: 'string' } } } },
+        },
+      },
+    },
+    '/skills/{filename}': {
+      get: {
+        tags: ['Service'],
+        summary: 'A hand-written guide (api-reference.md, list-management.md, self-hosting.md)',
+        'x-example': '/skills/api-reference.md',
+        parameters: [
+          {
+            name: 'filename',
+            in: 'path',
+            required: true,
+            description: 'Guide filename, e.g. api-reference.md.',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': { description: 'The guide.', content: { 'text/markdown': { schema: { type: 'string' } } } },
+          '404': {
+            description: 'Unknown filename.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+    '/docs': {
+      get: {
+        tags: ['Service'],
+        summary: 'Redirects to the hash-routed documentation page in the interface',
+        description:
+          'The interface uses a hash router, so this plain path is not itself a page — it redirects to /#/docs.',
+        'x-example': '/docs',
+        responses: { '302': { description: 'Redirect to /#/docs.' } },
+      },
+    },
+    '/studio': {
+      get: {
+        tags: ['Service'],
+        summary: 'Redirects to the hash-routed token list studio in the interface',
+        description:
+          'The interface uses a hash router, so this plain path is not itself a page — it redirects to /#/studio.',
+        'x-example': '/studio',
+        responses: { '302': { description: 'Redirect to /#/studio.' } },
       },
     },
     '/networks': {
