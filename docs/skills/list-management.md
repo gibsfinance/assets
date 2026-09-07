@@ -61,7 +61,7 @@ Each token can have a custom image:
 - Preview at multiple sizes (32, 64, 128, 256px)
 - Format indicator shows SVG/PNG/WebP
 
-Images use the server's resize endpoint for previews: `?w=N&h=N&format=webp`
+Images use the server's resize endpoint for previews: `?w=N&h=N&as=webp`
 
 ## RPC Metadata Loading
 
