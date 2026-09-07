@@ -20,10 +20,10 @@ import type { Image, ListOrder, ListOrderItem, ListToken, List, Token } from '..
 import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
 import { ParsedQs } from 'qs'
-import { submodules } from '../../paths'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 import { maybeResize, parseResizeParams } from './resize'
+import { attributionHeaders } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
@@ -115,12 +115,19 @@ export const getListTokens = async ({
     .where(whereClause)
     .limit(1)
 
-  // Flatten the joined row into a single object
-  const img = row ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image } : undefined
+  // Flatten the joined row into a single object. Both `provider` and `list` carry
+  // `key` and `name` columns, so spreading `list` after `provider` overwrites the
+  // provider's key and name with the list's — `img.key` on this path names the
+  // LIST, not the provider. Read the provider key out first, under its own name,
+  // before the spread destroys it, the way applyOrder's SQL already aliases it as
+  // "providerKey". Never read `img.key` for provider identity on this path.
+  const img = row
+    ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image, providerKey: row.provider?.key }
+    : undefined
 
   return {
     filter: { networkId, providedId: address },
-    img: img as (Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
+    img: img as (Image & Token & ListOrder & ListOrderItem & ListToken & List & { providerKey?: string }) | undefined,
   }
 }
 
@@ -168,26 +175,6 @@ export const formatToExts = new Map<string, string[]>([
   ['gif', ['.gif']],
   ['raster', ['.png', '.jpg', '.jpeg', '.webp', '.gif']],
 ])
-
-/**
- * Parse the `format` query param into an ordered list of extension groups.
- * e.g. "vector,webp,png,jpg" → [['.svg','.svg+xml','.xml'], ['.webp'], ['.png'], ['.jpg','.jpeg']]
- */
-export const parseFormatPreference = (query: string | ParsedQs | (string | ParsedQs)[] | undefined): string[][] => {
-  if (!query) return []
-  const raw = _.isString(query) ? query : Array.isArray(query) ? query.join(',') : ''
-  if (!raw) return []
-  const seen = new Set<string>()
-  const result: string[][] = []
-  for (const name of raw.split(',')) {
-    const trimmed = name.trim().toLowerCase()
-    if (!trimmed || seen.has(trimmed)) continue
-    seen.add(trimmed)
-    const exts = formatToExts.get(trimmed)
-    if (exts) result.push(exts)
-  }
-  return result
-}
 
 export const splitExt = (filename: string): FilenameParts => {
   const ext = path.extname(filename)
@@ -518,7 +505,7 @@ export const classifyImageServe = (
   return 'serve'
 }
 
-export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
+export const sendImage = (res: Response, img: Image & { providerKey?: string }, mode: ImageModeParam) => {
   const decision = classifyImageServe(img, mode)
   if (decision === 'redirect') {
     return res.redirect(img.uri)
@@ -529,14 +516,12 @@ export const sendImage = (res: Response, img: Image, mode: ImageModeParam) => {
 
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   r = r.set('x-resize', 'original')
-  if (img.uri) {
-    if (img.uri.startsWith('http') || img.uri.startsWith('ipfs')) {
-      r = r.set('x-uri', img.uri)
-    } else if (img.uri.startsWith('data:')) {
-      // encoded data - no uri available
-    } else {
-      r = r.set('x-uri', path.relative(submodules, img.uri))
-    }
+  // attributionHeaders() normalizes img.uri itself — an absolute submodule
+  // filesystem path, an http(s)/ipfs uri, or a data: uri all resolve to the
+  // right x-source-uri/x-uri (or no uri header at all) from the raw value.
+  const headers = attributionHeaders({ uri: img.uri, providerKey: img.providerKey })
+  for (const [name, value] of Object.entries(headers)) {
+    r = r.set(name, value)
   }
   r.contentType(img.ext).send(img.content)
 }

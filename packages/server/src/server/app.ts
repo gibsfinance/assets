@@ -7,6 +7,7 @@ import responseTime from 'response-time'
 import { fileURLToPath } from 'url'
 import { router } from './routes'
 import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middleware'
+import { ATTRIBUTION_HEADER_NAMES } from './image/attribution'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -21,7 +22,13 @@ export const STATIC_PATH = path.join(currentDirectory, '..', '..', '..', 'ui', '
 export const app = express() as express.Express
 
 app.use(responseTime())
-app.use(cors())
+// Attribution headers ride on every image response, but a browser script can
+// only read a cross-origin response header that the server explicitly
+// exposes — the default cors() options expose none of them. Every header
+// attributionHeaders() can emit must be listed here or a browser client is
+// stuck re-deriving attribution from a redirect / bare fetch instead of
+// reading it off the response it already made.
+app.use(cors({ exposedHeaders: [...ATTRIBUTION_HEADER_NAMES] }))
 app.use(compression())
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }))

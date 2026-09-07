@@ -33,6 +33,8 @@ import {
   sendVariant,
 } from './resize'
 import * as db from '../../db'
+import * as path from 'path'
+import { submodules } from '../../paths'
 import sharp from 'sharp'
 
 // ---------------------------------------------------------------------------
@@ -135,6 +137,43 @@ describe('parseResizeParams', () => {
   it('ignores path extensions outside the convertible set (e.g. .svg served as-is)', () => {
     expect(parseResizeParams({ query: {}, pathExt: '.svg' })).toBeNull()
     expect(parseResizeParams({ query: {}, pathExt: '.gif' })).toBeNull()
+  })
+
+  // docs/skills/api-reference.md published `format` as the output-format
+  // parameter name before the code ever read it, so requests written against
+  // that guide are honoured as a deprecated alias rather than silently
+  // ignored (see parseResizeParams' own doc comment).
+  it('accepts the deprecated ?format= as an alias for ?as=', () => {
+    expect(parseResizeParams({ query: { format: 'webp' } })).toEqual({ w: null, h: null, format: 'webp' })
+  })
+
+  it('normalizes jpeg to jpg through the deprecated ?format= alias too', () => {
+    expect(parseResizeParams({ query: { format: 'jpeg' } })).toEqual({ w: null, h: null, format: 'jpg' })
+  })
+
+  it('lets ?as= win when both ?as= and the deprecated ?format= are present', () => {
+    expect(parseResizeParams({ query: { as: 'png', format: 'webp' } })).toEqual({ w: null, h: null, format: 'png' })
+  })
+
+  // svg cannot be produced by conversion — sharp only rasterizes — so asking
+  // for it as an output format must fail loudly rather than silently serving
+  // the original bytes back under a 200.
+  it('throws a 404 naming the problem when ?as=svg is requested', () => {
+    expect(() => parseResizeParams({ query: { as: 'svg' } })).toThrow(/svg/)
+    try {
+      parseResizeParams({ query: { as: 'svg' } })
+      expect.unreachable('parseResizeParams should have thrown')
+    } catch (err) {
+      expect((err as { status?: number }).status).toBe(404)
+    }
+  })
+
+  it('throws a 404 naming the problem when the deprecated ?format=svg is requested', () => {
+    expect(() => parseResizeParams({ query: { format: 'svg' } })).toThrow(/svg/)
+  })
+
+  it('does not throw for a path-extension .svg request (already validated upstream as a real source)', () => {
+    expect(parseResizeParams({ query: {}, pathExt: '.svg' })).toBeNull()
   })
 })
 
@@ -759,6 +798,47 @@ describe('sendVariant (via maybeResize)', () => {
     const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
     expect(setCalls).not.toContain('x-uri')
   })
+
+  // -------------------------------------------------------------------------
+  // Regression: this is the live bug the task describes. Before the fix,
+  // sendVariant() only recognised `http`/`ipfs` uris — a relative submodule
+  // filesystem path fell through the `if` untouched and no attribution header
+  // was ever set on a resized/transcoded response, even though the very same
+  // image served at full size (via sendImage) carried its x-uri correctly.
+  // `curl -I '.../image/1?w=64&as=webp'` returned no x-uri while
+  // `curl -I '.../image/1'` returned one. Both must now agree.
+  // -------------------------------------------------------------------------
+  it('carries attribution for a resized image whose source is a relative submodule path', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', as: 'webp' })
+    const res = mockRes()
+    const absoluteSubmodulePath = path.join(submodules, 'smoldapp-tokenassets', 'chains', '1', 'logo.svg')
+    const img = makeImage({ uri: absoluteSubmodulePath })
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+
+    expect(res.set).toHaveBeenCalledWith('x-source-uri', 'smoldapp-tokenassets/chains/1/logo.svg')
+    expect(res.set).toHaveBeenCalledWith('x-uri', 'smoldapp-tokenassets/chains/1/logo.svg')
+    expect(res.set).toHaveBeenCalledWith('x-provider', 'smoldapp')
+    expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
+    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2024 Smol — MIT')
+  })
+
+  it('resolves attribution from the provider key when the row carries one, even without a uri match', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', as: 'webp' })
+    const res = mockRes()
+    // A link-mode row could carry a provider key with a uri that names no
+    // recognisable source (e.g. a bare CDN host) — the provider key alone
+    // must still resolve the correct licence.
+    const img = { ...makeImage({ uri: 'https://cdn.unknown-host.example/icon.png' }), providerKey: 'ethereum-lists' }
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+
+    expect(res.set).toHaveBeenCalledWith('x-provider', 'ethereum-lists')
+    expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
+    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2018 ethereum-lists — MIT')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -793,7 +873,7 @@ describe('sendVariant (direct)', () => {
         createdAt: new Date().toISOString(),
         lastAccessedAt: new Date().toISOString(),
       },
-      'https://example.com/img.png',
+      { uri: 'https://example.com/img.png' },
     )
 
     expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age='))
@@ -801,6 +881,25 @@ describe('sendVariant (direct)', () => {
     expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/img.png')
     expect(res.contentType).toHaveBeenCalledWith('image/webp')
     expect(res.send).toHaveBeenCalled()
+  })
+
+  it('defaults to no uri/providerKey when called without an options argument', () => {
+    const res = mockRes()
+    sendVariant(res, {
+      imageHash: 'abc',
+      width: 0,
+      height: 0,
+      format: 'webp',
+      content: Buffer.from('test'),
+      accessCount: 1,
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+    })
+
+    const setCalls = vi.mocked(res.set).mock.calls.map((c: any[]) => c[0])
+    expect(setCalls).not.toContain('x-uri')
+    expect(setCalls).not.toContain('x-provider')
+    expect(res.set).toHaveBeenCalledWith('x-license', 'unknown')
   })
 })
 

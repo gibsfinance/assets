@@ -11,11 +11,13 @@
 import sharp from 'sharp'
 import type { FormatEnum } from 'sharp'
 import type { Response } from 'express'
+import httpErrors from 'http-errors'
 import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'
 import * as db from '../../db'
 import config from '../../../config'
 import { imageMode } from '../../db/tables'
 import { failureLog } from '@gibs/utils'
+import { attributionHeaders } from './attribution'
 
 // ---------------------------------------------------------------------------
 // Section 1: Query param parsing, SVG detection, format helpers
@@ -23,6 +25,16 @@ import { failureLog } from '@gibs/utils'
 
 /** Allowed output formats */
 const VALID_FORMATS = new Set(['webp', 'png', 'jpg', 'jpeg', 'avif'])
+
+/**
+ * A name that looks like an output format but cannot be produced by conversion.
+ * svg is vector, sharp only rasterizes, so "convert to svg" has no honest
+ * answer. The old published guide (docs/skills/api-reference.md) never told
+ * anyone to ask for it, so this is not a deprecated-alias case — it is a
+ * request that must fail loudly instead of silently serving the original
+ * bytes back under a 200.
+ */
+const UNCONVERTIBLE_FORMATS = new Set(['svg'])
 
 /** Max dimension to prevent abuse */
 const MAX_DIM = 2048
@@ -34,9 +46,9 @@ export interface ResizeParams {
 }
 
 export interface ResizeParamsInput {
-  /** Express request query (?w=, ?h=, ?as=) */
+  /** Express request query (?w=, ?h=, ?as=, or the deprecated ?format=) */
   query: Record<string, unknown>
-  /** Output extension from the URL path (e.g. '.webp'); applies when ?as= is absent */
+  /** Output extension from the URL path (e.g. '.webp'); applies when ?as= and ?format= are both absent */
   pathExt?: string | null
 }
 
@@ -45,11 +57,30 @@ export interface ResizeParamsInput {
  * optional path extension. Handlers call this once and pass the result into
  * `maybeResize` — Express 5 re-parses `req.query` on every access, so writing
  * a derived format back into it is silently discarded.
+ *
+ * `?format=` is a deprecated alias for `?as=` — docs/skills/api-reference.md
+ * published `format` as the parameter name before the code ever implemented
+ * it, so requests written against that guide are honoured rather than
+ * silently ignored. `?as=` wins when both are present.
+ *
+ * A query value that names svg specifically (as opposed to any other
+ * unrecognised value) throws a 404 naming the problem — see
+ * UNCONVERTIBLE_FORMATS. A path-extension svg request never reaches here as
+ * an unconvertible target: it is validated upstream against the actual
+ * source format before parseResizeParams is called, so a `pathExt` of
+ * '.svg' at this point already named a real SVG source.
  */
 export function parseResizeParams({ query, pathExt }: ResizeParamsInput): ResizeParams | null {
   const wRaw = typeof query.w === 'string' ? parseInt(query.w, 10) : NaN
   const hRaw = typeof query.h === 'string' ? parseInt(query.h, 10) : NaN
-  const queryFormat = typeof query.as === 'string' ? query.as.toLowerCase() : null
+  const asFormat = typeof query.as === 'string' ? query.as.toLowerCase() : null
+  const deprecatedFormat = typeof query.format === 'string' ? query.format.toLowerCase() : null
+  const queryFormat = asFormat ?? deprecatedFormat
+
+  if (queryFormat && UNCONVERTIBLE_FORMATS.has(queryFormat)) {
+    throw httpErrors.NotFound(`${queryFormat} is not a convertible output format — request an svg source directly`)
+  }
+
   const fRaw = queryFormat ?? (pathExt ? pathExt.replace('.', '').toLowerCase() : null)
 
   const w = !isNaN(wRaw) && wRaw >= 1 && wRaw <= MAX_DIM ? wRaw : null
@@ -150,7 +181,7 @@ export function checkRateLimit(imageHash: string): boolean {
 
 export interface MaybeResizeOptions {
   res: Response
-  img: Image
+  img: Image & { providerKey?: string }
   /** Pre-parsed resize/format options from `parseResizeParams`; null = no resize requested */
   params: ResizeParams | null
 }
@@ -199,7 +230,7 @@ export async function maybeResize({ res, img, params }: MaybeResizeOptions): Pro
     db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch((e: Error) =>
       failureLog('variant op failed: %s', e.message),
     )
-    sendVariant(res, existing, img.uri)
+    sendVariant(res, existing, { uri: img.uri, providerKey: img.providerKey })
     return true
   }
 
@@ -238,19 +269,34 @@ export async function maybeResize({ res, img, params }: MaybeResizeOptions): Pro
       createdAt: new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     },
-    img.uri,
+    { uri: img.uri, providerKey: img.providerKey },
   )
 
   return true
 }
 
-export function sendVariant(res: Response, variant: ImageVariant, uri?: string): void {
+export interface SendVariantOptions {
+  /** The source uri the original image was read from, if any. */
+  uri?: string | null
+  /** The provider key recorded on the original image row, if any. */
+  providerKey?: string | null
+}
+
+/**
+ * Send a resized/transcoded image variant, with the same attribution headers a
+ * full-size `sendImage()` response carries. A relative submodule path used to be
+ * silently dropped here — the check below only matched `http`/`ipfs` uris, so
+ * every resized network icon served from a submodule lost its attribution even
+ * though the unresized original still carried it. Routing both through the same
+ * `attributionHeaders()` helper as `sendImage()` is what keeps that from
+ * happening again.
+ */
+export function sendVariant(res: Response, variant: ImageVariant, { uri, providerKey }: SendVariantOptions = {}): void {
   let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   r = r.set('x-resize', variant.width && variant.height ? `${variant.width}x${variant.height}` : 'transcoded')
-  if (uri) {
-    if (uri.startsWith('http') || uri.startsWith('ipfs')) {
-      r = r.set('x-uri', uri)
-    }
+  const headers = attributionHeaders({ uri, providerKey })
+  for (const [name, value] of Object.entries(headers)) {
+    r = r.set(name, value)
   }
   r.contentType(formatToContentType(variant.format)).send(variant.content)
 }
