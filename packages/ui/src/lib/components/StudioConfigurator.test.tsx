@@ -147,6 +147,27 @@ describe('size control', () => {
     fireEvent.change(widthInput, { target: { value: '1' } })
     expect(readAppearance().width).toBe(16)
   })
+
+  // The height stepper mirrors the width one exactly (its own aspect-linked
+  // branch), but nothing above drives it — every prior test changes width.
+  // A regression that broke handleHeightChange specifically (as opposed to
+  // handleWidthChange) would pass every test above and still ship broken.
+  it('keeps width and height in lockstep when the HEIGHT input changes while linked', () => {
+    renderConfigurator()
+    const heightInput = findStepperInput('64', 1)
+    fireEvent.change(heightInput, { target: { value: '128' } })
+    expect(readAppearance().height).toBe(128)
+    expect(readAppearance().width).toBe(128)
+  })
+
+  it('decouples height from width after the aspect link is toggled off', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByLabelText('Unlink aspect ratio'))
+    const heightInput = findStepperInput('64', 1)
+    fireEvent.change(heightInput, { target: { value: '200' } })
+    expect(readAppearance().height).toBe(200)
+    expect(readAppearance().width).toBe(64)
+  })
 })
 
 /**
@@ -269,6 +290,24 @@ describe('background popover', () => {
     expect(readAppearance().padding).toBe(8)
   })
 
+  // The hint offers a second shortcut, "round corners", only for a square
+  // shape — rounding a circle makes no visual sense. It writes both the
+  // shape and a starting border radius in one click.
+  it('offers a "round corners" shortcut for a square shape with a visible background and no padding', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByRole('button', { name: 'Circle' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Square' }))
+    expect(readAppearance().shape).toBe('square')
+
+    fireEvent.click(screen.getByLabelText('Background color'))
+    fireEvent.click(screen.getByLabelText('White'))
+    expect(readAppearance().padding).toBe(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'round corners' }))
+    expect(readAppearance().shape).toBe('rounded')
+    expect(readAppearance().borderRadius).toBe(12)
+  })
+
   it('returns the background to transparent via the transparent swatch', () => {
     renderConfigurator()
     fireEvent.click(screen.getByLabelText('Background color'))
@@ -320,5 +359,46 @@ describe('canvas empty state', () => {
   it('prompts the user to select a token when none is chosen', () => {
     renderConfigurator()
     expect(screen.getByText('Select a token to preview')).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Canvas zoom controls — clampZoom keeps the preview from vanishing (too far
+// out) or filling the screen with one pixel (too far in), and "Reset view"
+// is the reader's only way back to a known-good state after zooming around.
+// ---------------------------------------------------------------------------
+
+describe('canvas zoom controls', () => {
+  it('zooms in by 25% per click, reported as a rounded percentage', () => {
+    renderConfigurator()
+    expect(screen.getByText('100')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Zoom in'))
+    expect(screen.getByText('125')).toBeTruthy()
+  })
+
+  it('zooms out symmetrically and returns to 100% via Reset view', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByLabelText('Zoom out'))
+    expect(screen.getByText('80')).toBeTruthy()
+
+    fireEvent.click(screen.getByLabelText('Reset view'))
+    expect(screen.getByText('100')).toBeTruthy()
+  })
+
+  // clampZoom's whole job: no amount of clicking should push the preview past
+  // the 400% ceiling this asserts, or a runaway zoom would eventually render
+  // the preview off-canvas at a magnification nobody can use.
+  it('stops zooming in at the 400% ceiling no matter how many more clicks arrive', () => {
+    renderConfigurator()
+    const zoomIn = screen.getByLabelText('Zoom in')
+    for (let i = 0; i < 20; i += 1) fireEvent.click(zoomIn)
+    expect(screen.getByText('400')).toBeTruthy()
+  })
+
+  it('stops zooming out at the 25% floor no matter how many more clicks arrive', () => {
+    renderConfigurator()
+    const zoomOut = screen.getByLabelText('Zoom out')
+    for (let i = 0; i < 20; i += 1) fireEvent.click(zoomOut)
+    expect(screen.getByText('25')).toBeTruthy()
   })
 })

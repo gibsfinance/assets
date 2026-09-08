@@ -601,6 +601,21 @@ function OpenEditorWithList() {
   return null
 }
 
+/**
+ * Test-only bootstrap: opens the editor WITHOUT creating a list first, so
+ * `editorOpen` is true while `activeList` stays null — the state
+ * `addTokenToEditor` auto-creates a scratch list from, rather than the
+ * pre-populated-list path the sibling bootstrap above exercises.
+ */
+function OpenEditorWithoutList() {
+  const { openNewEditor } = useListEditor()
+  useEffect(() => {
+    openNewEditor()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return null
+}
+
 describe('StudioBrowser with the list editor open', () => {
   beforeEach(() => {
     mockFetch.mockReset()
@@ -653,6 +668,47 @@ describe('StudioBrowser with the list editor open', () => {
       expect(listKey).toBeTruthy()
       const stored = idbStore.get(listKey!) as { tokens: { symbol: string }[] }
       expect(stored.tokens.some((t) => t.symbol === 'WETH')).toBe(true)
+    })
+  })
+
+  // With the editor open but nothing to add to yet, the click has to create a
+  // scratch list first rather than silently drop the token — this is the
+  // "New List" quick-start most first-time visitors actually go through.
+  it('auto-creates a scratch list from the clicked token when the editor has none active', async () => {
+    renderBrowser({}, createElement(OpenEditorWithoutList, null))
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const wethRow = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
+    // No active list yet, so the button still reads its "inspect" label even
+    // though editorOpen routes the click into addTokenToEditor — the label
+    // itself is not under test here, only where the click actually goes.
+    fireEvent.click(within(wethRow).getByRole('button', { name: 'Inspect token' }))
+
+    await waitFor(() => {
+      const listKeys = [...idbStore.keys()].filter((k) => k.startsWith('gib-list:'))
+      expect(listKeys).toHaveLength(1)
+      const stored = idbStore.get(listKeys[0]) as { tokens: { symbol: string }[] }
+      expect(stored.tokens.map((t) => t.symbol)).toEqual(['WETH'])
+    })
+  })
+
+  // The guard exists specifically because a click fires before the previous
+  // click's list has finished being created — two rapid clicks on two
+  // different tokens must still end up with exactly one scratch list, not
+  // one per click.
+  it('does not create a second scratch list for a second click that arrives before the first finishes', async () => {
+    renderBrowser({}, createElement(OpenEditorWithoutList, null))
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const wethRow = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
+    const usdcRow = (await screen.findByText('USD Coin')).closest('div.group') as HTMLElement
+
+    fireEvent.click(within(wethRow).getByRole('button', { name: 'Inspect token' }))
+    fireEvent.click(within(usdcRow).getByRole('button', { name: 'Inspect token' }))
+
+    await waitFor(() => {
+      const listKeys = [...idbStore.keys()].filter((k) => k.startsWith('gib-list:'))
+      expect(listKeys).toHaveLength(1)
     })
   })
 })

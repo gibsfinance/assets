@@ -100,4 +100,43 @@ describe('useChainTokens', () => {
     expect(result.current.total).toBeNull()
     expect(mockFetch).not.toHaveBeenCalled()
   })
+
+  // A token the server lists without a `sources` array must not fall over —
+  // `merged` is what every other reader (badges, snippets) expects when no
+  // provider claims a token, and a stray `listReferences` array with nothing
+  // in it would have those readers rendering an empty attribution list.
+  it('falls back to "merged" with no list references and no icon for a sourceless token', async () => {
+    respondWith({
+      chainId: 501,
+      total: 1,
+      tokens: [
+        {
+          chainId: 501,
+          address: 'SourcelessToken1111111111111111111111111',
+          name: 'No Source Token',
+          symbol: 'NST',
+          decimals: 9,
+        },
+      ],
+    })
+    const { result } = renderHook(() => useChainTokens('solana-501'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(1))
+
+    const [token] = result.current.tokens
+    expect(token.sourceList).toBe('merged')
+    expect(token.listReferences).toBeUndefined()
+    expect(token.hasIcon).toBe(false)
+  })
+
+  // A failed request must leave the Studio with an empty, unbroken token list
+  // rather than an unhandled rejection — the page still has to render the
+  // rest of the chain's controls with nothing selected.
+  it('reports an empty token list rather than throwing when the request fails', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    const { result } = renderHook(() => useChainTokens('solana-501'), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.tokens).toEqual([])
+    expect(result.current.total).toBeNull()
+  })
 })

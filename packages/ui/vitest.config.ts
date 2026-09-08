@@ -5,6 +5,10 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['src/**/*.browser.test.{ts,tsx}', 'node_modules/**'],
     environment: 'jsdom',
+    // Repairs storage on a runtime that did not supply it — see tests/setup.ts.
+    // Lives outside src/ deliberately, so the coverage `include` below never
+    // counts test scaffolding as production code.
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       // Vitest 4 reports nothing at all unless `include` is set — an unset
       // include yields an empty table rather than an error, which reads as a
@@ -64,7 +68,45 @@ export default defineConfig({
       // Browser-mode specs run under a separate config and are excluded above,
       // so component behaviour verified there does not count here. Raise these
       // as tests land; never lower them to make a failing run pass.
-      thresholds: { statements: 93.5, branches: 87.8, functions: 92.6, lines: 94.6 },
+      //
+      // 2026-09-07: measured 95.77 / 90.57 / 96.09 / 96.79 over 1587 tests, after a
+      // risk-tiered pass rather than a sweep for red lines. Highest-value first:
+      // Studio.tsx's URL-hydration effects (editor open/close, chain/token writeback,
+      // the testnet toggle, the inspect-token modal) went from 61.7/71.11/45.45/64.86
+      // to fully covered; StudioConfigurator's untested height stepper, the
+      // square-shape "round corners" shortcut, and the zoom controls (clampZoom's
+      // ceiling/floor) picked up their first tests; CodeOutput.tsx — the component
+      // that decides which generator runs and wires the clipboard buttons, as
+      // distinct from the generators themselves, which were already covered — went
+      // from 62.85/58.97/53.84/62.5 to fully covered; StudioBrowser's auto-create-a-
+      // scratch-list path picked up its race-guard test (two rapid clicks must not
+      // create two lists). Two dead exports, `useTokenList` and
+      // `fetchTokenListByProvider`, were deleted rather than tested — a prior commit
+      // had already flagged them as callerless and left them; per the coverage
+      // triage skill's ghost-handler guidance, the honest move is removal, not a
+      // test that exercises code nothing in the app calls. A pre-existing setup bug
+      // was also fixed here, unrelated to coverage: tests/setup.ts's storage repair
+      // threw `ReferenceError: Storage is not defined` inside the one test file that
+      // deliberately renders with `@vitest-environment node` (no browser globals at
+      // all), which failed that suite outright on every run; it now checks for
+      // `Storage` before touching its prototype.
+      //
+      // Deliberately left uncovered, by risk tier and reason: ListEditor.tsx's
+      // remaining lines are `if (!activeList) return`-style guards for a UI state
+      // its own controls do not allow (Rule 13/the coverage-triage skill both call
+      // this out as low-value defensive coverage, not a real gap). StudioBrowser's
+      // client-only popularity sort (chainTokens' non-"merged" branch) is very hard
+      // to reach honestly: with a single merged token endpoint now the only writer
+      // into tokensByList, that fallback only ever runs over an empty array in
+      // practice, so forcing a non-empty case would mean fabricating a state the
+      // real app cannot produce. StudioConfigurator's InfiniteCanvas pointer-drag and
+      // wheel-zoom math and its CodePanel ResizeObserver effect are genuine Tier 4 —
+      // a visual pan/zoom widget with no security or data-loss surface — and were
+      // left for a future pass; RadialPositionPicker, NetworkSelect, and the
+      // remaining single-digit-line branch gaps across small presentational
+      // components are the same tier and were likewise left. Raise these floors
+      // further as that work lands; never lower them to make a failing run pass.
+      thresholds: { statements: 95.5, branches: 90.3, functions: 95.8, lines: 96.5 },
     },
   },
   resolve: {
