@@ -39,6 +39,16 @@ describe('LLMS_TXT', () => {
     }
   })
 
+  it('states the true rate-limit position — no enforced limit, callers asked to be reasonable', () => {
+    // The integrator this section answers held themselves to about forty
+    // requests because nothing said what was acceptable. The one thing this
+    // paragraph must never do is invent a number — say what is actually
+    // true (nothing is enforced yet) rather than sound generous with a limit
+    // nobody checks.
+    expect(LLMS_TXT).toMatch(/no enforced request limit/i)
+    expect(LLMS_TXT).toContain('https://gib.show/image/direct/{imageHash}')
+  })
+
   it('links the three published guides under /skills/', () => {
     for (const guide of ['api-reference.md', 'list-management.md', 'self-hosting.md']) {
       expect(LLMS_TXT).toContain(`https://gib.show/skills/${guide}`)

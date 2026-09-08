@@ -59,6 +59,7 @@ import {
   parseTypeFilter,
   MIN_SERVABLE_RASTER_SIZE,
   isValidTokenAddress,
+  RESOLVED_CHAIN_HEADER,
 } from './handlers'
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
@@ -223,6 +224,62 @@ describe('image handlers', () => {
       expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/token.png')
       expect(res.contentType).toHaveBeenCalledWith('.png')
       expect(res.send).toHaveBeenCalledWith(img.content)
+    })
+
+    // -----------------------------------------------------------------------
+    // Immutable caching for content-addressed responses. `cachePolicy` is the
+    // fourth, optional argument — every other call site in this file omits it
+    // and must keep getting the ordinary, mutable-address cache lifetime.
+    // -----------------------------------------------------------------------
+    it('defaults to the ordinary max-age when cachePolicy is omitted', () => {
+      const res = mockResponse()
+      sendImage(res, makeImage(), 'save')
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+    })
+
+    it('serves the year-long, immutable cache-control when cachePolicy is content-addressed', () => {
+      const res = mockResponse()
+      sendImage(res, makeImage(), 'save', 'content-addressed')
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+    })
+
+    // -----------------------------------------------------------------------
+    // SVG root-element dimension stripping. A fixed width/height on the root
+    // <svg> only forces cascading-style-sheet consumers to override it once a
+    // viewBox already lets the browser scale the image — see
+    // stripRootSvgDimensions in resize.ts, exercised here through the real
+    // send path rather than mocked, since this is exactly the behavior a
+    // caller of GET /image/{chainId} observes in the response body.
+    // -----------------------------------------------------------------------
+    it('strips width and height from a served SVG that has a viewBox', () => {
+      const res = mockResponse()
+      const svg = Buffer.from('<svg width="32" height="32" viewBox="0 0 32 32"></svg>')
+      const img = makeImage({ content: svg, ext: '.svg' })
+      sendImage(res, img, 'save')
+
+      const [sentContent] = (res.send as ReturnType<typeof vi.fn>).mock.calls[0]
+      const sent = Buffer.isBuffer(sentContent) ? sentContent.toString('utf8') : String(sentContent)
+      expect(sent).not.toMatch(/width=/)
+      expect(sent).not.toMatch(/height=/)
+      expect(sent).toContain('viewBox="0 0 32 32"')
+    })
+
+    it('leaves a served SVG without a viewBox untouched (stripping would collapse it)', () => {
+      const res = mockResponse()
+      const svg = Buffer.from('<svg width="32" height="32"></svg>')
+      const img = makeImage({ content: svg, ext: '.svg' })
+      sendImage(res, img, 'save')
+
+      expect(res.send).toHaveBeenCalledWith(svg)
+    })
+
+    it('never touches raster content — stripping applies to SVG extensions only', () => {
+      const res = mockResponse()
+      const raster = Buffer.from('x'.repeat(300))
+      const img = makeImage({ content: raster, ext: '.png' })
+      sendImage(res, img, 'save')
+
+      expect(res.send).toHaveBeenCalledWith(raster)
     })
 
     it('redirects when mode is LINK and uri is http', () => {
@@ -553,6 +610,42 @@ describe('image handlers', () => {
       expect(res.send).toHaveBeenCalled()
     })
 
+    // -------------------------------------------------------------------
+    // Guard against a future refactor leaking the year-long, immutable
+    // cache-control (added for /image/direct/{imageHash}, a content-addressed
+    // route) onto this mutable-address route — a token can get a new image
+    // at the same chainId/address later, so this route must keep the
+    // ordinary, configured lifetime.
+    // -------------------------------------------------------------------
+    it('serves the ordinary configured max-age, never the immutable content-addressed cache-control', async () => {
+      const img = makeImage()
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      const chain = makeDrizzleChain([
+        {
+          provider: { key: 'test' },
+          list: { listId: '1' },
+          list_token: { tokenId: '1' },
+          token: { networkId: 'eip155:1' },
+          image: img,
+        },
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: TEST_ADDRESS },
+        query: {},
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await handler(req, res, next)
+
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+      expect(res.set).not.toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+    })
+
     it('passes the path-extension format to maybeResize without mutating req.query', async () => {
       // Regression: the handler used to write `req.query.as = 'webp'`, but
       // Express 5 re-parses query on every access, so the mutation was
@@ -872,6 +965,50 @@ describe('image handlers', () => {
       expect(res.send).toHaveBeenCalled()
     })
 
+    // -------------------------------------------------------------------
+    // This route addresses an image by the hash of its own bytes, so the
+    // response at this address can never change — it gets the year-long,
+    // immutable cache-control instead of the ordinary configured lifetime,
+    // on both the direct-serve path (this test) and any resized variant
+    // (the next test, checking what getImageByHash asks maybeResize for).
+    // -------------------------------------------------------------------
+    it('serves the year-long, immutable cache-control, not the ordinary max-age', async () => {
+      const img = makeImage()
+      const chain = makeDrizzleChain([img])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({
+        params: { imageHash: 'abc123.png' },
+        query: {},
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+      expect(res.set).not.toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+    })
+
+    it('asks maybeResize for the content-addressed cache policy, so a resized variant is equally immutable', async () => {
+      const img = makeImage()
+      const chain = makeDrizzleChain([img])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(true as any)
+
+      const req = mockRequest({
+        params: { imageHash: 'abc123.webp' },
+        query: { as: 'webp' },
+      })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(maybeResize).toHaveBeenCalledWith(expect.objectContaining({ cachePolicy: 'content-addressed' }))
+    })
+
     it('returns early without sending the original when maybeResize already served a variant', async () => {
       const img = makeImage()
       const chain = makeDrizzleChain([img])
@@ -931,6 +1068,58 @@ describe('image handlers', () => {
       await bestGuessNetworkImageFromOnOnChainInfo(req, res, next)
 
       expect(res.send).toHaveBeenCalled()
+    })
+
+    // -------------------------------------------------------------------
+    // A caller who gets a 200 from this route cannot otherwise tell an exact
+    // match from a best guess — worse than a 404 for a page identifying a
+    // chain to a user. The header must name what the request actually
+    // resolved to, not merely echo the request back.
+    // -------------------------------------------------------------------
+    it('names the resolved chain identifier in x-resolved-chain, in prefixed form', async () => {
+      const fakeRow = {
+        image: makeImage(),
+        network: { networkId: 'eip155:1' },
+      }
+      const chain = makeDrizzleChain([fakeRow])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({ params: { chainId: '1' }, query: {} })
+      const res = mockResponse()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())
+
+      expect(res.set).toHaveBeenCalledWith(RESOLVED_CHAIN_HEADER, 'eip155-1')
+    })
+
+    it('names the actually-resolved namespace, not the bare request, for a best-guess resolution', async () => {
+      // Same scenario as "resolves a bare non-Ethereum-Virtual-Machine chain
+      // number..." below: 354 is bare and resolves to polkadot-354. The
+      // header must carry that resolved identifier, not the request's bare 354.
+      vi.mocked(db.getChainIdsByReference).mockResolvedValue([{ chainId: 'polkadot-354', hasTokens: false }])
+      const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'polkadot:354' } }])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+
+      const req = mockRequest({ params: { chainId: '354' }, query: {} })
+      const res = mockResponse()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())
+
+      expect(res.set).toHaveBeenCalledWith(RESOLVED_CHAIN_HEADER, 'polkadot-354')
+    })
+
+    it('does not set x-resolved-chain when resolution fails and no image is found', async () => {
+      const chain = makeDrizzleChain([])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const req = mockRequest({ params: { chainId: '999' }, query: {} })
+      const res = mockResponse()
+
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())).rejects.toThrow()
+
+      expect(res.set).not.toHaveBeenCalledWith(RESOLVED_CHAIN_HEADER, expect.anything())
     })
 
     it('returns early without sending the original when maybeResize already served a variant', async () => {

@@ -21,6 +21,10 @@ export const LLMS_TXT = `# Gib.Show
 - [Usage statistics](https://gib.show/stats): Per-chain counts of token addresses that have a usable image.
 - [Terms](https://gib.show/terms): Terms and attribution — what the service claims, what it does not, and what a caller must do with the images it serves.
 
+## Rate limits
+
+There is no enforced request limit today. Be reasonable — heavy callers should cache using the long-lived, immutable [image by content hash](https://gib.show/image/direct/{imageHash}) route from the section above instead of re-fetching by chain and address. Limits may be introduced later.
+
 ## Guides
 
 - [API reference](https://gib.show/skills/api-reference.md): Query parameters, response shapes, and example requests for every route.

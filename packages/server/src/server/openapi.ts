@@ -539,11 +539,19 @@ export const openapi = {
           'Resize and format-conversion query parameters work here too. A path extension on this route ' +
           'is a SOURCE filter, not a conversion: /image/eip155-369.png serves only a png source, and ' +
           '/image/eip155-369.webp responds 404 when no webp source exists — the opposite of the token ' +
-          '.{ext} route, where the extension converts the output.',
+          '.{ext} route, where the extension converts the output. A bare numeric chainId is resolved ' +
+          'against the chain identifiers this service actually stores, so a number one namespace shares ' +
+          'with another can still resolve to the populated one. Every success response carries ' +
+          'x-resolved-chain, naming the identifier it resolved to in prefixed form (eip155-369), so a ' +
+          'caller can tell an exact match from a best guess.',
         'x-example': '/image/eip155-369',
         parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
         responses: {
           ...IMAGE_RESPONSE,
+          '200': {
+            ...IMAGE_RESPONSE['200'],
+            description: `${IMAGE_RESPONSE['200'].description} x-resolved-chain (see the operation description).`,
+          },
           ...REDIRECT_RESPONSE,
         },
       },
@@ -641,6 +649,13 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Image by content hash — content-addressed access',
+        description:
+          'The hash in the path is the hash of the bytes this route serves, so the response at a given ' +
+          'address can never change — a resized or transcoded variant of it is equally fixed. Because of ' +
+          'that, this is the one route with a year-long cache: cache-control: public, max-age=31536000, ' +
+          'immutable, in place of the shorter, configured lifetime every other route serves. Callers ' +
+          'making many requests for the same set of images should cache through this route rather than ' +
+          're-fetching by chain and address.',
         'x-example': '/image/direct/048d63e01bc0c7079394113db00275c0001b679cd7b8749d17ee87c2efb32a78',
         parameters: [
           {
@@ -655,7 +670,13 @@ export const openapi = {
           },
           ...RESIZE_PARAMS,
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          '200': {
+            ...IMAGE_RESPONSE['200'],
+            description: `${IMAGE_RESPONSE['200'].description} cache-control: public, max-age=31536000, immutable.`,
+          },
+        },
       },
     },
     '/image/': {

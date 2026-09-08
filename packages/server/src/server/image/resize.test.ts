@@ -25,6 +25,8 @@ vi.mock('../../../config', () => ({
 import {
   parseResizeParams,
   svgHasViewBox,
+  stripRootSvgDimensions,
+  cacheControlFor,
   checkRateLimit,
   extToFormat,
   formatToContentType,
@@ -209,6 +211,66 @@ describe('svgHasViewBox', () => {
     const suffix = Buffer.from(' viewBox="0 0 100 100"')
     const combined = Buffer.concat([prefix, suffix])
     expect(svgHasViewBox(combined)).toBe(false)
+  })
+})
+
+describe('stripRootSvgDimensions', () => {
+  it('removes width and height from the root element when a viewBox is present', () => {
+    const input = Buffer.from(
+      '<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"></svg>',
+    )
+    const output = stripRootSvgDimensions(input).toString('utf8')
+    expect(output).not.toMatch(/width=/)
+    expect(output).not.toMatch(/height=/)
+    // Every other root attribute survives untouched.
+    expect(output).toContain('viewBox="0 0 32 32"')
+    expect(output).toContain('xmlns="http://www.w3.org/2000/svg"')
+  })
+
+  it('leaves width and height untouched when there is no viewBox — stripping would collapse the image', () => {
+    const input = Buffer.from('<svg width="32" height="32" xmlns="http://www.w3.org/2000/svg"></svg>')
+    const output = stripRootSvgDimensions(input).toString('utf8')
+    expect(output).toBe(input.toString('utf8'))
+  })
+
+  it('never touches width/height on a nested element, only the root', () => {
+    const input = Buffer.from('<svg viewBox="0 0 32 32"><image width="32" height="32" href="inner.png"/></svg>')
+    const output = stripRootSvgDimensions(input).toString('utf8')
+    // The nested <image>'s width/height must survive — only the root <svg> is in scope.
+    expect(output).toContain('<image width="32" height="32" href="inner.png"/>')
+  })
+
+  it('handles single-quoted attribute values', () => {
+    const input = Buffer.from(`<svg width='32' height='32' viewBox='0 0 32 32'></svg>`)
+    const output = stripRootSvgDimensions(input).toString('utf8')
+    expect(output).not.toMatch(/width=/)
+    expect(output).not.toMatch(/height=/)
+    expect(output).toContain(`viewBox='0 0 32 32'`)
+  })
+
+  it('returns the buffer unchanged when there is no root svg element at all', () => {
+    const input = Buffer.from('not an svg document')
+    expect(stripRootSvgDimensions(input)).toBe(input)
+  })
+
+  it('returns the buffer unchanged when the root tag never closes (truncated content)', () => {
+    const input = Buffer.from('<svg width="32" height="32" viewBox="0 0 32 32"')
+    expect(stripRootSvgDimensions(input)).toBe(input)
+  })
+
+  it('returns the buffer unchanged when the svg element has neither width nor height', () => {
+    const input = Buffer.from('<svg viewBox="0 0 32 32"><circle r="10"/></svg>')
+    expect(stripRootSvgDimensions(input).toString('utf8')).toBe(input.toString('utf8'))
+  })
+})
+
+describe('cacheControlFor', () => {
+  it('serves a year-long, immutable header for content-addressed responses', () => {
+    expect(cacheControlFor('content-addressed')).toBe('public, max-age=31536000, immutable')
+  })
+
+  it('serves the configured, shorter lifetime for a mutable address', () => {
+    expect(cacheControlFor('mutable')).toBe('public, max-age=86400')
   })
 })
 
@@ -734,6 +796,50 @@ describe('sendVariant (via maybeResize)', () => {
     expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
   })
 
+  // ---------------------------------------------------------------------
+  // Content-addressed caching (cache-hit path): a resized/transcoded variant
+  // of a hash-addressed image is exactly as immutable as the original — the
+  // hash names the source bytes, and the variant is a pure function of them.
+  // ---------------------------------------------------------------------
+  it('serves a cached variant with the immutable, year-long cache-control when cachePolicy is content-addressed', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
+    const res = mockRes()
+    await maybeResize({
+      res,
+      img: makeImage(),
+      params: parseResizeParams({ query: req.query }),
+      cachePolicy: 'content-addressed',
+    })
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+  })
+
+  // Cache-miss path — the variant is created fresh via sharp rather than read
+  // back from image_variant, so the cache-control decision must be threaded
+  // through that branch too, not just the cache-hit branch above.
+  it('serves a newly-created variant with the immutable cache-control when cachePolicy is content-addressed', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(undefined as any)
+    vi.mocked(db.insertVariant).mockResolvedValue(undefined as any)
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
+    const res = mockRes()
+    await maybeResize({
+      res,
+      img: makeImage(),
+      params: parseResizeParams({ query: req.query }),
+      cachePolicy: 'content-addressed',
+    })
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+  })
+
+  it('defaults to the mutable cache-control when cachePolicy is omitted, even on a newly-created variant', async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(undefined as any)
+    vi.mocked(db.insertVariant).mockResolvedValue(undefined as any)
+    const req = mockReq({ w: '72', h: '72', as: 'webp' })
+    const res = mockRes()
+    await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+  })
+
   it('sets x-resize header with WxH dimensions', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant({ width: 72, height: 72 }))
     const req = mockReq({ w: '72', h: '72', as: 'webp' })
@@ -881,6 +987,25 @@ describe('sendVariant (direct)', () => {
     expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/img.png')
     expect(res.contentType).toHaveBeenCalledWith('image/webp')
     expect(res.send).toHaveBeenCalled()
+  })
+
+  it('sets the immutable, year-long cache-control when cachePolicy is content-addressed', () => {
+    const res = mockRes()
+    sendVariant(
+      res,
+      {
+        imageHash: 'abc',
+        width: 72,
+        height: 72,
+        format: 'webp',
+        content: Buffer.from('test'),
+        accessCount: 1,
+        createdAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString(),
+      },
+      { cachePolicy: 'content-addressed' },
+    )
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
   })
 
   it('defaults to no uri/providerKey when called without an options argument', () => {

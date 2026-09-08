@@ -75,6 +75,15 @@ describe('app', () => {
     expect(exposed).toContain('x-uri')
   })
 
+  // x-resolved-chain names a chain-resolution outcome, not an attribution
+  // fact, but a browser script reading it cross-origin needs the identical
+  // Access-Control-Expose-Headers treatment as the attribution headers above.
+  it('exposes x-resolved-chain for cross-origin browser reads', async () => {
+    const res = await request(app).get('/ping').set('Origin', 'https://example.com')
+    const exposed = res.headers['access-control-expose-headers']
+    expect(exposed).toContain('x-resolved-chain')
+  })
+
   it('applies the urlencoded and json body parsers ahead of the router', async () => {
     const res = await request(app).post('/echo').send({ hello: 'world' })
     expect(res.status).toBe(200)

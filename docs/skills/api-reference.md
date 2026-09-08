@@ -168,5 +168,12 @@ Major chains include Ethereum (1), PulseChain (369), Arbitrum (42161), Polygon (
 ## Caching
 
 - Images are cached at the edge via Cloudflare (`cache-control: public, max-age=86400`)
+- `/image/direct/{imageHash}` is content-addressed — the hash in the path is the hash of the bytes it serves, so those bytes can never change at that address. It carries `cache-control: public, max-age=31536000, immutable` instead, on both the original and any resized or transcoded variant of it.
 - Resized variants are cached server-side in PostgreSQL
 - First request for a new size incurs ~50ms resize cost; subsequent requests are instant
+
+## Rate limits
+
+There is no enforced request limit today. Nothing in this service counts or throttles requests as they arrive. The rate limiter in the image-resize pipeline (5 requests per image, 100 per minute, per server process) guards against a flood of resize *variants* filling the cache — it does not limit how many times you can fetch an image.
+
+Callers are asked to be reasonable. A heavy user should cache using the long-lived, immutable `/image/direct/{imageHash}` route above rather than re-fetching the same token or chain image on every request. Request limits may be introduced later; this page will say so plainly if they are.

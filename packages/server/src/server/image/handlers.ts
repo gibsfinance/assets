@@ -7,6 +7,12 @@
  *
  * Query params: `?as=webp` converts output format, `?only=vector` filters source type,
  * `?mode=link` forces redirect to source URI. Path extension (`.webp`) is equivalent to `?as=`.
+ *
+ * `getImageByHash` is content-addressed — the hash in the URL is the hash of the bytes it
+ * serves — so both it and any resized variant of it carry a year-long, immutable cache-control
+ * (see `CachePolicy` in `./resize`) instead of the configured, shorter, default. The best-guess
+ * network route also sets `RESOLVED_CHAIN_HEADER` on success, naming the chain identifier a bare
+ * numeric request actually resolved to.
  */
 import * as viem from 'viem'
 import httpErrors, { HttpError } from 'http-errors'
@@ -15,19 +21,21 @@ import { imageMode } from '../../db/tables'
 import type { ChainId } from '@gibs/utils'
 import * as utils from '../../utils'
 import * as db from '../../db'
-import config from '../../../config'
 import type { Image, ListOrder, ListOrderItem, ListToken, List, Token } from '../../db/schema-types'
 import { RequestHandler, Response } from 'express'
 import _ from 'lodash'
 import { ParsedQs } from 'qs'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
-import { maybeResize, parseResizeParams } from './resize'
+import { maybeResize, parseResizeParams, cacheControlFor, stripRootSvgDimensions, type CachePolicy } from './resize'
 import { attributionHeaders } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored } from '../../chain-id'
+import { RESOLVED_CHAIN_HEADER } from './headers'
+
+export { RESOLVED_CHAIN_HEADER }
 
 /** Chain-id namespaces whose token addresses are Ethereum-Virtual-Machine hex. */
 const EVM_NAMESPACES = new Set(['eip155', 'asset'])
@@ -355,8 +363,15 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
   }
   const image = img as Image
   const params = parseResizeParams({ query: req.query })
-  if (await maybeResize({ res, img: image, params })) return
-  sendImage(res, image, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  // Content-addressed: the hash in the URL is the hash of these exact bytes, so
+  // they can never change at this address. A year-long, immutable cache is
+  // honest here in a way it would not be for a token or chain image, which can
+  // get new content at the same address later. Both the un-resized original
+  // below and any resized/transcoded variant maybeResize serves carry the same
+  // policy — a caller who asks for a resized hash-addressed image gets the same
+  // permanent-cache guarantee as one who asks for the original.
+  if (await maybeResize({ res, img: image, params, cachePolicy: 'content-addressed' })) return
+  sendImage(res, image, resolveImageMode(req.query.mode as ImageModeParam | null | undefined), 'content-addressed')
 }
 
 /**
@@ -382,18 +397,25 @@ const resolveNetworkChainId = async (chainId: string): Promise<string> => {
   return resolution.chainId
 }
 
-const bestGuessNeworkImage = async (chainIdParam: string) => {
+const bestGuessNeworkImage = async (
+  chainIdParam: string,
+): Promise<{ img: Image & Record<string, unknown>; resolvedChainId: string }> => {
   const { filename: chainId, exts } = splitExt(chainIdParam)
   const resolvedChainId = await resolveNetworkChainId(chainId)
   const { img } = await getNetworkIcon(resolvedChainId, exts)
   if (!img) {
     throw httpErrors.NotFound('best guess network image not found')
   }
-  return img
+  return { img, resolvedChainId }
 }
 
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
-  const img = await bestGuessNeworkImage(req.params.chainId)
+  const { img, resolvedChainId } = await bestGuessNeworkImage(req.params.chainId)
+  // A caller who gets a 200 cannot otherwise tell an exact match from an
+  // approximation — worse than an outright 404 for a page identifying a chain
+  // to a user. Set before serving, so it rides on every success shape below
+  // (redirect, resized variant, or the original).
+  res.set(RESOLVED_CHAIN_HEADER, resolvedChainId)
   // Note: a path extension on the network route is a source filter (handled in
   // bestGuessNeworkImage), not an output conversion — so no pathExt here.
   const params = parseResizeParams({ query: req.query })
@@ -433,10 +455,10 @@ export const tryMultiple: RequestHandler<
     }
     const [chainId, address, order] = i.split('/')
     if (!address) {
-      const img = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
-      if (!img) continue
-      if (await maybeResize({ res, img, params })) return
-      return sendImage(res, img, resolveImageMode(req.query.mode))
+      const result = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
+      if (!result) continue
+      if (await maybeResize({ res, img: result.img, params })) return
+      return sendImage(res, result.img, resolveImageMode(req.query.mode))
     }
     if (order && order.length !== 64 /* check if hex */) {
       return next(httpErrors.NotAcceptable('invalid order'))
@@ -505,7 +527,12 @@ export const classifyImageServe = (
   return 'serve'
 }
 
-export const sendImage = (res: Response, img: Image & { providerKey?: string }, mode: ImageModeParam) => {
+export const sendImage = (
+  res: Response,
+  img: Image & { providerKey?: string },
+  mode: ImageModeParam,
+  cachePolicy: CachePolicy = 'mutable',
+) => {
   const decision = classifyImageServe(img, mode)
   if (decision === 'redirect') {
     return res.redirect(img.uri)
@@ -514,7 +541,7 @@ export const sendImage = (res: Response, img: Image & { providerKey?: string }, 
     return res.status(404).json({ error: 'image content unavailable' })
   }
 
-  let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  let r = res.set('cache-control', cacheControlFor(cachePolicy))
   r = r.set('x-resize', 'original')
   // attributionHeaders() normalizes img.uri itself — an absolute submodule
   // filesystem path, an http(s)/ipfs uri, or a data: uri all resolve to the
@@ -523,5 +550,10 @@ export const sendImage = (res: Response, img: Image & { providerKey?: string }, 
   for (const [name, value] of Object.entries(headers)) {
     r = r.set(name, value)
   }
-  r.contentType(img.ext).send(img.content)
+  // A root <svg> with a viewBox scales cleanly from that alone, so its fixed
+  // width and height only force cascading-style-sheet consumers to override
+  // or strip them. Only the root element is ever rewritten — see
+  // stripRootSvgDimensions.
+  const content = SVG_EXTS.has(img.ext) ? stripRootSvgDimensions(img.content) : img.content
+  r.contentType(img.ext).send(content)
 }

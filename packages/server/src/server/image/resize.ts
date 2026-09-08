@@ -6,7 +6,12 @@
  * path-extension format) once via `parseResizeParams` and pass the result in. It then
  * looks up cached variants in `image_variant` table, or creates new ones via sharp pipeline.
  * Per-image and global rate limits prevent cache pollution from enumeration attacks.
- * SVGs with viewBox are served as-is unless explicit format conversion is requested.
+ * SVGs with viewBox are served as-is unless explicit format conversion is requested, with
+ * their fixed width and height stripped so a browser scales them from the viewBox alone.
+ * `cacheControlFor()` picks between the two cache lifetimes the service serves: a year-long,
+ * immutable lifetime for content-addressed responses (`/image/direct/{imageHash}`, where the
+ * address is the hash of the bytes it names) and the shorter, configured lifetime everywhere
+ * else, where the same address can later answer with different bytes.
  */
 import sharp from 'sharp'
 import type { FormatEnum } from 'sharp'
@@ -38,6 +43,25 @@ const UNCONVERTIBLE_FORMATS = new Set(['svg'])
 
 /** Max dimension to prevent abuse */
 const MAX_DIM = 2048
+
+/**
+ * The two cache lifetimes this service serves. `content-addressed` names a
+ * route whose address is the hash of its own bytes — `/image/direct/{hash}` —
+ * so the bytes behind that address can never change and a year-long,
+ * `immutable` cache is honest. Every other route names a mutable address (a
+ * token or chain can get a new image at the same address later), so it keeps
+ * the shorter, configured lifetime instead.
+ */
+export type CachePolicy = 'content-addressed' | 'mutable'
+
+/** One year in seconds — the lifetime a content-addressed response is cached for. */
+const CONTENT_ADDRESSED_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
+
+/** Build the `cache-control` header value for one of the two cache lifetimes this service serves. */
+export function cacheControlFor(policy: CachePolicy): string {
+  if (policy === 'content-addressed') return `public, max-age=${CONTENT_ADDRESSED_MAX_AGE_SECONDS}, immutable`
+  return `public, max-age=${config.cacheSeconds}`
+}
 
 export interface ResizeParams {
   w: number | null
@@ -95,6 +119,51 @@ export function parseResizeParams({ query, pathExt }: ResizeParamsInput): Resize
 export function svgHasViewBox(content: Buffer): boolean {
   const str = content.toString('utf8', 0, Math.min(content.length, 4096))
   return /viewBox=/i.test(str)
+}
+
+/**
+ * The document's root `<svg>` opening tag, with its start and end offsets in
+ * the source string. Nested elements can never be mistaken for it: none of
+ * them exist before the root tag's own closing `>`, so the first `<svg` up to
+ * the first `>` that follows it is always the root, however deep the document
+ * nests other elements afterward.
+ */
+function extractRootSvgTag(document: string): { tag: string; start: number; end: number } | null {
+  const start = document.indexOf('<svg')
+  if (start === -1) return null
+  const end = document.indexOf('>', start)
+  if (end === -1) return null
+  return { tag: document.slice(start, end + 1), start, end }
+}
+
+/**
+ * Strip the `width` and `height` attributes from the root `<svg>` element,
+ * but only when it also carries a `viewBox`. A `viewBox` alone already lets a
+ * browser scale the image, so a fixed width and height on the root forces
+ * every consumer styling it with cascading style sheets to override or strip
+ * them first. Without a `viewBox`, the width and height are the only record
+ * of the image's intrinsic size, so removing them would collapse the image
+ * instead — that case is left untouched.
+ *
+ * Only the isolated root-element substring returned by `extractRootSvgTag` is
+ * ever rewritten, never the whole document, so a `width` or `height`
+ * belonging to a nested element (an inner `<rect>`, `<image>`, ...) is never
+ * touched.
+ */
+export function stripRootSvgDimensions(content: Buffer): Buffer {
+  const document = content.toString('utf8')
+  const root = extractRootSvgTag(document)
+  if (!root) return content
+  if (!svgHasViewBox(Buffer.from(root.tag, 'utf8'))) return content
+
+  const strippedTag = root.tag
+    .replace(/\s+width="[^"]*"/, '')
+    .replace(/\s+width='[^']*'/, '')
+    .replace(/\s+height="[^"]*"/, '')
+    .replace(/\s+height='[^']*'/, '')
+  if (strippedTag === root.tag) return content
+
+  return Buffer.from(document.slice(0, root.start) + strippedTag + document.slice(root.end + 1), 'utf8')
 }
 
 /** Map format string to content-type */
@@ -184,6 +253,8 @@ export interface MaybeResizeOptions {
   img: Image & { providerKey?: string }
   /** Pre-parsed resize/format options from `parseResizeParams`; null = no resize requested */
   params: ResizeParams | null
+  /** Which of the two cache lifetimes a served variant gets. Defaults to `mutable`. */
+  cachePolicy?: CachePolicy
 }
 
 /**
@@ -192,7 +263,7 @@ export interface MaybeResizeOptions {
  * Takes pre-parsed params instead of reading `req.query` so path-extension
  * conversion and query conversion flow through one explicit code path.
  */
-export async function maybeResize({ res, img, params }: MaybeResizeOptions): Promise<boolean> {
+export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }: MaybeResizeOptions): Promise<boolean> {
   if (!params) return false
 
   const { w, h, format } = params
@@ -230,7 +301,7 @@ export async function maybeResize({ res, img, params }: MaybeResizeOptions): Pro
     db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch((e: Error) =>
       failureLog('variant op failed: %s', e.message),
     )
-    sendVariant(res, existing, { uri: img.uri, providerKey: img.providerKey })
+    sendVariant(res, existing, { uri: img.uri, providerKey: img.providerKey, cachePolicy })
     return true
   }
 
@@ -269,7 +340,7 @@ export async function maybeResize({ res, img, params }: MaybeResizeOptions): Pro
       createdAt: new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     },
-    { uri: img.uri, providerKey: img.providerKey },
+    { uri: img.uri, providerKey: img.providerKey, cachePolicy },
   )
 
   return true
@@ -280,6 +351,8 @@ export interface SendVariantOptions {
   uri?: string | null
   /** The provider key recorded on the original image row, if any. */
   providerKey?: string | null
+  /** Which of the two cache lifetimes this response gets. Defaults to `mutable`. */
+  cachePolicy?: CachePolicy
 }
 
 /**
@@ -291,8 +364,12 @@ export interface SendVariantOptions {
  * `attributionHeaders()` helper as `sendImage()` is what keeps that from
  * happening again.
  */
-export function sendVariant(res: Response, variant: ImageVariant, { uri, providerKey }: SendVariantOptions = {}): void {
-  let r = res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+export function sendVariant(
+  res: Response,
+  variant: ImageVariant,
+  { uri, providerKey, cachePolicy = 'mutable' }: SendVariantOptions = {},
+): void {
+  let r = res.set('cache-control', cacheControlFor(cachePolicy))
   r = r.set('x-resize', variant.width && variant.height ? `${variant.width}x${variant.height}` : 'transcoded')
   const headers = attributionHeaders({ uri, providerKey })
   for (const [name, value] of Object.entries(headers)) {
