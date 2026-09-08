@@ -119,7 +119,11 @@ master.
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`
 - Lint runs from `packages/server/` via `yarn lint` (prettier + eslint)
-- ESLint config: `packages/server/.eslintrc.mjs` — `argsIgnorePattern: '^_'`
+- ESLint config: `packages/server/eslint.config.js` (flat config; `packages/ui` has its own) —
+  `argsIgnorePattern: '^_'`. Both packages migrated off `.eslintrc` some time ago. Staying on
+  eslint 9 is deliberate: the registry now flags the whole 9.x line as unsupported, but 10 is a
+  real behavioural upgrade — three new rules in `eslint:recommended`, `eslint-env` comments
+  become errors, and changed JSX reference tracking surfaces new findings in `ui`.
 
 ## Conventions
 

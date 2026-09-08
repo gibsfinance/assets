@@ -33,7 +33,7 @@
     "@vitest/browser": "^4.1.9",
     "@vitest/browser-playwright": "^4.1.9",
     "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^9.25.1",
+    "eslint": "^9.39.5",
     "globals": "^16.0.0",
     "jsdom": "^29.0.1",
     "playwright": "^1.61.0",

@@ -101,7 +101,7 @@ export const createFakePage = (html = '<html><body></body></html>'): FakePage =>
 }
 
 export type FakeBrowser = {
-  isConnected: Mock
+  connected: boolean
   newPage: Mock
   close: Mock
   disconnect: Mock
@@ -117,7 +117,7 @@ export const createEtherscanHarness = () => {
   const newPageError = { current: null as Error | null }
 
   const browser: FakeBrowser = {
-    isConnected: vi.fn(() => true),
+    connected: true,
     newPage: vi.fn(async () => {
       if (newPageError.current) throw newPageError.current
       return currentPage
@@ -317,7 +317,7 @@ export const createEtherscanHarness = () => {
     tokenStore.reset()
     currentPage = createFakePage()
     newPageError.current = null
-    browser.isConnected.mockReturnValue(true)
+    browser.connected = true
     browser.newPage.mockClear()
     browser.close.mockClear()
     browser.disconnect.mockClear()

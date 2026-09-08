@@ -60,7 +60,7 @@ let sharedBrowser: Browser | null = null
  * Get or create shared browser instance
  */
 async function getSharedBrowser(): Promise<Browser> {
-  if (!sharedBrowser || !sharedBrowser.isConnected()) {
+  if (!sharedBrowser || !sharedBrowser.connected) {
     const browserWSEndpoint = process.env.BROWSER_WS_ENDPOINT
     const launchTimeout = 15_000
 
@@ -107,7 +107,7 @@ async function getSharedBrowser(): Promise<Browser> {
  * Close shared browser instance
  */
 async function closeSharedBrowser() {
-  if (sharedBrowser && sharedBrowser.isConnected()) {
+  if (sharedBrowser && sharedBrowser.connected) {
     if (process.env.BROWSER_WS_ENDPOINT) {
       // For external browser service, just disconnect
       await sharedBrowser.disconnect()
