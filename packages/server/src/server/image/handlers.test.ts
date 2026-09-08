@@ -395,7 +395,7 @@ describe('image handlers', () => {
       expect(res.set).toHaveBeenCalledWith('x-provider-name', 'Trust Wallet')
       expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
       expect(res.set).toHaveBeenCalledWith('x-license-url', 'https://github.com/trustwallet/assets/blob/master/LICENSE')
-      expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2019-2023 Trust Wallet — MIT')
+      expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2019-2023 Trust Wallet - MIT')
       // x-uri stays a backwards-compatible alias for x-source-uri.
       expect(res.set).toHaveBeenCalledWith('x-source-uri', 'trustwallet/blockchains/ethereum/assets/0xabc/logo.png')
       expect(res.set).toHaveBeenCalledWith('x-uri', 'trustwallet/blockchains/ethereum/assets/0xabc/logo.png')

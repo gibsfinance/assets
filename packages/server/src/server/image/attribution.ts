@@ -51,7 +51,7 @@ const TRUSTWALLET: SourceLicense = Object.freeze({
   name: 'Trust Wallet',
   license: 'MIT',
   licenseUrl: 'https://github.com/trustwallet/assets/blob/master/LICENSE',
-  attribution: 'Copyright (c) 2019-2023 Trust Wallet — MIT',
+  attribution: 'Copyright (c) 2019-2023 Trust Wallet - MIT',
 })
 
 /**
@@ -64,7 +64,7 @@ const SMOLDAPP: SourceLicense = Object.freeze({
   name: 'Smol',
   license: 'MIT',
   licenseUrl: 'https://github.com/SmolDapp/tokenAssets/blob/main/LICENSE',
-  attribution: 'Copyright (c) 2024 Smol — MIT',
+  attribution: 'Copyright (c) 2024 Smol - MIT',
 })
 
 /**
@@ -77,7 +77,7 @@ const ETHEREUM_LISTS: SourceLicense = Object.freeze({
   name: 'ethereum-lists',
   license: 'MIT',
   licenseUrl: 'https://github.com/ethereum-lists/tokens/blob/master/LICENSE',
-  attribution: 'Copyright (c) 2018 ethereum-lists — MIT',
+  attribution: 'Copyright (c) 2018 ethereum-lists - MIT',
 })
 
 /**
@@ -101,7 +101,7 @@ const PULSECHAIN_ASSETS: SourceLicense = Object.freeze({
   license: 'unknown',
   licenseUrl: 'https://github.com/PLS369/pulsechain-assets/blob/main/README.md',
   attribution:
-    'PLS369 / pulsechain-assets — the source states its data is "open for all projects to use" but grants no formal licence.',
+    'PLS369 / pulsechain-assets - the source states its data is "open for all projects to use" but grants no formal licence.',
 })
 
 /**
@@ -165,7 +165,13 @@ function normalizeSourceUri(uri: string | null | undefined): string | undefined 
   if (uri.startsWith('http') || uri.startsWith('ipfs')) return uri
   if (uri.startsWith('data:')) return undefined
   if (!path.isAbsolute(uri)) return uri
-  return path.relative(submodules, uri)
+  const relative = path.relative(submodules, uri)
+  // A path stored outside the submodules directory relativises to something that
+  // climbs out of it (`../../var/lib/...`). Publishing that would describe the
+  // server's own filesystem layout to every caller, and it names no source we can
+  // attribute anyway, so it is dropped rather than exposed.
+  if (relative.startsWith('..')) return undefined
+  return relative
 }
 
 /**
@@ -224,6 +230,57 @@ function resolveProviderIdentity({
   return { key: source.sourceKey, name: source.name }
 }
 
+/**
+ * Characters Node will accept in a response header value: horizontal tab, the
+ * printable range, and the high half of Latin-1. Node's own validator rejects
+ * everything else, including every code point above U+00FF and both carriage
+ * return and line feed.
+ */
+const HEADER_UNSAFE_CHARACTER = /[^\t\x20-\x7e\x80-\xff]/
+
+/**
+ * Return a value only if it can legally be a header, otherwise nothing.
+ *
+ * This exists because everything this module publishes is DATA, not literals we
+ * control: a source uri comes out of the database, and an attribution line is a
+ * copyright notice typed by a person. An em dash in one of those constants took
+ * every image response with a recognised provider to a 500, because Node throws
+ * `ERR_INVALID_CHAR` rather than dropping the header. A stored uri carrying a
+ * non-Latin-1 character, or a carriage return, would do exactly the same, and a
+ * carriage return would be a response-splitting vector if Node ever stopped
+ * refusing it.
+ *
+ * Dropping the single offending header is the right failure: the image still
+ * serves, and one missing attribution header is a far smaller harm than a 500 on
+ * every request for that provider. Callers that publish something they consider
+ * mandatory should assert its presence rather than assume it.
+ */
+function headerSafe(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  if (HEADER_UNSAFE_CHARACTER.test(value)) return undefined
+  return value
+}
+
+/**
+ * The same guard for a uri, with one extra attempt before giving up: a uri whose
+ * only problem is a non-Latin-1 character — an internationalised domain, a
+ * non-Latin filename — has a lossless and standard header-safe form, its
+ * percent-encoding. Encoding is tried only when the raw value is already unsafe,
+ * so a uri that is fine is published exactly as stored and never double-encoded.
+ */
+function headerSafeUri(uri: string | undefined): string | undefined {
+  const asStored = headerSafe(uri)
+  if (asStored) return asStored
+  if (!uri) return undefined
+  try {
+    return headerSafe(encodeURI(uri))
+  } catch {
+    // encodeURI throws on a lone surrogate; there is no correct encoding to fall
+    // back to, so the header is omitted.
+    return undefined
+  }
+}
+
 /** Every header name this module can emit — the exact set `cors()` must expose. */
 export const ATTRIBUTION_HEADER_NAMES = [
   'link',
@@ -257,28 +314,26 @@ export function attributionHeaders({
   providerKey?: string | null
 }): Record<string, string> {
   const source = resolveAttribution({ providerKey, uri })
-  const normalizedUri = normalizeSourceUri(uri)
   const headers: Record<string, string> = {
     link: LICENSE_LINK_HEADER,
     'x-license': source.license,
   }
+  const set = (name: string, value: string | null | undefined): void => {
+    const safe = headerSafe(value)
+    if (safe) headers[name] = safe
+  }
+  const normalizedUri = headerSafeUri(normalizeSourceUri(uri))
   if (normalizedUri) {
     headers['x-source-uri'] = normalizedUri
     // Backwards-compatible alias — existing consumers already read x-uri.
     headers['x-uri'] = normalizedUri
   }
   const provider = resolveProviderIdentity({ providerKey, source })
-  if (provider) {
-    headers['x-provider'] = provider.key
+  set('x-provider', provider?.key)
+  set('x-provider-name', provider?.name)
+  if (source.license !== 'unknown') {
+    set('x-license-url', source.licenseUrl)
   }
-  if (provider?.name) {
-    headers['x-provider-name'] = provider.name
-  }
-  if (source.license !== 'unknown' && source.licenseUrl) {
-    headers['x-license-url'] = source.licenseUrl
-  }
-  if (source.attribution) {
-    headers['x-attribution'] = source.attribution
-  }
+  set('x-attribution', source.attribution)
   return headers
 }

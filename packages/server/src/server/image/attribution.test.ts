@@ -129,13 +129,27 @@ describe('attributionHeaders', () => {
     expect(headers['x-provider-name']).toBe('Smol')
     expect(headers['x-license']).toBe('MIT')
     expect(headers['x-license-url']).toBe('https://github.com/SmolDapp/tokenAssets/blob/main/LICENSE')
-    expect(headers['x-attribution']).toBe('Copyright (c) 2024 Smol — MIT')
+    expect(headers['x-attribution']).toBe('Copyright (c) 2024 Smol - MIT')
   })
 
   it('omits x-source-uri/x-uri entirely for a data uri (genuinely no source location)', () => {
     const headers = attributionHeaders({ uri: 'data:image/png;base64,abc' })
     expect(headers).not.toHaveProperty('x-source-uri')
     expect(headers).not.toHaveProperty('x-uri')
+  })
+
+  it('omits the uri rather than throwing when it cannot be encoded at all', () => {
+    // A lone surrogate is not valid text, so encodeURI throws on it. The image
+    // still has to be served: a header that cannot be built is dropped, never
+    // allowed to become an exception on the response path. Reachable in practice
+    // through a truncated or mis-decoded value stored by a collector.
+    const headers = attributionHeaders({ uri: 'https://example.test/\uD800.png' })
+    expect(headers).not.toHaveProperty('x-source-uri')
+    expect(headers).not.toHaveProperty('x-uri')
+    // The rest of the attribution still goes out — losing one fact must not lose
+    // the licence along with it.
+    expect(headers['x-license']).toBe('unknown')
+    expect(headers.link).toBe('<https://gib.show/terms>; rel="license"')
   })
 
   it('omits x-source-uri/x-uri entirely when no uri is given at all', () => {
@@ -178,7 +192,7 @@ describe('attributionHeaders', () => {
     })
     expect(headers['x-provider']).toBe('gibs')
     expect(headers['x-license']).toBe('MIT')
-    expect(headers['x-attribution']).toBe('Copyright (c) 2024 Smol — MIT')
+    expect(headers['x-attribution']).toBe('Copyright (c) 2024 Smol - MIT')
     // The display name is withheld rather than guessed: naming this "Smol" beside
     // x-provider: gibs would assert the two are the same party.
     expect(headers).not.toHaveProperty('x-provider-name')
