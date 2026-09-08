@@ -725,6 +725,47 @@ describe('versioned handler', () => {
     const [list] = vi.mocked(listUtils.buildListPayload).mock.calls[0]
     expect(list).toMatchObject({ major: 1, minor: 2, patch: 3, name: 'PulseX', imageHash: 'listlogohash' })
   })
+
+  // The refresh parameter is gated on every other list route. This one was the
+  // exception, and an ungated refresh here is the same denial-of-service lever it
+  // is everywhere else: getLists joins the whole list, and a caller who can force
+  // it on every request can force the expensive path on every request.
+  it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 2, patch: 3 }] as never)
+
+    const { res, next } = await callVersioned(
+      { providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' },
+      { refresh: '1' },
+    )
+
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(401)
+    // Told plainly that the token was rejected, rather than handed a cached body a
+    // caller would then believe was rebuilt.
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rebuilds, rewrites, and marks no-store for an authorized refresh', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 2, patch: 3 }] as never)
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xstale"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callVersioned(
+      { providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' },
+      { refresh: '1' },
+      { authorization: 'Bearer test-admin-token' },
+    )
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(listUtils.buildListPayload).toHaveBeenCalled()
+    expect(db.insertCacheRequest).toHaveBeenCalled()
+    // A refresh response that a content delivery network stored would pin the
+    // rebuilt body for everyone else, which is the staleness the refresh clears.
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+  })
 })
 
 describe('providerKeyed handler', () => {
@@ -844,6 +885,35 @@ describe('providerKeyed handler', () => {
     expect(filtered).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended:::1:`)
     expect(unfiltered).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended::::`)
     expect(filtered).not.toBe(unfiltered)
+  })
+
+  // Express hands back an array when a filter repeats. Without the sort, the two
+  // orders below mint two keys for one body — identical bytes stored twice, built
+  // twice, and expiring separately. Extensions are already sorted for this reason;
+  // the repeated query values were not covered by a test until now.
+  it('folds a repeated filter in a stable order, so argument order cannot fork the cache', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { decimals: ['6', '18'] })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { decimals: ['18', '6'] })
+
+    const [forward, reversed] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(forward).toBe(reversed)
+    expect(forward).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended::::18,6`)
+  })
+
+  // `/list/pulsex` serves the provider's default list and `/list/pulsex/extended`
+  // serves a named one. They are different bodies, so they must be different keys —
+  // an absent list key has to occupy its segment rather than vanish from the string.
+  it('keys a bare provider request apart from a named list', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex' })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' })
+
+    const [bare, named] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(bare).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:::::`)
+    expect(bare).not.toBe(named)
   })
 
   it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
