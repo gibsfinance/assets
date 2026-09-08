@@ -554,6 +554,15 @@ export const sendImage = (
   // width and height only force cascading-style-sheet consumers to override
   // or strip them. Only the root element is ever rewritten — see
   // stripRootSvgDimensions.
-  const content = SVG_EXTS.has(img.ext) ? stripRootSvgDimensions(img.content) : img.content
+  //
+  // The content-addressed route is deliberately excluded. Its whole contract is
+  // that the hash in the path is the hash of the bytes it returns, which is also
+  // what makes a year-long immutable lifetime safe to promise. Rewriting the
+  // markup there would break that digest for every caller who verifies it, and
+  // the year-long cache would carry the broken promise well past any correction.
+  // Presentation is worth less than an integrity guarantee, so the hash route
+  // serves exactly what was stored.
+  const rewritable = SVG_EXTS.has(img.ext) && cachePolicy !== 'content-addressed'
+  const content = rewritable ? stripRootSvgDimensions(img.content) : img.content
   r.contentType(img.ext).send(content)
 }
