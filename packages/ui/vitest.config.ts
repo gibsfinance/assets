@@ -106,7 +106,27 @@ export default defineConfig({
       // remaining single-digit-line branch gaps across small presentational
       // components are the same tier and were likewise left. Raise these floors
       // further as that work lands; never lower them to make a failing run pass.
-      thresholds: { statements: 95.5, branches: 90.3, functions: 95.8, lines: 96.5 },
+      //
+      // 2026-09-08: measured 98.14 / 92.85 / 98.69 / 99.31 over 1636 tests, taking the
+      // four surfaces the note above deferred. RadialPositionPicker and TokenListFilter
+      // had no test file at all; StudioConfigurator's InfiniteCanvas pan and wheel zoom,
+      // its badge ring offset and its CodePanel measurement went from 74.32/59.64/74.24
+      // to 98.64/85.96/100; NetworkSelect's clear-selection button and its priority-chain
+      // comparator went from 90.74/85/91.3 to 98.14/95/97.82. Every one of these was
+      // written against a mutation: the component was broken on purpose and the test that
+      // should have caught it had to fail. Three did not on the first attempt and were
+      // rewritten rather than kept - a test that survives its own mutation is measuring
+      // nothing. Two were discarded outright: RadialPositionPicker's pointer-up guard
+      // cannot be reached without a prior pointer-down (there is no listener to fire),
+      // and its Number.isNaN check cannot be reached through a number input at all.
+      //
+      // Deliberately left, with reasons: NetworkSelect line 148 is the virtualizer's
+      // getScrollElement callback, and jsdom has no layout, so the real virtualizer
+      // mounts zero rows and the mock never calls it - reaching it means faking a
+      // layout the browser would produce and jsdom cannot. StudioBrowser's client-only
+      // popularity sort and ListEditor's `if (!activeList) return` guards are unchanged
+      // from the note above and unchanged in reasoning.
+      thresholds: { statements: 97.9, branches: 92.6, functions: 98.4, lines: 99.1 },
     },
   },
   resolve: {
