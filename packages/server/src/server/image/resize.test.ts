@@ -83,19 +83,39 @@ describe('parseResizeParams', () => {
   })
 
   it('parses w only', () => {
-    expect(parseResizeParams({ query: { w: '72' } })).toEqual({ w: 72, h: null, format: null })
+    expect(parseResizeParams({ query: { w: '72' } })).toEqual({
+      w: 72,
+      h: null,
+      format: null,
+      unconvertibleFormat: null,
+    })
   })
 
   it('parses h only', () => {
-    expect(parseResizeParams({ query: { h: '64' } })).toEqual({ w: null, h: 64, format: null })
+    expect(parseResizeParams({ query: { h: '64' } })).toEqual({
+      w: null,
+      h: 64,
+      format: null,
+      unconvertibleFormat: null,
+    })
   })
 
   it('parses w + h + format', () => {
-    expect(parseResizeParams({ query: { w: '72', h: '72', as: 'webp' } })).toEqual({ w: 72, h: 72, format: 'webp' })
+    expect(parseResizeParams({ query: { w: '72', h: '72', as: 'webp' } })).toEqual({
+      w: 72,
+      h: 72,
+      format: 'webp',
+      unconvertibleFormat: null,
+    })
   })
 
   it('normalizes jpeg to jpg', () => {
-    expect(parseResizeParams({ query: { as: 'jpeg' } })).toEqual({ w: null, h: null, format: 'jpg' })
+    expect(parseResizeParams({ query: { as: 'jpeg' } })).toEqual({
+      w: null,
+      h: null,
+      format: 'jpg',
+      unconvertibleFormat: null,
+    })
   })
 
   it('rejects invalid dimensions', () => {
@@ -111,12 +131,22 @@ describe('parseResizeParams', () => {
   })
 
   it('parses format only', () => {
-    expect(parseResizeParams({ query: { as: 'webp' } })).toEqual({ w: null, h: null, format: 'webp' })
+    expect(parseResizeParams({ query: { as: 'webp' } })).toEqual({
+      w: null,
+      h: null,
+      format: 'webp',
+      unconvertibleFormat: null,
+    })
   })
 
   it('accepts boundary dimensions', () => {
-    expect(parseResizeParams({ query: { w: '1' } })).toEqual({ w: 1, h: null, format: null })
-    expect(parseResizeParams({ query: { w: '2048' } })).toEqual({ w: 2048, h: null, format: null })
+    expect(parseResizeParams({ query: { w: '1' } })).toEqual({ w: 1, h: null, format: null, unconvertibleFormat: null })
+    expect(parseResizeParams({ query: { w: '2048' } })).toEqual({
+      w: 2048,
+      h: null,
+      format: null,
+      unconvertibleFormat: null,
+    })
     expect(parseResizeParams({ query: { w: '2049' } })).toBeNull()
   })
 
@@ -124,8 +154,18 @@ describe('parseResizeParams', () => {
   // injected by mutating req.query, which Express 5 discards (non-memoized
   // query getter), so /1/{address}.webp silently served the original format.
   it('derives format from the path extension when ?as= is absent', () => {
-    expect(parseResizeParams({ query: {}, pathExt: '.webp' })).toEqual({ w: null, h: null, format: 'webp' })
-    expect(parseResizeParams({ query: {}, pathExt: '.jpeg' })).toEqual({ w: null, h: null, format: 'jpg' })
+    expect(parseResizeParams({ query: {}, pathExt: '.webp' })).toEqual({
+      w: null,
+      h: null,
+      format: 'webp',
+      unconvertibleFormat: null,
+    })
+    expect(parseResizeParams({ query: {}, pathExt: '.jpeg' })).toEqual({
+      w: null,
+      h: null,
+      format: 'jpg',
+      unconvertibleFormat: null,
+    })
   })
 
   it('lets an explicit ?as= win over the path extension', () => {
@@ -133,6 +173,7 @@ describe('parseResizeParams', () => {
       w: null,
       h: null,
       format: 'png',
+      unconvertibleFormat: null,
     })
   })
 
@@ -146,36 +187,95 @@ describe('parseResizeParams', () => {
   // that guide are honoured as a deprecated alias rather than silently
   // ignored (see parseResizeParams' own doc comment).
   it('accepts the deprecated ?format= as an alias for ?as=', () => {
-    expect(parseResizeParams({ query: { format: 'webp' } })).toEqual({ w: null, h: null, format: 'webp' })
+    expect(parseResizeParams({ query: { format: 'webp' } })).toEqual({
+      w: null,
+      h: null,
+      format: 'webp',
+      unconvertibleFormat: null,
+    })
   })
 
   it('normalizes jpeg to jpg through the deprecated ?format= alias too', () => {
-    expect(parseResizeParams({ query: { format: 'jpeg' } })).toEqual({ w: null, h: null, format: 'jpg' })
+    expect(parseResizeParams({ query: { format: 'jpeg' } })).toEqual({
+      w: null,
+      h: null,
+      format: 'jpg',
+      unconvertibleFormat: null,
+    })
   })
 
   it('lets ?as= win when both ?as= and the deprecated ?format= are present', () => {
-    expect(parseResizeParams({ query: { as: 'png', format: 'webp' } })).toEqual({ w: null, h: null, format: 'png' })
+    expect(parseResizeParams({ query: { as: 'png', format: 'webp' } })).toEqual({
+      w: null,
+      h: null,
+      format: 'png',
+      unconvertibleFormat: null,
+    })
   })
 
-  // svg cannot be produced by conversion — sharp only rasterizes — so asking
-  // for it as an output format must fail loudly rather than silently serving
-  // the original bytes back under a 200.
-  it('throws a 404 naming the problem when ?as=svg is requested', () => {
-    expect(() => parseResizeParams({ query: { as: 'svg' } })).toThrow(/svg/)
-    try {
-      parseResizeParams({ query: { as: 'svg' } })
-      expect.unreachable('parseResizeParams should have thrown')
-    } catch (err) {
-      expect((err as { status?: number }).status).toBe(404)
-    }
+  // Whether ?as=svg can be honoured depends on the SOURCE, which this function
+  // never sees, so it records the request instead of ruling on it. Deciding here
+  // would 404 `/image/1?as=svg`, where the stored image already is an svg and the
+  // request is satisfiable — it answers 200 in production today.
+  it('records a request for svg rather than rejecting it, since the source decides', () => {
+    expect(parseResizeParams({ query: { as: 'svg' } })).toEqual({
+      w: null,
+      h: null,
+      format: null,
+      unconvertibleFormat: 'svg',
+    })
   })
 
-  it('throws a 404 naming the problem when the deprecated ?format=svg is requested', () => {
-    expect(() => parseResizeParams({ query: { format: 'svg' } })).toThrow(/svg/)
+  it('records it through the deprecated ?format= alias too', () => {
+    expect(parseResizeParams({ query: { format: 'svg' } })).toEqual({
+      w: null,
+      h: null,
+      format: null,
+      unconvertibleFormat: 'svg',
+    })
+  })
+
+  it('still carries the dimensions alongside an unconvertible format request', () => {
+    // A caller asking for `?w=64&as=svg` against an svg source should get a
+    // served image, not a dropped width — the two requests are independent.
+    expect(parseResizeParams({ query: { w: '64', as: 'svg' } })).toEqual({
+      w: 64,
+      h: null,
+      format: null,
+      unconvertibleFormat: 'svg',
+    })
   })
 
   it('does not throw for a path-extension .svg request (already validated upstream as a real source)', () => {
     expect(parseResizeParams({ query: {}, pathExt: '.svg' })).toBeNull()
+  })
+})
+
+describe('an unconvertible format request, settled against the source', () => {
+  // The decision cannot be made when the query is parsed, only once the stored
+  // image is in hand. These two cases are why: the same `?as=svg` is a served
+  // image against one source and an honest 404 against the other.
+  it('serves a vector source unchanged, because it already is the requested format', async () => {
+    const res = mockRes()
+    const img = makeImage({ ext: '.svg', content: Buffer.from('<svg viewBox="0 0 32 32"></svg>') })
+    const params = parseResizeParams({ query: { as: 'svg' } })
+
+    // false means "not handled here" — the caller then serves the stored bytes,
+    // which are the svg the request asked for.
+    await expect(maybeResize({ res, img, params })).resolves.toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses a raster source with a 404 that names why', async () => {
+    const res = mockRes()
+    const img = makeImage({ ext: '.png' })
+    const params = parseResizeParams({ query: { as: 'svg' } })
+
+    await expect(maybeResize({ res, img, params })).rejects.toMatchObject({ status: 404 })
+    // The message has to say what was wrong, not merely that something was: the
+    // silent 200 this replaced is what sent an integrator hunting through a
+    // JavaScript bundle for an answer.
+    await expect(maybeResize({ res, img, params })).rejects.toThrow(/png/)
   })
 })
 
@@ -927,7 +1027,7 @@ describe('sendVariant (via maybeResize)', () => {
     expect(res.set).toHaveBeenCalledWith('x-uri', 'smoldapp-tokenassets/chains/1/logo.svg')
     expect(res.set).toHaveBeenCalledWith('x-provider', 'smoldapp')
     expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
-    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2024 Smol — MIT')
+    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2024 Smol - MIT')
   })
 
   it('resolves attribution from the provider key when the row carries one, even without a uri match', async () => {
@@ -943,7 +1043,7 @@ describe('sendVariant (via maybeResize)', () => {
 
     expect(res.set).toHaveBeenCalledWith('x-provider', 'ethereum-lists')
     expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
-    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2018 ethereum-lists — MIT')
+    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2018 ethereum-lists - MIT')
   })
 })
 

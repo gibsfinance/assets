@@ -21,7 +21,7 @@ Returns the highest-priority image for a token. Supports optional resize and for
 |-------|------|---------|-------------|
 | `w` | int (1-2048) | — | Target width in pixels |
 | `h` | int (1-2048) | — | Target height in pixels |
-| `as` | string | original | Output format: `webp`, `png`, `jpg`, `jpeg`, `avif`. `svg` is rejected with 404 — it is vector and cannot be produced by conversion. `format` is accepted as a deprecated alias for this parameter. |
+| `as` | string | original | Output format: `webp`, `png`, `jpg`, `jpeg`, `avif`. `svg` succeeds when the stored image already is a vector; against a raster source it returns 404, since a raster image cannot be converted to a vector one. `format` is accepted as a deprecated alias for this parameter. |
 | `providerKey` | string | — | Filter by provider (e.g., `trustwallet`, `coingecko`). Comma-separated for more than one. |
 | `listKey` | string | — | Filter by list key. Comma-separated for more than one. |
 | `mode` | string | `save` | `save` returns binary, `link` returns redirect |

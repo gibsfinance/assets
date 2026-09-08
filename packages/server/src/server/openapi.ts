@@ -54,8 +54,9 @@ const RESIZE_PARAMS = [
     name: 'as',
     in: 'query' as const,
     description:
-      'Convert output format. svg is rejected with 404 naming the problem — it is vector and cannot be ' +
-      'produced by conversion. Every other invalid value is silently ignored and the original format is served.',
+      'Convert output format. Requesting svg succeeds when the stored image already is one and is served ' +
+      'unchanged; against a raster source it returns 404, because a raster image cannot be converted to a ' +
+      'vector one. Every other unrecognised value is ignored and the original format is served.',
     schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
   },
   {

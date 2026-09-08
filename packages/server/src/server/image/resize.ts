@@ -41,6 +41,9 @@ const VALID_FORMATS = new Set(['webp', 'png', 'jpg', 'jpeg', 'avif'])
  */
 const UNCONVERTIBLE_FORMATS = new Set(['svg'])
 
+/** Stored extensions that mean the image is already a vector. */
+const SVG_SOURCE_EXTS = new Set(['.svg', '.svg+xml'])
+
 /** Max dimension to prevent abuse */
 const MAX_DIM = 2048
 
@@ -67,6 +70,13 @@ export interface ResizeParams {
   w: number | null
   h: number | null
   format: string | null
+  /**
+   * A requested output format that sharp cannot produce — `svg` today. Recorded
+   * rather than rejected at parse time, because whether it is satisfiable depends
+   * on the source: an svg source already IS the requested format. Resolved in
+   * `maybeResize`, which is the first place the stored image is in hand.
+   */
+  unconvertibleFormat: string | null
 }
 
 export interface ResizeParamsInput {
@@ -101,9 +111,12 @@ export function parseResizeParams({ query, pathExt }: ResizeParamsInput): Resize
   const deprecatedFormat = typeof query.format === 'string' ? query.format.toLowerCase() : null
   const queryFormat = asFormat ?? deprecatedFormat
 
-  if (queryFormat && UNCONVERTIBLE_FORMATS.has(queryFormat)) {
-    throw httpErrors.NotFound(`${queryFormat} is not a convertible output format — request an svg source directly`)
-  }
+  // A request for a vector output is recorded, not decided, here: whether it can
+  // be honoured depends on the SOURCE, which this function never sees. Asking for
+  // svg when the stored image already IS an svg is a perfectly satisfiable
+  // request and answers 200 today; only a raster source makes it impossible.
+  // Throwing here would have turned that working request into a 404.
+  const unconvertibleFormat = queryFormat && UNCONVERTIBLE_FORMATS.has(queryFormat) ? queryFormat : null
 
   const fRaw = queryFormat ?? (pathExt ? pathExt.replace('.', '').toLowerCase() : null)
 
@@ -111,8 +124,8 @@ export function parseResizeParams({ query, pathExt }: ResizeParamsInput): Resize
   const h = !isNaN(hRaw) && hRaw >= 1 && hRaw <= MAX_DIM ? hRaw : null
   const format = fRaw && VALID_FORMATS.has(fRaw) ? (fRaw === 'jpeg' ? 'jpg' : fRaw) : null
 
-  if (!w && !h && !format) return null
-  return { w, h, format }
+  if (!w && !h && !format && !unconvertibleFormat) return null
+  return { w, h, format, unconvertibleFormat }
 }
 
 /** Check if SVG content has a viewBox attribute */
@@ -266,6 +279,17 @@ export interface MaybeResizeOptions {
 export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }: MaybeResizeOptions): Promise<boolean> {
   if (!params) return false
 
+  // Now that the source is known, settle a request for a format sharp cannot
+  // produce. An svg source already satisfies `?as=svg`, so serve it unchanged;
+  // a raster source cannot become one, and saying so beats handing back a png
+  // that the caller asked not to receive.
+  if (params.unconvertibleFormat) {
+    if (SVG_SOURCE_EXTS.has(img.ext)) return false
+    throw httpErrors.NotFound(
+      `${params.unconvertibleFormat} is not available for this image — its source is ${img.ext.replace('.', '')}, and a raster image cannot be converted to a vector one`,
+    )
+  }
+
   const { w, h, format } = params
   const targetFormat = format || extToFormat(img.ext)
 
@@ -283,7 +307,7 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   }
 
   // SVG with viewBox and no explicit format conversion → serve as-is
-  if (img.ext === '.svg' || img.ext === '.svg+xml') {
+  if (SVG_SOURCE_EXTS.has(img.ext)) {
     if (svgHasViewBox(content) && !format) return false
   }
 
