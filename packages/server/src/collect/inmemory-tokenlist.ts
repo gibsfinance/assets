@@ -211,7 +211,6 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
       signal,
     })
     const entries = planned.map((entry) => (entry.uri && missing.has(entry.uri) ? { ...entry, uri: null } : entry))
-    if (signal.aborted) return
 
     /** Write one entry. Shared by the grouped path and the one-at-a-time replay below. */
     const store = async (entry: (typeof entries)[number], tx?: DrizzleTx) =>

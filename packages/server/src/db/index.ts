@@ -1513,7 +1513,10 @@ export const getLists = async (providerKey: string, listKey: string) => {
       .from(s.provider)
       .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
       .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
-      .where(whereClause ? and(whereClause, hasTokens) : hasTokens)
+      // `and` drops an undefined condition, so this reads as `hasTokens` alone when the
+      // caller has none to add. The ternary this replaces was answering a type, not a
+      // case: every call site below passes a clause, so its second arm never ran.
+      .where(and(whereClause, hasTokens))
       .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
