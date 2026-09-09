@@ -7,6 +7,7 @@ import EndpointCard from '../components/EndpointCard'
 import FrameworkSwitcher from '../components/FrameworkSwitcher'
 import { getApiUrl } from '../utils'
 import { specToSections, type OpenApiDocument, type DocsEndpointSection } from '../utils/openapi-docs'
+import { filterEndpoints } from '../utils/endpoint-filter'
 
 // ---------------------------------------------------------------------------
 // Static data — endpoint sections render from the served OpenAPI definition
@@ -163,17 +164,6 @@ curl "${apiBase}/stats" | jq '.[:5]'`,
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function filterEndpoints<T extends { path: string; description: string }>(
-  endpoints: T[],
-  query: string,
-): T[] {
-  if (!query.trim()) return endpoints
-  const lower = query.toLowerCase()
-  return endpoints.filter(
-    (e) => e.path.toLowerCase().includes(lower) || e.description.toLowerCase().includes(lower),
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Component

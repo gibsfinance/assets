@@ -3,6 +3,7 @@ import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react
 import CodeBlock from './CodeBlock'
 import Image from './Image'
 import { formatBytes } from '../utils/formatting'
+import { isImageEndpoint } from '../utils/endpoint-filter'
 import { countResults, isCacheHit, parsePathParams } from '../utils/token-search'
 
 interface EndpointCardProps {
@@ -25,10 +26,6 @@ function PathDisplay({ path }: { path: string }) {
       )}
     </span>
   )
-}
-
-function isImageEndpoint(url: string): boolean {
-  return /\/image\//.test(url) || /\/sprite\//.test(url)
 }
 
 interface ResponseStats {

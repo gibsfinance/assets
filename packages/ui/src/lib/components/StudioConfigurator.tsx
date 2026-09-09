@@ -13,6 +13,14 @@ import { useTheme } from '../contexts/ThemeContext'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import { badgePositionToCSS } from '../utils/badge-position'
+import { shapeToCSS } from '../utils/code-output'
+import {
+  IDENTITY_TRANSFORM,
+  panBy,
+  zoomAtPointer,
+  clampZoom,
+  type CanvasTransform,
+} from '../utils/canvas-transform'
 import BadgeConfigurator from './BadgeConfigurator'
 import ListResolutionOrder from './ListResolutionOrder'
 import CodeOutput from './CodeOutput'
@@ -29,12 +37,6 @@ const SHADOW_MAP: Record<string, string> = {
   subtle: '0 1px 3px rgba(0,0,0,0.12)',
   medium: '0 4px 12px rgba(0,0,0,0.15)',
   strong: '0 8px 24px rgba(0,0,0,0.2)',
-}
-
-function shapeToRadius(shape: string, borderRadius: number): string {
-  if (shape === 'circle') return '50%'
-  if (shape === 'rounded') return `${borderRadius}px`
-  return '0'
 }
 
 // ---------------------------------------------------------------------------
@@ -59,9 +61,6 @@ const BACKGROUND_SWATCHES = [
   { value: '#000000', label: 'Black' },
   { value: '#ffffff', label: 'White' },
 ] as const
-
-const MIN_ZOOM = 0.25
-const MAX_ZOOM = 4
 
 // ---------------------------------------------------------------------------
 // Toolbar: Size inputs
@@ -473,16 +472,6 @@ function Toolbar({ showCode, onToggleCode }: { showCode: boolean; onToggleCode: 
 // Infinite canvas
 // ---------------------------------------------------------------------------
 
-interface CanvasTransform {
-  x: number
-  y: number
-  zoom: number
-}
-
-function clampZoom(zoom: number): number {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
-}
-
 /** Checkerboard SVG data URI for a transparent-style canvas background */
 const CHECKERBOARD_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23f8f8f8'/%3E%3Crect width='10' height='10' fill='%23e0e0e0'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23e0e0e0'/%3E%3C/svg%3E")`
 const CHECKERBOARD_SVG_DARK = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23111113'/%3E%3Crect width='10' height='10' fill='%231a1a1e'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%231a1a1e'/%3E%3C/svg%3E")`
@@ -491,7 +480,7 @@ function InfiniteCanvas() {
   const { selectedToken, selectedChainId, resolutionOrder, appearance, badge } = useStudio()
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const [transform, setTransform] = useState<CanvasTransform>({ x: 0, y: 0, zoom: 1 })
+  const [transform, setTransform] = useState<CanvasTransform>(IDENTITY_TRANSFORM)
   const isDragging = useRef(false)
   const lastPointer = useRef({ x: 0, y: 0 })
 
@@ -520,7 +509,7 @@ function InfiniteCanvas() {
 
   // Appearance computations
   const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance
-  const borderRadiusCSS = shapeToRadius(shape, borderRadius)
+  const borderRadiusCSS = shapeToCSS(shape, borderRadius)
   const boxShadow = SHADOW_MAP[shadow] ?? 'none'
 
   // Badge position is relative to the full padded container, not just the image
@@ -545,7 +534,7 @@ function InfiniteCanvas() {
     const dx = event.clientX - lastPointer.current.x
     const dy = event.clientY - lastPointer.current.y
     lastPointer.current = { x: event.clientX, y: event.clientY }
-    setTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }))
+    setTransform((t) => panBy(t, dx, dy))
   }, [])
 
   const handlePointerUp = useCallback(() => {
@@ -562,22 +551,12 @@ function InfiniteCanvas() {
     const pointerX = event.clientX - rect.left
     const pointerY = event.clientY - rect.top
 
-    setTransform((prev) => {
-      const delta = -event.deltaY * 0.001
-      const newZoom = clampZoom(prev.zoom * (1 + delta))
-      const scale = newZoom / prev.zoom
-
-      // Zoom towards the pointer position
-      const newX = pointerX - scale * (pointerX - prev.x)
-      const newY = pointerY - scale * (pointerY - prev.y)
-
-      return { x: newX, y: newY, zoom: newZoom }
-    })
+    setTransform((prev) => zoomAtPointer(prev, { pointerX, pointerY, deltaY: event.deltaY }))
   }, [])
 
   // ---- Reset view ----
   const resetView = useCallback(() => {
-    setTransform({ x: 0, y: 0, zoom: 1 })
+    setTransform(IDENTITY_TRANSFORM)
   }, [])
 
   return (

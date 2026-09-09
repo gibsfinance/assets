@@ -7,23 +7,11 @@ import { getNetworkName } from '../utils/network-name'
 import Image from './Image'
 import type { Token } from '../types'
 import { tokenChainIdentifier } from '../utils/chain-identifier'
+import { formatFileSize, formatDimensions } from '../utils/formatting'
 
 interface TokenDetailModalProps {
   token: Token | null
   onClose: () => void
-}
-
-function formatFileSize(bytes: number | null): string {
-  if (bytes === null) return 'Unknown'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDimensions(format: string, width: number | null, height: number | null): string {
-  if (format === 'SVG') return 'Scalable'
-  if (width && height) return `${width} × ${height} px`
-  return 'Unknown'
 }
 
 function CopyButton({ text }: { text: string }) {

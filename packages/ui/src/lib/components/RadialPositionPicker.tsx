@@ -1,14 +1,17 @@
 import { useRef, useCallback, useState } from 'react'
+import {
+  CIRCLE_SIZE,
+  HANDLE_SIZE,
+  CENTER,
+  angleFromPointer,
+  handlePosition,
+  normalizeAngle,
+} from '../utils/radial-angle'
 
 interface RadialPositionPickerProps {
   angleDeg: number
   onChange: (angleDeg: number) => void
 }
-
-const CIRCLE_SIZE = 120
-const HANDLE_SIZE = 12
-const CENTER = CIRCLE_SIZE / 2
-const RADIUS = (CIRCLE_SIZE - HANDLE_SIZE - 4) / 2
 
 /** Preset angle snap positions */
 const SNAP_PRESETS = [
@@ -17,30 +20,6 @@ const SNAP_PRESETS = [
   { label: 'BL', angleDeg: 225 },
   { label: 'BR', angleDeg: 135 },
 ] as const
-
-/**
- * Calculates the angle in degrees (0–360) from a pointer event relative to
- * the circle center. 0° = top center, 90° = right, 180° = bottom, 270° = left.
- */
-function angleFromPointer(clientX: number, clientY: number, rect: DOMRect): number {
-  const dx = clientX - (rect.left + CENTER)
-  const dy = clientY - (rect.top + CENTER)
-  // atan2 gives 0° at right; offset by -90° so 0° maps to top
-  const rawDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90
-  return ((rawDeg % 360) + 360) % 360
-}
-
-/**
- * Converts an angle in degrees to x/y coordinates on the circle circumference.
- * 0° = top center.
- */
-function handlePosition(angleDeg: number): { x: number; y: number } {
-  const rad = ((angleDeg - 90) * Math.PI) / 180
-  return {
-    x: CENTER + RADIUS * Math.cos(rad),
-    y: CENTER + RADIUS * Math.sin(rad),
-  }
-}
 
 /**
  * A circular drag control for selecting an angle (0–360°).
@@ -83,7 +62,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const value = Number(event.target.value)
       if (!Number.isNaN(value)) {
-        onChange(((value % 360) + 360) % 360)
+        onChange(normalizeAngle(value))
       }
     },
     [onChange],

@@ -5,6 +5,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
+import { sortNetworks } from '../utils/network-sort'
 import { searchNetworks } from '../utils/network-metrics'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
@@ -21,7 +22,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 
   const sortedNetworks = useMemo(() => {
     if (!metrics) return []
-    return sortNetworks(metrics.networks.supported, showTestnets)
+    return sortNetworks(metrics.networks.supported, { showTestnets })
   }, [metrics, showTestnets])
 
   // Normalize the incoming selection to its canonical identifier so a bare
@@ -89,37 +90,6 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 /* -------------------------------------------------------------------------- */
 /*  Shared helpers                                                            */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Order the drawer: Ethereum, then PulseChain, then everything else by name.
- *
- * Reads the `name` and `isTestnet` useMetrics already resolved rather than re-deriving
- * them. Beyond being the single source, that fixes what re-deriving got wrong: it
- * passed the bare `chainId`, so every non-Ethereum-Virtual-Machine chain looked up its
- * coin type as if it were an Ethereum chain id — Bitcoin (bip122-0) resolved to
- * "Chain 0" and sorted under C, and the testnet filter matched that same wrong string.
- */
-function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkInfo[] {
-  const priorityChains = ['1', '369']
-
-  let filtered = networks
-  if (!showTestnets) {
-    filtered = networks.filter((network) => !network.isTestnet)
-  }
-
-  return [...filtered].sort((a, b) => {
-    const aId = a.chainId.toString()
-    const bId = b.chainId.toString()
-    const aIdx = priorityChains.indexOf(aId)
-    const bIdx = priorityChains.indexOf(bId)
-
-    if (aIdx !== -1 && bIdx === -1) return -1
-    if (aIdx === -1 && bIdx !== -1) return 1
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-
-    return a.name.localeCompare(b.name)
-  })
-}
 
 /** Height of one drawer row in pixels; the virtualizer's size estimate. */
 const NETWORK_ROW_HEIGHT = 45
