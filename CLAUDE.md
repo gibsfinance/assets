@@ -30,8 +30,9 @@ yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
 yarn workspace ui run vitest run --coverage
 
-# Lint (server only — must run from packages/server/)
+# Lint — each workspace runs its own, from its own directory. CI runs both.
 cd packages/server && yarn lint
+cd packages/ui && yarn lint
 
 # Typecheck (from root)
 npx tsc --noEmit -p tsconfig.json
@@ -121,7 +122,11 @@ master.
 
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`
-- Lint runs from `packages/server/` via `yarn lint` (prettier + eslint)
+- Lint runs per workspace via `yarn lint` (prettier + eslint), from that
+  workspace's directory. The `lint` job runs `packages/server` and `packages/ui`
+  as separate steps so a failure names which one broke. The interface was left
+  out for a long time and drifted to 187 findings, more than half of them about
+  `coverage/` and `dist/` — generated output nobody had told the linter to skip.
 - ESLint config: `packages/server/eslint.config.js` (flat config; `packages/ui` has its own) —
   `argsIgnorePattern: '^_'`. Both packages migrated off `.eslintrc` some time ago. Staying on
   eslint 9 is deliberate: the registry now flags the whole 9.x line as unsupported, but 10 is a

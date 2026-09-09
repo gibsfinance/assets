@@ -1,0 +1,6 @@
+# Revisions to skip when reading blame. Mechanical reformatting only.
+# Use: git blame --ignore-revs-file .git-blame-ignore-revs
+# or once: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style(ui): format the workspace to its own prettier config
+93e3e316
