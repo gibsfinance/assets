@@ -168,6 +168,24 @@ Two-phase contract (`BaseCollector`):
 
 `sync-order.ts` assigns `ranking = position × 1000 + subIndex` per provider after Phase 1.
 
+### Bridge aggregators
+
+`lifi`, `relay` and `near-intents` share one collector, `collect/aggregator.ts`.
+An aggregator publishes everything it will route rather than a curated list, so
+each source narrows its own response into a common shape (`aggregator-parse.ts`)
+and the shared collector does the rest: group by chain, one list per chain,
+insert and fetch artwork.
+
+They rank below every curated source and above the metadata dumps. Their artwork
+is largely mirrored from Trust Wallet and CoinGecko, which already rank above —
+an aggregator should fill a gap, not outrank the source it copied from.
+
+**Only tokens the aggregator itself vouches for are collected.** LiFi marks 3,579
+of its 17,495 tokens `flagged`; Relay returns outright spam beside Tether. This
+service's entire output is artwork, and a convincing logo on a flagged token is
+help a scam does not otherwise get. The filter is a security boundary, not a
+quality preference.
+
 ## API Routes
 
 ### Images
@@ -275,7 +293,12 @@ NPM publishing: push `sdk-v*` tag → test → publish `@gibs/sdk` → publish `
 
 ## Navigation Guide
 
-**Add a collector:** Create in `src/collect/`, extend `BaseCollector`, register in `collectables.ts` (position = priority)
+**Add a collector:** Create in `src/collect/`, extend `BaseCollector`, then register it in
+**two** files — `collectables.ts` (position = priority) and `collectable-order.ts`, which
+holds the same order as a plain list so the database layer can rank a provider without
+importing every collector. A test compares the two and fails if they disagree. For a
+source that is a plain token list, `RemoteTokenListCollector` needs no new class at all;
+for a bridge aggregator, `AggregatorCollector` needs only a fetch-and-narrow function.
 
 **Add an API endpoint:** Handler in `src/server/`, route in module's `index.ts` or `routes.ts`
 

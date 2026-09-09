@@ -51,6 +51,10 @@ import pangolinCollector from './pangolin'
 import arbitrumCollector from './arbitrum'
 import mewCollector from './mew'
 import jupiterCollector from './jupiter'
+// Bridge aggregators. Broad, cross-chain, and verified-only — see ./aggregator.
+import lifiCollector from './lifi'
+import relayCollector from './relay'
+import nearIntentsCollector from './near-intents'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -104,6 +108,9 @@ type CollectableKey =
   | 'arbitrum'
   | 'mew'
   | 'jupiter'
+  | 'lifi'
+  | 'relay'
+  | 'near-intents'
   | 'ethereum-lists'
   | 'cryptocurrency-icons'
   | 'chainlist'
@@ -199,6 +206,21 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     jupiter: jupiterCollector,
     // MyEtherWallet's Ethereum mainnet token metadata (name/symbol/decimals, no logos).
     mew: mewCollector,
+    // Bridge aggregators. They reach chains and tokens no curated list covers —
+    // LiFi verifies 10,750 tokens over 31 chains, Relay 5,509 over 106 — and both
+    // carry artwork for most of them. They sit here, below every curated source
+    // and above the metadata dumps, because the artwork is largely mirrored from
+    // Trust Wallet and CoinGecko, which already rank above: an aggregator should
+    // fill a gap, not outrank the source it copied from. Only tokens the
+    // aggregator itself vouches for are collected; see ./lifi-parse for what
+    // that costs and why serving a flagged token's logo is not an option.
+    lifi: lifiCollector,
+    relay: relayCollector,
+    // NEAR Intents settles a small, deliberate set - 84 tokens over 13 Ethereum
+    // Virtual Machine chains - and carries no artwork for any of them, so it
+    // ranks below the two aggregators that do. What it contributes is the fact
+    // of being settleable, which no other source here states.
+    'near-intents': nearIntentsCollector,
     // Broad metadata source (name/symbol/decimals plus a logo where one exists) from
     // the ethereum-lists/tokens repository. Kept near the bottom because it is not an
     // authoritative logo source, so every curated provider above must outrank it when
