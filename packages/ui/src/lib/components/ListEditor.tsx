@@ -17,7 +17,6 @@ import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
 import { submitImage } from '../utils/image-upload'
-import Image from './Image'
 import ListTokenRow from './ListTokenRow'
 import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
@@ -26,17 +25,32 @@ import {
   buildPublishers,
 } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
+import { readTokenList, type RejectedToken } from '../utils/token-list-import'
 
-function rawTokenToLocal(t: Record<string, unknown>, index: number): LocalToken {
-  return {
-    chainId: Number(t.chainId || 1),
-    address: String(t.address),
-    name: String(t.name || ''),
-    symbol: String(t.symbol || ''),
-    decimals: Number(t.decimals || 18),
-    imageUri: t.logoURI ? String(t.logoURI) : undefined,
-    order: index,
-  }
+/**
+ * Wording for entries an import could not read.
+ *
+ * Silence would be worse than an error here: a user who pastes four hundred
+ * tokens and gets three hundred back has no way to tell unless we say so.
+ */
+function skippedNote(rejected: RejectedToken[]): string | null {
+  if (rejected.length === 0) return null
+  const [first] = rejected
+  if (rejected.length === 1) return `Skipped 1 token (entry ${first.index + 1}: ${first.reason})`
+  return `Skipped ${rejected.length} tokens (first was entry ${first.index + 1}: ${first.reason})`
+}
+
+/**
+ * The chain a list is on, taken from its first token.
+ *
+ * Coalesces on absence rather than on falsehood. An empty list has no chain to
+ * read and falls back to Ethereum; a list whose first token declares chain zero
+ * keeps chain zero. Reading `|| 1` here folded the two together, so a request
+ * for metadata went to Ethereum under a label that said otherwise — the same
+ * mistake `token-list-import` exists to keep out of the tokens themselves.
+ */
+function listChainId(tokens: readonly LocalToken[]): number {
+  return tokens[0]?.chainId ?? 1
 }
 
 export default function ListEditor() {
@@ -101,7 +115,7 @@ export default function ListEditor() {
       setError('Token already in list')
       return
     }
-    const chainId = activeList.tokens[0]?.chainId || 1
+    const chainId = listChainId(activeList.tokens)
     const updated = await addToken(activeList.id, {
       chainId,
       address,
@@ -126,7 +140,7 @@ export default function ListEditor() {
 
   const handleLoadMetadata = useCallback(async () => {
     if (!activeList || activeList.tokens.length === 0) return
-    const chainId = activeList.tokens[0]?.chainId || 1
+    const chainId = listChainId(activeList.tokens)
     const results = await loadMetadata(activeList.tokens, chainId)
     const updatedTokens = activeList.tokens.map((token) => {
       const meta = results.find((r) => r.address.toLowerCase() === token.address.toLowerCase())
@@ -159,7 +173,7 @@ export default function ListEditor() {
       const res = await fetch(getApiUrl(`/list/${provider}/${key}`))
       if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)
       const data = await res.json()
-      const tokens: LocalToken[] = (data.tokens || []).map(rawTokenToLocal)
+      const { tokens, rejected } = readTokenList(data.tokens)
       const list = await createList({
         name: data.name || editingSourceKey,
         description: data.description || '',
@@ -171,6 +185,7 @@ export default function ListEditor() {
         tokens,
       })
       setActiveList(list)
+      setError(skippedNote(rejected))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -188,7 +203,7 @@ export default function ListEditor() {
       const data = await res.json()
       if (!data.tokens || !Array.isArray(data.tokens))
         throw new Error('Invalid token list format')
-      const tokens: LocalToken[] = data.tokens.map(rawTokenToLocal)
+      const { tokens, rejected } = readTokenList(data.tokens)
       const list = await createList({
         name: data.name || 'Imported List',
         description: data.description || '',
@@ -197,6 +212,7 @@ export default function ListEditor() {
       })
       setActiveList(list)
       setImportUrl('')
+      setError(skippedNote(rejected))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -209,9 +225,7 @@ export default function ListEditor() {
     setError(null)
     try {
       const data = JSON.parse(pasteJson.trim())
-      const tokens: LocalToken[] = (data.tokens || [data])
-        .flat()
-        .map(rawTokenToLocal)
+      const { tokens, rejected } = readTokenList([data.tokens ?? data].flat())
       const list = await createList({
         name: data.name || 'Pasted List',
         source: { type: 'paste' },
@@ -219,6 +233,7 @@ export default function ListEditor() {
       })
       setActiveList(list)
       setPasteJson('')
+      setError(skippedNote(rejected))
     } catch (err) {
       setError((err as Error).message)
     }

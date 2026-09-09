@@ -317,6 +317,35 @@ describe('ListEditor creation menu', () => {
     expect(saved.tokens.map((t) => t.order)).toEqual([0, 1])
   })
 
+  it('reports a skipped token on a fork the same way it does on any other import', async () => {
+    // The fork path builds the list from the same reader as the other two paths. If a
+    // future change wires the note into only one or two of them, this is the test that
+    // notices the fork was left silent.
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        name: 'Remote List',
+        tokens: [
+          { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+          { name: 'No Address' },
+        ],
+      }),
+    )
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    await act(async () => {
+      editor!.openEditor('gib/default')
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Fork gib/default'))
+    })
+
+    await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
+    const [saved] = [...store.values()] as LocalList[]
+    expect(saved.tokens.map((t) => t.address)).toEqual([ADDRESS_A])
+    expect(screen.getByText('Skipped 1 token (entry 2: no address)')).toBeTruthy()
+  })
+
   it('forks an upstream list that names nothing, falling back to the source key', async () => {
     // A remote list served with no name, description or token array must still produce a
     // usable local list rather than one called "undefined" that crashes on open.
@@ -455,6 +484,130 @@ describe('ListEditor creation menu', () => {
     expect(store.size).toBe(0)
   })
 
+  it('imports the readable tokens from a web address and says one could not be read', async () => {
+    // A user who imports four hundred tokens and gets three hundred and ninety-nine
+    // needs to be told, or the missing token is invisible until something downstream
+    // breaks. The list must still be created with everything that did parse.
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        tokens: [
+          { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+          { name: 'No Address' },
+        ],
+      }),
+    )
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('https://tokens.uniswap.org'), {
+      target: { value: 'https://example.test/list.json' },
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Import'))
+    })
+
+    await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
+    const [saved] = [...store.values()] as LocalList[]
+    expect(saved.tokens.map((t) => t.address)).toEqual([ADDRESS_A])
+    expect(screen.getByText('Skipped 1 token (entry 2: no address)')).toBeTruthy()
+  })
+
+  it('counts the skipped entry from one, not from zero, so it names the right line', async () => {
+    // An off-by-one here sends a reader looking at the wrong entry of their own file.
+    // The bad entry sits at array position two (index one); the message must call it
+    // entry three, matching how a person counts a list, not how an array is indexed.
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        tokens: [
+          { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+          { chainId: 1, address: ADDRESS_B, name: 'Beta', symbol: 'BETA', decimals: 18 },
+          { name: 'No Address' },
+        ],
+      }),
+    )
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('https://tokens.uniswap.org'), {
+      target: { value: 'https://example.test/list.json' },
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Import'))
+    })
+
+    await waitFor(() => expect(screen.getByText('2 tokens')).toBeTruthy())
+    expect(screen.getByText('Skipped 1 token (entry 3: no address)')).toBeTruthy()
+  })
+
+  it('switches the skipped-token wording to plural once more than one is skipped', async () => {
+    // "1 token" and several "tokens" are different sentences, not the same one with a
+    // number swapped in. Both must be checked, or a change that always reads singular
+    // (or always plural) would pass unnoticed.
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        tokens: [
+          { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+          { name: 'No Address' },
+          { name: 'Also No Address' },
+        ],
+      }),
+    )
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('https://tokens.uniswap.org'), {
+      target: { value: 'https://example.test/list.json' },
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Import'))
+    })
+
+    await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
+    expect(screen.getByText('Skipped 2 tokens (first was entry 2: no address)')).toBeTruthy()
+  })
+
+  it('clears a stale skipped-token note once a later import has nothing to skip', async () => {
+    // The banner must describe the import that just ran, not linger from the one
+    // before it. This is the change most likely to break under a careless refactor,
+    // because "set once on failure" reads as correct until a clean run follows a bad one.
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        tokens: [
+          { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+          { name: 'No Address' },
+        ],
+      }),
+    )
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('https://tokens.uniswap.org'), {
+      target: { value: 'https://example.test/list-one.json' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('Import'))
+    })
+    await waitFor(() => expect(screen.getByText(/Skipped 1 token/)).toBeTruthy())
+
+    // Back to the creation menu for a second, clean import.
+    await act(async () => {
+      editor!.closeEditor()
+    })
+    mockFetch.mockResolvedValue(
+      jsonResponse({
+        tokens: [{ chainId: 1, address: ADDRESS_B, name: 'Beta', symbol: 'BETA', decimals: 18 }],
+      }),
+    )
+    fireEvent.change(screen.getByPlaceholderText('https://tokens.uniswap.org'), {
+      target: { value: 'https://example.test/list-two.json' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('Import'))
+    })
+
+    await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
+    expect(screen.queryByText(/Skipped/)).toBeNull()
+  })
+
   it('parses pasted list JSON into a list', async () => {
     renderEditor()
     await waitFor(() => expect(editor).toBeTruthy())
@@ -499,6 +652,33 @@ describe('ListEditor creation menu', () => {
     expect(saved.tokens).toHaveLength(1)
     expect(saved.tokens[0].address).toBe(ADDRESS_C)
     expect(saved.name).toBe('Pasted List')
+  })
+
+  it('reports a skipped token when pasted JSON carries one that cannot be read', async () => {
+    // Same claim as the web-address import, checked on the paste path: silence about a
+    // dropped entry is a defect regardless of where the tokens came from.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('{"tokens": [...]}'), {
+      target: {
+        value: JSON.stringify({
+          name: 'Pasted',
+          tokens: [
+            { chainId: 1, address: ADDRESS_A, name: 'Alpha', symbol: 'ALPH', decimals: 18 },
+            { name: 'No Address' },
+          ],
+        }),
+      },
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Parse & Import'))
+    })
+
+    await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
+    const [saved] = [...store.values()] as LocalList[]
+    expect(saved.tokens.map((t) => t.address)).toEqual([ADDRESS_A])
+    expect(screen.getByText('Skipped 1 token (entry 2: no address)')).toBeTruthy()
   })
 
   it('reports malformed pasted JSON instead of creating a list from nothing', async () => {
@@ -636,6 +816,23 @@ describe('ListEditor token membership', () => {
     fireEvent.change(input, { target: { value: ADDRESS_B } })
     await act(async () => {
       fireEvent.keyDown(input, { key: 'a' })
+    })
+
+    expect(persisted(list.id).tokens).toHaveLength(0)
+  })
+
+  it('ignores the Enter key when the address box holds only whitespace', async () => {
+    // The Add button disables itself for a blank box, but Enter reaches the handler
+    // directly. A user who clears the box and rests a finger on Enter must not add an
+    // empty token.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [] })
+
+    const input = screen.getByPlaceholderText('0x... token address')
+    fireEvent.change(input, { target: { value: '   ' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
     })
 
     expect(persisted(list.id).tokens).toHaveLength(0)
@@ -1090,6 +1287,49 @@ describe('ListEditor chain metadata', () => {
     expect(persisted(list.id).tokens[0].decimals).toBe(12)
     // Nothing left the browser, because there is no endpoint to ask.
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('asks the chain the leading token names, even when that chain is zero', async () => {
+    // Chain zero is a value a token list can carry, and the importer keeps it. Asking
+    // Ethereum for a token that says it lives elsewhere returns either nothing or
+    // another token's metadata, and writes it back under the first token's address.
+    // The endpoint actually called is the claim here, not that some call happened.
+    localStorage.setItem(
+      'gib-custom-rpcs',
+      JSON.stringify({ 0: 'https://chain-zero.test', 1: 'https://chain-one.test' }),
+    )
+    mockFetch.mockResolvedValue(jsonResponse({ jsonrpc: '2.0', id: 1, result: '0x' }))
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    await openList({ tokens: [token({ chainId: 0 })] })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Load RPC'))
+    })
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled())
+    expect(mockFetch.mock.calls[0][0]).toMatch(/^https:\/\/chain-zero\.test\/?$/)
+  })
+
+  it('falls back to Ethereum when the list has no token to read a chain from', async () => {
+    // An empty list genuinely names no chain, which is the case the fallback exists
+    // for. Keeping it separate from the chain-zero test above is the whole point:
+    // the two were one case while the code asked whether the value was falsy.
+    localStorage.setItem(
+      'gib-custom-rpcs',
+      JSON.stringify({ 0: 'https://chain-zero.test', 1: 'https://chain-one.test' }),
+    )
+    mockFetch.mockResolvedValue(jsonResponse({ jsonrpc: '2.0', id: 1, result: '0x' }))
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    await openList({ tokens: [token({ chainId: undefined as unknown as number })] })
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Load RPC'))
+    })
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled())
+    expect(mockFetch.mock.calls[0][0]).toMatch(/^https:\/\/chain-one\.test\/?$/)
   })
 })
 
