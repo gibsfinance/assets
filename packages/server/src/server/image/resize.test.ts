@@ -28,6 +28,7 @@ import {
   stripRootSvgDimensions,
   cacheControlFor,
   checkRateLimit,
+  resetRateLimit,
   extToFormat,
   formatToContentType,
   maybeResize,
@@ -42,6 +43,14 @@ import sharp from 'sharp'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Every test in this file shares one process-wide variant budget. Without this
+// reset a test spends whatever the tests above it left, so the file passes or
+// fails on the order vitest happened to run it in — and a test that exhausts
+// the global limit deliberately would starve every test after it.
+beforeEach(() => {
+  resetRateLimit()
+})
 
 function mockReq(query: Record<string, string> = {}): any {
   return { query }

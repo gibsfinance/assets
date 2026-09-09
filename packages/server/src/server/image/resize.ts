@@ -23,6 +23,7 @@ import config from '../../../config'
 import { imageMode } from '../../db/tables'
 import { failureLog } from '@gibs/utils'
 import { attributionHeaders } from './attribution'
+import { createRateLimiter } from './rate-limit'
 
 // ---------------------------------------------------------------------------
 // Section 1: Query param parsing, SVG detection, format helpers
@@ -213,48 +214,30 @@ export function normalizeFormat(format: string): string {
 // Section 2: Rate limiter
 // ---------------------------------------------------------------------------
 
-const PER_IMAGE_LIMIT = 5
-const GLOBAL_LIMIT = 100
-const WINDOW_MS = 60_000
+/**
+ * The limiter the image route spends from. One instance per process, holding
+ * the production budgets and the wall clock.
+ *
+ * Anything that needs its own counters — a test, or a second route with a
+ * different budget — builds one with `createRateLimiter` rather than reaching
+ * for this one.
+ */
+const variantRateLimiter = createRateLimiter()
 
-interface RateWindow {
-  count: number
-  windowStart: number
-}
-
-const perImageWindows = new Map<string, RateWindow>()
-let globalWindow: RateWindow = { count: 0, windowStart: Date.now() }
-
-function cleanExpiredWindows(): void {
-  const now = Date.now()
-  for (const [key, win] of perImageWindows) {
-    if (now - win.windowStart > WINDOW_MS) {
-      perImageWindows.delete(key)
-    }
-  }
-}
-
+/** Record one variant request for `imageHash`. False when a budget is spent. */
 export function checkRateLimit(imageHash: string): boolean {
-  const now = Date.now()
+  return variantRateLimiter.check(imageHash)
+}
 
-  if (now - globalWindow.windowStart > WINDOW_MS) {
-    globalWindow = { count: 0, windowStart: now }
-  }
-  if (globalWindow.count >= GLOBAL_LIMIT) return false
-
-  let win = perImageWindows.get(imageHash)
-  if (!win || now - win.windowStart > WINDOW_MS) {
-    win = { count: 0, windowStart: now }
-    perImageWindows.set(imageHash, win)
-  }
-  if (win.count >= PER_IMAGE_LIMIT) return false
-
-  win.count++
-  globalWindow.count++
-
-  if (perImageWindows.size > 1000) cleanExpiredWindows()
-
-  return true
+/**
+ * Forget every window in the shared limiter.
+ *
+ * A test that exercises the image route spends from the same budget as every
+ * test before it. Calling this first is what makes a test answer for its own
+ * requests rather than for the ones the file above it happened to make.
+ */
+export function resetRateLimit(): void {
+  variantRateLimiter.reset()
 }
 
 // ---------------------------------------------------------------------------
