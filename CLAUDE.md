@@ -16,10 +16,10 @@ yarn workspace ui run test
 #   @gibs/sdk, @gibs/utils, @gibs/react — 100% on all four metrics. A single
 #     untested line fails the build while every test still passes.
 #   server — 99.9 on all four (statements/branches/functions/lines) against
-#     actuals of 100/99.95/100/100 over 1621 tests. One branch is uncovered on
+#     actuals of 100/99.95/100/100 over 1740 tests. One branch is uncovered on
 #     purpose, db/index.ts:1168; the note in vitest.config.ts says why.
 #   ui — 98.1/93.6/98.8/99.2 against actuals of 98.34/93.85/99.01/99.46 over
-#     1775 tests. The ~0.2 margin is deliberate and specific: this workspace
+#     1776 tests. The ~0.2 margin is deliberate and specific: this workspace
 #     measures very slightly lower on the CI runner than locally, so floors set
 #     to the local figures fail by hundredths.
 #   Run one workspace's coverage at a time. Two runs in the same workspace share
