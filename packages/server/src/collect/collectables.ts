@@ -187,6 +187,19 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
       },
     ]),
     dfyn: dfynCollector,
+    // LiFi outranks CoinGecko, and only CoinGecko: the two contest 2,630 tokens,
+    // and on 97% of them LiFi's artwork is not CoinGecko's — 68% comes from
+    // DeBank and 25% from Ondo, curators nothing else here represents. So the
+    // choice between them is a real one rather than a mirror swap, and it is
+    // settled the way a tie between two broad automated feeds should be: in
+    // favour of the one that is maintained continuously.
+    //
+    // It stops here on purpose. Everything above is either chain-native
+    // (smoldapp) or hand-curated for one ecosystem (Trust Wallet, balancer,
+    // kleros, the Uniswap lists), and a routing aggregator has no standing to
+    // overrule a person who chose that art deliberately. An aggregator may
+    // outrank another aggregate source; it may not outrank a curator.
+    lifi: lifiCollector,
     coingecko: new CoinGeckoCollector(),
     '9mm': nineMM,
     uma: umaCollector,
@@ -206,15 +219,17 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     jupiter: jupiterCollector,
     // MyEtherWallet's Ethereum mainnet token metadata (name/symbol/decimals, no logos).
     mew: mewCollector,
-    // Bridge aggregators. They reach chains and tokens no curated list covers —
-    // LiFi verifies 10,750 tokens over 31 chains, Relay 5,509 over 106 — and both
-    // carry artwork for most of them. They sit here, below every curated source
-    // and above the metadata dumps, because the artwork is largely mirrored from
-    // Trust Wallet and CoinGecko, which already rank above: an aggregator should
-    // fill a gap, not outrank the source it copied from. Only tokens the
-    // aggregator itself vouches for are collected; see ./lifi-parse for what
-    // that costs and why serving a flagged token's logo is not an option.
-    lifi: lifiCollector,
+    // Relay and NEAR Intents, the two aggregators that do not outrank CoinGecko.
+    //
+    // Relay contests CoinGecko on 2,148 tokens, and on 94% of them the artwork it
+    // would serve is CoinGecko's own, from CoinGecko's CDN. Ranking it higher
+    // would hand back the same picture through a second-hand host that lags when
+    // the original changes. Its worth is the 990 tokens nothing else covers and
+    // the 106 chains it reaches, and it delivers both from here — rank decides
+    // contested tokens only, never coverage.
+    //
+    // NEAR Intents carries no artwork at all, so its position affects only where
+    // its 84 tokens fall in a list.
     relay: relayCollector,
     // NEAR Intents settles a small, deliberate set - 84 tokens over 13 Ethereum
     // Virtual Machine chains - and carries no artwork for any of them, so it
