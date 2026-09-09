@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import { getApiUrl } from '../utils'
 import { prefixImagePath } from '../utils/chain-identifier'
 import Image from './Image'
+import { shuffle } from '../utils/shuffle'
 
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
@@ -51,15 +52,6 @@ function ensureKeyframes() {
   const style = document.createElement('style')
   style.textContent = '@keyframes conveyor{from{transform:translateX(0)}to{transform:translateX(-50%)}}'
   document.head.appendChild(style)
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const copy = [...arr]
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
 }
 
 // 438 curated icons (>=64x64 or SVG) from Ethereum, PulseChain, TrustWallet + network icons

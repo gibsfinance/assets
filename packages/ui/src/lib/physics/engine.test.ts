@@ -5,9 +5,10 @@
  * collisions. Asserting the composed result is the only way to catch a stage being
  * dropped or reordered, since each individual force is already covered in forces.test.ts.
  *
- * createIcon draws from Math.random, so it is pinned by stubbing the generator. The
- * invariants worth holding are the relationships — radius to size, speed to velocity
- * magnitude, layer to size band — not the particular numbers.
+ * createIcon takes its randomness as an argument. The tests below that stub
+ * `Math.random` check the default path; the ones that pass a source of their own
+ * check where each drawn number lands, which a global stub cannot express — with
+ * one value for every call, every field looks alike.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { stepPhysics, createIcon } from './engine'
@@ -126,6 +127,67 @@ describe('stepPhysics', () => {
 })
 
 describe('createIcon', () => {
+  /**
+   * Hands back the given numbers in order, then repeats the last one.
+   *
+   * createIcon draws six times, in a fixed order. Giving each draw a distinct
+   * value is what makes it possible to say which field received which number,
+   * so a size written into opacity, or an x written into y, has somewhere to show.
+   */
+  const scriptedRandom = (values: number[]) => {
+    let call = 0
+    return () => values[Math.min(call++, values.length - 1)]
+  }
+
+  it('reads the six draws in a fixed order, so no field can take another one\'s number', () => {
+    // Six distinct values. Any swap between fields moves a number somewhere it
+    // does not belong, and the assertions below stop agreeing.
+    const random = scriptedRandom([0, 0.5, 1, 0, 0.25, 0.75])
+    const icon = createIcon(1, '', 'middle', config({ width: 1000, height: 800 }), random)
+
+    // Draw one is size: 0 of the middle band's 40 to 60 gives 40, halved to a radius of 20.
+    expect(icon.mass).toBeCloseTo(40)
+    expect(icon.radius).toBeCloseTo(20)
+    // Draw two is speed: 0.5 of 0.4 to 0.6 gives 0.5, which is the velocity's magnitude.
+    expect(Math.hypot(icon.velocity.x, icon.velocity.y)).toBeCloseTo(0.5)
+    // Draw three is opacity: 1 of 0.3 to 0.5 gives 0.5.
+    expect(icon.opacity).toBeCloseTo(0.5)
+    // Draws five and six place the icon across the canvas it was given.
+    expect(icon.position.x).toBeCloseTo(250)
+    expect(icon.position.y).toBeCloseTo(600)
+  })
+
+  it('places an icon inside the canvas it was given, not inside a fixed one', () => {
+    // A source of nearly one must land just short of the far edge. Reading a
+    // hard-coded width here would put icons off screen on any other canvas.
+    const random = scriptedRandom([0, 0, 0, 0, 0.999, 0.999])
+    const icon = createIcon(1, '', 'middle', config({ width: 300, height: 120 }), random)
+    expect(icon.position.x).toBeGreaterThan(299)
+    expect(icon.position.x).toBeLessThan(300)
+    expect(icon.position.y).toBeGreaterThan(119)
+    expect(icon.position.y).toBeLessThan(120)
+  })
+
+  it('turns the fourth draw into a direction, leaving the speed alone', () => {
+    // An angle of zero points along the positive x axis. The whole speed goes
+    // into x and none into y, which is what proves the angle steers direction
+    // rather than magnitude.
+    const random = scriptedRandom([0, 0, 0, 0, 0, 0])
+    const icon = createIcon(1, '', 'background', config(), random)
+    expect(icon.velocity.x).toBeCloseTo(0.2)
+    expect(icon.velocity.y).toBeCloseTo(0)
+  })
+
+  it('falls back to the global generator when no source is given', () => {
+    // The production call site passes no source. If the default were dropped,
+    // every icon would land at the same place with the same size.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const first = createIcon(1, '', 'middle', config())
+    const second = createIcon(2, '', 'middle', config())
+    expect(first.mass).toBeCloseTo(50)
+    expect(first.position).toEqual(second.position)
+  })
+
   it('derives radius and mass from one size, so heavier always means bigger', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const i = createIcon(7, '/icon.png', 'middle', config())
