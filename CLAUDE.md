@@ -15,13 +15,16 @@ yarn workspace ui run test
 # calling the change done.
 #   @gibs/sdk, @gibs/utils, @gibs/react — 100% on all four metrics. A single
 #     untested line fails the build while every test still passes.
-#   server — 99.7/99.3/99.7/99.8 (statements/branches/functions/lines) against
-#     actuals of 99.77/99.39/99.73/99.85. Margin is as thin as 0.03%, so a
-#     handful of new uncovered lines will break CI.
-#   ui — 92.9/87.3/92.3/94.1 against actuals of 93.16/87.57/92.52/94.36.
-#     Same ~0.2 margin as the others, and for a specific reason: this workspace
+#   server — 99.9 on all four (statements/branches/functions/lines) against
+#     actuals of 100/99.95/100/100 over 1621 tests. One branch is uncovered on
+#     purpose, db/index.ts:1168; the note in vitest.config.ts says why.
+#   ui — 98.1/93.6/98.8/99.2 against actuals of 98.34/93.85/99.01/99.46 over
+#     1775 tests. The ~0.2 margin is deliberate and specific: this workspace
 #     measures very slightly lower on the CI runner than locally, so floors set
 #     to the local figures fail by hundredths.
+#   Run one workspace's coverage at a time. Two runs in the same workspace share
+#     its coverage/ directory and overwrite each other, and the loser reports
+#     zeros for files that are fully covered — which reads as a regression.
 yarn workspace @gibs/sdk run vitest run --coverage
 yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage

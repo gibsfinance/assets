@@ -126,7 +126,41 @@ export default defineConfig({
       // layout the browser would produce and jsdom cannot. StudioBrowser's client-only
       // popularity sort and ListEditor's `if (!activeList) return` guards are unchanged
       // from the note above and unchanged in reasoning.
-      thresholds: { statements: 97.9, branches: 92.6, functions: 98.4, lines: 99.1 },
+      //
+      // 2026-09-08, later: measured 98.34 / 93.85 / 99.01 / 99.46 over 1775 tests.
+      // This pass was aimed at simplification, and most of the gain is a side
+      // effect of it. Eight pure modules came out of five components and two
+      // hooks - the canvas pan and zoom arithmetic, the radial angle
+      // arithmetic, the network comparator, the endpoint filters, the token
+      // list parser, the shuffle, and the access token store - and each is
+      // tested outright rather than through a rendered component. The canvas
+      // arithmetic is the clearest case: three lines of multiplication inside a
+      // setState updater inside a callback in a 780-line file, previously
+      // reachable only by stubbing a ResizeObserver and a matchMedia, faking a
+      // bounding rectangle jsdom cannot produce, and dispatching a wheel event.
+      // The invariant it holds is now one assertion.
+      //
+      // Two of those extractions turned up defects that had been sitting behind
+      // the difficulty of reaching them. The list parser read
+      // `Number(t.decimals || 18)`, so a token declaring zero decimals became
+      // eighteen. The access token store returned an entry with no timestamp
+      // unconditionally, so the tokens longest resident in a browser profile
+      // were the only ones the thirty-day expiry never touched.
+      //
+      // StudioBrowser and ListEditor gained tests in place rather than being
+      // pulled apart: 85.71 to 94.44 branches and 85.71 to 88.96 respectively.
+      //
+      // Deliberately left, unchanged in reasoning from the note above:
+      // StudioBrowser's client-only popularity sort, its virtualizer
+      // configuration callbacks (the mock replaces the hook, so they never
+      // run), NetworkSelect line 148 for the same reason, and the
+      // `if (!activeList) return` guards in ListEditor whose controls only
+      // render when a list is active. Two more were traced and found dead
+      // rather than merely unreached: StudioBrowser's `if (newList)` guard,
+      // because createList always resolves to a list, and ListEditor's
+      // `if (!meta) return token`, because results are built one-to-one from
+      // the array being mapped.
+      thresholds: { statements: 98.1, branches: 93.6, functions: 98.8, lines: 99.2 },
     },
   },
   resolve: {
