@@ -101,8 +101,7 @@ function jsonResponse(body: unknown, options: { ok?: boolean; status?: number } 
     json: async () => body,
     text: async () => JSON.stringify(body),
     headers: {
-      get: (name: string) =>
-        name.toLowerCase() === 'content-type' ? 'application/json' : null,
+      get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
     },
   }
 }
@@ -170,9 +169,7 @@ function ContextProbe() {
 }
 
 function renderEditor() {
-  return render(
-    createElement(ListEditorProvider, null, createElement(ContextProbe), createElement(ListEditor)),
-  )
+  return render(createElement(ListEditorProvider, null, createElement(ContextProbe), createElement(ListEditor)))
 }
 
 /** Read a list straight out of the persistence layer, bypassing React state entirely. */
@@ -439,9 +436,7 @@ describe('ListEditor creation menu', () => {
     // The label changes and both import routes are barred until it settles.
     expect(screen.queryByText('Import')).toBeNull()
     expect((screen.getByText('...') as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByText('Fork gib/default').closest('button') as HTMLButtonElement).disabled).toBe(
-      true,
-    )
+    expect((screen.getByText('Fork gib/default').closest('button') as HTMLButtonElement).disabled).toBe(true)
 
     await act(async () => {
       pending.resolve(jsonResponse({ tokens: [] }))
@@ -1001,11 +996,7 @@ describe('ListEditor list editing', () => {
     })
 
     await waitFor(() =>
-      expect(persisted(list.id).tokens.map((t) => t.address)).toEqual([
-        ADDRESS_B,
-        ADDRESS_C,
-        ADDRESS_A,
-      ]),
+      expect(persisted(list.id).tokens.map((t) => t.address)).toEqual([ADDRESS_B, ADDRESS_C, ADDRESS_A]),
     )
     // The order field is renumbered, not left stale — it is what the published list
     // sorts by, so a stale value silently restores the old sequence.
@@ -1155,9 +1146,7 @@ describe('ListEditor token images', () => {
   it('uploads an inline image and stores the address the server hands back', async () => {
     // The row shows an upload widget only when the token has no image, so this is the
     // path a freshly added address takes.
-    mockFetch.mockResolvedValue(
-      jsonResponse({ imageHash: 'abc', imageUrl: 'https://api.test/image/hash/abc' }),
-    )
+    mockFetch.mockResolvedValue(jsonResponse({ imageHash: 'abc', imageUrl: 'https://api.test/image/hash/abc' }))
     renderEditor()
     await waitFor(() => expect(editor).toBeTruthy())
     const list = await openList({
@@ -1171,9 +1160,7 @@ describe('ListEditor token images', () => {
       })
     })
 
-    await waitFor(() =>
-      expect(persisted(list.id).tokens[0].imageUri).toBe('https://api.test/image/hash/abc'),
-    )
+    await waitFor(() => expect(persisted(list.id).tokens[0].imageUri).toBe('https://api.test/image/hash/abc'))
     // Only the uploaded token gains an image; the rest of the list is untouched.
     expect(persisted(list.id).tokens[1].imageUri).toBeUndefined()
     const [url, init] = mockFetch.mock.calls[0]
@@ -1388,10 +1375,7 @@ describe('ListEditor publishing', () => {
 
   it('marks a destination as connected once a token is stored for it', async () => {
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
     renderEditor()
     await waitFor(() => expect(editor).toBeTruthy())
     await openList({ tokens: [token()] })
@@ -1410,10 +1394,7 @@ describe('ListEditor publishing', () => {
     // The expensive silent failure: a submitted address that is well-formed but points
     // at the wrong path, so indexing quietly finds nothing.
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
     mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === 'https://api.github.com/user') return jsonResponse({ login: 'alice' })
       if (url.startsWith('https://api.github.com/repos/alice/') && url.includes('/contents/'))
@@ -1445,9 +1426,7 @@ describe('ListEditor publishing', () => {
     })
 
     await waitFor(() => expect(screen.getByText('Published!')).toBeTruthy())
-    expect(screen.getByText('View repo').getAttribute('href')).toBe(
-      'https://github.com/alice/token-list-my-list',
-    )
+    expect(screen.getByText('View repo').getAttribute('href')).toBe('https://github.com/alice/token-list-my-list')
     expect(screen.getByText('View file').getAttribute('href')).toBe(
       'https://github.com/alice/token-list-my-list/blob/main/tokenlist.json',
     )
@@ -1457,13 +1436,9 @@ describe('ListEditor publishing', () => {
     })
 
     await waitFor(() => expect(screen.getByText(/Submitted!/)).toBeTruthy())
-    const submitCall = mockFetch.mock.calls.find(
-      (call) => call[0] === 'https://api.test/api/lists/submit',
-    )!
+    const submitCall = mockFetch.mock.calls.find((call) => call[0] === 'https://api.test/api/lists/submit')!
     const body = JSON.parse(submitCall[1].body)
-    expect(body.url).toBe(
-      'https://raw.githubusercontent.com/alice/token-list-my-list/main/tokenlist.json',
-    )
+    expect(body.url).toBe('https://raw.githubusercontent.com/alice/token-list-my-list/main/tokenlist.json')
     expect(body.name).toBe('My List')
     expect(body.submittedBy).toBe('alice')
     expect(screen.getByText(/Submitted!/).textContent).toContain('alice/token-list-my-list')
@@ -1471,10 +1446,7 @@ describe('ListEditor publishing', () => {
 
   it('announces a publish in progress and refuses a second one', async () => {
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
     const pending = deferred<ReturnType<typeof jsonResponse>>()
     mockFetch.mockReturnValue(pending.promise)
 
@@ -1504,10 +1476,7 @@ describe('ListEditor publishing', () => {
   it('reports a submission that never reached the service', async () => {
     // A network failure here must not read as a quiet success.
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
     const submitPending = deferred<ReturnType<typeof jsonResponse>>()
     mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === 'https://api.github.com/user') return jsonResponse({ login: 'alice' })
@@ -1557,16 +1526,11 @@ describe('ListEditor publishing', () => {
     { hasErrorBody: false, expected: 'Server error 409' },
   ])('reports a rejected submission rather than claiming success', async ({ hasErrorBody, expected }) => {
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
     mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === 'https://api.github.com/user') return jsonResponse({ login: 'alice' })
       if (url.startsWith('https://api.github.com/repos/alice/') && url.includes('/contents/'))
-        return init?.method === 'PUT'
-          ? jsonResponse({ content: {} })
-          : jsonResponse({}, { status: 404 })
+        return init?.method === 'PUT' ? jsonResponse({ content: {} }) : jsonResponse({}, { status: 404 })
       if (url.startsWith('https://api.github.com/repos/alice/'))
         return jsonResponse({ html_url: 'https://github.com/alice/token-list-my-list' })
       if (url === 'https://api.test/api/lists/submit')
@@ -1599,10 +1563,7 @@ describe('ListEditor publishing', () => {
 
   it('surfaces a publish failure as an error banner and offers no submit control', async () => {
     vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
-    localStorage.setItem(
-      'gib-vcs-tokens',
-      JSON.stringify({ github: { token: 'expired-token', storedAt: Date.now() } }),
-    )
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'expired-token', storedAt: Date.now() } }))
     mockFetch.mockImplementation(async (url: string) => {
       if (url === 'https://api.github.com/user') return jsonResponse({}, { status: 401 })
       return jsonResponse({})

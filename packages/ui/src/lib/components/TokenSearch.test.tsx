@@ -335,8 +335,7 @@ describe('TokenSearch — the chain filter it embeds', () => {
     ['coingecko/all', listC],
   ])
 
-  const filterCount = (container: HTMLElement) =>
-    container.querySelector('.fa-filter')!.nextElementSibling!.textContent
+  const filterCount = (container: HTMLElement) => container.querySelector('.fa-filter')!.nextElementSibling!.textContent
 
   it('counts only the lists holding a token on the chain being browsed', () => {
     const { container } = renderSearch({ tokensByList, selectedChain: 1 })

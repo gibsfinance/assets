@@ -8,11 +8,7 @@ import { specToSections, sectionIdForTag, type OpenApiDocument } from './openapi
 const spec: OpenApiDocument = {
   openapi: '3.1.0',
   info: { title: 'Test API', version: '1.0.0' },
-  tags: [
-    { name: 'Token Endpoints', description: 'Lists.' },
-    { name: 'Networks & Stats' },
-    { name: 'Empty Section' },
-  ],
+  tags: [{ name: 'Token Endpoints', description: 'Lists.' }, { name: 'Networks & Stats' }, { name: 'Empty Section' }],
   paths: {
     '/list/tokens/{chainId}': {
       get: {

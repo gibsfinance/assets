@@ -81,11 +81,7 @@ vi.mock('../components/ListEditor', async () => {
 vi.mock('../components/TokenDetailModal', () => ({
   default: ({ token, onClose }: { token: Token | null; onClose: () => void }) =>
     token
-      ? createElement(
-          'button',
-          { onClick: onClose, 'data-testid': 'modal-close' },
-          `inspecting ${token.symbol}`,
-        )
+      ? createElement('button', { onClick: onClose, 'data-testid': 'modal-close' }, `inspecting ${token.symbol}`)
       : null,
 }))
 

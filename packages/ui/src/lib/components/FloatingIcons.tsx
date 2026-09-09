@@ -507,14 +507,7 @@ const ICON_PATHS: string[] = [
 
 function ConveyorIcon({ src, href, size }: { src: string; href: string; size: number }) {
   return (
-    <Image
-      src={src}
-      size={size}
-      href={href}
-      skeleton
-      shape="circle"
-      className="rounded-full pointer-events-auto"
-    />
+    <Image src={src} size={size} href={href} skeleton shape="circle" className="rounded-full pointer-events-auto" />
   )
 }
 
@@ -556,13 +549,15 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const rowIcons = useMemo(() => {
     if (!ready) return []
     return [0, 1, 2].map((rowIdx) => {
-      const sample = shuffle(ICON_PATHS).slice(0, ICONS_PER_ROW).map((p) => {
-        const path = prefixImagePath(p)
-        return {
-          src: getApiUrl(conveyorIconSrc(path)),
-          href: getApiUrl(path),
-        }
-      })
+      const sample = shuffle(ICON_PATHS)
+        .slice(0, ICONS_PER_ROW)
+        .map((p) => {
+          const path = prefixImagePath(p)
+          return {
+            src: getApiUrl(conveyorIconSrc(path)),
+            href: getApiUrl(path),
+          }
+        })
       // Widen one conveyor half to at least the viewport, then duplicate it for the
       // seamless -50% loop. Repeats reuse the same URLs, so no extra image fetches.
       const repeats = repeatsToFill(containerWidth, SIZES[rowIdx], sample.length)
@@ -594,11 +589,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
       aria-hidden="true">
       {rowIcons.map((icons, rowIdx) => (
         <div key={rowIdx} className="overflow-hidden">
-          <div
-            ref={rowRefs[rowIdx]}
-            className="flex gap-3 items-center"
-            style={{ width: 'max-content' }}
-          >
+          <div ref={rowRefs[rowIdx]} className="flex gap-3 items-center" style={{ width: 'max-content' }}>
             {icons.map((icon, i) => (
               <ConveyorIcon key={`${rowIdx}-${i}`} src={icon.src} href={icon.href} size={SIZES[rowIdx]} />
             ))}

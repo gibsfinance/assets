@@ -46,9 +46,7 @@ describe('FrameworkSwitcher', () => {
   it('follows the active language it is told, rather than remembering its own', () => {
     // The component is controlled — the page owns the selection. If it ever kept its own
     // copy, the highlight would stop tracking the code sample actually being shown.
-    const { rerender } = render(
-      <FrameworkSwitcher languages={languages} activeLanguage="html" onSelect={vi.fn()} />,
-    )
+    const { rerender } = render(<FrameworkSwitcher languages={languages} activeLanguage="html" onSelect={vi.fn()} />)
     rerender(<FrameworkSwitcher languages={languages} activeLanguage="css" onSelect={vi.fn()} />)
     expect(selectedKeys()).toEqual(['css'])
   })

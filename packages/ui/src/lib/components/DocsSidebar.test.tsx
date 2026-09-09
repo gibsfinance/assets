@@ -130,18 +130,14 @@ describe('DocsSidebar', () => {
 
   it('marks exactly one wide-screen entry as the current section', () => {
     const { container } = renderSidebar({ activeSection: 'features' })
-    const highlighted = desktopButtons(container).filter((button) =>
-      button.className.includes('border-accent-500'),
-    )
+    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent-500'))
     expect(highlighted).toHaveLength(1)
     expect(highlighted[0].textContent).toBe('Features')
   })
 
   it('highlights nothing when the current section is not one of its entries', () => {
     const { container } = renderSidebar({ activeSection: 'not-a-section' })
-    const highlighted = desktopButtons(container).filter((button) =>
-      button.className.includes('border-accent-500'),
-    )
+    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent-500'))
     expect(highlighted).toHaveLength(0)
   })
 
@@ -149,18 +145,14 @@ describe('DocsSidebar', () => {
     // The data attribute is not decoration: the effect below finds the active tab
     // through it, so a styling-only highlight would stop the strip auto-scrolling.
     const { container } = renderSidebar({ variant: 'mobile', activeSection: 'image-endpoints' })
-    const active = mobileButtons(container).filter(
-      (button) => button.getAttribute('data-active') === 'true',
-    )
+    const active = mobileButtons(container).filter((button) => button.getAttribute('data-active') === 'true')
     expect(active).toHaveLength(1)
     expect(active[0].textContent).toBe('Image Endpoints')
   })
 
   it('brings the active narrow-screen tab into view on mount', () => {
     const { container } = renderSidebar({ variant: 'mobile', activeSection: 'features' })
-    const active = mobileButtons(container).find(
-      (button) => button.getAttribute('data-active') === 'true',
-    )
+    const active = mobileButtons(container).find((button) => button.getAttribute('data-active') === 'true')
     expect(scrolledInto).toContain(active)
   })
 
@@ -178,18 +170,11 @@ describe('DocsSidebar', () => {
         {SECTIONS.map((section) => (
           <section key={section.id} id={section.id} />
         ))}
-        <DocsSidebar
-          sections={SECTIONS}
-          activeSection="features"
-          onSectionChange={vi.fn()}
-          variant="mobile"
-        />
+        <DocsSidebar sections={SECTIONS} activeSection="features" onSectionChange={vi.fn()} variant="mobile" />
       </>,
     )
 
-    const active = mobileButtons(container).find(
-      (button) => button.getAttribute('data-active') === 'true',
-    )
+    const active = mobileButtons(container).find((button) => button.getAttribute('data-active') === 'true')
     expect(active?.textContent).toBe('Features')
     expect(scrolledInto).toContain(active)
   })

@@ -8,11 +8,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/react'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { getApiUrl } from '../utils'
@@ -20,10 +16,7 @@ import { submitImage } from '../utils/image-upload'
 import ListTokenRow from './ListTokenRow'
 import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
-import {
-  useVCSPublish,
-  buildPublishers,
-} from '../hooks/useVCSPublish'
+import { useVCSPublish, buildPublishers } from '../hooks/useVCSPublish'
 import type { LocalToken } from '../hooks/useLocalLists'
 import { readTokenList, type RejectedToken } from '../utils/token-list-import'
 
@@ -201,8 +194,7 @@ export default function ListEditor() {
       const res = await fetch(importUrl.trim())
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
       const data = await res.json()
-      if (!data.tokens || !Array.isArray(data.tokens))
-        throw new Error('Invalid token list format')
+      if (!data.tokens || !Array.isArray(data.tokens)) throw new Error('Invalid token list format')
       const { tokens, rejected } = readTokenList(data.tokens)
       const list = await createList({
         name: data.name || 'Imported List',
@@ -252,8 +244,7 @@ export default function ListEditor() {
     async (uri: string) => {
       if (!activeList || !editingImageToken) return
       const updatedTokens = activeList.tokens.map((t) =>
-        t.address.toLowerCase() === editingImageToken.address.toLowerCase() &&
-        t.chainId === editingImageToken.chainId
+        t.address.toLowerCase() === editingImageToken.address.toLowerCase() && t.chainId === editingImageToken.chainId
           ? { ...t, imageUri: uri }
           : t,
       )
@@ -325,14 +316,11 @@ export default function ListEditor() {
     return (
       <div className="flex h-full flex-col bg-white dark:bg-surface-base">
         <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
-          <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white">
-            List Editor
-          </h2>
+          <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white">List Editor</h2>
           <button
             type="button"
             onClick={closeEditor}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80"
-          >
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
             <i className="fas fa-times" />
           </button>
         </div>
@@ -349,8 +337,7 @@ export default function ListEditor() {
             <button
               type="button"
               onClick={handleCreateNew}
-              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40"
-            >
+              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
                 <i className="fas fa-plus" />
               </div>
@@ -366,18 +353,13 @@ export default function ListEditor() {
                 type="button"
                 onClick={handleFork}
                 disabled={isImporting}
-                className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40"
-              >
+                className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-500">
                   <i className="fas fa-code-branch" />
                 </div>
                 <div>
-                  <div className="font-medium text-gray-900 dark:text-white">
-                    Fork {editingSourceKey}
-                  </div>
-                  <div className="text-xs text-gray-400 dark:text-white/40">
-                    Copy this list and edit locally
-                  </div>
+                  <div className="font-medium text-gray-900 dark:text-white">Fork {editingSourceKey}</div>
+                  <div className="text-xs text-gray-400 dark:text-white/40">Copy this list and edit locally</div>
                 </div>
               </button>
             )}
@@ -400,8 +382,7 @@ export default function ListEditor() {
                   type="button"
                   onClick={handleImportUrl}
                   disabled={!importUrl.trim() || isImporting}
-                  className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                >
+                  className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
                   {isImporting ? '...' : 'Import'}
                 </button>
               </div>
@@ -424,8 +405,7 @@ export default function ListEditor() {
                 type="button"
                 onClick={handlePasteJson}
                 disabled={!pasteJson.trim()}
-                className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-              >
+                className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
                 Parse & Import
               </button>
             </div>
@@ -442,8 +422,7 @@ export default function ListEditor() {
                     <div
                       key={list.id}
                       className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-gray-50 cursor-pointer dark:hover:bg-surface-2"
-                      onClick={() => setActiveList(list)}
-                    >
+                      onClick={() => setActiveList(list)}>
                       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-500 dark:bg-surface-2 dark:text-white/40">
                         {list.tokens.length}
                       </div>
@@ -457,8 +436,10 @@ export default function ListEditor() {
                         type="button"
                         className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                         title="Delete list"
-                        onClick={(e) => { e.stopPropagation(); deleteList(list.id) }}
-                      >
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteList(list.id)
+                        }}>
                         <i className="fas fa-trash-alt text-[10px]" />
                       </button>
                     </div>
@@ -492,44 +473,48 @@ export default function ListEditor() {
           <Menu>
             <MenuButton
               disabled={isPublishing || !activeList || activeList.tokens.length === 0}
-              className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
-            >
+              className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200">
               <i className="fas fa-cloud-arrow-up text-sm" />
               {isPublishing ? 'Publishing...' : 'Publish'}
               <i className="fas fa-chevron-down text-[8px] opacity-60" />
             </MenuButton>
             <MenuItems
               anchor="bottom end"
-              className="z-50 mt-1 w-56 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2"
-            >
+              className="z-50 mt-1 w-56 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
               {publishers.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-gray-400 dark:text-white/40">
                   No providers configured. Set VITE_GITHUB_CLIENT_ID, VITE_GITLAB_CLIENT_ID, or VITE_GITEA_URL in .env
                 </div>
-              ) : publishers.map((pub) => (
-                <MenuItem key={pub.name}>
-                  <button
-                    type="button"
-                    onClick={() => activeList && publish(pub, activeList)}
-                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3"
-                  >
-                    <i className={`${pub.icon} text-sm w-4 text-center ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`} />
-                    <span className="flex-1 font-medium text-gray-700 dark:text-white/80">{pub.name}</span>
-                    {pub.isAuthorized() ? (
-                      <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[10px] font-medium text-accent-500">Connected</span>
-                    ) : (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-surface-3 dark:text-white/40">Connect</span>
-                    )}
-                  </button>
-                </MenuItem>
-              ))}
+              ) : (
+                publishers.map((pub) => (
+                  <MenuItem key={pub.name}>
+                    <button
+                      type="button"
+                      onClick={() => activeList && publish(pub, activeList)}
+                      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3">
+                      <i
+                        className={`${pub.icon} text-sm w-4 text-center ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`}
+                      />
+                      <span className="flex-1 font-medium text-gray-700 dark:text-white/80">{pub.name}</span>
+                      {pub.isAuthorized() ? (
+                        <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[10px] font-medium text-accent-500">
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-surface-3 dark:text-white/40">
+                          Connect
+                        </span>
+                      )}
+                    </button>
+                  </MenuItem>
+                ))
+              )}
             </MenuItems>
           </Menu>
           <button
             type="button"
             onClick={closeEditor}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80"
-          >
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
             <i className="fas fa-times" />
           </button>
         </div>
@@ -541,11 +526,19 @@ export default function ListEditor() {
           <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
             <i className="fas fa-check-circle" />
             <span>Published!</span>
-            <a href={publishResult.repoUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+            <a
+              href={publishResult.repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline">
               View repo
             </a>
             {publishResult.fileUrl && (
-              <a href={publishResult.fileUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+              <a
+                href={publishResult.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline">
                 View file
               </a>
             )}
@@ -553,19 +546,15 @@ export default function ListEditor() {
               type="button"
               onClick={handleSubmitToGibShow}
               disabled={isSubmitting}
-              className="ml-auto rounded-md bg-accent-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-50"
-            >
+              className="ml-auto rounded-md bg-accent-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-50">
               {isSubmitting ? 'Submitting...' : 'Submit to Gib.Show'}
             </button>
           </div>
           {submitResult && (
             <div
               className={`mt-1 text-[11px] ${
-                submitResult.success
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}
-            >
+                submitResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+              }`}>
               {submitResult.message}
             </div>
           )}
@@ -604,8 +593,7 @@ export default function ListEditor() {
             type="button"
             onClick={handleAddToken}
             disabled={!addAddress.trim()}
-            className="btn-primary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
-          >
+            className="btn-primary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50">
             Add
           </button>
         </div>
@@ -614,11 +602,8 @@ export default function ListEditor() {
           onClick={handleLoadMetadata}
           disabled={isLoadingMetadata || activeList.tokens.length === 0}
           className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
-          title="Load name, symbol, decimals from chain RPC"
-        >
-          {isLoadingMetadata
-            ? `${metadataProgress.done}/${metadataProgress.total}`
-            : 'Load RPC'}
+          title="Load name, symbol, decimals from chain RPC">
+          {isLoadingMetadata ? `${metadataProgress.done}/${metadataProgress.total}` : 'Load RPC'}
         </button>
       </div>
 
@@ -638,15 +623,10 @@ export default function ListEditor() {
             No tokens yet. Add an address above.
           </div>
         ) : (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext
               items={activeList.tokens.map((t) => `${t.chainId}-${t.address}`)}
-              strategy={verticalListSortingStrategy}
-            >
+              strategy={verticalListSortingStrategy}>
               {activeList.tokens.map((token) => (
                 <ListTokenRow
                   key={`${token.chainId}-${token.address}`}

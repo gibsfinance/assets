@@ -13,11 +13,7 @@ const SettingsContext = createContext<SettingsContextValue>({
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [showTestnets, setShowTestnets] = useLocalStorage('showTestnets', false)
-  return (
-    <SettingsContext.Provider value={{ showTestnets, setShowTestnets }}>
-      {children}
-    </SettingsContext.Provider>
-  )
+  return <SettingsContext.Provider value={{ showTestnets, setShowTestnets }}>{children}</SettingsContext.Provider>
 }
 
 export const useSettings = () => useContext(SettingsContext)

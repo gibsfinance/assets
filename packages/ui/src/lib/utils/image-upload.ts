@@ -10,11 +10,7 @@ export interface ImageSubmitResult {
  * Returns the canonical image hash and URL on success.
  * Throws with a descriptive message on failure.
  */
-export async function submitImage(
-  chainId: number,
-  address: string,
-  dataUri: string,
-): Promise<ImageSubmitResult> {
+export async function submitImage(chainId: number, address: string, dataUri: string): Promise<ImageSubmitResult> {
   const res = await fetch(getApiUrl('/api/images/submit'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

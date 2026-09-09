@@ -9,13 +9,7 @@
  * only thing that would have caught it.
  */
 import { describe, it, expect } from 'vitest'
-import {
-  applyWallBounce,
-  applyMouseRepel,
-  applyScrollForce,
-  resolveCollision,
-  computeEdgeOpacity,
-} from './forces'
+import { applyWallBounce, applyMouseRepel, applyScrollForce, resolveCollision, computeEdgeOpacity } from './forces'
 import { DEFAULT_CONFIG } from './types'
 import type { PhysicsIcon, PhysicsConfig } from './types'
 

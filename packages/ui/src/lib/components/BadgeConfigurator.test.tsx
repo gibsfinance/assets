@@ -36,11 +36,7 @@ function BadgeProbe() {
       <button type="button" data-testid="probe-enable" onClick={() => updateBadge({ enabled: true })}>
         force-enable
       </button>
-      <button
-        type="button"
-        data-testid="probe-ring-off"
-        onClick={() => updateBadge({ ringEnabled: false })}
-      >
+      <button type="button" data-testid="probe-ring-off" onClick={() => updateBadge({ ringEnabled: false })}>
         force-ring-off
       </button>
     </div>
@@ -141,9 +137,9 @@ describe('size and overlap sliders', () => {
     renderConfigurator()
     enableBadge()
     // The size slider is the range whose min is 0.15 / max 0.6
-    const sizeSlider = Array.from(
-      document.querySelectorAll('input[type="range"]'),
-    ).find((el) => (el as HTMLInputElement).max === '0.6') as HTMLInputElement
+    const sizeSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).max === '0.6',
+    ) as HTMLInputElement
     expect(sizeSlider).toBeTruthy()
     fireEvent.change(sizeSlider, { target: { value: '0.45' } })
     expect(readBadge().sizeRatio).toBeCloseTo(0.45)
@@ -158,9 +154,9 @@ describe('size and overlap sliders', () => {
   it('updates the overlap (allowing negative values) when the overlap slider moves', () => {
     renderConfigurator()
     enableBadge()
-    const overlapSlider = Array.from(
-      document.querySelectorAll('input[type="range"]'),
-    ).find((el) => (el as HTMLInputElement).min === '-0.5') as HTMLInputElement
+    const overlapSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).min === '-0.5',
+    ) as HTMLInputElement
     expect(overlapSlider).toBeTruthy()
     fireEvent.change(overlapSlider, { target: { value: '-0.5' } })
     expect(readBadge().overlap).toBeCloseTo(-0.5)
@@ -172,9 +168,9 @@ describe('size and overlap sliders', () => {
     // default overlap 0 → "Edge"
     expect(screen.getByText('Edge')).toBeTruthy()
 
-    const overlapSlider = Array.from(
-      document.querySelectorAll('input[type="range"]'),
-    ).find((el) => (el as HTMLInputElement).min === '-0.5') as HTMLInputElement
+    const overlapSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).min === '-0.5',
+    ) as HTMLInputElement
     fireEvent.change(overlapSlider, { target: { value: '-0.5' } })
     // -0.5 ≤ -0.4 → "Float"
     expect(screen.getByText('Float')).toBeTruthy()
@@ -211,9 +207,9 @@ describe('badge padding and background', () => {
   it('updates the badge padding when its slider moves', () => {
     renderConfigurator()
     enableBadge()
-    const paddingSlider = Array.from(
-      document.querySelectorAll('input[type="range"]'),
-    ).find((el) => (el as HTMLInputElement).max === '4') as HTMLInputElement
+    const paddingSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).max === '4',
+    ) as HTMLInputElement
     expect(paddingSlider).toBeTruthy()
     fireEvent.change(paddingSlider, { target: { value: '3' } })
     expect(readBadge().badgePadding).toBe(3)
@@ -290,11 +286,8 @@ describe('ring controls', () => {
     renderConfigurator()
     enableBadge()
     // the ring thickness slider is the range with min 1 / max 6
-    const thicknessSlider = Array.from(
-      document.querySelectorAll('input[type="range"]'),
-    ).find(
-      (el) =>
-        (el as HTMLInputElement).min === '1' && (el as HTMLInputElement).max === '6',
+    const thicknessSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).min === '1' && (el as HTMLInputElement).max === '6',
     ) as HTMLInputElement
     expect(thicknessSlider).toBeTruthy()
     fireEvent.change(thicknessSlider, { target: { value: '5' } })

@@ -22,8 +22,7 @@ export default function FrameworkSwitcher({ languages, activeLanguage, onSelect 
             activeLanguage === lang.key
               ? 'bg-accent-500 text-black shadow-glow-green'
               : 'bg-surface-light-2 dark:bg-surface-2 text-gray-600 dark:text-gray-400 hover:bg-surface-light-3 dark:hover:bg-surface-3'
-          }`}
-        >
+          }`}>
           {lang.label}
         </button>
       ))}

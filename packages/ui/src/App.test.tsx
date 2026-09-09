@@ -94,9 +94,7 @@ afterEach(() => {
 describe('App routes', () => {
   it('serves the home page at the root address', TEST_OPTIONS, async () => {
     visit('#/')
-    expect(
-      await screen.findByText(/A decentralized solution for token metadata and assets/, {}, WAIT),
-    ).toBeTruthy()
+    expect(await screen.findByText(/A decentralized solution for token metadata and assets/, {}, WAIT)).toBeTruthy()
   })
 
   it('serves the studio, loaded as its own chunk, at /studio', TEST_OPTIONS, async () => {

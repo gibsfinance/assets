@@ -19,10 +19,7 @@ function buildSpatialGrid(icons: PhysicsIcon[]): Map<string, SpatialCell> {
   return grid
 }
 
-function checkCollisionsInGrid(
-  grid: Map<string, SpatialCell>,
-  config: PhysicsConfig,
-): void {
+function checkCollisionsInGrid(grid: Map<string, SpatialCell>, config: PhysicsConfig): void {
   const checked = new Set<string>()
   for (const [key, cell] of grid) {
     const [cx, cy] = key.split(',').map(Number)

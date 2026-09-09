@@ -10,11 +10,15 @@ export function Layout() {
       {!isStudio && (
         <header className="sticky top-0 z-50 border-b border-border-light dark:border-border-dark bg-white/80 dark:bg-surface-base/80 backdrop-blur-lg">
           <div className="mx-auto flex items-center justify-between px-4 py-3 max-w-7xl">
-            <Link to="/" className="font-heading text-2xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
+            <Link
+              to="/"
+              className="font-heading text-2xl font-bold text-gradient-brand hover:opacity-80 transition-opacity">
               Gib.Show
             </Link>
             <div className="flex items-center gap-4">
-              <Link to="/docs" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-accent-500 transition-colors">
+              <Link
+                to="/docs"
+                className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-accent-500 transition-colors">
                 Docs
               </Link>
               <Link to="/studio" className="btn-primary text-sm">

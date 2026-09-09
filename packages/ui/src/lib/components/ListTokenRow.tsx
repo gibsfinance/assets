@@ -14,12 +14,7 @@ interface ListTokenRowProps {
   onImageUpload: (token: LocalToken, dataUri: string) => void
 }
 
-export default function ListTokenRow({
-  token,
-  onRemove,
-  onImageClick,
-  onImageUpload,
-}: ListTokenRowProps) {
+export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpload }: ListTokenRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `${token.chainId}-${token.address}`,
   })
@@ -36,15 +31,13 @@ export default function ListTokenRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 dark:border-surface-3 bg-white dark:bg-surface-base"
-    >
+      className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 dark:border-surface-3 bg-white dark:bg-surface-base">
       {/* Drag handle */}
       <button
         type="button"
         className="flex-shrink-0 cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-white/20 dark:hover:text-white/50"
         {...attributes}
-        {...listeners}
-      >
+        {...listeners}>
         <i className="fas fa-grip-vertical text-xs" />
       </button>
 
@@ -57,8 +50,7 @@ export default function ListTokenRow({
             onImageClick(token)
           }}
           className="flex-shrink-0 rounded-full ring-2 ring-transparent transition-all hover:ring-accent-500/40"
-          title="Edit image"
-        >
+          title="Edit image">
           <Image
             src={token.imageUri || getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`)}
             size={24}
@@ -69,10 +61,7 @@ export default function ListTokenRow({
           />
         </button>
       ) : (
-        <ImageUpload
-          size={24}
-          onUpload={(dataUri) => onImageUpload(token, dataUri)}
-        />
+        <ImageUpload size={24} onUpload={(dataUri) => onImageUpload(token, dataUri)} />
       )}
 
       {/* Info */}
@@ -100,8 +89,7 @@ export default function ListTokenRow({
         type="button"
         onClick={() => onRemove(token.address)}
         className="flex-shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-        title="Remove token"
-      >
+        title="Remove token">
         <i className="fas fa-trash-alt text-xs" />
       </button>
     </div>

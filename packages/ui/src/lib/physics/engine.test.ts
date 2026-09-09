@@ -139,7 +139,7 @@ describe('createIcon', () => {
     return () => values[Math.min(call++, values.length - 1)]
   }
 
-  it('reads the six draws in a fixed order, so no field can take another one\'s number', () => {
+  it("reads the six draws in a fixed order, so no field can take another one's number", () => {
     // Six distinct values. Any swap between fields moves a number somewhere it
     // does not belong, and the assertions below stop agreeing.
     const random = scriptedRandom([0, 0.5, 1, 0, 0.25, 0.75])

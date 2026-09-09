@@ -139,25 +139,26 @@ export default function Image({
     />
   ) : null
 
-  const imgEl = visible && !shouldFallback ? (
-    <img
-      src={requestUrl}
-      alt={alt}
-      onError={handleError}
-      onLoad={handleLoad}
-      width={w}
-      height={h}
-      draggable={false}
-      decoding="async"
-      style={{
-        ...style,
-        width: w,
-        height: h,
-        ...(skeleton ? { opacity: loaded ? 1 : 0 } : {}),
-      }}
-      className={`${skeleton ? 'relative' : ''} ${className || ''}`}
-    />
-  ) : null
+  const imgEl =
+    visible && !shouldFallback ? (
+      <img
+        src={requestUrl}
+        alt={alt}
+        onError={handleError}
+        onLoad={handleLoad}
+        width={w}
+        height={h}
+        draggable={false}
+        decoding="async"
+        style={{
+          ...style,
+          width: w,
+          height: h,
+          ...(skeleton ? { opacity: loaded ? 1 : 0 } : {}),
+        }}
+        className={`${skeleton ? 'relative' : ''} ${className || ''}`}
+      />
+    ) : null
 
   const Tag = href ? 'a' : 'span'
   const linkProps = href ? { href, target: '_blank' as const, rel: 'noopener noreferrer' } : {}
@@ -167,8 +168,7 @@ export default function Image({
       ref={containerRef as React.Ref<HTMLAnchorElement & HTMLSpanElement>}
       className={`shrink-0 relative flex ${skeleton ? '' : className || ''}`}
       style={{ width: w, height: h }}
-      {...linkProps}
-    >
+      {...linkProps}>
       {skeletonEl}
       {imgEl}
     </Tag>

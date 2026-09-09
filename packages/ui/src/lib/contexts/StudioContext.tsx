@@ -117,7 +117,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     saveTimeout.current = setTimeout(() => savePersistedPrefs(state), 300)
-    return () => { if (saveTimeout.current) clearTimeout(saveTimeout.current) }
+    return () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    }
   }, [state])
 
   const selectToken = useCallback((token: Token) => {
@@ -181,18 +183,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <StudioCtx.Provider value={{
-      ...state,
-      selectToken,
-      selectChain,
-      updateAppearance,
-      updateBadge,
-      setCodeFormat,
-      setCodeMode,
-      setResolutionOrder,
-      setActiveTab,
-      reset,
-    }}>
+    <StudioCtx.Provider
+      value={{
+        ...state,
+        selectToken,
+        selectChain,
+        updateAppearance,
+        updateBadge,
+        setCodeFormat,
+        setCodeMode,
+        setResolutionOrder,
+        setActiveTab,
+        reset,
+      }}>
       {children}
     </StudioCtx.Provider>
   )

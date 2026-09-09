@@ -166,8 +166,7 @@ async function renderLoadedDocs() {
   return view
 }
 
-const sectionElements = (container: HTMLElement) =>
-  [...container.querySelectorAll('main section[id]')] as HTMLElement[]
+const sectionElements = (container: HTMLElement) => [...container.querySelectorAll('main section[id]')] as HTMLElement[]
 
 /** The wide-screen table of contents; the narrow one repeats the same labels. */
 const navButtons = (container: HTMLElement) =>
@@ -204,9 +203,8 @@ const documentedPaths = Object.entries(spec.paths).map(([path, methods]) => ({
 
 /** Output formats the path-extension route accepts, straight from the definition. */
 const documentedExtensions =
-  spec.paths['/image/{chainId}/{address}.{ext}'].get?.parameters?.find(
-    (parameter) => parameter.name === 'ext',
-  )?.schema?.enum ?? []
+  spec.paths['/image/{chainId}/{address}.{ext}'].get?.parameters?.find((parameter) => parameter.name === 'ext')?.schema
+    ?.enum ?? []
 
 /** Pull every concrete sample address out of rendered sample text. */
 function sampleAddressesIn(text: string): string[] {
@@ -233,10 +231,7 @@ describe('Docs', () => {
     expect(container.textContent).toContain('Loading the API definition')
     // Only the two hand-written sections exist before the definition arrives, so a
     // reader is never shown an empty endpoint reference as if that were the whole page.
-    expect(sectionElements(container).map((section) => section.id)).toEqual([
-      'features',
-      'code-examples',
-    ])
+    expect(sectionElements(container).map((section) => section.id)).toEqual(['features', 'code-examples'])
   })
 
   it('names the failure and offers the raw definition when the fetch is rejected', async () => {
@@ -257,9 +252,7 @@ describe('Docs', () => {
     // Both directions matter and both fail silently. A section with no entry is
     // unreachable except by scrolling; an entry with no section is a dead link.
     const { container } = await renderLoadedDocs()
-    const headings = sectionElements(container).map((section) =>
-      section.querySelector('h2')?.textContent?.trim(),
-    )
+    const headings = sectionElements(container).map((section) => section.querySelector('h2')?.textContent?.trim())
 
     expect(navButtons(container).map((button) => button.textContent?.trim())).toEqual(headings)
   })
@@ -288,9 +281,7 @@ describe('Docs', () => {
     const label = activeTabLabel(container)
 
     expect(label).toBeTruthy()
-    const headings = sectionElements(container).map((section) =>
-      section.querySelector('h2')?.textContent?.trim(),
-    )
+    const headings = sectionElements(container).map((section) => section.querySelector('h2')?.textContent?.trim())
     expect(headings).toContain(label)
   })
 
@@ -307,9 +298,7 @@ describe('Docs', () => {
     // A tag whose operations all lost it is dropped without a trace: no heading, no
     // entry, no error. This is the check that notices.
     const { container } = await renderLoadedDocs()
-    const headings = sectionElements(container).map((section) =>
-      section.querySelector('h2')?.textContent?.trim(),
-    )
+    const headings = sectionElements(container).map((section) => section.querySelector('h2')?.textContent?.trim())
 
     for (const tag of spec.tags) {
       expect(headings, `the ${tag.name} section is missing from the page`).toContain(tag.name)
@@ -464,8 +453,7 @@ describe('Docs', () => {
   it('swaps the sample when another language is chosen', async () => {
     const { container } = await renderLoadedDocs()
     const samples = container.querySelector('#code-examples') as HTMLElement
-    const tab = (label: string) =>
-      within(samples).getByRole('tab', { name: label }) as HTMLButtonElement
+    const tab = (label: string) => within(samples).getByRole('tab', { name: label }) as HTMLButtonElement
 
     fireEvent.click(tab('cURL'))
     expect(tab('cURL').getAttribute('aria-selected')).toBe('true')
@@ -492,9 +480,7 @@ describe('Docs', () => {
 
   it('sends readers on to the studio', async () => {
     const { container } = await renderLoadedDocs()
-    const link = [...container.querySelectorAll('a')].find((anchor) =>
-      anchor.textContent?.includes('Open Studio'),
-    )
+    const link = [...container.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('Open Studio'))
     expect(link?.getAttribute('href')).toBe('/studio')
   })
 })

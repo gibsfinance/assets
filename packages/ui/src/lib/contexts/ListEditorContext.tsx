@@ -39,28 +39,31 @@ export function ListEditorProvider({ children }: { children: ReactNode }) {
     return localLists.lists.find((l) => l.id === state.editingListId) ?? null
   }, [state.editingListId, localLists.lists])
 
-  const openEditor = useCallback((sourceOrId: string) => {
-    // If it contains a slash, treat as remote source key (provider/key)
-    if (sourceOrId.includes('/')) {
-      const localFork = localLists.lists.find(
-        (l) => l.source.remoteProvider === sourceOrId.split('/')[0] &&
-               l.source.remoteKey === sourceOrId.split('/')[1]
-      )
+  const openEditor = useCallback(
+    (sourceOrId: string) => {
+      // If it contains a slash, treat as remote source key (provider/key)
+      if (sourceOrId.includes('/')) {
+        const localFork = localLists.lists.find(
+          (l) =>
+            l.source.remoteProvider === sourceOrId.split('/')[0] && l.source.remoteKey === sourceOrId.split('/')[1],
+        )
+        setState({
+          isOpen: true,
+          editingListId: localFork?.id ?? null,
+          editingSourceKey: sourceOrId,
+        })
+        return
+      }
+
+      // Otherwise treat as a local list ID
       setState({
         isOpen: true,
-        editingListId: localFork?.id ?? null,
-        editingSourceKey: sourceOrId,
+        editingListId: sourceOrId,
+        editingSourceKey: null,
       })
-      return
-    }
-
-    // Otherwise treat as a local list ID
-    setState({
-      isOpen: true,
-      editingListId: sourceOrId,
-      editingSourceKey: null,
-    })
-  }, [localLists.lists])
+    },
+    [localLists.lists],
+  )
 
   const openNewEditor = useCallback(() => {
     setState({
@@ -99,8 +102,7 @@ export function ListEditorProvider({ children }: { children: ReactNode }) {
         addToken: localLists.addToken,
         removeToken: localLists.removeToken,
         reorderTokens: localLists.reorderTokens,
-      }}
-    >
+      }}>
       {children}
     </ListEditorCtx.Provider>
   )

@@ -67,9 +67,7 @@ function errorResponse({ status = 500, statusText = 'Internal Server Error' } = 
  * The panel only exists when an `example` is provided and the disclosure is open.
  */
 function renderExpanded(example = 'https://api.example.com/v1/tokens') {
-  render(
-    <EndpointCard method="GET" path="/v1/tokens" description="List tokens" example={example} />,
-  )
+  render(<EndpointCard method="GET" path="/v1/tokens" description="List tokens" example={example} />)
   // Headless UI DisclosurePanel is unmounted while closed; click to open it.
   fireEvent.click(screen.getByRole('button'))
   return screen.getByRole('textbox') as HTMLInputElement
@@ -168,9 +166,7 @@ describe('EndpointCard', () => {
   // -------------------------------------------------------------------------
   it('renders the JSON response body and stats on success', async () => {
     const body = JSON.stringify({ total: 42, tokens: [{ a: 1 }, { b: 2 }] })
-    mockFetch.mockResolvedValue(
-      jsonResponse({ status: 200, body, contentType: 'application/json; charset=utf-8' }),
-    )
+    mockFetch.mockResolvedValue(jsonResponse({ status: 200, body, contentType: 'application/json; charset=utf-8' }))
     renderExpanded()
 
     // The mocked CodeBlock renders the pretty-printed JSON into <pre data-testid="code">
@@ -226,9 +222,7 @@ describe('EndpointCard', () => {
   // Image endpoints — render preview, skip JSON parse
   // -------------------------------------------------------------------------
   it('renders an image preview (not JSON) for image endpoints', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({ contentType: 'image/png', body: 'binarybytes' }),
-    )
+    mockFetch.mockResolvedValue(jsonResponse({ contentType: 'image/png', body: 'binarybytes' }))
     render(
       <EndpointCard
         method="GET"
@@ -258,9 +252,7 @@ describe('EndpointCard', () => {
     fireEvent.change(input, { target: { value: 'https://api.example.com/second' } })
     expect(input.value).toBe('https://api.example.com/second')
 
-    await waitFor(() =>
-      expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/second', expect.anything()),
-    )
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/second', expect.anything()))
   })
 
   // -------------------------------------------------------------------------

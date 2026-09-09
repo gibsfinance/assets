@@ -16,8 +16,7 @@ function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client }, children)
+  return ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 }
 
 // ---------------------------------------------------------------------------
@@ -49,9 +48,7 @@ describe('useStats', () => {
 
     expect(result.current.data).toEqual(statsPayload)
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/stats'),
-    )
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/stats'))
   })
 
   it('reports an error rather than an empty result when /stats fails', async () => {
@@ -86,7 +83,15 @@ describe('useProviders', () => {
 
   it('returns provider list from /list endpoint', async () => {
     const providers = [
-      { key: 'tokens', name: 'CoinGecko', providerKey: 'coingecko', chainId: '0', chainType: 'evm', default: true, description: '' },
+      {
+        key: 'tokens',
+        name: 'CoinGecko',
+        providerKey: 'coingecko',
+        chainId: '0',
+        chainType: 'evm',
+        default: true,
+        description: '',
+      },
     ]
 
     mockFetch.mockResolvedValue({
@@ -122,7 +127,15 @@ describe('useMetrics (composite)', () => {
       { type: 'evm', chainId: '369', networkId: '369', chainIdentifier: 'eip155-369', imageHash: null },
     ]
     const providers = [
-      { key: 'tokens', name: 'CoinGecko', providerKey: 'coingecko', chainId: '0', chainType: 'evm', default: true, description: '' },
+      {
+        key: 'tokens',
+        name: 'CoinGecko',
+        providerKey: 'coingecko',
+        chainId: '0',
+        chainType: 'evm',
+        default: true,
+        description: '',
+      },
     ]
 
     mockFetch.mockImplementation((url: string) => {

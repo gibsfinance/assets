@@ -107,8 +107,7 @@ const mountReady = () => {
   return result
 }
 
-const rowsOf = (container: HTMLElement) =>
-  Array.from(container.firstElementChild!.children) as HTMLElement[]
+const rowsOf = (container: HTMLElement) => Array.from(container.firstElementChild!.children) as HTMLElement[]
 
 const iconSourcesIn = (row: HTMLElement) =>
   Array.from(row.querySelectorAll('img')).map((img) => img.getAttribute('src')!)

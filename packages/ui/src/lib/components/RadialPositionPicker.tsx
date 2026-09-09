@@ -78,10 +78,13 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
         {SNAP_PRESETS.map((preset) => {
           const isActive = Math.round(angleDeg) === preset.angleDeg
           const positionClasses =
-            preset.label === 'TL' ? 'top-0 left-0' :
-            preset.label === 'TR' ? 'top-0 right-0' :
-            preset.label === 'BL' ? 'bottom-0 left-0' :
-            'bottom-0 right-0'
+            preset.label === 'TL'
+              ? 'top-0 left-0'
+              : preset.label === 'TR'
+                ? 'top-0 right-0'
+                : preset.label === 'BL'
+                  ? 'bottom-0 left-0'
+                  : 'bottom-0 right-0'
           return (
             <button
               key={preset.label}
@@ -92,8 +95,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
                   ? 'bg-accent-500/20 text-accent-500'
                   : 'bg-gray-200/80 text-gray-500 hover:bg-gray-300 dark:bg-surface-3/80 dark:text-white/50 dark:hover:bg-surface-3'
               }`}
-              aria-label={`Snap to ${preset.label} (${preset.angleDeg}°)`}
-            >
+              aria-label={`Snap to ${preset.label} (${preset.angleDeg}°)`}>
               {preset.label}
             </button>
           )
@@ -110,8 +112,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           aria-valuemax={359}
           aria-valuenow={angleDeg}
           aria-label="Badge angle"
-          tabIndex={0}
-        >
+          tabIndex={0}>
           {/* Center dot */}
           <div
             className="absolute rounded-full bg-gray-300 dark:bg-white/10"
@@ -124,19 +125,8 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           />
 
           {/* Radius line */}
-          <svg
-            className="pointer-events-none absolute inset-0"
-            width={CIRCLE_SIZE}
-            height={CIRCLE_SIZE}
-          >
-            <line
-              x1={CENTER}
-              y1={CENTER}
-              x2={x}
-              y2={y}
-              stroke="rgba(255,255,255,0.12)"
-              strokeWidth={1}
-            />
+          <svg className="pointer-events-none absolute inset-0" width={CIRCLE_SIZE} height={CIRCLE_SIZE}>
+            <line x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
           </svg>
 
           {/* Draggable handle */}

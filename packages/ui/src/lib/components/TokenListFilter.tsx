@@ -24,9 +24,7 @@ export default function TokenListFilter({
   const underChain = useMemo(
     () =>
       list.filter(([, tokens]) => {
-        const tokensForNetwork = tokens.filter(
-          (token) => token.chainId === selectedChain,
-        )
+        const tokensForNetwork = tokens.filter((token) => token.chainId === selectedChain)
         return tokensForNetwork.length > 0
       }),
     [list, selectedChain],
@@ -35,12 +33,7 @@ export default function TokenListFilter({
   const count = underChain.length
 
   const filteredLists = useMemo(
-    () =>
-      underChain.filter(
-        ([key]) =>
-          !listSearchQuery ||
-          key.toLowerCase().includes(listSearchQuery.toLowerCase()),
-      ),
+    () => underChain.filter(([key]) => !listSearchQuery || key.toLowerCase().includes(listSearchQuery.toLowerCase())),
     [underChain, listSearchQuery],
   )
 
@@ -58,8 +51,7 @@ export default function TokenListFilter({
 
       <PopoverPanel
         anchor="bottom"
-        className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-surface-3 dark:bg-surface-1"
-      >
+        className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-surface-3 dark:bg-surface-1">
         <div className="flex flex-col gap-2 p-3">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -67,8 +59,7 @@ export default function TokenListFilter({
             <button
               className="rounded px-2 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/70"
               type="button"
-              onClick={handleToggleAll}
-            >
+              onClick={handleToggleAll}>
               Toggle All
             </button>
           </div>
@@ -92,8 +83,7 @@ export default function TokenListFilter({
               return (
                 <label
                   key={listKey}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-surface-2"
-                >
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-surface-2">
                   <div
                     className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
                       isEnabled
@@ -103,14 +93,11 @@ export default function TokenListFilter({
                     onClick={(e) => {
                       e.preventDefault()
                       onToggleList(listKey, !isEnabled)
-                    }}
-                  >
+                    }}>
                     {isEnabled && <i className="fas fa-check text-[8px]" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">
-                      {listKey}
-                    </div>
+                    <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{listKey}</div>
                     <div className="text-[10px] text-gray-400 dark:text-white/30">
                       {tokens.filter((token) => token.chainId === selectedChain).length} tokens
                     </div>

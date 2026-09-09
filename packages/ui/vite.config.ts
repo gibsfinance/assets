@@ -29,16 +29,18 @@ export default defineConfig({
   ],
   base: './',
   server: {
-    proxy: process.env.PUBLIC_BASE_URL ? undefined : {
-      '/image': { target: 'http://localhost:3456', changeOrigin: true },
-      '/list': { target: 'http://localhost:3456', changeOrigin: true },
-      '/token': { target: 'http://localhost:3456', changeOrigin: true },
-      '/api': { target: 'http://localhost:3456', changeOrigin: true },
-      '/openapi.json': { target: 'http://localhost:3456', changeOrigin: true },
-      '/networks': { target: 'http://localhost:3456', changeOrigin: true },
-      '/stats': { target: 'http://localhost:3456', changeOrigin: true },
-      '/sprite': { target: 'http://localhost:3456', changeOrigin: true },
-    },
+    proxy: process.env.PUBLIC_BASE_URL
+      ? undefined
+      : {
+          '/image': { target: 'http://localhost:3456', changeOrigin: true },
+          '/list': { target: 'http://localhost:3456', changeOrigin: true },
+          '/token': { target: 'http://localhost:3456', changeOrigin: true },
+          '/api': { target: 'http://localhost:3456', changeOrigin: true },
+          '/openapi.json': { target: 'http://localhost:3456', changeOrigin: true },
+          '/networks': { target: 'http://localhost:3456', changeOrigin: true },
+          '/stats': { target: 'http://localhost:3456', changeOrigin: true },
+          '/sprite': { target: 'http://localhost:3456', changeOrigin: true },
+        },
   },
   preview: {
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],

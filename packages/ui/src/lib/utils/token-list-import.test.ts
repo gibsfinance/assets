@@ -256,11 +256,7 @@ describe('readTokenList', () => {
   })
 
   it('keeps the good tokens around one rejected for its decimals, and records the rejection at its original index', () => {
-    const result = readTokenList([
-      { address: '0xfirst' },
-      { address: '0xbad', decimals: -1 },
-      { address: '0xthird' },
-    ])
+    const result = readTokenList([{ address: '0xfirst' }, { address: '0xbad', decimals: -1 }, { address: '0xthird' }])
 
     expect(result.tokens).toHaveLength(2)
     expect(result.tokens.map((token) => token.address)).toEqual(['0xfirst', '0xthird'])

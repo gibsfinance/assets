@@ -192,17 +192,23 @@ describe('NumberStepper component', () => {
       expect(onChange).not.toHaveBeenCalled()
 
       // Advance past the 400ms initial timeout to trigger setInterval
-      act(() => { vi.advanceTimersByTime(400) })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
       // Interval hasn't fired yet — first tick is 80ms away
       expect(onChange).not.toHaveBeenCalled()
 
       // Advance 80ms → first rapid increment
-      act(() => { vi.advanceTimersByTime(80) })
+      act(() => {
+        vi.advanceTimersByTime(80)
+      })
       expect(onChange).toHaveBeenCalledTimes(1)
       expect(onChange).toHaveBeenCalledWith(6)
 
       // Advance another 80ms → second increment
-      act(() => { vi.advanceTimersByTime(80) })
+      act(() => {
+        vi.advanceTimersByTime(80)
+      })
       expect(onChange).toHaveBeenCalledTimes(2)
     })
 
@@ -212,8 +218,12 @@ describe('NumberStepper component', () => {
       const btn = screen.getByLabelText('Decrease')
 
       fireEvent.mouseDown(btn)
-      act(() => { vi.advanceTimersByTime(400) })
-      act(() => { vi.advanceTimersByTime(80) })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      act(() => {
+        vi.advanceTimersByTime(80)
+      })
       expect(onChange).toHaveBeenCalledWith(49)
     })
 
@@ -225,8 +235,12 @@ describe('NumberStepper component', () => {
       fireEvent.mouseDown(btn)
       // Release before initial delay expires
       fireEvent.mouseUp(btn)
-      act(() => { vi.advanceTimersByTime(400) })
-      act(() => { vi.advanceTimersByTime(80) })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      act(() => {
+        vi.advanceTimersByTime(80)
+      })
 
       // No rapid-fire calls (the onClick from the click event fires separately, but mouseUp cleared hold)
       expect(onChange).not.toHaveBeenCalled()
@@ -240,8 +254,12 @@ describe('NumberStepper component', () => {
       fireEvent.mouseDown(btn)
       // Leave the button before rapid fire kicks in
       fireEvent.mouseLeave(btn)
-      act(() => { vi.advanceTimersByTime(400) })
-      act(() => { vi.advanceTimersByTime(80) })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      act(() => {
+        vi.advanceTimersByTime(80)
+      })
 
       expect(onChange).not.toHaveBeenCalled()
     })
@@ -252,11 +270,15 @@ describe('NumberStepper component', () => {
       const btn = screen.getByLabelText('Increase')
 
       fireEvent.mouseDown(btn)
-      act(() => { vi.advanceTimersByTime(400) })
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
       // Unmount while holding
       unmount()
       // Advance time — no more calls after unmount
-      act(() => { vi.advanceTimersByTime(500) })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
       expect(onChange).not.toHaveBeenCalled()
     })
   })

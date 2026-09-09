@@ -48,20 +48,14 @@ function ProviderRow({
       onDrop={() => onDrop(index)}
       onDragEnd={onDragEnd}
       onClick={() => onClick(index)}
-      onKeyDown={(e) => onKeyDown(e, index)}
-    >
+      onKeyDown={(e) => onKeyDown(e, index)}>
       {/* Grip handle */}
-      <span
-        className="cursor-grab text-gray-300 select-none dark:text-white/30"
-        aria-hidden="true"
-      >
+      <span className="cursor-grab text-gray-300 select-none dark:text-white/30" aria-hidden="true">
         &#x2807;
       </span>
 
       {/* Provider name */}
-      <span className="flex-1 text-sm font-medium capitalize text-gray-700 dark:text-white/80">
-        {provider}
-      </span>
+      <span className="flex-1 text-sm font-medium capitalize text-gray-700 dark:text-white/80">{provider}</span>
 
       {/* Position badge */}
       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-mono text-gray-500 dark:bg-surface-3 dark:text-white/40">
@@ -81,9 +75,7 @@ export default function ListResolutionOrder() {
   const { resolutionOrder, setResolutionOrder } = useStudio()
 
   // Local ordering state — initialized from context or default
-  const [providers, setProviders] = useState<string[]>(
-    () => resolutionOrder ?? [...DEFAULT_PROVIDERS],
-  )
+  const [providers, setProviders] = useState<string[]>(() => resolutionOrder ?? [...DEFAULT_PROVIDERS])
 
   // Keyboard navigation: index of the currently "selected" item for keyboard moves
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -220,11 +212,7 @@ export default function ListResolutionOrder() {
               </p>
 
               {/* Provider list */}
-              <div
-                role="listbox"
-                aria-label="Provider resolution order"
-                className="flex flex-col gap-1"
-              >
+              <div role="listbox" aria-label="Provider resolution order" className="flex flex-col gap-1">
                 {providers.map((provider, index) => (
                   <ProviderRow
                     key={provider}
@@ -252,8 +240,7 @@ export default function ListResolutionOrder() {
                   className={[
                     'btn-ghost px-3 py-1.5 text-xs transition-opacity',
                     isDefault ? 'pointer-events-none opacity-30' : '',
-                  ].join(' ')}
-                >
+                  ].join(' ')}>
                   <i className="fas fa-rotate-left mr-1.5 text-[10px]" />
                   Reset to default
                 </button>

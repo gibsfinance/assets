@@ -62,8 +62,7 @@ function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client }, children)
+  return ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 }
 
 // ---------------------------------------------------------------------------
@@ -160,8 +159,7 @@ describe('useImageMetadata', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     })
-    const wrapper = ({ children }: { children: ReactNode }) =>
-      createElement(QueryClientProvider, { client }, children)
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 
     const { useImageMetadata } = await import('./useImageMetadata')
 
@@ -222,7 +220,7 @@ describe('fetchImageMetadata', () => {
     })
     stubImageLoad(16, 16)
 
-    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/tiny.png')
 
     expect(result.format).toBe('PNG')
@@ -244,7 +242,7 @@ describe('fetchImageMetadata', () => {
     })
     stubImageError()
 
-    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/binary.bin')
 
     expect(result.format).toBe('unknown')

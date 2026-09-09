@@ -112,22 +112,19 @@ export function useLocalLists() {
     return val ?? null
   }, [])
 
-  const addToken = useCallback(
-    async (listId: string, token: Omit<LocalToken, 'order'>): Promise<LocalList | null> => {
-      const existing = await get<LocalList>(idbKey(listId))
-      if (!existing) return null
-      const maxOrder = existing.tokens.reduce((max, t) => Math.max(max, t.order), -1)
-      const updated: LocalList = {
-        ...existing,
-        tokens: [...existing.tokens, { ...token, order: maxOrder + 1 }],
-        updatedAt: new Date().toISOString(),
-      }
-      await set(idbKey(listId), updated)
-      setLists((prev) => prev.map((l) => (l.id === listId ? updated : l)))
-      return updated
-    },
-    [],
-  )
+  const addToken = useCallback(async (listId: string, token: Omit<LocalToken, 'order'>): Promise<LocalList | null> => {
+    const existing = await get<LocalList>(idbKey(listId))
+    if (!existing) return null
+    const maxOrder = existing.tokens.reduce((max, t) => Math.max(max, t.order), -1)
+    const updated: LocalList = {
+      ...existing,
+      tokens: [...existing.tokens, { ...token, order: maxOrder + 1 }],
+      updatedAt: new Date().toISOString(),
+    }
+    await set(idbKey(listId), updated)
+    setLists((prev) => prev.map((l) => (l.id === listId ? updated : l)))
+    return updated
+  }, [])
 
   const removeToken = useCallback(async (listId: string, address: string): Promise<LocalList | null> => {
     const existing = await get<LocalList>(idbKey(listId))

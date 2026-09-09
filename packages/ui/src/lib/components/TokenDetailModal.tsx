@@ -28,8 +28,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={handleCopy}
       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-400 dark:text-white/40 transition-all hover:bg-accent-500/10 hover:text-accent-500"
-      title={copied ? 'Copied!' : 'Copy to clipboard'}
-    >
+      title={copied ? 'Copied!' : 'Copy to clipboard'}>
       <i className={`fas ${copied ? 'fa-check text-accent-500' : 'fa-copy'} text-xs`} />
     </button>
   )
@@ -74,20 +73,14 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
                 type="button"
                 onClick={onClose}
                 className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 dark:text-white/40 transition-all hover:bg-gray-100 dark:hover:bg-surface-2 hover:text-gray-600 dark:hover:text-white/80"
-                aria-label="Close"
-              >
+                aria-label="Close">
                 <i className="fas fa-times text-sm" />
               </button>
 
               {/* Hero */}
               <div className="mb-6 flex flex-col items-center gap-3 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
-                  <Image
-                    src={imageUrl!}
-                    alt={token.symbol}
-                    size={48}
-                    className="rounded-full object-contain"
-                  />
+                  <Image src={imageUrl!} alt={token.symbol} size={48} className="rounded-full object-contain" />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white/95">{token.name}</h2>

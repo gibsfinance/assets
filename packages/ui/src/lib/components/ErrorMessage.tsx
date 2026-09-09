@@ -39,9 +39,11 @@ export default function ErrorMessage({
         <div className="flex-1">
           <p className="font-medium text-red-500">No icon found</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address
-            yet. You can help by{' '}
-            <a href={issueUrl} className="text-accent-500 hover:text-accent-400 underline underline-offset-2 transition-colors" onClick={onSubmitIssue}>
+            There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. You can help by{' '}
+            <a
+              href={issueUrl}
+              className="text-accent-500 hover:text-accent-400 underline underline-offset-2 transition-colors"
+              onClick={onSubmitIssue}>
               submitting an issue
             </a>{' '}
             or contributing directly to the{' '}
@@ -49,8 +51,7 @@ export default function ErrorMessage({
               href={GITHUB_REPO_URL}
               className="text-accent-500 hover:text-accent-400 underline underline-offset-2 transition-colors"
               target="_blank"
-              rel="noopener"
-            >
+              rel="noopener">
               Gib Assets repository
             </a>
             .

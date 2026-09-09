@@ -314,7 +314,14 @@ describe('Home — the network grid', () => {
     const { container } = renderHome()
     await waitForMetrics()
 
-    expect(drawnNetworks(container)).toEqual(['Ethereum', 'PulseChain', 'Base', 'Polygon', 'Optimism', 'BNB Smart Chain'])
+    expect(drawnNetworks(container)).toEqual([
+      'Ethereum',
+      'PulseChain',
+      'Base',
+      'Polygon',
+      'Optimism',
+      'BNB Smart Chain',
+    ])
   })
 
   it('counts the remainder against the headline total, not against the chains it drew', async () => {

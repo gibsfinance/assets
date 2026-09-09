@@ -67,8 +67,7 @@ function renderRow(tokens: LocalToken[] = [DAI]) {
     <DndContext>
       <SortableContext
         items={tokens.map((token) => `${token.chainId}-${token.address}`)}
-        strategy={verticalListSortingStrategy}
-      >
+        strategy={verticalListSortingStrategy}>
         {tokens.map((token) => (
           <ListTokenRow key={`${token.chainId}-${token.address}`} token={token} {...handlers} />
         ))}
