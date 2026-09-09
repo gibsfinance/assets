@@ -66,8 +66,12 @@ export const computeRankings = (
 
 /** Module-level cached default order ID */
 let cachedDefaultOrderId: viem.Hex | null = null
-let syncLock = false
 let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Tail of the sync queue. Never rejects, so one failed sync cannot wedge it.
+ */
+let syncQueue: Promise<void> = Promise.resolve()
 
 /**
  * Get the cached default list order ID.
@@ -77,55 +81,72 @@ export const getDefaultListOrderId = (): viem.Hex | null => cachedDefaultOrderId
 
 /**
  * Sync the default list_order + list_order_item rows from collectable key order
- * and discovery manifests. Serialized — only one sync runs at a time.
+ * and discovery manifests.
+ *
+ * Syncs run one at a time, in the order they were asked for. Each caller waits
+ * for its own sync, not merely for the database to be quiet.
+ *
+ * A flag used to stand here instead, and a call that arrived while another sync
+ * was running returned at once having done nothing. That reads as serialization
+ * and is not: the periodic refresh holds the keys and manifests it was given at
+ * startup, and a collection run passes freshly discovered ones, so the call that
+ * was dropped was usually the one carrying the newer ordering — after which the
+ * collector logged "Default order synced". Waiting for a turn costs a second and
+ * tells the truth.
  */
-export const syncDefaultOrder = async (
+export const syncDefaultOrder = (
   collectableKeys: string[],
   manifests: Map<string, DiscoveryManifest>,
 ): Promise<void> => {
-  if (syncLock) return
-  syncLock = true
-  try {
-    const rankings = computeRankings(collectableKeys, manifests)
-    if (!rankings.length) return
+  const run = syncQueue.then(() => runSync(collectableKeys, manifests))
+  // The queue tail swallows outcomes so the next caller is never handed a
+  // previous caller's failure, and an unclaimed rejection cannot escape here.
+  // `run` still carries the real result to the caller who asked for it.
+  syncQueue = run.then(
+    () => {},
+    () => {},
+  )
+  return run
+}
 
-    const [gibsProvider] = await db.insertProvider({ key: 'gibs' })
+const runSync = async (collectableKeys: string[], manifests: Map<string, DiscoveryManifest>): Promise<void> => {
+  const rankings = computeRankings(collectableKeys, manifests)
+  if (!rankings.length) return
 
-    const orderItems: BackfillableInsertableListOrderItem[] = rankings.map((r) => ({
-      providerId: db.ids.provider(r.providerKey),
-      listKey: r.listKey,
-      ranking: r.ranking,
-    }))
+  const [gibsProvider] = await db.insertProvider({ key: 'gibs' })
 
-    const drizzle = getDrizzle()
-    await drizzle.transaction(async (tx) => {
-      // Find existing default order to clean up stale items
-      const [existingOrder] = await tx
-        .select({ listOrderId: s.listOrder.listOrderId })
-        .from(s.listOrder)
-        .where(eq(s.listOrder.providerId, gibsProvider.providerId))
-        .limit(1)
+  const orderItems: BackfillableInsertableListOrderItem[] = rankings.map((r) => ({
+    providerId: db.ids.provider(r.providerKey),
+    listKey: r.listKey,
+    ranking: r.ranking,
+  }))
 
-      if (existingOrder) {
-        await tx.delete(s.listOrderItem).where(eq(s.listOrderItem.listOrderId, existingOrder.listOrderId))
-      }
+  const drizzle = getDrizzle()
+  await drizzle.transaction(async (tx) => {
+    // Find existing default order to clean up stale items
+    const [existingOrder] = await tx
+      .select({ listOrderId: s.listOrder.listOrderId })
+      .from(s.listOrder)
+      .where(eq(s.listOrder.providerId, gibsProvider.providerId))
+      .limit(1)
 
-      // Upsert the order + insert all items
-      const { order } = await db.insertOrder(
-        {
-          providerId: gibsProvider.providerId,
-          type: 'default',
-          key: 'default',
-        },
-        orderItems,
-        tx,
-      )
+    if (existingOrder) {
+      await tx.delete(s.listOrderItem).where(eq(s.listOrderItem.listOrderId, existingOrder.listOrderId))
+    }
 
-      cachedDefaultOrderId = order.listOrderId as viem.Hex
-    })
-  } finally {
-    syncLock = false
-  }
+    // Upsert the order + insert all items
+    const { order } = await db.insertOrder(
+      {
+        providerId: gibsProvider.providerId,
+        type: 'default',
+        key: 'default',
+      },
+      orderItems,
+      tx,
+    )
+
+    cachedDefaultOrderId = order.listOrderId as viem.Hex
+  })
 }
 
 /**

@@ -220,34 +220,52 @@ describe('syncDefaultOrder', () => {
     expect(dbMock.insertOrder).not.toHaveBeenCalled()
   })
 
-  it('serialises concurrent syncs so only one runs', async () => {
+  it('holds a second sync until the first finishes, then runs it too', async () => {
+    // Two syncs never overlap, and neither is dropped. Both halves matter. An
+    // earlier version returned at once when a sync was already running, which
+    // reads as serialization and is not: the periodic refresh carries the keys
+    // and manifests it was handed at startup while a collection run carries
+    // freshly discovered ones, so the call thrown away was usually the one with
+    // the newer ordering — and the collector went on to log that the order had
+    // synced.
     const { syncDefaultOrder } = await loadSyncOrder()
     const manifests = new Map([['trustwallet', manifestOf({ trustwallet: ['wallet'] })]])
 
-    let release: () => void = () => {}
+    // One resolver per started sync, so the count says how many have begun.
+    const started: (() => void)[] = []
     dbMock.insertProvider.mockImplementation(
-      () => new Promise((resolve) => (release = () => resolve([{ providerId: 'gibs-provider-id' }]))),
+      () => new Promise((resolve) => started.push(() => resolve([{ providerId: 'gibs-provider-id' }]))),
     )
 
     const first = syncDefaultOrder(['trustwallet'], manifests)
-    // Second call lands while the first still holds the lock and must no-op
-    // rather than racing it into a duplicate insert.
-    await syncDefaultOrder(['trustwallet'], manifests)
-    release()
+    const second = syncDefaultOrder(['trustwallet'], manifests)
+
+    // The second has not touched the database while the first is in flight.
+    await vi.waitFor(() => expect(started).toHaveLength(1))
+    expect(started).toHaveLength(1)
+
+    started[0]()
     await first
 
-    expect(dbMock.insertProvider).toHaveBeenCalledTimes(1)
+    // Releasing the first lets the second begin, rather than ending it.
+    await vi.waitFor(() => expect(started).toHaveLength(2))
+    started[1]()
+    await second
+
+    expect(dbMock.insertProvider).toHaveBeenCalledTimes(2)
+    expect(dbMock.insertOrder).toHaveBeenCalledTimes(2)
   })
 
-  it('releases the lock when a sync throws', async () => {
+  it('keeps taking syncs after one of them throws', async () => {
     const { syncDefaultOrder } = await loadSyncOrder()
     const manifests = new Map([['trustwallet', manifestOf({ trustwallet: ['wallet'] })]])
     dbMock.insertProvider.mockRejectedValueOnce(new Error('database down'))
 
     await expect(syncDefaultOrder(['trustwallet'], manifests)).rejects.toThrow('database down')
 
-    // A failed sync must not wedge the lock — otherwise one transient database
-    // error would freeze ordering until the process restarts.
+    // A failed sync must not wedge the queue — otherwise one transient database
+    // error would freeze ordering until the process restarts. The failure also
+    // belongs to the caller who asked for it, and must not reach the next one.
     dbMock.insertProvider.mockResolvedValue([{ providerId: 'gibs-provider-id' }])
     await syncDefaultOrder(['trustwallet'], manifests)
     expect(dbMock.insertOrder).toHaveBeenCalledTimes(1)
