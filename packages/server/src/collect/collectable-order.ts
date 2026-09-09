@@ -54,6 +54,7 @@ export const collectableOrder = [
   'jupiter',
   'mew',
   'relay',
+  'debridge',
   'near-intents',
   'ethereum-lists',
   'cryptocurrency-icons',

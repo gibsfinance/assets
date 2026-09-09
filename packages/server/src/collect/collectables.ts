@@ -55,6 +55,7 @@ import jupiterCollector from './jupiter'
 import lifiCollector from './lifi'
 import relayCollector from './relay'
 import nearIntentsCollector from './near-intents'
+import debridgeCollector from './debridge'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -110,6 +111,7 @@ type CollectableKey =
   | 'jupiter'
   | 'lifi'
   | 'relay'
+  | 'debridge'
   | 'near-intents'
   | 'ethereum-lists'
   | 'cryptocurrency-icons'
@@ -231,6 +233,14 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     // NEAR Intents carries no artwork at all, so its position affects only where
     // its 84 tokens fall in a list.
     relay: relayCollector,
+    // deBridge brings the most artwork nothing else here has - 4,139 tokens
+    // across the seven largest chains, 27% of what it carries - and it ranks
+    // below CoinGecko all the same. Its logos sit on its own store, which reads
+    // as first-hand until the records are opened: 80% of them carry a coingecko
+    // tag, so the picture is CoinGecko's, re-hosted. Self-hosted is a fact about
+    // an address, not about where a picture came from. Its worth is the coverage,
+    // and rank has never decided coverage.
+    debridge: debridgeCollector,
     // NEAR Intents settles a small, deliberate set - 84 tokens over 13 Ethereum
     // Virtual Machine chains - and carries no artwork for any of them, so it
     // ranks below the two aggregators that do. What it contributes is the fact
