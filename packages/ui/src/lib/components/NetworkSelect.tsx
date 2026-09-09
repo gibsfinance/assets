@@ -57,21 +57,33 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
           <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
         )}
         <span className="flex flex-shrink-0 items-center gap-1">
-          {selectedNetwork && (
-            <button
-              type="button"
-              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
-              onClick={(e) => {
-                e.stopPropagation()
-                onSelect(null)
-              }}
-              aria-label="Clear network selection">
-              <i className="fas fa-times text-[10px]" />
-            </button>
-          )}
+          {/*
+            Holds the place of the clear button, which is a sibling of this
+            button rather than a child of it and so cannot take up room here.
+            Same box, same gap, so the arrow sits where it always has.
+          */}
+          {selectedNetwork && <span className="h-5 w-5" aria-hidden="true" />}
           <i className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
+
+      {/*
+        Beside the trigger, not inside it. A button inside a button is markup no
+        parser accepts: the browser closes the outer button early and rebuilds
+        the tree, so what renders is not what this file describes, and React
+        reports it on every render that has a selection. Sitting on top of the
+        trigger keeps the appearance, and being a sibling means a click here
+        never reaches the trigger - which is why no handler stops it any more.
+      */}
+      {selectedNetwork && (
+        <button
+          type="button"
+          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
+          onClick={() => onSelect(null)}
+          aria-label="Clear network selection">
+          <i className="fas fa-times text-[10px]" />
+        </button>
+      )}
 
       <NetworkDialog
         isOpen={isOpen}

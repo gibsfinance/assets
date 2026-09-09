@@ -266,12 +266,27 @@ describe('NetworkSelect', () => {
   })
 
   /*
-   * The clear button sits inside the trigger button that opens the drawer, so
-   * a click on it lands on both elements unless the handler stops the click
-   * from bubbling. Without that stop, clearing the selection would also open
-   * the network list on the same click.
+   * The clear button sits beside the trigger that opens the drawer, laid over
+   * its right edge. It used to sit inside it, which no parser accepts: a
+   * browser closes the outer button early and rebuilds the tree, so the button
+   * that renders is not the one the source describes. Being a sibling is also
+   * what makes clearing a selection stop there instead of opening the drawer
+   * on the same click - a click never reaches an element it is not inside.
    */
   describe('clear selection', () => {
+    it('keeps every button out of every other button, which a browser will not do for us', () => {
+      // The structural claim, held separately from the behavioural ones below.
+      // Those would go on passing if the clear button moved back inside the
+      // trigger and something stopped the click again, so they cannot speak for
+      // the markup. React reports this nesting on every render with a selection.
+      renderNetworkSelect({ selectedChainId: '1' })
+
+      const buttons = [...document.querySelectorAll('button')]
+      expect(buttons.length).toBeGreaterThan(1)
+      const nested = buttons.filter((button) => button.parentElement?.closest('button'))
+      expect(nested).toEqual([])
+    })
+
     it('does not show a clear button when there is no selection to clear', () => {
       renderNetworkSelect({ selectedChainId: null })
 
