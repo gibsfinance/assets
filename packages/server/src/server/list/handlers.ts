@@ -55,15 +55,21 @@ import {
 export { cacheRowAge }
 
 /**
- * Fold a possibly-repeated query value into a stable, order-independent key fragment,
- * so `?decimals=6&decimals=18` and `?decimals=18&decimals=6` name one cached body, not
- * two. Absent values collapse to the empty string.
+ * Fold a value that may arrive more than once into a stable, order-independent key
+ * fragment, so `?decimals=6&decimals=18` and `?decimals=18&decimals=6` name one cached
+ * body, not two. Absent values collapse to the empty string.
+ *
+ * It takes a set as readily as an array because the parsed extensions arrive as one and
+ * are subject to the same rule. Both used to be folded separately, a line apart, which
+ * is two chances to disagree about a rule there is only one of.
  */
-const sortedQueryValues = (value: unknown): string =>
-  (Array.isArray(value) ? value : value == null ? [] : [value])
+const stableKeyFragment = (value: unknown): string => {
+  const values = Array.isArray(value) ? value : value instanceof Set ? [...value] : value == null ? [] : [value]
+  return values
     .map((entry) => `${entry}`)
     .sort()
     .join(',')
+}
 
 /**
  * Cache key for a merged list response.
@@ -89,8 +95,9 @@ export const mergedCacheKey = ({
   extensions: Set<string>
   decimals?: unknown
 }) => {
-  const ext = [...extensions].sort().join(',')
-  return namespacedCacheKey(`merged:${orderId}:${chainId}:${ext}:${sortedQueryValues(decimals)}`)
+  return namespacedCacheKey(
+    `merged:${orderId}:${chainId}:${stableKeyFragment(extensions)}:${stableKeyFragment(decimals)}`,
+  )
 }
 
 /**
@@ -126,9 +133,8 @@ export const listCacheKey = ({
   chainId?: unknown
   decimals?: unknown
 }) => {
-  const ext = [...extensions].sort().join(',')
   return namespacedCacheKey(
-    `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${ext}:${sortedQueryValues(chainId)}:${sortedQueryValues(decimals)}`,
+    `list:${providerKey}:${listKey ?? ''}:${version ?? ''}:${stableKeyFragment(extensions)}:${stableKeyFragment(chainId)}:${stableKeyFragment(decimals)}`,
   )
 }
 
