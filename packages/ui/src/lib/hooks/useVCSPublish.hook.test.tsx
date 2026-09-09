@@ -4,12 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import {
-  useVCSPublish,
-  createGitHubPublisher,
-  createGitLabPublisher,
-  createGiteaPublisher,
-} from './useVCSPublish'
+import { useVCSPublish, createGitHubPublisher, createGitLabPublisher, createGiteaPublisher } from './useVCSPublish'
 import type { VCSPublisher, PublishResult } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
 
@@ -80,7 +75,9 @@ describe('useVCSPublish hook', () => {
 
   it('sets isPublishing to true during publish and resets to false after', async () => {
     let resolvePublish!: (result: PublishResult) => void
-    const pendingPublish = new Promise<PublishResult>((res) => { resolvePublish = res })
+    const pendingPublish = new Promise<PublishResult>((res) => {
+      resolvePublish = res
+    })
 
     const publisher = makeMockPublisher({
       publish: vi.fn().mockReturnValue(pendingPublish),
@@ -181,7 +178,8 @@ describe('useVCSPublish hook', () => {
 
   it('clears previous error on new publish attempt', async () => {
     const publisher = makeMockPublisher({
-      publish: vi.fn()
+      publish: vi
+        .fn()
         .mockRejectedValueOnce(new Error('First error'))
         .mockResolvedValueOnce({ repoUrl: 'https://mock.vcs/repo' }),
     })
@@ -239,14 +237,14 @@ describe('GitHub authorize()', () => {
   })
 
   it('sets github-oauth-state in sessionStorage', async () => {
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     // authorize() redirects (sets window.location.href) and returns ''
     await publisher.authorize()
     expect(sessionStorage.getItem('github-oauth-state')).toBe('mock-uuid-1234')
   })
 
   it('redirects to GitHub OAuth URL with correct params', async () => {
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await publisher.authorize()
 
     const href = (window.location as { href: string }).href
@@ -260,7 +258,7 @@ describe('GitHub authorize()', () => {
     const randomUUID = vi.fn().mockReturnValue('unique-state-xyz')
     vi.stubGlobal('crypto', { randomUUID })
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await publisher.authorize()
 
     expect(randomUUID).toHaveBeenCalledOnce()
@@ -410,7 +408,8 @@ describe('Gitea publish API error', () => {
   it('throws on non-404 Gitea API error when fetching repo', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user — success
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/... → 500 server error (not 404, not ok)
@@ -439,7 +438,8 @@ describe('GitHub publish API error', () => {
   it('throws on non-404 GitHub API error when fetching repo', async () => {
     seedToken('github', 'ghp_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user — success
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'testuser' }) })
       // GET /repos/testuser/... → 500 (not 404, not ok)
@@ -447,7 +447,7 @@ describe('GitHub publish API error', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await expect(publisher.publish(makeList(), {})).rejects.toThrow('GitHub API error: 500')
   })
 })
@@ -468,7 +468,8 @@ describe('GitLab publish API error', () => {
   it('throws on non-404 GitLab API error when fetching project', async () => {
     seedToken('gitlab', 'glpat_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user — success
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ username: 'gluser' }) })
       // GET /projects/:path → 403 (not 404, not ok)
@@ -496,7 +497,7 @@ describe('getStoredTokens catch branch', () => {
     localStorage.setItem('gib-vcs-tokens', 'this-is-not-json{{{')
 
     // isAuthorized() internally calls getStoredTokens() → JSON.parse throws → returns {}
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     expect(publisher.isAuthorized()).toBe(false)
   })
 })

@@ -2,3 +2,9 @@
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+
+# Generated output. Formatting a coverage report or a build has no reader:
+# both are rewritten wholesale on the next run. Ninety-three coverage files and
+# sixteen build files used to be more than half of everything `lint` reported.
+coverage
+dist

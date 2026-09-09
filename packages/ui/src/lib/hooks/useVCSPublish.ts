@@ -57,8 +57,15 @@ const tokenStore = createTokenStore()
 const getToken = (provider: string): string | null => tokenStore.read(provider)
 const storeToken = (provider: string, token: string): void => tokenStore.write(provider, token)
 
-/** GitHub publisher — uses server proxy for OAuth token exchange */
-export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {
+/**
+ * GitHub publisher.
+ *
+ * Takes no server address. It talks to api.github.com directly, and the one
+ * call that does go through the server proxy - exchanging an authorization code
+ * for a token - lives in `handleOAuthCallback`, which is handed its own. The
+ * parameter that used to sit here was never read.
+ */
+export function createGitHubPublisher(): VCSPublisher {
   const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ''
 
   return {
@@ -136,19 +143,16 @@ export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {
       const sha = existingFile.ok ? (await existingFile.json()).sha : undefined
 
       // Create or update file
-      const putRes = await fetch(
-        `https://api.github.com/repos/${user.login}/${repoName}/contents/${filePath}`,
-        {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({
-            message,
-            content: contentBase64,
-            branch,
-            ...(sha ? { sha } : {}),
-          }),
-        },
-      )
+      const putRes = await fetch(`https://api.github.com/repos/${user.login}/${repoName}/contents/${filePath}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          message,
+          content: contentBase64,
+          branch,
+          ...(sha ? { sha } : {}),
+        }),
+      })
       if (!putRes.ok) throw new Error(`Failed to push file: ${putRes.status}`)
       const putData = await putRes.json()
 
@@ -253,18 +257,15 @@ export function createGitLabPublisher(options: GitLabPublisherOptions): VCSPubli
       )
       const method = existingRes.ok ? 'PUT' : 'POST'
 
-      const fileRes = await fetch(
-        `${apiUrl}/projects/${projectPath}/repository/files/${encodedFilePath}`,
-        {
-          method,
-          headers,
-          body: JSON.stringify({
-            branch,
-            content: fileContent,
-            commit_message: message,
-          }),
-        },
-      )
+      const fileRes = await fetch(`${apiUrl}/projects/${projectPath}/repository/files/${encodedFilePath}`, {
+        method,
+        headers,
+        body: JSON.stringify({
+          branch,
+          content: fileContent,
+          commit_message: message,
+        }),
+      })
       if (!fileRes.ok) throw new Error(`Failed to push file: ${fileRes.status}`)
 
       return {
@@ -367,25 +368,21 @@ export function createGiteaPublisher(options: GiteaPublisherOptions): VCSPublish
       const fileContent = toTokenListJson(list)
       const contentBase64 = btoa(unescape(encodeURIComponent(fileContent)))
 
-      const existingFile = await fetch(
-        `${apiUrl}/repos/${user.login}/${repoName}/contents/${filePath}?ref=${branch}`,
-        { headers },
-      )
+      const existingFile = await fetch(`${apiUrl}/repos/${user.login}/${repoName}/contents/${filePath}?ref=${branch}`, {
+        headers,
+      })
       const sha = existingFile.ok ? (await existingFile.json()).sha : undefined
 
-      const putRes = await fetch(
-        `${apiUrl}/repos/${user.login}/${repoName}/contents/${filePath}`,
-        {
-          method: sha ? 'PUT' : 'POST',
-          headers,
-          body: JSON.stringify({
-            message,
-            content: contentBase64,
-            branch,
-            ...(sha ? { sha } : {}),
-          }),
-        },
-      )
+      const putRes = await fetch(`${apiUrl}/repos/${user.login}/${repoName}/contents/${filePath}`, {
+        method: sha ? 'PUT' : 'POST',
+        headers,
+        body: JSON.stringify({
+          message,
+          content: contentBase64,
+          branch,
+          ...(sha ? { sha } : {}),
+        }),
+      })
       if (!putRes.ok) throw new Error(`Failed to push file: ${putRes.status}`)
       const putData = await putRes.json()
 
@@ -483,25 +480,29 @@ export function buildPublishers(serverBaseUrl: string): VCSPublisher[] {
 
   const githubClientId = import.meta.env.VITE_GITHUB_CLIENT_ID
   if (githubClientId) {
-    publishers.push(createGitHubPublisher(serverBaseUrl))
+    publishers.push(createGitHubPublisher())
   }
 
   const gitlabClientId = import.meta.env.VITE_GITLAB_CLIENT_ID
   if (gitlabClientId) {
-    publishers.push(createGitLabPublisher({
-      clientId: gitlabClientId,
-      serverBaseUrl,
-      serverUrl: import.meta.env.VITE_GITLAB_URL || undefined,
-    }))
+    publishers.push(
+      createGitLabPublisher({
+        clientId: gitlabClientId,
+        serverBaseUrl,
+        serverUrl: import.meta.env.VITE_GITLAB_URL || undefined,
+      }),
+    )
   }
 
   const giteaUrl = import.meta.env.VITE_GITEA_URL
   if (giteaUrl) {
-    publishers.push(createGiteaPublisher({
-      serverUrl: giteaUrl,
-      clientId: import.meta.env.VITE_GITEA_CLIENT_ID || undefined,
-      serverBaseUrl,
-    }))
+    publishers.push(
+      createGiteaPublisher({
+        serverUrl: giteaUrl,
+        clientId: import.meta.env.VITE_GITEA_CLIENT_ID || undefined,
+        serverBaseUrl,
+      }),
+    )
   }
 
   return publishers

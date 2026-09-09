@@ -82,8 +82,6 @@ const lastFrameIcons = () => {
   return iconsFrom(lastClear === -1 ? calls : calls.slice(lastClear))
 }
 
-const meanY = (icons: DrawnIcon[]) => icons.reduce((sum, icon) => sum + icon.y, 0) / icons.length
-
 /**
  * Match icons between two frames by diameter.
  *

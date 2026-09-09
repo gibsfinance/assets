@@ -8,14 +8,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function simulateTouch(
-  element: HTMLElement,
-  {
-    startY,
-    moveY,
-    duration = 100,
-  }: { startY: number; moveY: number; duration?: number },
-) {
+function simulateTouch(element: HTMLElement, { startY, moveY }: { startY: number; moveY: number }) {
   fireEvent.touchStart(element, {
     touches: [{ clientY: startY }],
   })
@@ -130,8 +123,9 @@ describe('BottomDrawer handle aria-label', () => {
 describe('BottomDrawer touch tap', () => {
   it('tap on handle cycles collapsed → half', () => {
     vi.stubGlobal('Date', {
-      now: vi.fn()
-        .mockReturnValueOnce(0)   // touchStart sets touchStartTime
+      now: vi
+        .fn()
+        .mockReturnValueOnce(0) // touchStart sets touchStartTime
         .mockReturnValueOnce(100) // touchEnd reads elapsed
         .mockReturnValue(Date.now()),
     })
@@ -183,7 +177,8 @@ describe('BottomDrawer touch flick', () => {
   it('fast flick down from half → collapsed', () => {
     // Date.now sequence: touchStart → touchEnd (quick elapsed so velocity is large)
     // velocity = deltaY / elapsed; deltaY positive = down; elapsed small = high velocity
-    const nowMock = vi.fn()
+    const nowMock = vi
+      .fn()
       // First click (to get to half state) — no Date.now needed for click
       // touchStart for the flick
       .mockReturnValueOnce(0)
@@ -214,7 +209,8 @@ describe('BottomDrawer touch flick', () => {
   })
 
   it('fast flick up from collapsed → half', () => {
-    const nowMock = vi.fn()
+    const nowMock = vi
+      .fn()
       // touchStart
       .mockReturnValueOnce(0)
       // touchEnd: 10ms elapsed, -50px (up) → velocity = -50/10 = -5 < -0.3
@@ -257,9 +253,10 @@ describe('BottomDrawer touch slow drag', () => {
     //
     // Make it a non-tap (>8px) and non-flick (velocity ≈ 0.01):
     // elapsed 3000ms, delta -300px → velocity = -300/3000 = -0.1 → |v| < 0.3 = not a flick
-    const nowMock = vi.fn()
-      .mockReturnValueOnce(0)      // touchStart
-      .mockReturnValueOnce(3000)   // touchEnd: 3000ms elapsed → velocity = -300/3000 = -0.1
+    const nowMock = vi
+      .fn()
+      .mockReturnValueOnce(0) // touchStart
+      .mockReturnValueOnce(3000) // touchEnd: 3000ms elapsed → velocity = -300/3000 = -0.1
       .mockReturnValue(Date.now())
 
     vi.stubGlobal('Date', { now: nowMock })
@@ -314,6 +311,10 @@ describe('BottomDrawer resize event', () => {
     expect(styleAfter).toContain('translateY')
     // The translateY value should now reflect 1024 - 48 = 976 for collapsed state
     expect(styleAfter).toContain('976')
+    // And it has to have moved. Reading only the value afterwards would pass
+    // for a drawer that was already there and never listened for the resize.
+    expect(styleBefore).not.toContain('976')
+    expect(styleAfter).not.toBe(styleBefore)
     // Restore
     Object.defineProperty(window, 'innerHeight', { value: 768, writable: true, configurable: true })
   })
@@ -352,11 +353,19 @@ describe('BottomDrawer disabled prop effect', () => {
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true')
 
     // Disable — triggers the useEffect that calls setDrawerState('collapsed')
-    rerender(<BottomDrawer enabled={false}><div>Content</div></BottomDrawer>)
+    rerender(
+      <BottomDrawer enabled={false}>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     expect(screen.queryByRole('dialog')).toBeNull()
 
     // Re-enable — state was reset so it starts collapsed again
-    rerender(<BottomDrawer enabled><div>Content</div></BottomDrawer>)
+    rerender(
+      <BottomDrawer enabled>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('false')
   })
 })
@@ -367,7 +376,11 @@ describe('BottomDrawer disabled prop effect', () => {
 
 describe('BottomDrawer handle content', () => {
   it('renders default "Configure" text when no handle prop is provided', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     expect(screen.getByText('Configure')).toBeTruthy()
   })
 
@@ -388,7 +401,11 @@ describe('BottomDrawer handle content', () => {
 
 describe('BottomDrawer escape key', () => {
   it('collapses from half state when Escape is pressed', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -402,7 +419,11 @@ describe('BottomDrawer escape key', () => {
   })
 
   it('collapses from full state when Escape is pressed', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -418,7 +439,11 @@ describe('BottomDrawer escape key', () => {
   })
 
   it('does not register Escape listener when already collapsed', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const dialog = screen.getByRole('dialog')
 
     // Already collapsed — keydown should be a no-op
@@ -427,7 +452,11 @@ describe('BottomDrawer escape key', () => {
   })
 
   it('ignores non-Escape keys', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -443,7 +472,11 @@ describe('BottomDrawer escape key', () => {
 
 describe('BottomDrawer body scroll lock', () => {
   it('unlocks body scroll when drawer leaves full state via click', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
 
     // Reach full state
@@ -463,7 +496,11 @@ describe('BottomDrawer body scroll lock', () => {
 
 describe('BottomDrawer empty touches guard (getFirstTouchY null path)', () => {
   it('ignores touchStart with empty touches list', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -475,7 +512,11 @@ describe('BottomDrawer empty touches guard (getFirstTouchY null path)', () => {
   })
 
   it('ignores touchMove with empty touches list during drag', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -492,7 +533,11 @@ describe('BottomDrawer empty touches guard (getFirstTouchY null path)', () => {
 
 describe('BottomDrawer touch guards', () => {
   it('ignores touchMove events when not actively dragging', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -504,7 +549,11 @@ describe('BottomDrawer touch guards', () => {
   })
 
   it('ignores touchEnd events when not actively dragging', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -523,13 +572,18 @@ describe('BottomDrawer touch guards', () => {
 describe('BottomDrawer wasTouched click suppression', () => {
   it('suppresses click-cycling when a touch interaction just completed', () => {
     vi.stubGlobal('Date', {
-      now: vi.fn()
-        .mockReturnValueOnce(0)   // touchStart
+      now: vi
+        .fn()
+        .mockReturnValueOnce(0) // touchStart
         .mockReturnValueOnce(100) // touchEnd: elapsed=100ms, tap detected
         .mockReturnValue(Date.now()),
     })
 
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
     const dialog = screen.getByRole('dialog')
 
@@ -560,7 +614,11 @@ describe('BottomDrawer wasTouched click suppression', () => {
 
 describe('BottomDrawer backdrop hidden while dragging', () => {
   it('hides backdrop during active drag even when state is full', () => {
-    render(<BottomDrawer><div>Content</div></BottomDrawer>)
+    render(
+      <BottomDrawer>
+        <div>Content</div>
+      </BottomDrawer>,
+    )
     const handle = screen.getByRole('button')
 
     // Reach full state — backdrop should be visible

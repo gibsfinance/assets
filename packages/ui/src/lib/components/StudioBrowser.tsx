@@ -190,15 +190,7 @@ export default function StudioBrowser({
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
   const { metrics } = useMetrics()
-  const {
-    isOpen: editorOpen,
-    activeList,
-    addToken,
-    createList,
-    setActiveList,
-    openEditor,
-    openNewEditor,
-  } = useListEditor()
+  const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor } = useListEditor()
 
   const popularChains = useMemo(() => {
     if (!metrics) return []

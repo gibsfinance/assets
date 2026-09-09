@@ -530,7 +530,6 @@ function SelectChainOnMount({ chainId }: { chainId: string }) {
   const { selectChain } = useStudio()
   useEffect(() => {
     selectChain(chainId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return null
 }
@@ -596,7 +595,6 @@ function OpenEditorWithList() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return null
 }
@@ -611,7 +609,6 @@ function OpenEditorWithoutList() {
   const { openNewEditor } = useListEditor()
   useEffect(() => {
     openNewEditor()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return null
 }

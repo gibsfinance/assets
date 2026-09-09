@@ -89,18 +89,12 @@ function StudioActions() {
       <button type="button" onClick={() => setResolutionOrder(null)}>
         clear resolution order
       </button>
-      <button
-        type="button"
-        onClick={() => updateBadge({ enabled: true, ringEnabled: false, badgePadding: 0 })}
-      >
+      <button type="button" onClick={() => updateBadge({ enabled: true, ringEnabled: false, badgePadding: 0 })}>
         enable badge without ring or padding
       </button>
       <button
         type="button"
-        onClick={() =>
-          updateBadge({ enabled: true, ringEnabled: true, ringThickness: 5, badgePadding: 3 })
-        }
-      >
+        onClick={() => updateBadge({ enabled: true, ringEnabled: true, ringThickness: 5, badgePadding: 3 })}>
         enable badge with ring and padding
       </button>
     </div>
@@ -280,9 +274,7 @@ describe('size control', () => {
  * one by its current value and ordinal position among inputs that hold it.
  */
 function findStepperInput(currentValue: string, ordinal: number): HTMLInputElement {
-  const matches = (screen.getAllByRole('textbox') as HTMLInputElement[]).filter(
-    (input) => input.value === currentValue,
-  )
+  const matches = (screen.getAllByRole('textbox') as HTMLInputElement[]).filter((input) => input.value === currentValue)
   return matches[ordinal]
 }
 
@@ -531,9 +523,7 @@ describe('canvas image address', () => {
     fireEvent.click(screen.getByText('select test token'))
 
     const image = screen.getByAltText('Test Token') as HTMLImageElement
-    expect(image.src).toBe(
-      'https://api.test/image/eip155-369/0x95b303987a60c71504d99aa1b13b4da07b0790a',
-    )
+    expect(image.src).toBe('https://api.test/image/eip155-369/0x95b303987a60c71504d99aa1b13b4da07b0790a')
   })
 
   it('drops the fallback path again once the resolution order is cleared', () => {
@@ -543,9 +533,7 @@ describe('canvas image address', () => {
     fireEvent.click(screen.getByText('clear resolution order'))
 
     const image = screen.getByAltText('Test Token') as HTMLImageElement
-    expect(image.src).toBe(
-      'https://api.test/image/eip155-369/0x95b303987a60c71504d99aa1b13b4da07b0790a',
-    )
+    expect(image.src).toBe('https://api.test/image/eip155-369/0x95b303987a60c71504d99aa1b13b4da07b0790a')
   })
 })
 
@@ -580,10 +568,7 @@ function readCanvasScale(container: HTMLElement): number {
 }
 
 /** Gives the canvas surface a known bounding rectangle, for pointer-offset maths in tests. */
-function stubSurfaceRect(
-  surface: HTMLElement,
-  rect: { left: number; top: number; width: number; height: number },
-) {
+function stubSurfaceRect(surface: HTMLElement, rect: { left: number; top: number; width: number; height: number }) {
   surface.getBoundingClientRect = () =>
     ({
       left: rect.left,
@@ -709,7 +694,7 @@ describe('canvas wheel zoom', () => {
 
 describe('badge overlay offset', () => {
   it('pulls the badge back by exactly the ring thickness plus padding', () => {
-    const { container: containerWithoutRing } = renderConfigurator()
+    renderConfigurator()
     fireEvent.click(screen.getByText('select test token'))
     fireEvent.click(screen.getByText('enable badge without ring or padding'))
     const badgeWithoutRing = screen.getByAltText('PulseChain').closest('div') as HTMLElement
