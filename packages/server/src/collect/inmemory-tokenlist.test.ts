@@ -39,6 +39,39 @@ describe('inmemory-tokenlist discover', () => {
     expect(harness.state.networks.size).toBe(3)
   })
 
+  it('loses only the chain the database refuses, not the rest of the list', async () => {
+    // Token lists really do number non-Ethereum chains as Ethereum ones:
+    // Uniswap's own default list carries Solana as 501000101, and the database
+    // refuses that by name. The refusal used to escape from here, which threw
+    // away the other twenty-four chains in that list and every list queued
+    // behind it - eighteen sub-lists lost to one bad number. The write loop
+    // already drops a token whose network is missing, so skipping the chain is
+    // the whole of what this needs to do.
+    harness.dbModule.insertNetworkFromChainId.mockImplementation(async (chainId: number) => {
+      if (chainId === 501000101) throw new Error('mis-numbered as eip155')
+      return { networkId: `network-${chainId}`, chainId: `eip155-${chainId}` }
+    })
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x1111111111111111111111111111111111111111' }),
+        buildTokenEntry({ chainId: 501000101, address: '0x2222222222222222222222222222222222222222' }),
+        buildTokenEntry({ chainId: 137, address: '0x3333333333333333333333333333333333333333' }),
+      ],
+    })
+
+    const state = await inmemoryTokenlist.discover({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(state).toBeDefined()
+    // The refused chain has no network; the two good ones do.
+    expect([...state!.networks.keys()].sort((a, b) => a - b)).toEqual([1, 137])
+    expect(state!.networks.has(501000101)).toBe(false)
+  })
+
   it('skips network creation for a zero chain id entry without erroring', async () => {
     const tokenList = buildTokenList({
       tokens: [

@@ -238,12 +238,15 @@ describe('uniswap-tokenlists collector', () => {
 
   it('logs and tallies a failure, without aborting the run, when inmemory-tokenlist.collect() itself throws', async () => {
     // The Compound entry fails to fetch during discover() (so nothing is cached),
-    // then succeeds during collect()'s own re-fetch — but carries a token whose
-    // chain id is one of the reserved "faked Ethereum-Virtual-Machine reference"
-    // values, so inmemory-tokenlist's internal network insert throws.
-    // The discover()-time fetch stays in the default always-reject state, so
-    // nothing gets cached for Compound and discover() itself never touches
-    // inmemory-tokenlist with the bad chain id.
+    // then succeeds during collect()'s own re-fetch — and the database refuses to
+    // open a transaction for it, so inmemory-tokenlist throws from inside collect.
+    //
+    // This used to be forced with a token on chain 501000101, a non-Ethereum
+    // chain wearing an Ethereum number. That no longer throws: one refused chain
+    // now costs that chain and the rest of the list survives, which is the point
+    // of the guard in inmemory-tokenlist. The claim here is the wider one — that
+    // a sub-list failing for any reason is logged and tallied rather than taking
+    // the run with it — so it needs a failure that is still a failure.
     const collector = new UniswapTokenListsCollector()
     await collector.discover(new AbortController().signal)
     // Only the collect()-time re-fetch succeeds for Compound.
@@ -255,9 +258,9 @@ describe('uniswap-tokenlists collector', () => {
           version: { major: 1, minor: 0, patch: 0 },
           tokens: [
             {
-              chainId: 501000101,
+              chainId: 1,
               address: '0x6666666666666666666666666666666666666666',
-              name: 'Faked Reference',
+              name: 'Will Not Store',
               symbol: 'FAKE',
               decimals: 18,
               logoURI: '',
@@ -267,12 +270,59 @@ describe('uniswap-tokenlists collector', () => {
       }
       throw new Error('no mock configured for this url')
     })
+    harness.dbModule.transaction.mockRejectedValueOnce(new Error('database refused the transaction'))
 
     await collector.collect(new AbortController().signal)
 
     expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith('compound failed to collect')
     // The failure is contained to this one sub-list — nothing was stored for it.
     expect(harness.state.tokenImages.some((image) => image.token.symbol === 'FAKE')).toBe(false)
+  })
+
+  it('keeps a sub-list whose chain the database refuses, minus that chain', async () => {
+    // Uniswap's own default list carries Solana as 501000101. Before the guard in
+    // inmemory-tokenlist, that one number threw out of discover and took all
+    // eighteen sub-lists with it; the collector stored nothing at all.
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes(COMPOUND_URL_FRAGMENT)) {
+        return jsonResponse({
+          name: 'Compound',
+          timestamp: new Date(0).toISOString(),
+          version: { major: 1, minor: 0, patch: 0 },
+          tokens: [
+            {
+              chainId: 501000101,
+              address: '0x7777777777777777777777777777777777777777',
+              name: 'Refused Chain',
+              symbol: 'NOPE',
+              decimals: 18,
+              logoURI: '',
+            },
+            {
+              chainId: 1,
+              address: '0x8888888888888888888888888888888888888888',
+              name: 'Good Token',
+              symbol: 'GOOD',
+              decimals: 18,
+              logoURI: '',
+            },
+          ],
+        })
+      }
+      throw new Error('no mock configured for this url')
+    })
+    harness.dbModule.insertNetworkFromChainId.mockImplementation(async (chainId: number) => {
+      if (chainId === 501000101) throw new Error('mis-numbered as eip155')
+      return { networkId: `network-${chainId}`, chainId: `eip155-${chainId}` }
+    })
+
+    const collector = new UniswapTokenListsCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const stored = harness.state.tokenImages.map((image) => image.token.symbol)
+    expect(stored).toContain('GOOD')
+    expect(stored).not.toContain('NOPE')
   })
 
   it('exposes a standalone collect() that runs discover() then collect() on a fresh instance', async () => {
