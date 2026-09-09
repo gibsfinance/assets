@@ -47,6 +47,23 @@ export default defineConfig({
       // originalUri from the same uri that found the row. Fabricating that row to
       // flip the branch would test a state the system cannot produce.
       //
+      // 2026-09-08, later: still 100/99.95/100/100 over 1621 tests after a pass
+      // aimed at simplification rather than at red lines. Three things changed
+      // shape rather than gaining tests. server/data.ts went, whole: it exported
+      // a map nothing wrote to, and its only importer was its own test. The
+      // variant rate limiter moved to image/rate-limit.ts and took its clock and
+      // both budgets as arguments, because module-level counters read from the
+      // wall clock made every image test spend from the same budget as the tests
+      // before it. And the `?refresh=` gate, which six routes across three
+      // modules each wrote out by hand, is one function that throws - a route can
+      // no longer read the parameter and forget to act on it.
+      //
+      // The list validation tests now call their handlers through nextOnError,
+      // the way the router registers them. They used to call the bare handler,
+      // which made them distinguish a thrown error from a next(error); production
+      // has no such distinction, and five of them broke on a change that altered
+      // no behaviour at all.
+      //
       // Raise these as coverage rises; never lower them to make a failing run pass.
       thresholds: { statements: 99.9, branches: 99.9, functions: 99.9, lines: 99.9 },
     },
