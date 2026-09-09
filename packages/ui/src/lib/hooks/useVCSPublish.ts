@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { LocalList } from './useLocalLists'
 import { generateRepoName, generateCommitMessage } from '../utils/formatting'
+import { createTokenStore } from '../utils/vcs-token-store'
 
 /** Pluggable interface for version control system publishing */
 export interface VCSPublisher {
@@ -44,46 +45,17 @@ export function toTokenListJson(list: LocalList): string {
   return JSON.stringify(tokenList, null, 2)
 }
 
-const TOKEN_STORAGE_KEY = 'gib-vcs-tokens'
+/**
+ * The one token store the publishers share.
+ *
+ * It holds credentials and expires them, so it lives in a module of its own
+ * with a clock it is given rather than reading the wall clock inline. See
+ * `../utils/vcs-token-store`.
+ */
+const tokenStore = createTokenStore()
 
-/** 30 days in milliseconds */
-const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
-
-interface StoredToken {
-  token: string
-  storedAt: number
-}
-
-function getStoredTokens(): Record<string, StoredToken | string> {
-  try {
-    return JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
-function storeToken(provider: string, token: string): void {
-  const tokens = getStoredTokens()
-  tokens[provider] = { token, storedAt: Date.now() }
-  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens))
-}
-
-function getToken(provider: string): string | null {
-  const entry = getStoredTokens()[provider]
-  if (!entry) return null
-
-  // Handle legacy entries stored as plain strings (no expiry info)
-  if (typeof entry === 'string') return entry
-
-  if (Date.now() - entry.storedAt > TOKEN_MAX_AGE_MS) {
-    // Token expired — remove it
-    const tokens = getStoredTokens()
-    delete tokens[provider]
-    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens))
-    return null
-  }
-  return entry.token
-}
+const getToken = (provider: string): string | null => tokenStore.read(provider)
+const storeToken = (provider: string, token: string): void => tokenStore.write(provider, token)
 
 /** GitHub publisher — uses server proxy for OAuth token exchange */
 export function createGitHubPublisher(serverBaseUrl: string): VCSPublisher {

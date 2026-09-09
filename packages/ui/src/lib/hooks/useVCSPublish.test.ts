@@ -194,10 +194,15 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
     expect(stored.github).toBeUndefined()
   })
 
-  it('GitHub: isAuthorized returns true for legacy plain-string token (no TTL)', () => {
+  // An entry with no timestamp cannot be shown to be inside the thirty-day
+  // window. These three tests used to assert the opposite - that a token written
+  // before the expiry existed keeps working - which let exactly the credentials
+  // with the longest lives in a browser profile skip the only check on them.
+  // The user authorizes once more; the token store keeps its promise.
+  it('GitHub: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('github', 'ghp_legacy')
     const publisher = createGitHubPublisher('https://gib.show')
-    expect(publisher.isAuthorized()).toBe(true)
+    expect(publisher.isAuthorized()).toBe(false)
   })
 
   it('GitLab: isAuthorized returns true when a valid token is stored', () => {
@@ -212,10 +217,10 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
     expect(publisher.isAuthorized()).toBe(false)
   })
 
-  it('GitLab: isAuthorized returns true for legacy plain-string token', () => {
+  it('GitLab: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('gitlab', 'glpat_legacy')
     const publisher = createGitLabPublisher({ clientId: 'cid', serverBaseUrl: 'https://gib.show' })
-    expect(publisher.isAuthorized()).toBe(true)
+    expect(publisher.isAuthorized()).toBe(false)
   })
 
   it('Gitea: isAuthorized returns true when a valid token is stored', () => {
@@ -230,10 +235,10 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
     expect(publisher.isAuthorized()).toBe(false)
   })
 
-  it('Gitea: isAuthorized returns true for legacy plain-string token', () => {
+  it('Gitea: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('gitea', 'gt_legacy')
     const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
-    expect(publisher.isAuthorized()).toBe(true)
+    expect(publisher.isAuthorized()).toBe(false)
   })
 })
 
