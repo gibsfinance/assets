@@ -11,10 +11,14 @@
  * avoid rebuilding — an open parameter would be a denial of service lever, since
  * anyone could force the expensive per-chain token query on every request.
  *
- * Deliberately pure and dependency-light: it decides nothing about how the caches
- * are rebuilt, only whether a refresh was asked for and whether it is allowed.
+ * `refreshRequest` is deliberately pure and dependency-light: it decides nothing
+ * about how the caches are rebuilt, only whether a refresh was asked for and
+ * whether it is allowed. `authorizedRefresh` sits on top of it and knows about
+ * the request and the configured token, so a route needs neither.
  */
+import createError from 'http-errors'
 import { isAuthorizedAdmin } from './admin-auth'
+import config from '../../config'
 
 /**
  * Query shape for routes that accept the refresh parameter. `unknown` because the
@@ -52,6 +56,39 @@ export const refreshRequest = (options: {
     requested: true,
     authorized: isAuthorizedAdmin({ authorizationHeader, adminToken }),
   }
+}
+
+/**
+ * Decide whether this request refreshes the caches, and refuse it if it may not.
+ *
+ * Returns true when the caller asked for a refresh and proved they may have one,
+ * which is exactly the value the cache layer wants for `bypassCache`. Returns
+ * false when no refresh was asked for.
+ *
+ * It throws rather than returning a verdict for the caller to inspect. Six routes
+ * previously wrote out the same pair of steps — read the parameter, then check the
+ * answer — and a route that read the parameter but forgot the check would serve a
+ * cached body to an unauthorized refresh without ever failing. Nothing here can be
+ * ignored: the only way to reach the next line is to be allowed to.
+ *
+ * Every route that calls this runs inside `nextOnError`, which turns the throw into
+ * `next(error)`.
+ *
+ * @param req - The incoming request. Only the refresh query value and the
+ *   Authorization header are read.
+ * @throws Unauthorized when a refresh is requested without a valid administrator token.
+ */
+export const authorizedRefresh = (req: { query: RefreshQuery; headers: { authorization?: string } }): boolean => {
+  const refresh = refreshRequest({
+    refreshParam: req.query.refresh,
+    authorizationHeader: req.headers.authorization,
+    adminToken: config.adminToken,
+  })
+  // Fail loudly rather than quietly serving the cached body. An operator who
+  // believes they verified a deploy against fresh data, but did not, is worse off
+  // than one who is told their token was rejected.
+  if (refresh.requested && !refresh.authorized) throw createError.Unauthorized('unauthorized')
+  return refresh.authorized
 }
 
 /**

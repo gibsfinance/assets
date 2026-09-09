@@ -41,7 +41,7 @@ import {
   chainIdFilterMatch,
 } from '../../chain-id'
 import { timerLog } from '../../logger'
-import { refreshRequest, REFRESH_CACHE_CONTROL } from '../cache-refresh'
+import { authorizedRefresh, REFRESH_CACHE_CONTROL } from '../cache-refresh'
 import {
   buildAndCache,
   cacheRowAge,
@@ -213,14 +213,7 @@ export const merged: RequestHandler = async (req, res, next) => {
   // ranked query on every request, which is a denial of service lever. Reject it
   // rather than quietly downgrading to a cached read, so an operator who thinks they
   // verified against fresh data is never wrong about that.
-  const refresh = refreshRequest({
-    refreshParam: req.query.refresh,
-    authorizationHeader: req.headers.authorization,
-    adminToken: config.adminToken,
-  })
-  if (refresh.requested && !refresh.authorized) {
-    return next(createError.Unauthorized('unauthorized'))
-  }
+  const refreshAuthorized = authorizedRefresh(req)
   const extensions = utils.parseExtensions(req.query.extensions)
   const orderId = await db.getListOrderId(req.params.order)
   if (!orderId) {
@@ -266,7 +259,7 @@ export const merged: RequestHandler = async (req, res, next) => {
     cacheKey: mergedCacheKey({ orderId, chainId: resolution.chainId, extensions, decimals: req.query.decimals }),
     build: () => buildMergedResponse({ chainId: resolution.chainId, orderId, extensions, filters }),
     cacheControl: listCacheControl,
-    bypassCache: refresh.authorized,
+    bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
   })
 }
@@ -395,14 +388,7 @@ export const search: RequestHandler = async (req, res, next) => {
   }
   // Same gate the chain-scoped endpoints use. This query is cheaper than theirs but far
   // from free, and an open refresh parameter would let anyone force it on every request.
-  const refresh = refreshRequest({
-    refreshParam: req.query.refresh,
-    authorizationHeader: req.headers.authorization,
-    adminToken: config.adminToken,
-  })
-  if (refresh.requested && !refresh.authorized) {
-    return next(createError.Unauthorized('unauthorized'))
-  }
+  const refreshAuthorized = authorizedRefresh(req)
   const limit = utils.parseTokenLimit(req.query.limit, {
     fallback: DEFAULT_SEARCH_LIMIT,
     max: SEARCH_CANDIDATE_CAP,
@@ -431,30 +417,13 @@ export const search: RequestHandler = async (req, res, next) => {
     cacheKey: searchCacheKey({ orderId, query, chainId, limit }),
     build: () => buildSearchResponse({ query, orderId, chainId, limit }),
     cacheControl: listCacheControl,
-    bypassCache: refresh.authorized,
+    bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
   })
 }
 
-/**
- * Reject an unauthorized refresh, or report an authorized one. Provider lists are the
- * same class of expensive assembly as merged and tokensByChain, so they gate `?refresh=`
- * the same way: an open refresh would let anyone force a full per-list token fetch on
- * every request. A caller who thinks they verified against fresh data is told plainly
- * when their token was rejected, rather than quietly handed a cached body.
- */
-const guardListRefresh = (req: Parameters<RequestHandler>[0]) =>
-  refreshRequest({
-    refreshParam: req.query.refresh,
-    authorizationHeader: req.headers.authorization,
-    adminToken: config.adminToken,
-  })
-
-export const versioned: RequestHandler = async (req, res, next) => {
-  const refresh = guardListRefresh(req)
-  if (refresh.requested && !refresh.authorized) {
-    return next(createError.Unauthorized('unauthorized'))
-  }
+export const versioned: RequestHandler = async (req, res) => {
+  const refreshAuthorized = authorizedRefresh(req)
   const extensions = utils.parseExtensions(req.query.extensions)
   const filters = utils.tokenFilters(req.query)
   // Resolving the version and assembling its tokens is the request's real cost, so both
@@ -482,7 +451,7 @@ export const versioned: RequestHandler = async (req, res, next) => {
     }),
     build,
     cacheControl: listCacheControl,
-    bypassCache: refresh.authorized,
+    bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
   })
 }
@@ -540,11 +509,8 @@ export const warmProviderListCache = async (topN = WARM_PROVIDER_LIST_COUNT): Pr
   }
 }
 
-export const providerKeyed: RequestHandler = async (req, res, next) => {
-  const refresh = guardListRefresh(req)
-  if (refresh.requested && !refresh.authorized) {
-    return next(createError.Unauthorized('unauthorized'))
-  }
+export const providerKeyed: RequestHandler = async (req, res) => {
+  const refreshAuthorized = authorizedRefresh(req)
   const providerKey = req.params.providerKey
   const listKey = req.params.listKey
   // Bump on every request, cache hit or miss — it counts subscribers, not rebuilds, so
@@ -576,7 +542,7 @@ export const providerKeyed: RequestHandler = async (req, res, next) => {
     }),
     build,
     cacheControl: listCacheControl,
-    bypassCache: refresh.authorized,
+    bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
   })
 }
@@ -803,17 +769,11 @@ export const warmTokensByChainCache = async (
 export const tokensByChain: RequestHandler = async (req, res, next) => {
   const rawChainId = req.params.chainId
   if (!rawChainId) return next(createError.BadRequest('chainId required'))
-  const refresh = refreshRequest({
-    refreshParam: req.query.refresh,
-    authorizationHeader: req.headers.authorization,
-    adminToken: config.adminToken,
-  })
   // This is the expensive endpoint — an unauthenticated refresh would let anyone
   // force the full per-chain ranked query on demand, which is a denial of service
-  // lever. Reject it outright instead of downgrading to a cached read.
-  if (refresh.requested && !refresh.authorized) {
-    return next(createError.Unauthorized('unauthorized'))
-  }
+  // lever. `authorizedRefresh` rejects it outright rather than downgrading to a
+  // cached read.
+  const refreshAuthorized = authorizedRefresh(req)
   // Stored networks only carry eip155-<number> or asset-0 — anything else can
   // never match a row, so reject it instead of answering 200 with zero tokens.
   if (!isValidChainId(rawChainId)) {
@@ -847,7 +807,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     cacheKey: tokensByChainCacheKey(chainId, limit),
     build: () => buildTokensByChainResponse(chainId, limit),
     cacheControl: listCacheControl,
-    bypassCache: refresh.authorized,
+    bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
   })
 }

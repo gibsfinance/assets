@@ -79,6 +79,10 @@ import { getDrizzle } from '../../db/drizzle'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { merged, tokensByChain, all, versioned, providerKeyed, search } from './handlers'
 import { SEARCH_CANDIDATE_CAP } from '../../db/search'
+// The router registers every one of these handlers inside `nextOnError`, so a
+// thrown error and a `next(error)` reach the same place. Calling the bare handler
+// here would make the tests distinguish two paths that production merges.
+import { nextOnError } from '../utils'
 import { getDefaultListOrderId } from '../../db/sync-order'
 
 /** Chainable drizzle query-builder mock matching getFilteredLists' call shape. */
@@ -101,7 +105,7 @@ const mockResponse = () => ({
 const callMerged = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
   const res = mockResponse()
   const next = vi.fn()
-  await merged({ params: { order: 'default' }, query, headers } as never, res as never, next as never)
+  await nextOnError(merged)({ params: { order: 'default' }, query, headers } as never, res as never, next as never)
   return { res, next }
 }
 
@@ -343,7 +347,7 @@ describe('tokensByChain handler', () => {
     const next = vi.fn()
     // Headers are always present on a real express request; the handler reads
     // Authorization for the admin-gated refresh parameter.
-    await tokensByChain({ params: { chainId }, query, headers } as never, res as never, next as never)
+    await nextOnError(tokensByChain)({ params: { chainId }, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -559,15 +563,14 @@ describe('all handler', () => {
   it('rejects ?default=banana with 400 before any query runs — it used to 500 in Postgres', async () => {
     const res = mockResponse()
     const next = vi.fn()
-    await expect(
-      all({ query: { default: 'banana' } } as never, res as never, next as never) as unknown as Promise<void>,
-    ).rejects.toMatchObject({ status: 400 })
+    await nextOnError(all)({ query: { default: 'banana' } } as never, res as never, next as never)
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 400 })
     expect(res.json).not.toHaveBeenCalled()
   })
 
   const callAll = async (query: Record<string, unknown>) => {
     const res = mockResponse()
-    await all({ query } as never, res as never, undefined as never)
+    await nextOnError(all)({ query } as never, res as never, undefined as never)
     return res
   }
 
@@ -666,7 +669,7 @@ describe('versioned handler', () => {
   ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await versioned({ params, query, headers } as never, res as never, next as never)
+    await nextOnError(versioned)({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -687,9 +690,8 @@ describe('versioned handler', () => {
 
     // The not-found check now lives inside the cache build, so it surfaces as a throw
     // that nextOnError forwards to next() in production.
-    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })).rejects.toMatchObject(
-      { status: 404 },
-    )
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 404 })
     expect(listUtils.buildListPayload).not.toHaveBeenCalled()
   })
 
@@ -698,7 +700,8 @@ describe('versioned handler', () => {
     // fallback must produce ['', undefined, undefined] rather than throwing on split.
     vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 0, patch: 0 }] as never)
 
-    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended' })).rejects.toMatchObject({ status: 404 })
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended' })
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 404 })
   })
 
   it('passes the matching version projection to the payload builder', async () => {
@@ -776,7 +779,7 @@ describe('providerKeyed handler', () => {
   ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await providerKeyed({ params, query, headers } as never, res as never, next as never)
+    await nextOnError(providerKeyed)({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -800,11 +803,11 @@ describe('providerKeyed handler', () => {
   it('rejects with the documented JSON 404 shape when no list matches', async () => {
     vi.mocked(db.getLists).mockResolvedValue([] as never)
 
-    // The not-found check runs inside the cache build now, so it throws rather than
-    // calling next directly; nextOnError forwards it in production.
-    const error = (await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' }).catch(
-      (e) => e,
-    )) as { status: number; message: string }
+    // The not-found check runs inside the cache build, so it throws rather than
+    // calling next directly. The wrapper forwards it, which is why this reads the
+    // error off next like every other error assertion here.
+    const { next } = await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' })
+    const error = next.mock.calls[0][0] as { status: number; message: string }
     expect(error.status).toBe(404)
     expect(JSON.parse(error.message)).toEqual({ providerKey: 'unknown-provider', listKey: 'extended' })
   })
@@ -986,7 +989,7 @@ describe('search handler', () => {
   const callSearch = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
     const res = mockResponse()
     const next = vi.fn()
-    await search({ params: {}, query, headers } as never, res as never, next as never)
+    await nextOnError(search)({ params: {}, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
