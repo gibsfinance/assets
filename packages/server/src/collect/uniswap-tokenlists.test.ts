@@ -80,6 +80,65 @@ const optimismTokenList = () => ({
 })
 
 describe('uniswap-tokenlists collector', () => {
+  it('asks each list at its own address, with nothing interposed', async () => {
+    // The registry used to be fetched through a Cloudflare worker that adds
+    // cross-origin headers for a browser. The worker went away and every list
+    // behind it answered 404, leaving one of thirty-four arriving — and no test
+    // looked at where the request went, so nothing failed. This one does.
+    fetchMock.mockResolvedValue({ json: async () => ({ tokens: [] }) })
+    const collector = new UniswapTokenListsCollector()
+
+    await collector.discover(new AbortController().signal)
+
+    const asked = fetchMock.mock.calls.map(([url]) => String(url))
+    expect(asked.length).toBeGreaterThan(0)
+    expect(asked.filter((url) => url.includes('workers.dev'))).toEqual([])
+    expect(asked.filter((url) => url.includes('?url='))).toEqual([])
+    // Uniswap's own list comes from its canonical address, not an
+    // interplanetary-file-system gateway that answers with a redirect.
+    expect(asked).toContain('https://tokens.uniswap.org')
+    expect(asked.filter((url) => url.includes('gateway.ipfs.io'))).toEqual([])
+  })
+
+  it('says how many registered lists did not answer, rather than passing over them', async () => {
+    // Every fetch failing used to look exactly like every list being empty.
+    // That is how thirty-three of thirty-four went dead unnoticed for years, so
+    // the count is reported: silence is the failure mode this guards against.
+    fetchMock.mockRejectedValue(new Error('gone'))
+    const collector = new UniswapTokenListsCollector()
+
+    const manifest = await collector.discover(new AbortController().signal)
+
+    expect(manifest).toEqual([])
+    const reported = harness.gibsUtilsModule.failureLog.mock.calls.find(
+      ([format]) => typeof format === 'string' && format.includes('did not answer'),
+    )
+    expect(reported).toBeDefined()
+    // The third and fourth arguments are how many failed and how many were
+    // asked. They match here because every fetch was made to fail, and asked
+    // excludes the blacklisted entries that are never requested at all.
+    expect(reported?.[2]).toBeGreaterThan(0)
+    expect(reported?.[2]).toBe(reported?.[3])
+  })
+
+  it('keeps only registry entries that still answer with a token list', async () => {
+    // Twelve of the thirty-four had become web pages, 404s or dead hosts. They
+    // are gone from the registry rather than retried forever, and the ones left
+    // are the ones measured as working. A count here is what makes a future
+    // deletion or a careless re-add argue with a test.
+    const { default: lists } = await import('../harvested/uniswap/lists.json')
+    const keys = Object.keys(lists)
+    expect(keys).toHaveLength(22)
+    expect(keys).toContain('https://tokens.uniswap.org')
+    for (const dead of [
+      'https://zapper.fi/api/token-list',
+      'tokenlist.zerion.eth',
+      'https://api.kyber.network/tokenlist',
+    ]) {
+      expect(keys).not.toContain(dead)
+    }
+  })
+
   it('skips every hardcoded blacklisted sub-list without ever fetching it', async () => {
     const collector = new UniswapTokenListsCollector()
 
