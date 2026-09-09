@@ -847,8 +847,7 @@ describe('StudioBrowser — searching across every chain', () => {
       if (url.endsWith('/list')) return ok(PROVIDERS)
       if (url.includes('/list/search')) {
         return new Promise((resolve) => {
-          releaseSearch = () =>
-            resolve({ ok: true, status: 200, json: () => Promise.resolve(CROSS_CHAIN_HITS) })
+          releaseSearch = () => resolve({ ok: true, status: 200, json: () => Promise.resolve(CROSS_CHAIN_HITS) })
         })
       }
       if (url.includes('/list/tokens/')) return ok(tokensResponse(1, ETHEREUM_TOKENS))
@@ -923,4 +922,283 @@ describe('StudioBrowser — searching across every chain', () => {
     expect(screen.queryByText('Bridged Dollar')).toBeNull()
     expect(screen.getByPlaceholderText('Search 3 tokens...')).toBeTruthy()
   }, 15_000)
+})
+
+// ---------------------------------------------------------------------------
+// Selection highlighting. A row must show as picked only when it is the exact
+// token the studio holds, not merely a row that shares the chain of the pick.
+// ---------------------------------------------------------------------------
+
+describe('StudioBrowser — marking the selected row', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+    installDefaultFetch()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('highlights only the row the user picked, not every row that shares its chain', async () => {
+    // The highlight is the only sign a row is already chosen. If it lit up every row on
+    // the same chain, a shopper could not tell which token was actually selected.
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const wethRow = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
+    expect(wethRow.className).not.toContain('border-accent-500')
+
+    fireEvent.click(wethRow)
+
+    await waitFor(() => {
+      const updatedWethRow = screen.getByText('Wrapped Ether').closest('div.group') as HTMLElement
+      expect(updatedWethRow.className).toContain('border-accent-500')
+    })
+    expect(screen.getByText('USD Coin').closest('div.group')!.className).not.toContain('border-accent-500')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A token whose response carried no sources at all still needs a name for its
+// list button, and clicking that name with nothing to expand must open the
+// editor instead of trying to expand a list of alternates that does not exist.
+// ---------------------------------------------------------------------------
+
+function ShowEditorOpenState() {
+  const { isOpen } = useListEditor()
+  return createElement('div', { 'data-testid': 'editor-open-state' }, isOpen ? 'open' : 'closed')
+}
+
+describe('StudioBrowser — a token with no source list at all', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+    installDefaultFetch()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('opens the list editor when the row names no alternate lists to expand', async () => {
+    // A token can arrive with an empty sources list. It still falls back to a name
+    // ("merged") for the button, and clicking that name must navigate rather than try
+    // to expand a set of alternates that was never there.
+    const orphanToken: ApiToken = {
+      chainId: 1,
+      address: '0xFFFf0000000000000000000000000000000000ff',
+      name: 'Orphan Token',
+      symbol: 'ORPH',
+      decimals: 18,
+      logoURI: 'https://logo/orph.png',
+      sources: [],
+    }
+    installDefaultFetch({ 'eip155-1': tokensResponse(1, [orphanToken]) })
+    renderBrowser({}, createElement(ShowEditorOpenState, null))
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const row = (await screen.findByText('Orphan Token')).closest('div.group') as HTMLElement
+
+    expect(screen.getByTestId('editor-open-state').textContent).toBe('closed')
+    // No badge either: there is nothing beyond the primary name to count.
+    expect(within(row).queryByText(/^\+\d/)).toBeNull()
+
+    fireEvent.click(within(row).getByText('merged'))
+
+    expect(screen.getByTestId('editor-open-state').textContent).toBe('open')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The token list filter. Each list can be switched on or off individually, and
+// "Toggle All" flips every list at once — both wire straight into useTokenBrowser.
+// ---------------------------------------------------------------------------
+
+describe('StudioBrowser — the token list filter', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+    installDefaultFetch()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  /**
+   * The checkbox element for one list in the open filter popover. A list key such as
+   * "gib/default" also names the source list on every token row, so the lookup takes
+   * whichever match sits inside a filter row (a `<label>`) rather than assuming the
+   * first match in the document is the filter's.
+   */
+  function checkboxFor(listKey: string) {
+    const label = screen
+      .getAllByText(listKey)
+      .map((el) => el.closest('label'))
+      .find((el): el is HTMLLabelElement => el !== null)
+    if (!label) throw new Error(`no filter row found for "${listKey}"`)
+    return label.querySelector('div') as HTMLElement
+  }
+
+  it('disables a single list without affecting the others in the filter', async () => {
+    // Deselecting one provider's list must not silently drop every other list too.
+    const { container } = renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    const filterButton = container.querySelector('.fa-filter')!.closest('button') as HTMLElement
+    fireEvent.click(filterButton)
+    await screen.findByText('Toggle All')
+
+    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+
+    fireEvent.click(checkboxFor('gib/default'))
+
+    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeNull()
+    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+  })
+
+  it('turns every list on or off together from "Toggle All"', async () => {
+    // A single control to clear or restore the whole filter has to reach every list,
+    // not just the one the user happened to open the popover from.
+    const { container } = renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    const filterButton = container.querySelector('.fa-filter')!.closest('button') as HTMLElement
+    fireEvent.click(filterButton)
+    await screen.findByText('Toggle All')
+
+    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Toggle All'))
+    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeNull()
+    expect(checkboxFor('merged').querySelector('.fa-check')).toBeNull()
+
+    fireEvent.click(screen.getByText('Toggle All'))
+    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Adding a token to the active list normalizes a few fields the server does not
+// always send in the same shape, and guards against a list that stopped existing
+// out from under the editor.
+// ---------------------------------------------------------------------------
+
+describe('StudioBrowser — normalizing a token on its way into a list', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+    idbStore.clear()
+    installDefaultFetch()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('stores a numeric chain id, a default decimal count and no icon when the hit is missing them', async () => {
+    // The chain id has been seen as a numeric string, decimals has been seen absent, and
+    // a token can simply have no icon. A list entry saved with the wrong types or a
+    // dangling icon reference is a broken row the next time that list opens.
+    const oddShapedToken = {
+      chainId: '1',
+      address: '0x1234000000000000000000000000000000005678',
+      name: 'Odd Shaped Token',
+      symbol: 'ODD',
+      sources: ['gib/default'],
+    } as unknown as ApiToken
+    installDefaultFetch({ 'eip155-1': tokensResponse(1, [oddShapedToken]) })
+    renderBrowser({}, createElement(OpenEditorWithList, null))
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Odd Shaped Token')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add to list' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to list' }))
+
+    await waitFor(() => {
+      const listKey = [...idbStore.keys()].find((k) => k.startsWith('gib-list:'))
+      expect(listKey).toBeTruthy()
+      const stored = idbStore.get(listKey!) as { tokens: Record<string, unknown>[] }
+      expect(stored.tokens).toHaveLength(1)
+      const storedToken = stored.tokens[0]
+      expect(storedToken.chainId).toBe(1)
+      expect(typeof storedToken.chainId).toBe('number')
+      expect(storedToken.decimals).toBe(18)
+      expect(storedToken.imageUri).toBeUndefined()
+    })
+  })
+
+  it('does not add a token or crash when the active list was deleted elsewhere', async () => {
+    // Another tab or device can delete a list after this one opened it. The reference
+    // the editor is holding goes stale, and the add action must fail quietly rather
+    // than crash or invent a new copy of a list that no longer exists. A missing guard
+    // here calls the editor's setter with nothing to set, which throws inside a promise
+    // nobody awaits — invisible in the row's own markup, so we listen for that rejection
+    // directly instead of trusting the row alone to reveal it.
+    const failures: unknown[] = []
+    const recordFailure = (reason: unknown) => failures.push(reason)
+    process.on('unhandledRejection', recordFailure)
+    process.on('uncaughtException', recordFailure)
+
+    try {
+      renderBrowser({}, createElement(OpenEditorWithList, null))
+
+      fireEvent.click(await screen.findByText('Ethereum'))
+      await screen.findByText('Wrapped Ether')
+      await waitFor(() =>
+        expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(ETHEREUM_TOKENS.length),
+      )
+
+      const listKey = [...idbStore.keys()].find((k) => k.startsWith('gib-list:'))!
+      idbStore.delete(listKey)
+
+      const wethRow = screen.getByText('Wrapped Ether').closest('div.group') as HTMLElement
+      fireEvent.click(within(wethRow).getByRole('button', { name: 'Add to list' }))
+
+      await waitFor(() => {
+        expect([...idbStore.keys()].filter((k) => k.startsWith('gib-list:'))).toHaveLength(0)
+      })
+      // Give the async add's continuation a turn to finish, and any swallowed
+      // failure inside it a chance to surface as an unhandled rejection.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    } finally {
+      process.off('unhandledRejection', recordFailure)
+      process.off('uncaughtException', recordFailure)
+    }
+
+    expect(failures).toHaveLength(0)
+  })
+
+  it('adds the token when its row is clicked directly, the same as clicking the action button', async () => {
+    // Only the action button was ever exercised for this path. The row itself carries
+    // the same click-to-add behavior while the editor is open, and a shopper reaching
+    // for the row instead of the small button must not fall through to token selection.
+    const selectToken = vi.fn()
+    renderBrowser({ selectToken }, createElement(OpenEditorWithList, null))
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Add to list' }).length).toBe(ETHEREUM_TOKENS.length),
+    )
+
+    fireEvent.click(screen.getByText('Wrapped Ether'))
+
+    expect(selectToken).not.toHaveBeenCalled()
+    await waitFor(() => {
+      const listKey = [...idbStore.keys()].find((k) => k.startsWith('gib-list:'))
+      expect(listKey).toBeTruthy()
+      const stored = idbStore.get(listKey!) as { tokens: { symbol: string }[] }
+      expect(stored.tokens.some((t) => t.symbol === 'WETH')).toBe(true)
+    })
+  })
 })
