@@ -2,13 +2,29 @@ import { limitBy } from '@gibs/utils'
 import * as db from '../db'
 import { fetch } from '../fetch'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
-import { parseChains, pickIconUrl, type ChainlistEntry } from './chainlist-parse'
+import { mergeRegistries, pickIconUrl, type ChainlistEntry } from './chainlist-parse'
 
 const providerKey = 'chainlist'
 
-/** The ethereum-lists / chainlist.org network registry. */
-const chainsUrl = 'https://chainid.network/chains.json'
-/** Each chains.json `icon` key resolves to a descriptor here (an ipfs:// image url). */
+/**
+ * chainlist.org's registry, and the authority on which chain a number is.
+ *
+ * It carries 2,921 chains to ethereum-lists' 2,755 and disagrees with it about
+ * 51 of them. Some of those are wording ("Ronin" against "Ronin Mainnet"), and
+ * some are not: chain 999 is HyperEVM here and Wanchain Testnet there, and
+ * chain 10001 is ETHW here and Smart Bitcoin Cash Testnet there.
+ */
+const authoritativeChainsUrl = 'https://chainlist.org/rpcs.json'
+/**
+ * ethereum-lists/chains, which is where the icon files live.
+ *
+ * Kept as the icon source rather than the identity source: its icon identifiers
+ * resolve and chainlist.org's do not always, but its naming lags. Reading
+ * identity from one and artwork from the other is only safe while they agree
+ * about the chain, which `mergeRegistries` is what enforces.
+ */
+const iconRegistryUrl = 'https://chainid.network/chains.json'
+/** Each icon identifier resolves to a descriptor here (an ipfs:// image url). */
 const iconMetaBaseUrl = 'https://raw.githubusercontent.com/ethereum-lists/chains/master/_data/icons'
 
 class ChainlistCollector extends BaseCollector {
@@ -19,20 +35,26 @@ class ChainlistCollector extends BaseCollector {
       key: providerKey,
       name: 'Chainlist',
       description:
-        'Ethereum-Virtual-Machine network breadth and canonical chain icons from the ethereum-lists/chains registry (chainid.network), as surfaced by chainlist.org.',
+        'Ethereum-Virtual-Machine network breadth and canonical chain icons. Chain identity comes from chainlist.org, which is current; the artwork comes from the ethereum-lists/chains registry, which hosts it — and only where the two agree about which chain a number is.',
     })
     // Network-icon-only provider: no token lists to register (mirrors cryptocurrency-icons).
     return [{ providerKey, lists: [] }]
   }
 
   async collect(signal: AbortSignal): Promise<void> {
-    const response = await fetch(chainsUrl, { signal })
-    if (!response.ok) {
-      console.warn(`chainlist: chains.json fetch failed with status ${response.status}`)
+    const [authoritative, iconRegistry] = await Promise.all([
+      this.fetchRegistry(authoritativeChainsUrl, signal),
+      this.fetchRegistry(iconRegistryUrl, signal),
+    ])
+    // The authority is what decides identity, so losing it means the run cannot
+    // say which chain a number is. Losing only the icon registry is survivable:
+    // fewer icons resolve, and every name is still correct.
+    if (authoritative === null) {
+      console.warn('chainlist: skipping the run, the authoritative registry did not answer')
       return
     }
-    const chains = parseChains(await response.json())
-    console.warn(`chainlist: ${chains.length} icon-bearing chains to store`)
+    const chains = mergeRegistries(authoritative, iconRegistry ?? [])
+    console.warn(`chainlist: ${chains.length} chains to store`)
 
     await limitBy<ChainlistEntry>('chainlist', 16).map(chains, async (chain) => {
       if (signal.aborted) return
@@ -41,8 +63,9 @@ class ChainlistCollector extends BaseCollector {
   }
 
   private async storeChain(chain: ChainlistEntry, signal: AbortSignal) {
-    const iconUrl = await this.resolveIconUrl(chain.icon, signal)
-    if (!iconUrl) return
+    const iconUrl = chain.icon ? await this.resolveIconUrl(chain.icon, signal) : null
+    // A chain with neither artwork nor a name gives this collector nothing to do.
+    if (!iconUrl && !chain.name && !chain.title) return
 
     let network
     try {
@@ -60,6 +83,10 @@ class ChainlistCollector extends BaseCollector {
     // rides along because it is where a codename-named testnet says what it is.
     await db.setNetworkNaming({ networkId: network.networkId, name: chain.name, title: chain.title })
 
+    // A corrected name still lands when no icon may honestly be shown - that is
+    // the whole point of the chains where the registries disagree.
+    if (!iconUrl) return
+
     await db.fetchImageAndStoreForNetwork({
       network,
       uri: iconUrl,
@@ -67,6 +94,16 @@ class ChainlistCollector extends BaseCollector {
       providerKey,
       signal,
     })
+  }
+
+  /** Fetch one registry. Null means it did not answer; an empty list means it had nothing. */
+  private async fetchRegistry(url: string, signal: AbortSignal): Promise<unknown | null> {
+    const response = await fetch(url, { signal }).catch(() => null)
+    if (!response || !response.ok) {
+      console.warn(`chainlist: ${url} fetch failed with status ${response?.status ?? 'no response'}`)
+      return null
+    }
+    return (await response.json()) as unknown
   }
 
   /** Resolve a chains.json icon key to its ipfs image url, caching the lookup. */
