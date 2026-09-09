@@ -176,6 +176,10 @@ const TRUSTWALLET_CHAIN_OVERRIDES: Record<string, number> = {
   nativeevmos: 9001, // Evmos (native)
   xrplevm: 1440002, // XRPL EVM Sidechain
   polygonzkevm: 1101, // Polygon zkEVM
+  classic: 61, // Ethereum Classic — the only folder that used to resolve through
+  // `coin_type`, and only because its coin type and its chain id happen to be the
+  // same number. Its own rpc_url no longer answers with JSON, so without this it
+  // would resolve to nothing at all.
 }
 
 const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
@@ -249,7 +253,17 @@ const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
     }
 
     const tokenList = JSON.parse(list.toString()) as types.TokenList
-    chainId = networkInfo.coin_type || tokenList.tokens?.[0]?.chainId
+    // A token's own declared chain. `coin_type` used to be read first and is
+    // gone: it is a SLIP-44 coin type, not a chain id, and the two agree only by
+    // accident. Thirteen folders here carry a coin_type that is also a real
+    // chain id, and most of them name a different chain entirely — Arbitrum's
+    // 9001 is Evmos, Optimism's 614 is Graphlinq, Harmony's 1023 is a Clover
+    // testnet. Those twelve are saved today only because the name matcher
+    // resolves them first, and that matcher breaks whenever a chain is renamed,
+    // which this registry has done at least five times (Klaytn to Kaia, xDai to
+    // Gnosis, Stratis to Xertra). A rename would have silently filed every
+    // Arbitrum logo under Evmos.
+    chainId = tokenList.tokens?.[0]?.chainId
   }
 
   if (!chainId) {

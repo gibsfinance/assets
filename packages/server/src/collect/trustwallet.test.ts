@@ -185,7 +185,12 @@ describe('TrustWalletCollector discover — chain id resolution', () => {
     expect(harness.state.networks.get('eip155-5151')).toBeDefined()
   })
 
-  it('reads the coin_type from its own tokenlist.json when nothing in chainlist matches', async () => {
+  it('will not read a coin type as a chain id, even when nothing else resolves', async () => {
+    // coin_type is SLIP-44. It and a chain id are different numbering schemes
+    // that agree only by accident, and thirteen folders in the real repository
+    // carry a coin_type that is also somebody else's chain id: Arbitrum's 9001
+    // is Evmos, Optimism's 614 is Graphlinq, Harmony's 1023 is a Clover testnet.
+    // Reading it would file every one of that chain's logos under another chain.
     setInfoJson('ownlist', { coin_type: 7777 })
     fakeFilesystem.setDirectory(blockchainsRoot, ['ownlist'])
     fakeFilesystem.setFile(tokenlistJsonPath('ownlist'), JSON.stringify({ name: 'Own List', tokens: [] }))
@@ -194,11 +199,27 @@ describe('TrustWalletCollector discover — chain id resolution', () => {
     const { default: TrustWalletCollector } = await importTrustWallet()
     const manifest = await new TrustWalletCollector().discover(new AbortController().signal)
 
-    expect(manifest[0]?.lists.map((list) => list.listKey)).toEqual(['wallet', 'wallet-ownlist'])
-    expect(harness.state.networks.get('eip155-7777')).toBeDefined()
+    // The folder resolves to nothing and is skipped rather than mis-filed.
+    expect(manifest[0]?.lists.map((list) => list.listKey)).toEqual(['wallet'])
+    expect(harness.state.networks.get('eip155-7777')).toBeUndefined()
   })
 
-  it("reads a token entry's chainId from its own tokenlist.json when coin_type is absent", async () => {
+  it('reads Ethereum Classic from the verified override table', async () => {
+    // The one folder that used to resolve through coin_type, and only because 61
+    // is both its coin type and its chain id. Its own rpc_url no longer answers
+    // with JSON, so the override is what keeps the chain rather than luck.
+    setInfoJson('classic', { coin_type: 61 })
+    fakeFilesystem.setDirectory(blockchainsRoot, ['classic'])
+    fakeFilesystem.setFile(tokenlistJsonPath('classic'), JSON.stringify({ name: 'Classic', tokens: [] }))
+
+    const { default: TrustWalletCollector } = await importTrustWallet()
+    const manifest = await new TrustWalletCollector().discover(new AbortController().signal)
+
+    expect(manifest[0]?.lists.map((list) => list.listKey)).toEqual(['wallet', 'wallet-classic'])
+    expect(harness.state.networks.get('eip155-61')).toBeDefined()
+  })
+
+  it("reads a token entry's own declared chainId from the folder's tokenlist.json", async () => {
     setInfoJson('tokenlistchain')
     fakeFilesystem.setDirectory(blockchainsRoot, ['tokenlistchain'])
     fakeFilesystem.setFile(
@@ -214,10 +235,15 @@ describe('TrustWalletCollector discover — chain id resolution', () => {
   })
 
   it("falls back to the ethereum folder's tokenlist.json (emptied and renamed) when its own is missing", async () => {
-    setInfoJson('missinglist', { coin_type: 6161 })
+    setInfoJson('missinglist')
     fakeFilesystem.setDirectory(blockchainsRoot, ['missinglist'])
     // No tokenlistJsonPath('missinglist') registered — readFile rejects, forcing the
     // fallback read of blockchains/ethereum/tokenlist.json registered in beforeEach.
+    // The chain has to come from the registry: the fallback list is deliberately
+    // emptied of tokens, so it can never supply a chain id of its own. That used
+    // to be hidden by reading coin_type, which answered for every folder whether
+    // or not the number meant a chain.
+    chainListEntries = [{ name: 'Missing List', chain: 'Missing', chainSlug: 'missinglist', chainId: 6161 }]
 
     const { default: TrustWalletCollector } = await importTrustWallet()
     const manifest = await new TrustWalletCollector().discover(new AbortController().signal)
