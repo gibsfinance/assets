@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 describe('shuffle', () => {
-  it('leaves the caller\'s array untouched', () => {
+  it("leaves the caller's array untouched", () => {
     // The icon list is a module constant shared by every band. Shuffling it in
     // place would reorder it for everyone and never put it back.
     const original = ['a', 'b', 'c', 'd']
