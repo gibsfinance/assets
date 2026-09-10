@@ -1165,14 +1165,18 @@ export const fetchImageAndStoreForToken = async (
     // empty list_id — so every token fell to this branch and downloaded an image the
     // line above had just confirmed fresh, at up to three seconds of timeout each.
     img = existing
-    if (originalUri) {
-      await removeMissing({
-        imageHash: existing.image.imageHash,
-        originalUri,
-        providerKey,
-        listId,
-      })
-    }
+    // `originalUri` is always set here, so this is not guarded. `existing` comes
+    // from getFreshImageFromLink(uri), which only runs when `uri` is a string, and
+    // an absent originalUri defaults to that same uri a few lines above. The only
+    // way out would be a link row stored under an empty address, and nothing can
+    // write one: every insertImage caller passes a guarded originalUri, and
+    // prewarmImages filters its addresses on length before it gets there.
+    await removeMissing({
+      imageHash: existing.image.imageHash,
+      originalUri: originalUri!,
+      providerKey,
+      listId,
+    })
   } else if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {

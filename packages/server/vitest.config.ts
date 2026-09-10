@@ -41,11 +41,18 @@ export default defineConfig({
       // directly. Both now have tests. The lesson generalizes — "unreachable" was
       // a claim about the harness nobody had rechecked since the harness changed.
       //
-      // One branch stays uncovered on purpose: db/index.ts:1168, the `originalUri`
-      // guard on the image-reuse path. Reaching it needs a fresh link row stored
-      // under an empty uri, and no collector can write one — every caller derives
-      // originalUri from the same uri that found the row. Fabricating that row to
-      // flip the branch would test a state the system cannot produce.
+      // 2026-09-09: 100 on all four, and the floors follow. The last uncovered
+      // branch was db/index.ts:1168, the `originalUri` guard on the image-reuse
+      // path. It was not testable and did not need to be: it was dead. `existing`
+      // comes from getFreshImageFromLink(uri), which only runs when uri is a
+      // string, and an absent originalUri defaults to that same uri. The only
+      // escape would be a link row stored under an empty address, and nothing can
+      // write one — every insertImage caller passes a guarded originalUri and
+      // prewarmImages filters on length first. So the branch went, rather than a
+      // test that fabricates a state the system cannot produce.
+      //
+      // At 100 there is no headroom left, which is the point: a single uncovered
+      // line now fails the build while every test still passes.
       //
       // 2026-09-08, later: still 100/99.95/100/100 over 1621 tests after a pass
       // aimed at simplification rather than at red lines. Three things changed
@@ -65,7 +72,7 @@ export default defineConfig({
       // no behaviour at all.
       //
       // Raise these as coverage rises; never lower them to make a failing run pass.
-      thresholds: { statements: 99.9, branches: 99.9, functions: 99.9, lines: 99.9 },
+      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
 })
