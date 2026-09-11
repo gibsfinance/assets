@@ -5,6 +5,13 @@ export async function fetchImageMetadata(url: string): Promise<ImageMetadata> {
   let format = 'unknown'
   let fileSize: number | null = null
   let contentType = 'unknown'
+  // Whether anything at all was learned. Both readings below are allowed to fail
+  // on their own, because either one alone still tells the reader something. What
+  // is not reported is both of them failing: this used to return
+  // `format: 'unknown'` with every field empty, so a total failure rendered a
+  // table of the word "Unknown" instead of the "Metadata unavailable" line the
+  // caller already had written for exactly that case.
+  let learnedSomething = false
 
   try {
     const res = await fetch(url, { method: 'HEAD' })
@@ -17,6 +24,7 @@ export async function fetchImageMetadata(url: string): Promise<ImageMetadata> {
     else if (contentType.includes('webp')) format = 'WEBP'
     else if (contentType.includes('jpeg') || contentType.includes('jpg')) format = 'JPEG'
     else if (contentType.includes('gif')) format = 'GIF'
+    learnedSomething = true
   } catch {
     // HEAD failed — fall back to image decode for dimensions
   }
@@ -35,9 +43,17 @@ export async function fetchImageMetadata(url: string): Promise<ImageMetadata> {
       })
       width = img.naturalWidth
       height = img.naturalHeight
+      learnedSomething = true
     } catch {
       // Image decode failed
     }
+  }
+
+  if (!learnedSomething) {
+    // Nothing answered. Raised rather than returned so the caller can say the
+    // metadata is unavailable, which is true, instead of presenting empty fields
+    // as though they were the answer.
+    throw new Error(`no metadata available for ${url}`)
   }
 
   return { format, width, height, fileSize, contentType }

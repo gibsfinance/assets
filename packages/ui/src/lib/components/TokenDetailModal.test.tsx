@@ -281,7 +281,10 @@ describe('TokenDetailModal — image metadata', () => {
     renderModal(DAI)
     await waitFor(() => expect(screen.queryByText(/Loading metadata/)).toBeNull())
     expect(screen.getByText('Dai Stablecoin')).toBeTruthy()
-    expect(screen.getByText('unknown')).toBeTruthy()
+    // And it says so, rather than presenting empty fields as the answer. This line
+    // was unreachable while the metadata reader swallowed a total failure and
+    // returned format 'unknown' with everything else null.
+    expect(screen.getByText('Metadata unavailable')).toBeTruthy()
   })
 })
 
