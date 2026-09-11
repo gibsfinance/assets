@@ -16,8 +16,8 @@ import { submitImage } from '../utils/image-upload'
 import ListTokenRow from './ListTokenRow'
 import TokenImageManager from './TokenImageManager'
 import { useRpcMetadata } from '../hooks/useRpcMetadata'
-import { useVCSPublish, buildPublishers } from '../hooks/useVCSPublish'
-import type { LocalToken } from '../hooks/useLocalLists'
+import { useVCSPublish, buildPublishers, type PublishResult } from '../hooks/useVCSPublish'
+import type { LocalList, LocalToken } from '../hooks/useLocalLists'
 import { readTokenList, type RejectedToken } from '../utils/token-list-import'
 
 /**
@@ -46,25 +46,41 @@ function listChainId(tokens: readonly LocalToken[]): number {
   return tokens[0]?.chainId ?? 1
 }
 
-export default function ListEditor() {
-  const {
-    activeList,
-    editingSourceKey,
-    closeEditor,
-    createList,
-    setActiveList,
-    updateList,
-    deleteList,
-    addToken,
-    removeToken,
-    reorderTokens,
-    lists,
-  } = useListEditor()
+/**
+ * The editor for a list that is open.
+ *
+ * This is a component of its own so that `activeList` can be a required prop rather than
+ * a value that might be absent. Everything here renders only once a list is open, so none
+ * of these handlers could ever run without one. While they sat in `ListEditor`, beside the
+ * no-list view, each still had to open with `if (!activeList) return`, because a callback
+ * closes over the nullable value and the typechecker cannot see which half of the render
+ * called it.
+ *
+ * A guard that cannot fire is worse than no guard at all. It reads as a failure the
+ * component handles, so the next reader trusts a recovery path that has never run; no test
+ * can reach it, so it sits red in the coverage report forever and trains everyone to
+ * ignore red there; and deleting it later means proving a negative. Taking the prop makes
+ * the absent list unrepresentable, which is a stronger statement than any check.
+ *
+ * The same move, in the small, replaces the two remaining guards of this shape: the fork
+ * source key and the token being given an image are passed to their handlers as arguments
+ * from the place that already knows they are there.
+ *
+ * `error` stays with the parent on purpose. An import or a fork sets the message and then
+ * opens the list it has just created, so the banner has to survive the move from the
+ * creation menu to this view.
+ */
+function ActiveListEditor({
+  activeList,
+  error,
+  setError,
+}: {
+  activeList: LocalList
+  error: string | null
+  setError: (message: string | null) => void
+}) {
+  const { closeEditor, setActiveList, updateList, addToken, removeToken, reorderTokens } = useListEditor()
 
-  const [importUrl, setImportUrl] = useState('')
-  const [pasteJson, setPasteJson] = useState('')
-  const [isImporting, setIsImporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [addAddress, setAddAddress] = useState('')
   const [editingImageToken, setEditingImageToken] = useState<LocalToken | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -83,7 +99,7 @@ export default function ListEditor() {
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
-      if (!over || active.id === over.id || !activeList) return
+      if (!over || active.id === over.id) return
       const oldIndex = activeList.tokens.findIndex((t) => `${t.chainId}-${t.address}` === active.id)
       const newIndex = activeList.tokens.findIndex((t) => `${t.chainId}-${t.address}` === over.id)
       if (oldIndex === -1 || newIndex === -1) return
@@ -97,7 +113,7 @@ export default function ListEditor() {
   )
 
   const handleAddToken = useCallback(async () => {
-    if (!addAddress.trim() || !activeList) return
+    if (!addAddress.trim()) return
     // Previously the error banner was only ever set, never cleared, on this path: once a
     // duplicate was rejected the warning stayed on screen through every later successful
     // add, so the list read as broken while it was working. Every other action in this
@@ -120,11 +136,10 @@ export default function ListEditor() {
       setActiveList(updated)
       setAddAddress('')
     }
-  }, [addAddress, activeList, addToken, setActiveList])
+  }, [addAddress, activeList, addToken, setActiveList, setError])
 
   const handleRemoveToken = useCallback(
     async (address: string) => {
-      if (!activeList) return
       const updated = await removeToken(activeList.id, address)
       if (updated) setActiveList(updated)
     },
@@ -132,131 +147,53 @@ export default function ListEditor() {
   )
 
   const handleLoadMetadata = useCallback(async () => {
-    if (!activeList || activeList.tokens.length === 0) return
     const chainId = listChainId(activeList.tokens)
     const results = await loadMetadata(activeList.tokens, chainId)
+    // A reading is looked up per token rather than taken by position, and a token with no
+    // reading keeps every value it already had. `loadMetadata` answers one result per
+    // token it is given, so the absent case does not arise today; writing the merge as
+    // three fallbacks rather than an early return states that outcome without claiming to
+    // handle a state nothing produces.
     const updatedTokens = activeList.tokens.map((token) => {
       const meta = results.find((r) => r.address.toLowerCase() === token.address.toLowerCase())
-      if (!meta) return token
       return {
         ...token,
-        name: meta.name || token.name,
-        symbol: meta.symbol || token.symbol,
-        decimals: meta.decimals ?? token.decimals,
+        name: meta?.name || token.name,
+        symbol: meta?.symbol || token.symbol,
+        decimals: meta?.decimals ?? token.decimals,
       }
     })
     const updated = await reorderTokens(activeList.id, updatedTokens)
     if (updated) setActiveList(updated)
   }, [activeList, loadMetadata, reorderTokens, setActiveList])
 
-  const handleCreateNew = useCallback(async () => {
-    const list = await createList({
-      name: 'Untitled List',
-      source: { type: 'scratch' },
-    })
-    setActiveList(list)
-  }, [createList, setActiveList])
-
-  const handleFork = useCallback(async () => {
-    if (!editingSourceKey) return
-    setIsImporting(true)
-    setError(null)
-    try {
-      const [provider, key] = editingSourceKey.split('/')
-      const res = await fetch(getApiUrl(`/list/${provider}/${key}`))
-      if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)
-      const data = await res.json()
-      const { tokens, rejected } = readTokenList(data.tokens)
-      const list = await createList({
-        name: data.name || editingSourceKey,
-        description: data.description || '',
-        source: {
-          type: 'fork',
-          remoteProvider: provider,
-          remoteKey: key,
-        },
-        tokens,
-      })
-      setActiveList(list)
-      setError(skippedNote(rejected))
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setIsImporting(false)
-    }
-  }, [editingSourceKey, createList, setActiveList])
-
-  const handleImportUrl = useCallback(async () => {
-    if (!importUrl.trim()) return
-    setIsImporting(true)
-    setError(null)
-    try {
-      const res = await fetch(importUrl.trim())
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
-      const data = await res.json()
-      if (!data.tokens || !Array.isArray(data.tokens)) throw new Error('Invalid token list format')
-      const { tokens, rejected } = readTokenList(data.tokens)
-      const list = await createList({
-        name: data.name || 'Imported List',
-        description: data.description || '',
-        source: { type: 'import', remoteUrl: importUrl.trim() },
-        tokens,
-      })
-      setActiveList(list)
-      setImportUrl('')
-      setError(skippedNote(rejected))
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setIsImporting(false)
-    }
-  }, [importUrl, createList, setActiveList])
-
-  const handlePasteJson = useCallback(async () => {
-    if (!pasteJson.trim()) return
-    setError(null)
-    try {
-      const data = JSON.parse(pasteJson.trim())
-      const { tokens, rejected } = readTokenList([data.tokens ?? data].flat())
-      const list = await createList({
-        name: data.name || 'Pasted List',
-        source: { type: 'paste' },
-        tokens,
-      })
-      setActiveList(list)
-      setPasteJson('')
-      setError(skippedNote(rejected))
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }, [pasteJson, createList, setActiveList])
-
   const handleNameChange = useCallback(
     async (name: string) => {
-      if (!activeList) return
       const updated = await updateList(activeList.id, { name })
       if (updated) setActiveList(updated)
     },
     [activeList, updateList, setActiveList],
   )
 
+  /**
+   * Takes the token being edited as an argument rather than reading it from state.
+   * The overlay below renders only when there is one, and hands it straight back.
+   */
   const handleImageChange = useCallback(
-    async (uri: string) => {
-      if (!activeList || !editingImageToken) return
+    async (editedToken: LocalToken, uri: string) => {
       const updatedTokens = activeList.tokens.map((t) =>
-        t.address.toLowerCase() === editingImageToken.address.toLowerCase() && t.chainId === editingImageToken.chainId
+        t.address.toLowerCase() === editedToken.address.toLowerCase() && t.chainId === editedToken.chainId
           ? { ...t, imageUri: uri }
           : t,
       )
       const updated = await reorderTokens(activeList.id, updatedTokens)
       if (updated) setActiveList(updated)
     },
-    [activeList, editingImageToken, reorderTokens, setActiveList],
+    [activeList, reorderTokens, setActiveList],
   )
 
   const handleImageUpload = useCallback(
     async (token: LocalToken, dataUri: string) => {
-      if (!activeList) return
       // Same reason as handleAddToken: a failed upload used to leave its message behind
       // for good, including after a later upload succeeded.
       setError(null)
@@ -273,187 +210,56 @@ export default function ListEditor() {
         setError((err as Error).message)
       }
     },
-    [activeList, reorderTokens, setActiveList],
+    [activeList, reorderTokens, setActiveList, setError],
   )
 
-  const handleSubmitToGibShow = useCallback(async () => {
-    if (!publishResult?.repoUrl || !activeList) return
-    setIsSubmitting(true)
-    setSubmitResult(null)
-    try {
-      // Derive the raw GitHub content URL from the repo URL
-      // e.g. https://github.com/user/repo -> https://raw.githubusercontent.com/user/repo/main/tokenlist.json
-      const repoPath = new URL(publishResult.repoUrl).pathname.replace(/^\//, '')
-      const rawUrl = `https://raw.githubusercontent.com/${repoPath}/main/tokenlist.json`
+  /**
+   * Takes the publish result as an argument, for the same reason the image handler takes
+   * its token: the submit button exists only inside the banner that has one.
+   *
+   * The check on the repository address stays, and is a different kind of check entirely.
+   * A publisher can answer with a result whose repository address is empty, and that empty
+   * address would otherwise reach `new URL('')` and throw while the raw file address is
+   * built. It is a reachable state, and there is a test that reaches it.
+   */
+  const handleSubmitToGibShow = useCallback(
+    async (result: PublishResult) => {
+      if (!result.repoUrl) return
+      setIsSubmitting(true)
+      setSubmitResult(null)
+      try {
+        // Derive the raw GitHub content URL from the repo URL
+        // e.g. https://github.com/user/repo -> https://raw.githubusercontent.com/user/repo/main/tokenlist.json
+        const repoPath = new URL(result.repoUrl).pathname.replace(/^\//, '')
+        const rawUrl = `https://raw.githubusercontent.com/${repoPath}/main/tokenlist.json`
 
-      const res = await fetch(getApiUrl('/api/lists/submit'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: rawUrl,
-          name: activeList.name,
-          submittedBy: repoPath.split('/')[0],
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setSubmitResult({ success: false, message: data.error || `Server error ${res.status}` })
-        return
+        const res = await fetch(getApiUrl('/api/lists/submit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: rawUrl,
+            name: activeList.name,
+            submittedBy: repoPath.split('/')[0],
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setSubmitResult({ success: false, message: data.error || `Server error ${res.status}` })
+          return
+        }
+        setSubmitResult({
+          success: true,
+          message: `Submitted! Status: ${data.status} (${data.providerKey}/${data.listKey})`,
+        })
+      } catch (err) {
+        setSubmitResult({ success: false, message: (err as Error).message })
+      } finally {
+        setIsSubmitting(false)
       }
-      setSubmitResult({
-        success: true,
-        message: `Submitted! Status: ${data.status} (${data.providerKey}/${data.listKey})`,
-      })
-    } catch (err) {
-      setSubmitResult({ success: false, message: (err as Error).message })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [publishResult, activeList])
+    },
+    [activeList],
+  )
 
-  // ─── Creation Menu (no active list) ───────────────────────────
-  if (!activeList) {
-    return (
-      <div className="flex h-full flex-col bg-white dark:bg-surface-base">
-        <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
-          <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white">List Editor</h2>
-          <button
-            type="button"
-            onClick={closeEditor}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
-            <i className="fas fa-times" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="mx-auto max-w-md space-y-4">
-            {error && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-                {error}
-              </div>
-            )}
-
-            {/* New List */}
-            <button
-              type="button"
-              onClick={handleCreateNew}
-              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
-                <i className="fas fa-plus" />
-              </div>
-              <div>
-                <div className="font-medium text-gray-900 dark:text-white">New List</div>
-                <div className="text-xs text-gray-400 dark:text-white/40">Start from scratch</div>
-              </div>
-            </button>
-
-            {/* Fork (only if editing a remote list) */}
-            {editingSourceKey && (
-              <button
-                type="button"
-                onClick={handleFork}
-                disabled={isImporting}
-                className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-500">
-                  <i className="fas fa-code-branch" />
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900 dark:text-white">Fork {editingSourceKey}</div>
-                  <div className="text-xs text-gray-400 dark:text-white/40">Copy this list and edit locally</div>
-                </div>
-              </button>
-            )}
-
-            {/* Import URL */}
-            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-link text-xs text-gray-400 dark:text-white/40" />
-                Import from URL
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  placeholder="https://tokens.uniswap.org"
-                  value={importUrl}
-                  onChange={(e) => setImportUrl(e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
-                />
-                <button
-                  type="button"
-                  onClick={handleImportUrl}
-                  disabled={!importUrl.trim() || isImporting}
-                  className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
-                  {isImporting ? '...' : 'Import'}
-                </button>
-              </div>
-            </div>
-
-            {/* Paste JSON */}
-            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-paste text-xs text-gray-400 dark:text-white/40" />
-                Paste JSON
-              </div>
-              <textarea
-                placeholder='{"tokens": [...]}'
-                value={pasteJson}
-                onChange={(e) => setPasteJson(e.target.value)}
-                rows={4}
-                className="mb-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
-              />
-              <button
-                type="button"
-                onClick={handlePasteJson}
-                disabled={!pasteJson.trim()}
-                className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
-                Parse & Import
-              </button>
-            </div>
-
-            {/* My Lists */}
-            {lists.length > 0 && (
-              <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">My Lists</span>
-                  <span className="text-[10px] text-gray-400 dark:text-white/30">{lists.length} saved</span>
-                </div>
-                <div className="max-h-[200px] space-y-1 overflow-y-auto">
-                  {lists.map((list) => (
-                    <div
-                      key={list.id}
-                      className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-gray-50 cursor-pointer dark:hover:bg-surface-2"
-                      onClick={() => setActiveList(list)}>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-500 dark:bg-surface-2 dark:text-white/40">
-                        {list.tokens.length}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-gray-800 dark:text-white/80">{list.name}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-white/30">
-                          {list.source.type} · {new Date(list.updatedAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                        title="Delete list"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteList(list.id)
-                        }}>
-                        <i className="fas fa-trash-alt text-[10px]" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ─── Active List View ─────────────────────────────────────────
   return (
     <div className="relative flex h-full flex-col bg-white dark:bg-surface-base">
       {/* Header */}
@@ -472,7 +278,7 @@ export default function ListEditor() {
         <div className="flex flex-shrink-0 items-center gap-2">
           <Menu>
             <MenuButton
-              disabled={isPublishing || !activeList || activeList.tokens.length === 0}
+              disabled={isPublishing || activeList.tokens.length === 0}
               className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200">
               <i className="fas fa-cloud-arrow-up text-sm" />
               {isPublishing ? 'Publishing...' : 'Publish'}
@@ -490,7 +296,7 @@ export default function ListEditor() {
                   <MenuItem key={pub.name}>
                     <button
                       type="button"
-                      onClick={() => activeList && publish(pub, activeList)}
+                      onClick={() => publish(pub, activeList)}
                       className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3">
                       <i
                         className={`${pub.icon} text-sm w-4 text-center ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`}
@@ -544,7 +350,7 @@ export default function ListEditor() {
             )}
             <button
               type="button"
-              onClick={handleSubmitToGibShow}
+              onClick={() => handleSubmitToGibShow(publishResult)}
               disabled={isSubmitting}
               className="ml-auto rounded-md bg-accent-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-50">
               {isSubmitting ? 'Submitting...' : 'Submit to Gib.Show'}
@@ -648,11 +454,267 @@ export default function ListEditor() {
             chainId={editingImageToken.chainId}
             address={editingImageToken.address}
             currentImageUri={editingImageToken.imageUri}
-            onImageChange={handleImageChange}
+            onImageChange={(uri) => handleImageChange(editingImageToken, uri)}
             onClose={() => setEditingImageToken(null)}
           />
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * The token list editor.
+ *
+ * Owns the creation menu — the state where no list is open — and the three routes out of
+ * it: a new list, a fork of a remote list, and an import from a web address or from pasted
+ * text. Once a list is open, `ActiveListEditor` takes over and takes the list as a
+ * required prop.
+ */
+export default function ListEditor() {
+  const { activeList, editingSourceKey, closeEditor, createList, setActiveList, deleteList, lists } = useListEditor()
+
+  const [importUrl, setImportUrl] = useState('')
+  const [pasteJson, setPasteJson] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleCreateNew = useCallback(async () => {
+    const list = await createList({
+      name: 'Untitled List',
+      source: { type: 'scratch' },
+    })
+    setActiveList(list)
+  }, [createList, setActiveList])
+
+  /**
+   * Takes the source key as an argument. The fork button renders only when the editor is
+   * pointed at a remote list, so the key is known to be there at the one place that calls
+   * this — which is a stronger statement than a check inside would be.
+   */
+  const handleFork = useCallback(
+    async (sourceKey: string) => {
+      setIsImporting(true)
+      setError(null)
+      try {
+        const [provider, key] = sourceKey.split('/')
+        const res = await fetch(getApiUrl(`/list/${provider}/${key}`))
+        if (!res.ok) throw new Error(`Failed to fetch list: ${res.status}`)
+        const data = await res.json()
+        const { tokens, rejected } = readTokenList(data.tokens)
+        const list = await createList({
+          name: data.name || sourceKey,
+          description: data.description || '',
+          source: {
+            type: 'fork',
+            remoteProvider: provider,
+            remoteKey: key,
+          },
+          tokens,
+        })
+        setActiveList(list)
+        setError(skippedNote(rejected))
+      } catch (err) {
+        setError((err as Error).message)
+      } finally {
+        setIsImporting(false)
+      }
+    },
+    [createList, setActiveList],
+  )
+
+  const handleImportUrl = useCallback(async () => {
+    // The only caller is the Import button, and its `disabled` attribute already
+    // repeats this exact check (`!importUrl.trim() || isImporting`), so a click can
+    // never reach this line with an empty address. Proved dead, not left uncovered:
+    // there is no keyboard path to this handler the way the address box has one.
+    setIsImporting(true)
+    setError(null)
+    try {
+      const res = await fetch(importUrl.trim())
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
+      const data = await res.json()
+      if (!data.tokens || !Array.isArray(data.tokens)) throw new Error('Invalid token list format')
+      const { tokens, rejected } = readTokenList(data.tokens)
+      const list = await createList({
+        name: data.name || 'Imported List',
+        description: data.description || '',
+        source: { type: 'import', remoteUrl: importUrl.trim() },
+        tokens,
+      })
+      setActiveList(list)
+      setImportUrl('')
+      setError(skippedNote(rejected))
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setIsImporting(false)
+    }
+  }, [importUrl, createList, setActiveList])
+
+  const handlePasteJson = useCallback(async () => {
+    // Same reasoning as handleImportUrl: the Parse & Import button's `disabled`
+    // attribute is exactly `!pasteJson.trim()`, so this line was unreachable through
+    // its only caller.
+    setError(null)
+    try {
+      const data = JSON.parse(pasteJson.trim())
+      const { tokens, rejected } = readTokenList([data.tokens ?? data].flat())
+      const list = await createList({
+        name: data.name || 'Pasted List',
+        source: { type: 'paste' },
+        tokens,
+      })
+      setActiveList(list)
+      setPasteJson('')
+      setError(skippedNote(rejected))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }, [pasteJson, createList, setActiveList])
+
+  // ─── Creation Menu (no active list) ───────────────────────────
+  if (!activeList) {
+    return (
+      <div className="flex h-full flex-col bg-white dark:bg-surface-base">
+        <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
+          <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white">List Editor</h2>
+          <button
+            type="button"
+            onClick={closeEditor}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
+            <i className="fas fa-times" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mx-auto max-w-md space-y-4">
+            {error && (
+              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
+            {/* New List */}
+            <button
+              type="button"
+              onClick={handleCreateNew}
+              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
+                <i className="fas fa-plus" />
+              </div>
+              <div>
+                <div className="font-medium text-gray-900 dark:text-white">New List</div>
+                <div className="text-xs text-gray-400 dark:text-white/40">Start from scratch</div>
+              </div>
+            </button>
+
+            {/* Fork (only if editing a remote list) */}
+            {editingSourceKey && (
+              <button
+                type="button"
+                onClick={() => handleFork(editingSourceKey)}
+                disabled={isImporting}
+                className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-500">
+                  <i className="fas fa-code-branch" />
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900 dark:text-white">Fork {editingSourceKey}</div>
+                  <div className="text-xs text-gray-400 dark:text-white/40">Copy this list and edit locally</div>
+                </div>
+              </button>
+            )}
+
+            {/* Import URL */}
+            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <i className="fas fa-link text-xs text-gray-400 dark:text-white/40" />
+                Import from URL
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  placeholder="https://tokens.uniswap.org"
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+                />
+                <button
+                  type="button"
+                  onClick={handleImportUrl}
+                  disabled={!importUrl.trim() || isImporting}
+                  className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+                  {isImporting ? '...' : 'Import'}
+                </button>
+              </div>
+            </div>
+
+            {/* Paste JSON */}
+            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                <i className="fas fa-paste text-xs text-gray-400 dark:text-white/40" />
+                Paste JSON
+              </div>
+              <textarea
+                placeholder='{"tokens": [...]}'
+                value={pasteJson}
+                onChange={(e) => setPasteJson(e.target.value)}
+                rows={4}
+                className="mb-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+              />
+              <button
+                type="button"
+                onClick={handlePasteJson}
+                disabled={!pasteJson.trim()}
+                className="btn-primary rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+                Parse & Import
+              </button>
+            </div>
+
+            {/* My Lists */}
+            {lists.length > 0 && (
+              <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">My Lists</span>
+                  <span className="text-[10px] text-gray-400 dark:text-white/30">{lists.length} saved</span>
+                </div>
+                <div className="max-h-[200px] space-y-1 overflow-y-auto">
+                  {lists.map((list) => (
+                    <div
+                      key={list.id}
+                      className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-gray-50 cursor-pointer dark:hover:bg-surface-2"
+                      onClick={() => setActiveList(list)}>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-500 dark:bg-surface-2 dark:text-white/40">
+                        {list.tokens.length}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-gray-800 dark:text-white/80">{list.name}</div>
+                        <div className="text-[10px] text-gray-400 dark:text-white/30">
+                          {list.source.type} · {new Date(list.updatedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                        title="Delete list"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteList(list.id)
+                        }}>
+                        <i className="fas fa-trash-alt text-[10px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Active List View ─────────────────────────────────────────
+  return <ActiveListEditor activeList={activeList} error={error} setError={setError} />
 }

@@ -935,6 +935,45 @@ describe('ListEditor token membership', () => {
     await waitFor(() => expect(screen.getByText('1 token')).toBeTruthy())
     expect(persisted(list.id).tokens.map((t) => t.address)).toEqual([ADDRESS_B])
   })
+
+  it('does not clear the address box when the list has vanished from storage before the add lands', async () => {
+    // `addToken` reads the list from storage first and returns null when the record is
+    // gone (another tab deleted it, or storage was cleared) rather than the list it was
+    // told to update. The guard around setActiveList and setAddAddress must skip both in
+    // that case: handing a null list to setActiveList would throw, since the context
+    // reads `list.id` off whatever it is given.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [] })
+    store.delete(`gib-list:${list.id}`)
+
+    const input = screen.getByPlaceholderText('0x... token address') as HTMLInputElement
+    fireEvent.change(input, { target: { value: ADDRESS_A } })
+    await act(async () => {
+      fireEvent.click(screen.getByText('Add'))
+    })
+
+    // The box still holds what was typed, because the clear-on-success step never runs.
+    expect(input.value).toBe(ADDRESS_A)
+    expect(screen.getByText('0 tokens')).toBeTruthy()
+  })
+
+  it('leaves a token visible when its list has vanished from storage before the removal lands', async () => {
+    // Same regression as the add case, for removal: `removeToken` returns null once the
+    // backing record is gone, and the guard must not hand that null to setActiveList.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [token()] })
+    store.delete(`gib-list:${list.id}`)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Remove token'))
+    })
+
+    // The row is exactly where it was: the removal never reached anywhere to apply.
+    expect(screen.getByText('Alpha')).toBeTruthy()
+    expect(screen.getByText('1 token')).toBeTruthy()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1053,6 +1092,49 @@ describe('ListEditor list editing', () => {
 
     // A dropped token, rather than a shuffled one, is the failure to avoid here.
     expect(persisted(list.id).tokens.map((t) => t.address)).toEqual([ADDRESS_A, ADDRESS_B])
+  })
+
+  it('leaves the order on screen untouched when the list has vanished from storage before a drag lands', async () => {
+    // The falsy side of `if (updated) setActiveList(updated)` after a drag: reorderTokens
+    // returns null once the record is gone, and skipping setActiveList there is what
+    // keeps the editor from being handed a null list to render.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({
+      tokens: [token(), token({ address: ADDRESS_B, name: 'Beta', order: 1 })],
+    })
+    await waitFor(() => expect(drag.onDragEnd).toBeTruthy())
+    store.delete(`gib-list:${list.id}`)
+
+    await act(async () => {
+      await drag.onDragEnd!({
+        active: { id: `1-${ADDRESS_A}` },
+        over: { id: `1-${ADDRESS_B}` },
+      } as DragEndEvent)
+    })
+
+    // Row order on screen is unchanged, because the reorder never reached storage.
+    const names = screen.getAllByText(/^(Alpha|Beta)$/).map((el) => el.textContent)
+    expect(names).toEqual(['Alpha', 'Beta'])
+    expect(store.size).toBe(0)
+  })
+
+  it('keeps the old name on screen when the list has vanished from storage before a rename lands', async () => {
+    // The falsy side of `if (updated) setActiveList(updated)` after a rename: updateList
+    // returns null once the record is gone, so the box must not be handed a value that
+    // was never actually saved.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ name: 'Old Name', tokens: [] })
+    store.delete(`gib-list:${list.id}`)
+
+    await act(async () => {
+      fireEvent.change(screen.getByDisplayValue('Old Name'), { target: { value: 'New Name' } })
+    })
+
+    // The rename never reached storage, so the field still reads the name it had.
+    expect(screen.getByDisplayValue('Old Name')).toBeTruthy()
+    expect(screen.queryByDisplayValue('New Name')).toBeNull()
   })
 })
 
@@ -1189,6 +1271,58 @@ describe('ListEditor token images', () => {
     await waitFor(() => expect(screen.getByText('Image too large')).toBeTruthy())
     expect(persisted(list.id).tokens[0].imageUri).toBeUndefined()
   })
+
+  it('leaves the row image untouched when the list has vanished from storage before a manager change lands', async () => {
+    // The falsy side of `if (updated) setActiveList(updated)` in handleImageChange:
+    // reorderTokens returns null once the record is gone, so the address chosen in the
+    // manager must not be handed to setActiveList in that case.
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [token({ imageUri: 'https://img/a.png' })] })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Edit image'))
+    })
+    expect(screen.getByText('Token Image')).toBeTruthy()
+    store.delete(`gib-list:${list.id}`)
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Reset to default'))
+    })
+    // Nothing reached storage: the write never landed anywhere to apply.
+    expect(store.size).toBe(0)
+
+    await act(async () => {
+      fireEvent.click(document.querySelector('.fa-times.text-xs')!.closest('button')!)
+    })
+    // The row still shows the image it had before the reset was attempted.
+    const previews = screen.getAllByRole('img') as HTMLImageElement[]
+    expect(previews.some((image) => image.getAttribute('src')?.includes('https://img/a.png'))).toBe(true)
+  })
+
+  it('does not persist an uploaded image once the list has vanished from storage before it lands', async () => {
+    // The falsy side of `if (updated) setActiveList(updated)` in handleImageUpload:
+    // reorderTokens returns null once the record is gone, so the address the server
+    // handed back must not be forced onto a list that no longer exists.
+    mockFetch.mockResolvedValue(jsonResponse({ imageHash: 'abc', imageUrl: 'https://api.test/image/hash/abc' }))
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [token({ chainId: 369 })] })
+    store.delete(`gib-list:${list.id}`)
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File(['<svg />'], 'icon.svg', { type: 'image/svg+xml' })] },
+      })
+      await waitFor(() => expect(mockFetch).toHaveBeenCalled())
+      // Give the trailing reorderTokens call — and the guard around its result — a full
+      // turn of the event loop to settle before the assertions below run.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(store.size).toBe(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1317,6 +1451,42 @@ describe('ListEditor chain metadata', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalled())
     expect(mockFetch.mock.calls[0][0]).toMatch(/^https:\/\/chain-one\.test\/?$/)
+  })
+
+  it('does not persist fetched metadata once the list has vanished from storage before the load lands', async () => {
+    // The falsy side of `if (updated) setActiveList(updated)` in handleLoadMetadata:
+    // reorderTokens returns null once the record is gone, and the freshly fetched name
+    // and symbol must not be handed to setActiveList in that case.
+    localStorage.setItem('gib-custom-rpcs', JSON.stringify({ 1: 'https://rpc.test' }))
+    mockFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string)
+      const data: string = request.params[0].data
+      if (data.startsWith(`0x${SELECTORS.name}`))
+        return jsonResponse({ jsonrpc: '2.0', id: request.id, result: encodeStringResult('Wrapped Ether') })
+      if (data.startsWith(`0x${SELECTORS.symbol}`))
+        return jsonResponse({ jsonrpc: '2.0', id: request.id, result: encodeStringResult('WETH') })
+      return jsonResponse({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: `0x${(6).toString(16).padStart(64, '0')}`,
+      })
+    })
+
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    const list = await openList({ tokens: [token({ name: '', symbol: '', decimals: 18 })] })
+    store.delete(`gib-list:${list.id}`)
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Load RPC'))
+    })
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled())
+    // The chain answered with a real name and symbol, but nothing was written anywhere:
+    // the row still shows the placeholder, and storage is still empty.
+    expect(screen.getByText('???')).toBeTruthy()
+    expect(screen.queryByText('WETH')).toBeNull()
+    expect(store.size).toBe(0)
   })
 })
 
@@ -1586,6 +1756,95 @@ describe('ListEditor publishing', () => {
     await waitFor(() => expect(screen.getByText(/GitHub auth failed/)).toBeTruthy())
     expect(screen.queryByText('Published!')).toBeNull()
     expect(screen.queryByText('Submit to Gib.Show')).toBeNull()
+  })
+
+  it('will not submit to Gib.Show when the publish response carries no repository address', async () => {
+    // The published banner renders whenever publishResult exists, with no separate check
+    // on publishResult.repoUrl — only the guard inside handleSubmitToGibShow stands
+    // between an empty address and `new URL('')` throwing while it builds the raw file
+    // address.
+    vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
+    mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === 'https://api.github.com/user') return jsonResponse({ login: 'alice' })
+      if (url.startsWith('https://api.github.com/repos/alice/') && url.includes('/contents/'))
+        return init?.method === 'PUT'
+          ? jsonResponse({ commit: { html_url: 'https://github.com/alice/x/commit/1' }, content: {} })
+          : jsonResponse({}, { status: 404 })
+      if (url.startsWith('https://api.github.com/repos/alice/')) return jsonResponse({ html_url: '' })
+      return jsonResponse({})
+    })
+
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    await openList({ tokens: [token()] })
+
+    await act(async () => {
+      // Headless UI opens its menu from the keyboard as well as the pointer; the
+      // keyboard route needs no pointer geometry, which jsdom cannot provide.
+      fireEvent.keyDown(screen.getByText('Publish').closest('button')!, { key: 'Enter' })
+    })
+    await waitFor(() => expect(screen.getByText('GitHub')).toBeTruthy())
+    await act(async () => {
+      fireEvent.click(screen.getByText('GitHub').closest('button')!)
+    })
+    await waitFor(() => expect(screen.getByText('Published!')).toBeTruthy())
+    const banner = screen.getByText('Published!').closest('.bg-green-50') as HTMLElement
+    const bannerBefore = banner.innerHTML
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Submit to Gib.Show'))
+    })
+
+    // No submission call was made, and the whole banner — button label included — is
+    // byte-for-byte what it was before the click: the guard made this a complete no-op
+    // rather than a caught exception that still changes something on screen.
+    expect(mockFetch.mock.calls.some((call) => call[0] === 'https://api.test/api/lists/submit')).toBe(false)
+    expect(banner.innerHTML).toBe(bannerBefore)
+  })
+
+  it('leaves the published banner behind with the list it belongs to', async () => {
+    // A publish result describes one repository, for one list. The submit button beside
+    // it sends that repository address under the name of whichever list is open, so a
+    // banner that outlives its own list submits a working-looking link that points at
+    // another list's tokens. The editor for an open list is a component of its own, and
+    // closing the list unmounts it, which is what ends the banner with it.
+    vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'client-id')
+    localStorage.setItem('gib-vcs-tokens', JSON.stringify({ github: { token: 'stored-token', storedAt: Date.now() } }))
+    mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === 'https://api.github.com/user') return jsonResponse({ login: 'alice' })
+      if (url.startsWith('https://api.github.com/repos/alice/') && url.includes('/contents/'))
+        return init?.method === 'PUT' ? jsonResponse({ content: {} }) : jsonResponse({}, { status: 404 })
+      if (url.startsWith('https://api.github.com/repos/alice/'))
+        return jsonResponse({ html_url: 'https://github.com/alice/token-list-first-list' })
+      return jsonResponse({})
+    })
+
+    renderEditor()
+    await waitFor(() => expect(editor).toBeTruthy())
+    await openList({ name: 'First List', tokens: [token()] })
+
+    await act(async () => {
+      // Headless UI opens its menu from the keyboard as well as the pointer; the
+      // keyboard route needs no pointer geometry, which jsdom cannot provide.
+      fireEvent.keyDown(screen.getByText('Publish').closest('button')!, { key: 'Enter' })
+    })
+    await waitFor(() => expect(screen.getByText('GitHub')).toBeTruthy())
+    await act(async () => {
+      fireEvent.click(screen.getByText('GitHub').closest('button')!)
+    })
+    await waitFor(() => expect(screen.getByText('Published!')).toBeTruthy())
+
+    // Back to the creation menu, then into a different list.
+    await act(async () => {
+      editor!.closeEditor()
+    })
+    await openList({ name: 'Second List', tokens: [token({ address: ADDRESS_B, name: 'Beta' })] })
+
+    await waitFor(() => expect(screen.getByDisplayValue('Second List')).toBeTruthy())
+    expect(screen.queryByText('Published!')).toBeNull()
+    expect(screen.queryByText('Submit to Gib.Show')).toBeNull()
+    expect(screen.queryByText('View repo')).toBeNull()
   })
 })
 
