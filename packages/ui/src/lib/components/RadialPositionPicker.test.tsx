@@ -124,6 +124,33 @@ describe('drag lifecycle', () => {
     expect(removeSpy).toHaveBeenCalledWith('pointerup', expect.any(Function))
     removeSpy.mockRestore()
   })
+
+  it('ignores a pointer-up handler left over from before the caller passed a new change function', () => {
+    // BadgeConfigurator's onChange is only stable while its own dependency stays stable, so
+    // a second drag can start before the first drag's pointer-up handler is thrown away. If
+    // that happens, two pointer-up listeners are attached at once. The first to run already
+    // clears the shared dragging flag, so the second must recognize the drag is already over
+    // and stop — otherwise it would tear the same state down twice and remove listeners that
+    // do not belong to it.
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    const firstOnChange = vi.fn()
+    const { rerender } = render(<RadialPositionPicker angleDeg={0} onChange={firstOnChange} />)
+    const circle = screen.getByLabelText('Badge angle')
+    stubCircleRect(circle)
+
+    fireEvent.pointerDown(circle)
+
+    const secondOnChange = vi.fn()
+    rerender(<RadialPositionPicker angleDeg={0} onChange={secondOnChange} />)
+    fireEvent.pointerDown(circle)
+
+    removeSpy.mockClear()
+    fireEvent.pointerUp(window)
+
+    // One drag's teardown removes exactly two listeners, its own pointermove and pointerup.
+    // A second call that still tore its own state down would remove two more.
+    expect(removeSpy).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('degree input', () => {

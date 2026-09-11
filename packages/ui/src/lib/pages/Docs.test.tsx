@@ -294,6 +294,47 @@ describe('Docs', () => {
     expect(activeTabLabel(container)).toBe('Code Examples')
   })
 
+  it('leaves the highlight alone when a section reports leaving view rather than entering it', async () => {
+    // The observer callback fires on the way out of view too, with isIntersecting false.
+    // Treating that the same as entering would flicker the highlight to whatever section
+    // the reader is scrolling away from, the moment they scroll past it.
+    const { container } = await renderLoadedDocs()
+    scrollSectionIntoView('code-examples')
+    expect(activeTabLabel(container)).toBe('Code Examples')
+
+    const observer = observers.find((entry) => (entry.element as HTMLElement).id === 'features')
+    expect(observer, 'no observer was attached to the features section').toBeTruthy()
+    act(() => observer!.callback([{ isIntersecting: false }]))
+
+    expect(activeTabLabel(container)).toBe('Code Examples')
+  })
+
+  it('does not crash tracking a section whose tag name transforms to no anchor at all', async () => {
+    // sectionIdForTag strips everything but letters, digits and dashes, so a tag made only
+    // of symbols becomes the empty string. document.getElementById('') always returns
+    // null even though the section still renders with a literal empty id attribute, so
+    // this is the one case where a table-of-contents entry genuinely has no element to
+    // find. The guard is what keeps the observer setup from calling observe(null) and
+    // throwing partway through, which would leave every later section untracked too.
+    const brokenSpec = {
+      tags: [{ name: '***' }],
+      paths: {
+        '/broken': { get: { tags: ['***'], summary: 'an endpoint under an unusable tag name' } },
+      },
+    }
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => brokenSpec })
+    const { container } = renderDocs()
+    await waitFor(() => expect(sectionElements(container).length).toBeGreaterThan(2))
+
+    const emptyIdSection = sectionElements(container).find((section) => section.id === '')
+    expect(emptyIdSection, 'the tag with no usable anchor did not render at all').toBeTruthy()
+    expect(observers.some((entry) => entry.element === null)).toBe(false)
+    // The two static sections still track normally, so one bad tag name does not take the
+    // rest of the page's scroll tracking down with it.
+    scrollSectionIntoView('features')
+    expect(activeTabLabel(container)).toBe('Features')
+  })
+
   it('renders a section for every tag the served definition declares', async () => {
     // A tag whose operations all lost it is dropped without a trace: no heading, no
     // entry, no error. This is the check that notices.

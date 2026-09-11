@@ -110,8 +110,11 @@ export default function Image({
   // Timeout: if the image hasn't loaded or errored within 10s, treat as failed
   useEffect(() => {
     if (loaded || shouldFallback || !visible) return
+    // The effect above already returns early whenever loaded is true, so this closure's
+    // loaded is always false for as long as this timer can fire. A stale-value re-check
+    // here can never take its other path, so there is nothing left to guard.
     const timer = setTimeout(() => {
-      if (!loaded) handleError()
+      handleError()
     }, 10_000)
     return () => clearTimeout(timer)
   }, [loaded, shouldFallback, visible])

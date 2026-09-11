@@ -51,19 +51,16 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
 interface ModeSwitchProps {
   value: CodeMode
   onChange: (mode: CodeMode) => void
-  disabled: boolean
 }
 
-function ModeSwitch({ value, onChange, disabled }: ModeSwitchProps) {
+function ModeSwitch({ value, onChange }: ModeSwitchProps) {
   return (
-    <div
-      className={`flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+    <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
       {(['snippet', 'component'] as CodeMode[]).map((mode) => (
         <button
           key={mode}
           type="button"
           onClick={() => onChange(mode)}
-          disabled={disabled}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-all ${
             value === mode
               ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
@@ -190,7 +187,7 @@ export default function CodeOutput() {
       {/* Controls row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <FormatTabs value={codeFormat} onChange={setCodeFormat} />
-        {!isModeDisabled && <ModeSwitch value={codeMode} onChange={setCodeMode} disabled={false} />}
+        {!isModeDisabled && <ModeSwitch value={codeMode} onChange={setCodeMode} />}
       </div>
 
       {/* Badge + img warning */}

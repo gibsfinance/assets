@@ -113,12 +113,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   })
 
   // Persist preferences (debounced)
-  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Empty is undefined rather than null so the cleanup below can hand the value
+  // straight to clearTimeout, which accepts an absent handle but not a null one.
+  // The alternative was asserting the ref is set, which claims more than is needed.
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     saveTimeout.current = setTimeout(() => savePersistedPrefs(state), 300)
     return () => {
-      if (saveTimeout.current) clearTimeout(saveTimeout.current)
+      // Unguarded, and no assertion either. The line above sets the ref every time
+      // this effect body runs, and React never calls a cleanup before its effect has
+      // run, so it is always set - and clearTimeout accepts an absent handle anyway
+      // and does nothing with it. The guard this replaces tested for a case that
+      // cannot happen, and asserting instead would only move the same claim.
+      clearTimeout(saveTimeout.current)
     }
   }, [state])
 

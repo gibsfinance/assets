@@ -2,9 +2,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Image from './Image'
 import ImageUpload from './ImageUpload'
-import { getApiUrl } from '../utils'
 import type { LocalToken } from '../hooks/useLocalLists'
-import { toChainIdentifier } from '../utils/chain-identifier'
 
 interface ListTokenRowProps {
   token: LocalToken
@@ -52,7 +50,11 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
           className="flex-shrink-0 rounded-full ring-2 ring-transparent transition-all hover:ring-accent-500/40"
           title="Edit image">
           <Image
-            src={token.imageUri || getApiUrl(`/image/${toChainIdentifier(token.chainId)}/${token.address}`)}
+            // token.imageUri is guaranteed a truthy string here: this button only
+            // renders inside the `token.imageUri ? ... : <ImageUpload />` branch above,
+            // so the field can never be empty at this point. The derived-URL fallback
+            // this used to carry could never run and only hid that the field is unused.
+            src={token.imageUri}
             size={24}
             skeleton
             lazy

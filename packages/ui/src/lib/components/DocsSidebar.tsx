@@ -54,10 +54,14 @@ function DesktopSidebar({ sections, activeSection, onSectionChange }: Omit<DocsS
 function MobileSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSidebarProps, 'variant'>) {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Scroll the active tab into view
+  // Scroll the active tab into view.
+  //
+  // The container ref is attached to a div this component always renders, and React
+  // attaches refs during the commit that runs this effect, so containerRef.current is
+  // always set by the time this callback fires. There is no mount state where it is not.
   useEffect(() => {
-    if (!containerRef.current) return
-    const active = containerRef.current.querySelector('[data-active="true"]')
+    const container = containerRef.current as HTMLDivElement
+    const active = container.querySelector('[data-active="true"]')
     active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
   }, [activeSection])
 

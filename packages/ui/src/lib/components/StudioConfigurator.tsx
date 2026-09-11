@@ -500,8 +500,11 @@ function InfiniteCanvas() {
   // ---- Zoom handler ----
   const handleWheel = useCallback((event: React.WheelEvent) => {
     event.preventDefault()
-    const container = containerRef.current
-    if (!container) return
+    // This handler only ever runs as the onWheel prop of the very div that
+    // carries containerRef, and React sets a ref in the same commit that
+    // creates the node it points to -- before that node can receive any
+    // event, including this one. The ref is always populated here.
+    const container = containerRef.current as HTMLDivElement
 
     const rect = container.getBoundingClientRect()
     const pointerX = event.clientX - rect.left
@@ -660,13 +663,16 @@ function CodePanel({ open }: { open: boolean }) {
 
   // Measure content height for smooth transition
   useEffect(() => {
-    if (!panelRef.current) return
+    // The div holding this ref renders unconditionally above, and React
+    // commits a ref before any effect runs -- so panelElement is always set
+    // by the time this effect body executes.
+    const panelElement = panelRef.current as HTMLDivElement
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setHeight(entry.contentRect.height)
       }
     })
-    observer.observe(panelRef.current)
+    observer.observe(panelElement)
     return () => observer.disconnect()
   }, [])
 

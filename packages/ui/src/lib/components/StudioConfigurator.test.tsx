@@ -77,7 +77,7 @@ const TEST_TOKEN: Token = {
  * interaction that a differently-scoped test already covers.
  */
 function StudioActions() {
-  const { selectToken, setResolutionOrder, updateBadge } = useStudio()
+  const { selectToken, setResolutionOrder, updateAppearance, updateBadge } = useStudio()
   return (
     <div>
       <button type="button" onClick={() => selectToken(TEST_TOKEN)}>
@@ -96,6 +96,25 @@ function StudioActions() {
         type="button"
         onClick={() => updateBadge({ enabled: true, ringEnabled: true, ringThickness: 5, badgePadding: 3 })}>
         enable badge with ring and padding
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          updateAppearance({ shape: 'square', shadow: 'strong', backgroundColor: '#123456', padding: 10 })
+        }>
+        apply full visual appearance
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          updateBadge({ enabled: true, badgeShape: undefined, badgePadding: undefined, badgeBackground: undefined })
+        }>
+        enable badge with undefined shape padding and background
+      </button>
+      <button
+        type="button"
+        onClick={() => updateBadge({ enabled: true, badgeShape: 'square', badgeBackground: '#ff00ff' })}>
+        enable square badge with custom background
       </button>
     </div>
   )
@@ -766,5 +785,119 @@ describe('code panel height measurement', () => {
 
     unmount()
     expect(observer.disconnect).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legacy persisted appearance values — a saved shape or shadow value only
+// stays valid as long as the option list that produced it never shrinks.
+// loadPersistedPrefs() parses whatever JSON a past version of the app wrote,
+// with no schema check, so an old or hand-edited value that no longer
+// matches a current option must fall back to a sane label and style instead
+// of showing blank text or throwing.
+// ---------------------------------------------------------------------------
+
+describe('legacy persisted appearance values', () => {
+  it('falls back to the Circle label when a persisted shape value predates the current shape options', () => {
+    localStorage.setItem('gib-studio-state', JSON.stringify({ appearance: { shape: 'hexagon' } }))
+    renderConfigurator()
+    expect(screen.getByRole('button', { name: 'Circle' })).toBeTruthy()
+  })
+
+  it('falls back to the None label and drops the canvas box shadow when a persisted shadow value predates the current shadow options', () => {
+    localStorage.setItem('gib-studio-state', JSON.stringify({ appearance: { shadow: 'ultra' } }))
+    renderConfigurator()
+    expect(screen.getByRole('button', { name: 'None' })).toBeTruthy()
+
+    fireEvent.click(screen.getByText('select test token'))
+    const image = screen.getByAltText('Test Token') as HTMLImageElement
+    const wrapperDiv = image.closest('div') as HTMLElement
+    // An unrecognised shadow name has no CSS to draw, so the wrapper must
+    // carry no box-shadow at all rather than the raw, meaningless name.
+    expect(wrapperDiv.style.boxShadow).toBe('')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dark mode canvas background — the checkerboard behind a transparent
+// preview swaps to a dark-friendly palette so the checker pattern stays
+// visible instead of nearly disappearing against a dark page.
+// ---------------------------------------------------------------------------
+
+describe('dark mode canvas background', () => {
+  it('paints the dark checkerboard pattern when the persisted theme mode is dark', () => {
+    localStorage.setItem('theme-mode', 'dark')
+    const { container } = renderConfigurator()
+    const surface = getCanvasSurface(container)
+    expect(surface.style.backgroundImage).toContain('%23111113')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Canvas token wrapper with fully customised appearance — box shadow,
+// background colour and padding are each conditional so a default (none,
+// transparent, zero) never renders a wasted inline style. Selecting a
+// non-default value for all three at once, plus a non-circle shape, proves
+// each conditional actually turns on rather than only ever turning off.
+// ---------------------------------------------------------------------------
+
+describe('canvas token wrapper with fully customised appearance', () => {
+  it('applies box shadow, background colour and padding, and switches the image skeleton to a rect shape', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByText('select test token'))
+    fireEvent.click(screen.getByText('apply full visual appearance'))
+
+    const image = screen.getByAltText('Test Token') as HTMLImageElement
+    const wrapperDiv = image.closest('div') as HTMLElement
+    expect(wrapperDiv.style.boxShadow).not.toBe('')
+    expect(wrapperDiv.style.backgroundColor).not.toBe('')
+    expect(wrapperDiv.style.padding).toBe('10px')
+
+    // The skeleton (rendered before the <img> while it loads) mirrors the
+    // image's own shape: 'rounded' for a non-circle appearance, never the
+    // circular 'rounded-full' skeleton a circle preview would get.
+    const skeleton = image.previousElementSibling as HTMLElement
+    expect(skeleton.classList.contains('rounded')).toBe(true)
+    expect(skeleton.classList.contains('rounded-full')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Badge overlay with legacy and custom badge fields — badgeShape,
+// badgePadding and badgeBackground were added to the badge state after it
+// first shipped, so a badge object that never set them reaches this overlay
+// with them undefined. It must default them the same way BadgeConfigurator
+// does, and must apply them once they carry a real, non-default value.
+// ---------------------------------------------------------------------------
+
+describe('badge overlay with legacy and custom badge fields', () => {
+  it('defaults badge shape, padding and background when they are undefined on badge state', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByText('select test token'))
+    fireEvent.click(screen.getByText('enable badge with undefined shape padding and background'))
+
+    const badgeImage = screen.getByAltText('PulseChain') as HTMLImageElement
+    const badgeWrapper = badgeImage.closest('div') as HTMLElement
+    expect(badgeWrapper.style.borderRadius).toBe('50%')
+    expect(badgeWrapper.style.backgroundColor).toBe('')
+    expect(badgeWrapper.style.padding).toBe('')
+
+    const skeleton = badgeImage.previousElementSibling as HTMLElement
+    expect(skeleton.classList.contains('rounded-full')).toBe(true)
+  })
+
+  it('applies a square badge shape and a custom background colour once both are explicitly set', () => {
+    renderConfigurator()
+    fireEvent.click(screen.getByText('select test token'))
+    fireEvent.click(screen.getByText('enable square badge with custom background'))
+
+    const badgeImage = screen.getByAltText('PulseChain') as HTMLImageElement
+    const badgeWrapper = badgeImage.closest('div') as HTMLElement
+    expect(badgeWrapper.style.borderRadius).toBe('0px')
+    expect(badgeWrapper.style.backgroundColor).not.toBe('')
+
+    const skeleton = badgeImage.previousElementSibling as HTMLElement
+    expect(skeleton.classList.contains('rounded')).toBe(true)
+    expect(skeleton.classList.contains('rounded-full')).toBe(false)
   })
 })

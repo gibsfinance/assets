@@ -39,6 +39,12 @@ function BadgeProbe() {
       <button type="button" data-testid="probe-ring-off" onClick={() => updateBadge({ ringEnabled: false })}>
         force-ring-off
       </button>
+      <button
+        type="button"
+        data-testid="probe-undefined-optionals"
+        onClick={() => updateBadge({ badgeShape: undefined, badgePadding: undefined, badgeBackground: undefined })}>
+        force-undefined-optionals
+      </button>
     </div>
   )
 }
@@ -61,6 +67,18 @@ function readBadge(): Record<string, unknown> {
 function enableBadge() {
   act(() => {
     fireEvent.click(screen.getByTestId('probe-enable'))
+  })
+}
+
+/**
+ * Clears the three optional badge fields (badgeShape, badgePadding,
+ * badgeBackground) through the escape-hatch probe button, the same way a
+ * badge object saved before those fields existed would arrive with them
+ * absent.
+ */
+function forceUndefinedOptionals() {
+  act(() => {
+    fireEvent.click(screen.getByTestId('probe-undefined-optionals'))
   })
 }
 
@@ -294,5 +312,48 @@ describe('ring controls', () => {
     expect(readBadge().ringThickness).toBe(5)
     // the adjacent label spells out the pixel value
     expect(screen.getByText('5px')).toBeTruthy()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legacy badge data — badgeShape, badgePadding and badgeBackground were added
+// to the badge state after it first shipped. A badge object saved before that
+// change (or one built by code that never set these optional fields) reaches
+// this component with them undefined. Each control below falls back to a
+// sensible default instead of showing a blank or broken control.
+// ---------------------------------------------------------------------------
+
+describe('badge fields left undefined by older saved data', () => {
+  it('treats a missing badge shape as circle, not as neither button selected', () => {
+    renderConfigurator()
+    enableBadge()
+    forceUndefinedOptionals()
+    expect(screen.getByText('Circle').className).toContain('bg-accent-500/10')
+    expect(screen.getByText('Square').className).not.toContain('bg-accent-500/10')
+  })
+
+  it('treats a missing badge padding as zero, on both the slider and its numeric label', () => {
+    renderConfigurator()
+    enableBadge()
+    forceUndefinedOptionals()
+    const paddingSlider = Array.from(document.querySelectorAll('input[type="range"]')).find(
+      (el) => (el as HTMLInputElement).max === '4',
+    ) as HTMLInputElement
+    expect(paddingSlider.value).toBe('0')
+    expect(paddingSlider.nextElementSibling?.textContent).toBe('0')
+  })
+
+  it('treats a missing badge background as transparent, highlighting the transparent swatch', () => {
+    renderConfigurator()
+    enableBadge()
+    forceUndefinedOptionals()
+    expect(screen.getByLabelText('Transparent').className).toContain('border-accent-500')
+  })
+
+  it('shows the neutral grey placeholder in the colour input when the badge background is missing', () => {
+    renderConfigurator()
+    enableBadge()
+    forceUndefinedOptionals()
+    expect((screen.getByLabelText('Badge background color') as HTMLInputElement).value).toBe('#666666')
   })
 })

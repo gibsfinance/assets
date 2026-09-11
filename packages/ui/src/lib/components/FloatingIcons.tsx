@@ -524,8 +524,10 @@ export default function FloatingIcons({ className }: { className?: string }) {
   // Track the container width so each row can repeat its sample enough to span it.
   const [containerWidth, setContainerWidth] = useState(0)
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
+    // Present by React's own ordering: the ref is attached in the commit that
+    // creates the node, and this effect runs after it. The container renders
+    // unconditionally, so there is no render where it is missing.
+    const el = containerRef.current as HTMLDivElement
     const measure = () => setContainerWidth(el.clientWidth)
     measure()
     const observer = new ResizeObserver(measure)

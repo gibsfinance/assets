@@ -101,44 +101,45 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
     )
   }
 
-  if (type === 'token-list') {
-    return (
-      <div className="flex flex-col md:flex-row items-center gap-4">
-        <div className="flex flex-row items-center gap-3">
-          <div className="flex -space-x-4">
-            <Image
-              src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
-              alt="Token 1"
-              skeleton
-              shape="circle"
-              size={48}
-              className="rounded-full border-2 border-surface-2"
-            />
-            <Image
-              src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
-              alt="Token 2"
-              skeleton
-              shape="circle"
-              size={48}
-              className="rounded-full border-2 border-surface-2"
-            />
-            <Image
-              src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
-              alt="Token 3"
-              skeleton
-              shape="circle"
-              size={48}
-              className="rounded-full border-2 border-surface-2"
-            />
-          </div>
-          <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
+  // The only caller is the map below over the module-level `examples` list, which
+  // declares exactly three entries: 'token-image', 'network-image', 'token-list'. The
+  // first two are handled above, so reaching this point means the type is 'token-list'.
+  // There is no fourth type to fall through to, so this closing branch needs no guard
+  // and no dead default beneath it.
+  return (
+    <div className="flex flex-col md:flex-row items-center gap-4">
+      <div className="flex flex-row items-center gap-3">
+        <div className="flex -space-x-4">
+          <Image
+            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+            alt="Token 1"
+            skeleton
+            shape="circle"
+            size={48}
+            className="rounded-full border-2 border-surface-2"
+          />
+          <Image
+            src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
+            alt="Token 2"
+            skeleton
+            shape="circle"
+            size={48}
+            className="rounded-full border-2 border-surface-2"
+          />
+          <Image
+            src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
+            alt="Token 3"
+            skeleton
+            shape="circle"
+            size={48}
+            className="rounded-full border-2 border-surface-2"
+          />
         </div>
-        <CodeBlock code={displayUrl} />
+        <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
       </div>
-    )
-  }
-
-  return null
+      <CodeBlock code={displayUrl} />
+    </div>
+  )
 }
 
 export default function Home() {
@@ -183,8 +184,11 @@ export default function Home() {
     gridObserver.current = null
     if (!el) return
     const detect = () => {
+      // String.prototype.split never returns an array shorter than one entry, even for
+      // an empty string, so this count can never be zero. There is no low count to guard
+      // against.
       const cols = getComputedStyle(el).gridTemplateColumns.split(' ').length
-      if (cols > 0) setGridCols(cols)
+      setGridCols(cols)
     }
     detect()
     const observer = new ResizeObserver(detect)

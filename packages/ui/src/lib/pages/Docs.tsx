@@ -235,7 +235,11 @@ export default function Docs() {
       })),
     [endpointSections, filterQuery],
   )
-  const activeExample = CODE_EXAMPLES[activeLanguage] ?? CODE_EXAMPLES.javascript
+  // activeLanguage only ever holds a key from CODE_LANGUAGES (its initial value and the
+  // only value FrameworkSwitcher's onSelect ever passes), and every one of those keys is
+  // a key of CODE_EXAMPLES. The lookup below can never miss, so there is no fallback to
+  // fall back to.
+  const activeExample = CODE_EXAMPLES[activeLanguage]
 
   return (
     <div className="min-h-screen">

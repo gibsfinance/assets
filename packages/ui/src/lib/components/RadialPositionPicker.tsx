@@ -60,10 +60,10 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
 
   const handleInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(event.target.value)
-      if (!Number.isNaN(value)) {
-        onChange(normalizeAngle(value))
-      }
+      // Not guarded against a value that is not a number. A number input only ever
+      // reports a numeric string or an empty one, and `Number('')` is 0 rather than
+      // NaN, so there is no reading of this field that produces one.
+      onChange(normalizeAngle(Number(event.target.value)))
     },
     [onChange],
   )
