@@ -5,6 +5,7 @@ import {
   createGitLabPublisher,
   createGiteaPublisher,
   handleOAuthCallback,
+  buildPublishers,
 } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
 
@@ -1049,5 +1050,71 @@ describe('handleOAuthCallback', () => {
     const result = handleOAuthCallback('https://gib.show')
     expect(result).toBe(true)
     expect(sessionStorage.getItem('gitea-oauth-state')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildPublishers — each provider is opt-in via its own environment variable,
+// and GitLab/Gitea each read a second variable to shape the publisher they
+// build. A build that always emitted the fallback (or always emitted the
+// configured value) for one of those second variables would still look
+// correct for the one case every other test happens to exercise, so each
+// direction of each variable gets its own assertion here.
+// ---------------------------------------------------------------------------
+
+describe('buildPublishers', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('builds no publisher when no provider environment variable is set', () => {
+    expect(buildPublishers('https://gib.show')).toEqual([])
+  })
+
+  it('adds a GitHub publisher when VITE_GITHUB_CLIENT_ID is configured', () => {
+    vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'gh-client-id')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitHub'])
+  })
+
+  it('adds a GitLab publisher pointed at gitlab.com when VITE_GITLAB_URL is not set', () => {
+    vi.stubEnv('VITE_GITLAB_CLIENT_ID', 'gl-client-id')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitLab'])
+  })
+
+  it('adds a GitLab publisher pointed at the configured host when VITE_GITLAB_URL is set', () => {
+    vi.stubEnv('VITE_GITLAB_CLIENT_ID', 'gl-client-id')
+    vi.stubEnv('VITE_GITLAB_URL', 'https://git.mycompany.com')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitLab (git.mycompany.com)'])
+  })
+
+  it('adds a Gitea publisher configured for the personal-access-token flow when VITE_GITEA_CLIENT_ID is not set', async () => {
+    vi.stubEnv('VITE_GITEA_URL', 'https://gitea.example.com')
+    vi.stubGlobal('prompt', vi.fn().mockReturnValue('a-personal-access-token'))
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['Gitea (gitea.example.com)'])
+    // Proves clientId really is undefined, not merely unread: authorize() branches
+    // on it, and the personal-access-token path is the only one that prompts.
+    await publishers[0].authorize()
+    expect(prompt).toHaveBeenCalledOnce()
+  })
+
+  it('adds a Gitea publisher wired for OAuth when VITE_GITEA_CLIENT_ID is also set', async () => {
+    vi.stubEnv('VITE_GITEA_URL', 'https://gitea.example.com')
+    vi.stubEnv('VITE_GITEA_CLIENT_ID', 'gitea-client-id')
+    Object.defineProperty(window, 'location', {
+      value: { href: '', origin: 'http://localhost', pathname: '/' },
+      writable: true,
+    })
+    const publishers = buildPublishers('https://gib.show')
+    // Proves clientId reached createGiteaPublisher: authorize() redirects to the
+    // OAuth URL instead of prompting only when a client id is present.
+    await publishers[0].authorize()
+    const href = (window.location as { href: string }).href
+    expect(href).toContain('https://gitea.example.com/login/oauth/authorize')
+    expect(href).toContain('client_id=gitea-client-id')
   })
 })

@@ -430,6 +430,23 @@ describe('NetworkSelect', () => {
       expect(lastCall.overscan).toBeGreaterThan(0)
     })
 
+    it('points the virtualizer at the mounted scroll container so it can track real scroll position', async () => {
+      // Without a live scroll element the virtualizer has no way to learn how far the
+      // drawer has actually scrolled, so it keeps computing row positions for the top
+      // of the list no matter where the user scrolls to.
+      renderNetworkSelect()
+      openDrawer()
+      await screen.findByText('Ethereum')
+
+      const lastCall = vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0] as {
+        getScrollElement: () => HTMLElement | null
+      }
+
+      const scrollElement = lastCall.getScrollElement()
+      expect(scrollElement).toBeInstanceOf(HTMLElement)
+      expect(scrollElement?.className).toContain('overflow-y-auto')
+    })
+
     it('feeds the virtualizer the filtered row count once a search narrows the list', async () => {
       renderNetworkSelect()
       openDrawer()

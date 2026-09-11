@@ -605,4 +605,123 @@ describe('badge wrapper styling fields', () => {
     expect(code).toContain('left: badgeLeft - 6')
     expect(code).toContain("backgroundColor: '#112233'")
   })
+
+  // -------------------------------------------------------------------------
+  // Each of the three generators writes its badge wrapper style from three
+  // independent fields: padding, background, and the ring. The tests above
+  // only ever turn padding and background on together, so a build that
+  // dropped just one field (for example, always emitting padding even when
+  // it is zero) could still pass every test above. These isolate each field
+  // in both directions so a break in exactly one line makes exactly one test
+  // fail.
+  // -------------------------------------------------------------------------
+
+  it('react snippet: badge padding alone (no background) draws the ring border without a backgroundColor', () => {
+    const code = generateReactSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: true, badgePadding: 6, badgeBackground: 'transparent' }),
+    )
+    parseJsxSnippet(code)
+    expect(code).toContain('padding: 6')
+    expect(code).not.toContain('backgroundColor:')
+    expect(code).toMatch(/border: '\d+px solid #ffffff'/)
+  })
+
+  it('react snippet: badge background alone (no padding, no ring) omits both padding and the ring border', () => {
+    const code = generateReactSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgePadding: 0, badgeBackground: '#123456' }),
+    )
+    parseJsxSnippet(code)
+    expect(code).not.toContain('padding:')
+    expect(code).toContain("backgroundColor: '#123456'")
+    expect(code).not.toMatch(/border: '\d+px solid/)
+  })
+
+  it('react component: badge background alone (no padding, no ring) offsets by zero and omits padding', () => {
+    const code = generateReactComponent(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgePadding: 0, badgeBackground: '#654321' }),
+    )
+    parseModule(code)
+    expect(code).not.toContain('padding:')
+    expect(code).toContain("backgroundColor: '#654321'")
+    expect(code).not.toMatch(/border: '\d+px solid/)
+    expect(code).toContain('top: badgeTop - 0')
+    expect(code).toContain('left: badgeLeft - 0')
+  })
+
+  it('react component: badge padding alone (no background, no ring) offsets by the padding amount', () => {
+    const code = generateReactComponent(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgePadding: 7, badgeBackground: 'transparent' }),
+    )
+    parseModule(code)
+    expect(code).toContain('padding: 7,')
+    expect(code).not.toContain('backgroundColor:')
+    expect(code).not.toMatch(/border: '\d+px solid/)
+    expect(code).toContain('top: badgeTop - 7')
+    expect(code).toContain('left: badgeLeft - 7')
+  })
+
+  // The offset test above proves ringEnabled changes the *number*, but never
+  // reads the border declaration itself. A build that computed the offset
+  // correctly while dropping the border line entirely would still pass it.
+  it('react component: badge ring emits its own border declaration inside the styled wrapper', () => {
+    const code = generateReactComponent(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: true, badgePadding: 4, badgeBackground: '#112233' }),
+    )
+    parseModule(code)
+    expect(code).toContain("border: '2px solid #ffffff'")
+  })
+
+  it('generateHtmlSnippet: badge background alone (no padding, no ring) omits padding and the ring border', () => {
+    const html = generateHtmlSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgePadding: 0, badgeBackground: '#334455' }),
+    )
+    const doc = parseHtml(html)
+    const wrappers = doc.querySelectorAll('div')
+    expect(wrappers.length).toBe(2)
+    const style = wrappers[1].getAttribute('style')!
+    expect(style).not.toContain('padding:')
+    expect(style).toContain('background: #334455')
+    expect(style).not.toContain('border:')
+  })
+
+  it('generateHtmlSnippet: badge padding alone (no background, no ring) omits background and the ring border', () => {
+    const html = generateHtmlSnippet(
+      TOKEN_NAME,
+      IMAGE_URL,
+      NETWORK_URL,
+      appearance,
+      buildBadge({ enabled: true, ringEnabled: false, badgePadding: 9, badgeBackground: 'transparent' }),
+    )
+    const doc = parseHtml(html)
+    const wrappers = doc.querySelectorAll('div')
+    expect(wrappers.length).toBe(2)
+    const style = wrappers[1].getAttribute('style')!
+    expect(style).toContain('padding: 9px')
+    expect(style).not.toContain('background:')
+    expect(style).not.toContain('border:')
+  })
 })

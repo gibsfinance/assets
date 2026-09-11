@@ -13,15 +13,20 @@ yarn workspace ui run test
 # Coverage — CI gates on this, and a passing test run does NOT imply a passing
 # coverage run. Run the coverage variant for any workspace you touched before
 # calling the change done.
-#   @gibs/sdk, @gibs/utils, @gibs/react — 100% on all four metrics. A single
-#     untested line fails the build while every test still passes.
-#   server — 99.9 on all four (statements/branches/functions/lines) against
-#     actuals of 100/99.95/100/100 over 1740 tests. One branch is uncovered on
-#     purpose, db/index.ts:1168; the note in vitest.config.ts says why.
-#   ui — 98.1/93.6/98.8/99.2 against actuals of 98.34/93.85/99.01/99.46 over
-#     1776 tests. The ~0.2 margin is deliberate and specific: this workspace
-#     measures very slightly lower on the CI runner than locally, so floors set
-#     to the local figures fail by hundredths.
+#   Every workspace — 100% on all four metrics, and the floors are set there.
+#     A single untested line fails the build while every test still passes.
+#     Actuals: server 5060 statements / 2428 branches / 824 functions / 4618
+#     lines over 1769 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     92 tests, @gibs/utils 95, @gibs/react 41.
+#   There is no margin under the interface floors any more. The old ones sat
+#     ~0.2 below measured because this workspace used to report slightly lower
+#     on the CI runner than locally. At 100 there is nothing left to absorb, so
+#     a runner that measures lower is reporting a test that depends on its
+#     environment — worth a red build.
+#   A new gap has three honest answers: write a test that fails when the
+#     behaviour breaks, delete the code if nothing can reach it, or report it
+#     with evidence. Never lower a floor to make a run pass, and never fabricate
+#     a state the application cannot produce just to execute a line.
 #   Run one workspace's coverage at a time. Two runs in the same workspace share
 #     its coverage/ directory and overwrite each other, and the loser reports
 #     zeros for files that are fully covered — which reads as a regression.

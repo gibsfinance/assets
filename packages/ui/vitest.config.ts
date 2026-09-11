@@ -25,142 +25,32 @@ export default defineConfig({
         'src/lib/networks.json',
         'src/main.tsx',
       ],
-      // Ratchet floors, not aspirations. An earlier value of 100 sat roughly
-      // forty-four points above reality, failed on every run from 2026-07-22
-      // onward, and made the gate useless; the floors have been honest numbers
-      // that can actually regress ever since.
+      // One hundred on all four, with no margin under it. Every earlier value here
+      // was a ratchet floor set a couple of tenths below the measurement, because
+      // this workspace used to report very slightly lower on the CI runner than
+      // locally and a floor set to the local figure failed by hundredths. There is
+      // nothing left for that margin to absorb: 2744 of 2744 statements, 1638 of
+      // 1638 branches, 714 of 714 functions, 2393 of 2393 lines. A runner that now
+      // measures lower is telling us a test depends on its environment, and that is
+      // worth a red build rather than a quiet pass.
       //
-      // Deliberately ~0.2 below measured, because this workspace's coverage is
-      // not identical across environments — an earlier suite reported 55.73
-      // statements / 57.26 functions locally but 55.66 / 57.12 on the CI
-      // runner, and floors set to the local figures failed CI by hundredths.
-      // Leave the margin: a threshold that only passes on the machine it was
-      // measured on is the same trap as a 100 nobody can reach.
+      // A gap that appears here has exactly three honest answers. Write a test that
+      // fails when the behaviour breaks. Delete the code, if the reason it cannot be
+      // reached is that nothing can reach it. Or report it with the evidence and let
+      // us decide together. Never lower these numbers to make a failing run pass,
+      // and never fabricate a state the application cannot produce just to execute a
+      // line - a test that survives breaking the code it covers measures nothing.
       //
-      // 2026-08-03: measured 92.65 / 86.58 / 91.87 / 93.89 over 1546 tests,
-      // up from 59 percent. Every page and all but one component now have
-      // tests; what remains uncovered is mostly unreachable defensive guards
-      // and Studio.tsx.
-      //
-      // 2026-08-03, later the same day: measured 93.21 / 87.54 / 92.62 / 94.40
-      // over 1566 tests. The token search moved out of TokenSearch.tsx into
-      // useTokenSearch, which is covered outright, and the browser's search
-      // wiring, icon fallback and merged-row expansion picked up tests of
-      // their own.
-      //
-      // Then 93.16 / 87.57 / 92.52 / 94.36, after deleting the dead code the
-      // fan-out left behind — limitConcurrency and two unused search helpers.
-      // Three of the four figures went DOWN, which is worth understanding
-      // before reading it as a regression: all of that code was fully covered
-      // and above the file average, so removing it removed more covered lines
-      // than uncovered ones. No test was dropped for code that still exists.
-      // The floors below follow it down for that reason and no other; the
-      // margin is unchanged, which is the thing to keep honest.
-      //
-      // 2026-08-05: measured 93.70 / 88.00 / 92.80 / 94.88 over 1557 tests,
-      // after deleting `GET` and `initializeApiBase` from lib/utils and giving
-      // the one survivor, `getApiUrl`, tests of its own. Every figure rose,
-      // which is the opposite of the deletion above it and worth the contrast:
-      // that code was covered and above average, so removing it cost coverage,
-      // whereas this code was uncovered, so removing it and testing what stayed
-      // gained on both ends.
-      //
-      // Browser-mode specs run under a separate config and are excluded above,
-      // so component behaviour verified there does not count here. Raise these
-      // as tests land; never lower them to make a failing run pass.
-      //
-      // 2026-09-07: measured 95.77 / 90.57 / 96.09 / 96.79 over 1587 tests, after a
-      // risk-tiered pass rather than a sweep for red lines. Highest-value first:
-      // Studio.tsx's URL-hydration effects (editor open/close, chain/token writeback,
-      // the testnet toggle, the inspect-token modal) went from 61.7/71.11/45.45/64.86
-      // to fully covered; StudioConfigurator's untested height stepper, the
-      // square-shape "round corners" shortcut, and the zoom controls (clampZoom's
-      // ceiling/floor) picked up their first tests; CodeOutput.tsx — the component
-      // that decides which generator runs and wires the clipboard buttons, as
-      // distinct from the generators themselves, which were already covered — went
-      // from 62.85/58.97/53.84/62.5 to fully covered; StudioBrowser's auto-create-a-
-      // scratch-list path picked up its race-guard test (two rapid clicks must not
-      // create two lists). Two dead exports, `useTokenList` and
-      // `fetchTokenListByProvider`, were deleted rather than tested — a prior commit
-      // had already flagged them as callerless and left them; per the coverage
-      // triage skill's ghost-handler guidance, the honest move is removal, not a
-      // test that exercises code nothing in the app calls. A pre-existing setup bug
-      // was also fixed here, unrelated to coverage: tests/setup.ts's storage repair
-      // threw `ReferenceError: Storage is not defined` inside the one test file that
-      // deliberately renders with `@vitest-environment node` (no browser globals at
-      // all), which failed that suite outright on every run; it now checks for
-      // `Storage` before touching its prototype.
-      //
-      // Deliberately left uncovered, by risk tier and reason: ListEditor.tsx's
-      // remaining lines are `if (!activeList) return`-style guards for a UI state
-      // its own controls do not allow (Rule 13/the coverage-triage skill both call
-      // this out as low-value defensive coverage, not a real gap). StudioBrowser's
-      // client-only popularity sort (chainTokens' non-"merged" branch) is very hard
-      // to reach honestly: with a single merged token endpoint now the only writer
-      // into tokensByList, that fallback only ever runs over an empty array in
-      // practice, so forcing a non-empty case would mean fabricating a state the
-      // real app cannot produce. StudioConfigurator's InfiniteCanvas pointer-drag and
-      // wheel-zoom math and its CodePanel ResizeObserver effect are genuine Tier 4 —
-      // a visual pan/zoom widget with no security or data-loss surface — and were
-      // left for a future pass; RadialPositionPicker, NetworkSelect, and the
-      // remaining single-digit-line branch gaps across small presentational
-      // components are the same tier and were likewise left. Raise these floors
-      // further as that work lands; never lower them to make a failing run pass.
-      //
-      // 2026-09-08: measured 98.14 / 92.85 / 98.69 / 99.31 over 1636 tests, taking the
-      // four surfaces the note above deferred. RadialPositionPicker and TokenListFilter
-      // had no test file at all; StudioConfigurator's InfiniteCanvas pan and wheel zoom,
-      // its badge ring offset and its CodePanel measurement went from 74.32/59.64/74.24
-      // to 98.64/85.96/100; NetworkSelect's clear-selection button and its priority-chain
-      // comparator went from 90.74/85/91.3 to 98.14/95/97.82. Every one of these was
-      // written against a mutation: the component was broken on purpose and the test that
-      // should have caught it had to fail. Three did not on the first attempt and were
-      // rewritten rather than kept - a test that survives its own mutation is measuring
-      // nothing. Two were discarded outright: RadialPositionPicker's pointer-up guard
-      // cannot be reached without a prior pointer-down (there is no listener to fire),
-      // and its Number.isNaN check cannot be reached through a number input at all.
-      //
-      // Deliberately left, with reasons: NetworkSelect line 148 is the virtualizer's
-      // getScrollElement callback, and jsdom has no layout, so the real virtualizer
-      // mounts zero rows and the mock never calls it - reaching it means faking a
-      // layout the browser would produce and jsdom cannot. StudioBrowser's client-only
-      // popularity sort and ListEditor's `if (!activeList) return` guards are unchanged
-      // from the note above and unchanged in reasoning.
-      //
-      // 2026-09-08, later: measured 98.34 / 93.85 / 99.01 / 99.46 over 1775 tests.
-      // This pass was aimed at simplification, and most of the gain is a side
-      // effect of it. Eight pure modules came out of five components and two
-      // hooks - the canvas pan and zoom arithmetic, the radial angle
-      // arithmetic, the network comparator, the endpoint filters, the token
-      // list parser, the shuffle, and the access token store - and each is
-      // tested outright rather than through a rendered component. The canvas
-      // arithmetic is the clearest case: three lines of multiplication inside a
-      // setState updater inside a callback in a 780-line file, previously
-      // reachable only by stubbing a ResizeObserver and a matchMedia, faking a
-      // bounding rectangle jsdom cannot produce, and dispatching a wheel event.
-      // The invariant it holds is now one assertion.
-      //
-      // Two of those extractions turned up defects that had been sitting behind
-      // the difficulty of reaching them. The list parser read
-      // `Number(t.decimals || 18)`, so a token declaring zero decimals became
-      // eighteen. The access token store returned an entry with no timestamp
-      // unconditionally, so the tokens longest resident in a browser profile
-      // were the only ones the thirty-day expiry never touched.
-      //
-      // StudioBrowser and ListEditor gained tests in place rather than being
-      // pulled apart: 85.71 to 94.44 branches and 85.71 to 88.96 respectively.
-      //
-      // Deliberately left, unchanged in reasoning from the note above:
-      // StudioBrowser's client-only popularity sort, its virtualizer
-      // configuration callbacks (the mock replaces the hook, so they never
-      // run), NetworkSelect line 148 for the same reason, and the
-      // `if (!activeList) return` guards in ListEditor whose controls only
-      // render when a list is active. Two more were traced and found dead
-      // rather than merely unreached: StudioBrowser's `if (newList)` guard,
-      // because createList always resolves to a list, and ListEditor's
-      // `if (!meta) return token`, because results are built one-to-one from
-      // the array being mapped.
-      thresholds: { statements: 98.1, branches: 93.6, functions: 98.8, lines: 99.2 },
+      // Getting here removed more code than it added tests. The guards that used to
+      // be listed in this block as "deliberately left uncovered" were not hard to
+      // reach; they were unreachable, which is a different fact with a different
+      // remedy. React attaches a ref before the effect that reads it runs, so the
+      // ref guards were dead. ListEditor's `if (!activeList)` guards were dead once
+      // the active view became a component that takes the list as a required prop.
+      // `Number('')` is zero, not NaN, so a number input cannot produce the value its
+      // NaN check tested for. The history of the climb, and the two defects it
+      // uncovered along the way, is in the git log rather than here.
+      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
   resolve: {

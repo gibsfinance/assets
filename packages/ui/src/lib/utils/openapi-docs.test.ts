@@ -61,4 +61,34 @@ describe('specToSections', () => {
     const allPaths = sections.flatMap((s) => s.endpoints.map((e) => e.path))
     expect(allPaths).not.toContain('/untagged')
   })
+
+  // A served spec is not guaranteed to declare `tags` at all — the field is
+  // optional in OpenAPI 3.1. Without the ?? [] fallback this throws on
+  // `.map` instead of rendering a docs page with no sections.
+  it('returns no sections rather than throwing when the spec declares no tags at all', () => {
+    const untaggedSpec: OpenApiDocument = {
+      openapi: '3.1.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/stats': { get: { tags: ['Networks & Stats'], summary: 'Counts' } },
+      },
+    }
+    expect(specToSections(untaggedSpec, 'https://gib.show')).toEqual([])
+  })
+
+  // An operation is not required to carry a summary. Without the ?? '' fallback
+  // description would be `undefined`, and the docs page would render the
+  // literal text "undefined" for that endpoint's card instead of a blank line.
+  it('defaults description to an empty string when an operation has no summary', () => {
+    const noSummarySpec: OpenApiDocument = {
+      openapi: '3.1.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      tags: [{ name: 'Networks & Stats' }],
+      paths: {
+        '/stats': { get: { tags: ['Networks & Stats'] } },
+      },
+    }
+    const noSummarySections = specToSections(noSummarySpec, 'https://gib.show')
+    expect(noSummarySections[0].endpoints[0].description).toBe('')
+  })
 })
