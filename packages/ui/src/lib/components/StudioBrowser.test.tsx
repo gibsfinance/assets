@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, useEffect, type ReactNode } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 // ---------------------------------------------------------------------------
 // Virtualizer mock — @tanstack/react-virtual measures real layout, which jsdom
@@ -10,9 +11,13 @@ import { createElement, useEffect, type ReactNode } from 'react'
 // virtual row. This lets us assert on the rows the component actually renders
 // from its `tokens` prop. We do NOT change any component logic — only the
 // windowing math that jsdom cannot exercise.
+//
+// The stand-in is wrapped in `vi.fn` so a test can read back the exact options object
+// the component handed to the virtualizer — including the callbacks it never invokes
+// itself — the same technique NetworkSelect.test.tsx uses for its own virtualizer mock.
 // ---------------------------------------------------------------------------
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
+  useVirtualizer: vi.fn(({ count }: { count: number }) => ({
     getTotalSize: () => count * 44,
     getVirtualItems: () =>
       Array.from({ length: count }, (_unused, index) => ({
@@ -23,7 +28,7 @@ vi.mock('@tanstack/react-virtual', () => ({
       })),
     measure: () => {},
     measureElement: () => {},
-  }),
+  })),
 }))
 
 // ---------------------------------------------------------------------------
@@ -69,10 +74,34 @@ vi.mock('../utils', async () => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Token-browser override — the one effect that writes into useTokenBrowser's state
+// always sets a "merged" entry in the same batch as every other list, so real usage
+// can never produce a tokensByList that holds other lists without it. That leaves
+// chainTokens' client-only dedup-and-sort path — its fallback for a tokensByList
+// assembled some other way — unreachable through the component's own wiring alone.
+// This wraps the real hook so one test can hand StudioBrowser a tokensByList built
+// without "merged" directly, the same override technique used above for the
+// virtualizer. Left at `null` (the default), every other test gets the untouched
+// real hook.
+// ---------------------------------------------------------------------------
+let tokenBrowserOverride: { tokensByList: Map<string, Token[]>; enabledLists: Set<string> } | null = null
+vi.mock('../hooks/useTokenBrowser', async () => {
+  const actual = await vi.importActual<typeof import('../hooks/useTokenBrowser')>('../hooks/useTokenBrowser')
+  return {
+    ...actual,
+    useTokenBrowser: (...args: Parameters<typeof actual.useTokenBrowser>) => {
+      const real = actual.useTokenBrowser(...args)
+      return tokenBrowserOverride ? { ...real, ...tokenBrowserOverride } : real
+    },
+  }
+})
+
 import StudioBrowser from './StudioBrowser'
 import { StudioProvider, useStudio } from '../contexts/StudioContext'
 import { ListEditorProvider, useListEditor } from '../contexts/ListEditorContext'
 import { SettingsProvider } from '../contexts/SettingsContext'
+import type { Token } from '../types'
 
 // ---------------------------------------------------------------------------
 // Network boundary mock. useMetrics() pulls /stats, /networks and /list; the
@@ -514,6 +543,119 @@ describe('StudioBrowser', () => {
     await waitFor(() => expect(within(row).queryByRole('img')).toBeNull())
     expect(within(row).getByText('WE')).toBeTruthy()
   })
+
+  it('gives the virtualizer a scroll element, a row estimate and a live measurement for each row', async () => {
+    // These three callbacks are how the virtualizer knows what to scroll, how tall an
+    // unmeasured row probably is, and how tall a mounted row actually is. Get any one
+    // wrong and rows drift out of position or the list stops scrolling at all — a
+    // failure jsdom's mocked virtualizer cannot surface on its own, since real layout
+    // measurement is exactly what the mock replaces.
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Wrapped Ether')
+
+    const lastCall = vi.mocked(useVirtualizer).mock.calls.at(-1)?.[0] as {
+      getScrollElement: () => HTMLElement | null
+      estimateSize: (index: number) => number
+      measureElement: (element: Element, ...rest: unknown[]) => number
+    }
+
+    const scrollElement = lastCall.getScrollElement()
+    expect(scrollElement).toBeInstanceOf(HTMLElement)
+    expect(scrollElement?.className).toContain('overflow-y-auto')
+
+    expect(lastCall.estimateSize(0)).toBe(44)
+
+    const measuredRow = document.createElement('div')
+    vi.spyOn(measuredRow, 'getBoundingClientRect').mockReturnValue({ height: 61 } as DOMRect)
+    expect(lastCall.measureElement(measuredRow)).toBe(61)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The client-only dedup-and-sort path. chainTokens takes this branch whenever
+// tokensByList holds no "merged" entry — a shape the real merged-endpoint effect
+// never produces on its own, since it always writes "merged" in the same batch as
+// every other list. The tokenBrowserOverride mock above hands StudioBrowser a
+// tokensByList assembled without "merged" so this fallback runs for real, through
+// the component's own render, rather than being called as a bare function.
+// ---------------------------------------------------------------------------
+describe('StudioBrowser — the client-only sort when tokens arrive without a merged list', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    localStorage.clear()
+    installDefaultFetch()
+  })
+
+  afterEach(() => {
+    tokenBrowserOverride = null
+    cleanup()
+  })
+
+  const CHAIN_ID = 1
+
+  /** Same on-chain token, listed under two different source lists. */
+  const popularToken: Token = {
+    chainId: CHAIN_ID,
+    address: '0x1111111111111111111111111111111111111a',
+    name: 'Zeta Token',
+    symbol: 'ZETA',
+    decimals: 18,
+    hasIcon: true,
+    sourceList: 'source-a',
+  }
+  const popularTokenFromSecondList: Token = { ...popularToken, sourceList: 'source-b' }
+
+  const rareToken: Token = {
+    chainId: CHAIN_ID,
+    address: '0x2222222222222222222222222222222222222b',
+    name: 'Alpha Token',
+    symbol: 'ALPHA',
+    decimals: 18,
+    hasIcon: true,
+    sourceList: 'source-a',
+  }
+
+  it('ranks a token listed under more sources above one alphabetically earlier but less listed', async () => {
+    // Popularity has to outrank the alphabet, or a token carried by only one small
+    // list would bury the token every other list agrees on.
+    tokenBrowserOverride = {
+      tokensByList: new Map([
+        ['source-a', [popularToken, rareToken]],
+        ['source-b', [popularTokenFromSecondList]],
+      ]),
+      enabledLists: new Set(['source-a', 'source-b']),
+    }
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Zeta Token')
+    await screen.findByText('Alpha Token')
+
+    const names = Array.from(document.querySelectorAll('.font-medium')).map((el) => el.textContent)
+    expect(names.indexOf('Zeta Token')).toBeLessThan(names.indexOf('Alpha Token'))
+  })
+
+  it('falls back to alphabetical order between two tokens listed equally often', async () => {
+    // With popularity tied, the order still has to be predictable rather than
+    // whatever order the lists happened to load in.
+    tokenBrowserOverride = {
+      // Listed in reverse-alphabetical order, so an unsorted pass-through would
+      // fail this assertion — only the comparator's alphabetical fallback puts
+      // Alpha Token first.
+      tokensByList: new Map([['source-a', [popularToken, rareToken]]]),
+      enabledLists: new Set(['source-a']),
+    }
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    await screen.findByText('Zeta Token')
+    await screen.findByText('Alpha Token')
+
+    const names = Array.from(document.querySelectorAll('.font-medium')).map((el) => el.textContent)
+    expect(names.indexOf('Alpha Token')).toBeLessThan(names.indexOf('Zeta Token'))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -603,14 +745,16 @@ function OpenEditorWithList() {
  * Test-only bootstrap: opens the editor WITHOUT creating a list first, so
  * `editorOpen` is true while `activeList` stays null — the state
  * `addTokenToEditor` auto-creates a scratch list from, rather than the
- * pre-populated-list path the sibling bootstrap above exercises.
+ * pre-populated-list path the sibling bootstrap above exercises. Renders the
+ * active list's id (empty until one exists) so a test can confirm the
+ * auto-created list actually becomes the one being edited.
  */
 function OpenEditorWithoutList() {
-  const { openNewEditor } = useListEditor()
+  const { openNewEditor, activeList } = useListEditor()
   useEffect(() => {
     openNewEditor()
   }, [])
-  return null
+  return createElement('div', { 'data-testid': 'active-list-id' }, activeList?.id ?? '')
 }
 
 describe('StudioBrowser with the list editor open', () => {
@@ -686,6 +830,12 @@ describe('StudioBrowser with the list editor open', () => {
       expect(listKeys).toHaveLength(1)
       const stored = idbStore.get(listKeys[0]) as { tokens: { symbol: string }[] }
       expect(stored.tokens.map((t) => t.symbol)).toEqual(['WETH'])
+
+      // The new list must also become the one being edited — otherwise a second click
+      // has nothing to attach to and starts yet another scratch list instead of adding
+      // to the one just created.
+      const newListId = listKeys[0].slice('gib-list:'.length)
+      expect(screen.getByTestId('active-list-id').textContent).toBe(newListId)
     })
   })
 

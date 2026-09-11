@@ -10,33 +10,31 @@ export function tokenImageUri(token: Token, prefix = ''): string {
 }
 
 /**
- * Merge a token into the dedup map, initializing or appending listReferences.
- * Exported for direct testing of the defensive `!existing.listReferences` guard.
+ * A token that has been through the dedupe, which always knows which lists carry it.
+ *
+ * The distinction is worth a type. A `Token` read straight from a list has an optional
+ * `listReferences`, because a list entry says nothing about the other lists. Every token
+ * this module returns has been merged, and merging is the step that answers the question,
+ * so the field is no longer optional. Saying that here is what lets callers count the
+ * references without a fallback that could never run.
  */
-export function mergeTokenIntoMap(
-  tokenMap: Map<string, Token>,
-  token: Token,
-  ref: TokenListReference,
-  imageUriPrefix = '',
-): void {
+export type MergedToken = Token & { listReferences: TokenListReference[] }
+
+/**
+ * Merge a token into the dedup map, appending to the references already recorded there.
+ *
+ * The map only ever holds merged tokens, so an entry that is present is an entry that
+ * already carries its own reference. There is nothing to initialize on the second visit.
+ */
+export function mergeTokenIntoMap(tokenMap: Map<string, MergedToken>, token: Token, ref: TokenListReference): void {
   const key = `${token.chainId}-${token.address.toLowerCase()}`
   const existing = tokenMap.get(key)
-  if (existing) {
-    if (!existing.listReferences) {
-      existing.listReferences = [
-        {
-          sourceList: existing.sourceList,
-          imageUri: tokenImageUri(existing, imageUriPrefix),
-          imageFormat: '',
-        },
-      ]
-    }
-    if (!existing.listReferences.some((r) => r.sourceList === ref.sourceList)) {
-      existing.listReferences.push(ref)
-    }
-  } else {
+  if (!existing) {
     tokenMap.set(key, { ...token, listReferences: [ref] })
+    return
   }
+  if (existing.listReferences.some((r) => r.sourceList === ref.sourceList)) return
+  existing.listReferences.push(ref)
 }
 
 /**
@@ -55,8 +53,8 @@ export function deduplicateTokens(
   enabledLists: Set<string>,
   selectedChainId: string,
   imageUriPrefix = '',
-): Token[] {
-  const tokenMap = new Map<string, Token>()
+): MergedToken[] {
+  const tokenMap = new Map<string, MergedToken>()
 
   const addToken = (token: Token) => {
     if (toChainIdentifier(String(token.chainId)) !== toChainIdentifier(selectedChainId)) return
@@ -66,7 +64,7 @@ export function deduplicateTokens(
       imageUri: tokenImageUri(token, imageUriPrefix),
       imageFormat: '',
     }
-    mergeTokenIntoMap(tokenMap, token, ref, imageUriPrefix)
+    mergeTokenIntoMap(tokenMap, token, ref)
   }
 
   // Non-bridge lists first

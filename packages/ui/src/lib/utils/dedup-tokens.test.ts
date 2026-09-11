@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Token, TokenListReference } from '../types'
-import { deduplicateTokens, mergeTokenIntoMap, tokenImageUri } from './dedup-tokens'
+import { deduplicateTokens, mergeTokenIntoMap, tokenImageUri, type MergedToken } from './dedup-tokens'
 
 function makeToken(address: string, sourceList: string, overrides: Partial<Token> = {}): Token {
   return {
@@ -136,7 +136,7 @@ describe('mergeTokenIntoMap', () => {
   }
 
   it('inserts a new token into an empty map with the provided ref', () => {
-    const map = new Map<string, Token>()
+    const map = new Map<string, MergedToken>()
     const token = makeToken('0xabc', 'provA/listA')
     const ref = makeRef('provA/listA')
 
@@ -146,11 +146,11 @@ describe('mergeTokenIntoMap', () => {
     const stored = map.get('1-0xabc')
     expect(stored).toBeDefined()
     expect(stored!.listReferences).toHaveLength(1)
-    expect(stored!.listReferences![0].sourceList).toBe('provA/listA')
+    expect(stored!.listReferences[0].sourceList).toBe('provA/listA')
   })
 
   it('does NOT push a duplicate ref when the same sourceList appears again', () => {
-    const map = new Map<string, Token>()
+    const map = new Map<string, MergedToken>()
     const token = makeToken('0xabc', 'provA/listA')
     const ref = makeRef('provA/listA')
 
@@ -162,7 +162,7 @@ describe('mergeTokenIntoMap', () => {
   })
 
   it('pushes a new ref when the sourceList differs from existing refs', () => {
-    const map = new Map<string, Token>()
+    const map = new Map<string, MergedToken>()
     const token = makeToken('0xabc', 'provA/listA')
     const refA = makeRef('provA/listA')
     const refB = makeRef('provB/listB')
@@ -172,57 +172,7 @@ describe('mergeTokenIntoMap', () => {
 
     const stored = map.get('1-0xabc')
     expect(stored!.listReferences).toHaveLength(2)
-    expect(stored!.listReferences!.map((r) => r.sourceList)).toContain('provB/listB')
-  })
-
-  it('initializes listReferences when existing token has none — KEY defensive guard', () => {
-    const map = new Map<string, Token>()
-    // Manually insert a token without listReferences to simulate the unguarded state
-    const existingToken: Token = {
-      chainId: 1,
-      address: '0xabc',
-      name: 'Token 0xabc',
-      symbol: '0XAB',
-      decimals: 18,
-      hasIcon: true,
-      sourceList: 'provA/listA',
-      listReferences: undefined,
-    }
-    map.set('1-0xabc', existingToken)
-
-    const newRef = makeRef('provB/listB')
-    mergeTokenIntoMap(map, existingToken, newRef)
-
-    const stored = map.get('1-0xabc')!
-    // listReferences should now be initialized with the existing token's info + the new ref
-    expect(stored.listReferences).toBeDefined()
-    expect(stored.listReferences!.length).toBeGreaterThanOrEqual(1)
-    // The new ref should have been pushed too
-    expect(stored.listReferences!.some((r) => r.sourceList === 'provB/listB')).toBe(true)
-  })
-
-  it('forwards imageUriPrefix to tokenImageUri when initializing listReferences from an existing token', () => {
-    const map = new Map<string, Token>()
-    // Insert without listReferences so the guard path triggers
-    const existingToken: Token = {
-      chainId: 1,
-      address: '0xdef',
-      name: 'Token 0xdef',
-      symbol: '0XDE',
-      decimals: 18,
-      hasIcon: true,
-      sourceList: 'provA/listA',
-      listReferences: undefined,
-    }
-    map.set('1-0xdef', existingToken)
-
-    const newRef = makeRef('provB/listB')
-    mergeTokenIntoMap(map, existingToken, newRef, 'https://api.example.com')
-
-    const stored = map.get('1-0xdef')!
-    // The initialized entry should use the prefix in its imageUri
-    const initializedRef = stored.listReferences!.find((r) => r.sourceList === 'provA/listA')
-    expect(initializedRef?.imageUri).toBe('https://api.example.com/image/eip155-1/0xdef')
+    expect(stored!.listReferences.map((r) => r.sourceList)).toContain('provB/listB')
   })
 
   it('tokenImageUri uses prefix when provided', () => {
