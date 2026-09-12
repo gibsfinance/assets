@@ -55,4 +55,10 @@ COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/packages ./packages
 COPY yarn.lock .yarnrc.yml tsconfig.json ./
 
+# The server reads docs/skills/*.md and docs/terms.md from disk at request
+# time (packages/server/src/server/docs.ts), resolved relative to its own
+# source directory rather than the working directory. Nothing else in the
+# image needs docs/, so it is copied here rather than into the builder stage.
+COPY docs docs
+
 CMD ["yarn", "run", "server"]

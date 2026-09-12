@@ -2,7 +2,6 @@ import _ from 'lodash'
 
 import * as utils from './'
 import promiseLimit from 'promise-limit'
-import { timeout } from './timeout'
 import { failureLog } from './log'
 
 export const responseToBuffer = async (res: Response) => {
@@ -62,12 +61,23 @@ export const retry = async <T>(fn: () => Promise<T>, options: Partial<typeof def
 /**
  * Result caching utility with a time-to-live window.
  *
+ * The freshness check compares a stored timestamp against the current time.
+ * Reading that time from `Date.now()` directly forces every consumer's test
+ * to either wait out a real duration or reach into global fake timers to
+ * prove the window ever closes. The clock is injectable so a test can supply
+ * a fixed or stepped `now` instead, and assert "still fresh" and "now stale"
+ * without depending on wall-clock speed.
+ *
  * The returned function also carries `reset()`, which drops the memoized value so
  * the next call re-runs the worker. Without it the only way to pick up a change
  * inside the window is to restart the process, which is a poor way to confirm a
  * deploy actually took effect.
  */
-export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 60) => {
+export const cacheResult = <T>(
+  worker: () => Promise<T>,
+  duration = 1000 * 60 * 60,
+  { now = Date.now }: { now?: () => number } = {},
+) => {
   let cached: null | {
     timestamp: number
     result: Promise<T>
@@ -76,12 +86,12 @@ export const cacheResult = <T>(worker: () => Promise<T>, duration = 1000 * 60 * 
   const read = _.wrap(worker, (fn) => {
     if (cached) {
       const { timestamp, result } = cached
-      if (timestamp > Date.now() - duration) {
+      if (timestamp > now() - duration) {
         return result
       }
     }
     cached = {
-      timestamp: Date.now(),
+      timestamp: now(),
       result: fn(),
     }
     return cached.result
@@ -104,17 +114,36 @@ export const getLimiter = (url: URL): ReturnType<typeof promiseLimit<Response>> 
   return utils.limitBy<Response>(url.host)
 }
 
-export const limitByTime = (ms: number) => {
+/** Default pause: a real `setTimeout`, resolving once the requested duration has elapsed. */
+const waitRealTime = (duration: number) => new Promise<void>((resolve) => setTimeout(resolve, duration))
+
+/**
+ * Throttles calls so at least `ms` elapses between the end of one call and
+ * the start of the next.
+ *
+ * Both the clock and the pause mechanism are injectable. Reading the clock
+ * from `Date.now()` alone would still leave a test waiting out `ms` on the
+ * real `setTimeout`, or reaching into global fake timers, to prove the
+ * spacing is correct. Injecting `wait` lets a test observe the exact
+ * duration the throttle asks for and resolve it immediately, while the
+ * injected `now` supplies the elapsed time that produced that duration —
+ * together they let a test assert the spacing logic itself, with no
+ * dependency on wall-clock speed.
+ */
+export const limitByTime = (
+  ms: number,
+  { now = Date.now, wait = waitRealTime }: { now?: () => number; wait?: (duration: number) => Promise<void> } = {},
+) => {
   let last = 0
   const limiter = promiseLimit(1)
   return async () => {
     return limiter(async () => {
-      const now = Date.now()
-      const waitTime = last + ms - now
+      const currentTime = now()
+      const waitTime = last + ms - currentTime
       if (waitTime > 0) {
-        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        await wait(waitTime)
       }
-      last = Date.now()
+      last = now()
     })
   }
 }

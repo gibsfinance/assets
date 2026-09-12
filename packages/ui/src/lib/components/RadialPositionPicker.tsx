@@ -1,14 +1,17 @@
 import { useRef, useCallback, useState } from 'react'
+import {
+  CIRCLE_SIZE,
+  HANDLE_SIZE,
+  CENTER,
+  angleFromPointer,
+  handlePosition,
+  normalizeAngle,
+} from '../utils/radial-angle'
 
 interface RadialPositionPickerProps {
   angleDeg: number
   onChange: (angleDeg: number) => void
 }
-
-const CIRCLE_SIZE = 120
-const HANDLE_SIZE = 12
-const CENTER = CIRCLE_SIZE / 2
-const RADIUS = (CIRCLE_SIZE - HANDLE_SIZE - 4) / 2
 
 /** Preset angle snap positions */
 const SNAP_PRESETS = [
@@ -17,30 +20,6 @@ const SNAP_PRESETS = [
   { label: 'BL', angleDeg: 225 },
   { label: 'BR', angleDeg: 135 },
 ] as const
-
-/**
- * Calculates the angle in degrees (0–360) from a pointer event relative to
- * the circle center. 0° = top center, 90° = right, 180° = bottom, 270° = left.
- */
-function angleFromPointer(clientX: number, clientY: number, rect: DOMRect): number {
-  const dx = clientX - (rect.left + CENTER)
-  const dy = clientY - (rect.top + CENTER)
-  // atan2 gives 0° at right; offset by -90° so 0° maps to top
-  const rawDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90
-  return ((rawDeg % 360) + 360) % 360
-}
-
-/**
- * Converts an angle in degrees to x/y coordinates on the circle circumference.
- * 0° = top center.
- */
-function handlePosition(angleDeg: number): { x: number; y: number } {
-  const rad = ((angleDeg - 90) * Math.PI) / 180
-  return {
-    x: CENTER + RADIUS * Math.cos(rad),
-    y: CENTER + RADIUS * Math.sin(rad),
-  }
-}
 
 /**
  * A circular drag control for selecting an angle (0–360°).
@@ -81,10 +60,10 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
 
   const handleInputChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(event.target.value)
-      if (!Number.isNaN(value)) {
-        onChange(((value % 360) + 360) % 360)
-      }
+      // Not guarded against a value that is not a number. A number input only ever
+      // reports a numeric string or an empty one, and `Number('')` is 0 rather than
+      // NaN, so there is no reading of this field that produces one.
+      onChange(normalizeAngle(Number(event.target.value)))
     },
     [onChange],
   )
@@ -99,10 +78,13 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
         {SNAP_PRESETS.map((preset) => {
           const isActive = Math.round(angleDeg) === preset.angleDeg
           const positionClasses =
-            preset.label === 'TL' ? 'top-0 left-0' :
-            preset.label === 'TR' ? 'top-0 right-0' :
-            preset.label === 'BL' ? 'bottom-0 left-0' :
-            'bottom-0 right-0'
+            preset.label === 'TL'
+              ? 'top-0 left-0'
+              : preset.label === 'TR'
+                ? 'top-0 right-0'
+                : preset.label === 'BL'
+                  ? 'bottom-0 left-0'
+                  : 'bottom-0 right-0'
           return (
             <button
               key={preset.label}
@@ -113,8 +95,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
                   ? 'bg-accent-500/20 text-accent-500'
                   : 'bg-gray-200/80 text-gray-500 hover:bg-gray-300 dark:bg-surface-3/80 dark:text-white/50 dark:hover:bg-surface-3'
               }`}
-              aria-label={`Snap to ${preset.label} (${preset.angleDeg}°)`}
-            >
+              aria-label={`Snap to ${preset.label} (${preset.angleDeg}°)`}>
               {preset.label}
             </button>
           )
@@ -131,8 +112,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           aria-valuemax={359}
           aria-valuenow={angleDeg}
           aria-label="Badge angle"
-          tabIndex={0}
-        >
+          tabIndex={0}>
           {/* Center dot */}
           <div
             className="absolute rounded-full bg-gray-300 dark:bg-white/10"
@@ -145,19 +125,8 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           />
 
           {/* Radius line */}
-          <svg
-            className="pointer-events-none absolute inset-0"
-            width={CIRCLE_SIZE}
-            height={CIRCLE_SIZE}
-          >
-            <line
-              x1={CENTER}
-              y1={CENTER}
-              x2={x}
-              y2={y}
-              stroke="rgba(255,255,255,0.12)"
-              strokeWidth={1}
-            />
+          <svg className="pointer-events-none absolute inset-0" width={CIRCLE_SIZE} height={CIRCLE_SIZE}>
+            <line x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
           </svg>
 
           {/* Draggable handle */}

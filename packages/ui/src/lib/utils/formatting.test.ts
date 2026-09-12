@@ -6,6 +6,8 @@ import {
   cubicEaseOut,
   clampValue,
   formatBytes,
+  formatFileSize,
+  formatDimensions,
   detectImageFormat,
   buildImageUrlWithSize,
   generateRepoName,
@@ -141,6 +143,59 @@ describe('formatBytes', () => {
   it('formats megabytes', () => {
     expect(formatBytes(1024 * 1024)).toBe('1.0 MB')
     expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.5 MB')
+  })
+})
+
+describe('formatFileSize', () => {
+  it('reports Unknown for a null size, because a null size was never recorded', () => {
+    // A null size is not a zero-byte image, so it must read differently from
+    // formatFileSize(0) below rather than falling through to formatBytes.
+    expect(formatFileSize(null)).toBe('Unknown')
+  })
+
+  it('differs from a genuine zero-byte size', () => {
+    expect(formatFileSize(0)).toBe('0 B')
+    expect(formatFileSize(0)).not.toBe(formatFileSize(null))
+  })
+
+  it('agrees with formatBytes at the byte boundary', () => {
+    expect(formatFileSize(500)).toBe(formatBytes(500))
+  })
+
+  it('agrees with formatBytes at the kilobyte boundary', () => {
+    expect(formatFileSize(1024)).toBe(formatBytes(1024))
+  })
+
+  it('agrees with formatBytes at the megabyte boundary', () => {
+    expect(formatFileSize(1024 * 1024)).toBe(formatBytes(1024 * 1024))
+  })
+})
+
+describe('formatDimensions', () => {
+  it('reports Scalable for an SVG even when width and height are present', () => {
+    // A vector image has no pixel size to report, so the stored raster
+    // dimensions must not leak through for this format.
+    expect(formatDimensions('SVG', 64, 64)).toBe('Scalable')
+  })
+
+  it('renders width and height for a raster format when both are present', () => {
+    expect(formatDimensions('PNG', 64, 128)).toBe('64 × 128 px')
+  })
+
+  it('reports Unknown when width is missing', () => {
+    expect(formatDimensions('PNG', null, 128)).toBe('Unknown')
+  })
+
+  it('reports Unknown when height is missing', () => {
+    expect(formatDimensions('PNG', 64, null)).toBe('Unknown')
+  })
+
+  it('reports Unknown when width is zero', () => {
+    expect(formatDimensions('PNG', 0, 128)).toBe('Unknown')
+  })
+
+  it('reports Unknown when height is zero', () => {
+    expect(formatDimensions('PNG', 64, 0)).toBe('Unknown')
   })
 })
 

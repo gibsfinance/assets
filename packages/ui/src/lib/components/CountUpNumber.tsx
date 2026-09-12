@@ -15,8 +15,10 @@ export default function CountUpNumber({ end, duration = 2000, className }: Count
   const displayed = useRef(0)
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    // The span below renders unconditionally on every render, and React attaches refs
+    // before a passive effect runs, so ref.current is always set here. There is no
+    // return path left to guard.
+    const el = ref.current as HTMLSpanElement
 
     let frame: number | null = null
     const cancel = () => {

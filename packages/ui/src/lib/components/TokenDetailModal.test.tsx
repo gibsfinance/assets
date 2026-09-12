@@ -142,8 +142,7 @@ function renderModal(token: Token | null) {
   return { ...view, onClose }
 }
 
-const imagePathFor = (token: Token) =>
-  `/image/${token.chainIdentifier ?? `eip155-${token.chainId}`}/${token.address}`
+const imagePathFor = (token: Token) => `/image/${token.chainIdentifier ?? `eip155-${token.chainId}`}/${token.address}`
 
 beforeEach(() => {
   localStorage.clear()
@@ -206,9 +205,7 @@ describe('TokenDetailModal — addressing the image', () => {
   it('prefixes a bare Ethereum-Virtual-Machine chain rather than passing the number through', async () => {
     renderModal(DAI)
     await screen.findByText('Dai Stablecoin')
-    expect(document.querySelector('img')!.getAttribute('src')).toContain(
-      `/image/eip155-1/${DAI.address}`,
-    )
+    expect(document.querySelector('img')!.getAttribute('src')).toContain(`/image/eip155-1/${DAI.address}`)
   })
 
   it('shows the caller the same endpoint it is rendering from', async () => {
@@ -284,7 +281,10 @@ describe('TokenDetailModal — image metadata', () => {
     renderModal(DAI)
     await waitFor(() => expect(screen.queryByText(/Loading metadata/)).toBeNull())
     expect(screen.getByText('Dai Stablecoin')).toBeTruthy()
-    expect(screen.getByText('unknown')).toBeTruthy()
+    // And it says so, rather than presenting empty fields as the answer. This line
+    // was unreachable while the metadata reader swallowed a total failure and
+    // returned format 'unknown' with everything else null.
+    expect(screen.getByText('Metadata unavailable')).toBeTruthy()
   })
 })
 

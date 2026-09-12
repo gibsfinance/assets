@@ -12,7 +12,12 @@ jobs:
           node-version: 24
           cache: 'yarn'
       - run: yarn install --immutable
+      # One step per workspace, so a failure names which one broke. The
+      # interface was left out for a long time and drifted to 187 findings,
+      # most of them about generated files nobody had told the linter to skip.
+      # A lint that is clean and unchecked is clean until the next commit.
       - run: cd packages/server && yarn lint
+      - run: cd packages/ui && yarn lint
 
   # One job per configuration, so a failure names the package that broke — the
   # same shape as the vitest and coverage matrices below.

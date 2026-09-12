@@ -56,9 +56,7 @@ describe('prefixImagePath', () => {
 
 describe('tokenChainIdentifier', () => {
   it('uses the namespace the token was listed under', () => {
-    expect(
-      tokenChainIdentifier({ chainId: 501, chainIdentifier: 'solana-501' }),
-    ).toBe('solana-501')
+    expect(tokenChainIdentifier({ chainId: 501, chainIdentifier: 'solana-501' })).toBe('solana-501')
   })
 
   // Without the identifier the number alone is all there is, and eip155 is the

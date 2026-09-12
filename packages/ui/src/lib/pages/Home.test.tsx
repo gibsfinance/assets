@@ -250,7 +250,11 @@ describe('Home — the three states of its metrics fetch', () => {
     expect(screen.queryByText('Tokens by Chain')).toBeNull()
   })
 
-  it('publishes the token total and the supported-network count once they arrive', async () => {
+  // Coverage instrumentation adds enough per-statement overhead to a full render plus
+  // waitFor cycle that this test edges past the default 5s budget under `--coverage`
+  // once the file's total worker time grows — see the vitest-coverage-timeout-pressure
+  // skill. Isolated runs finish in ~500ms; this raises only this test's budget.
+  it('publishes the token total and the supported-network count once they arrive', { timeout: 15_000 }, async () => {
     stubFetch()
     const { container } = renderHome()
     await waitForMetrics()
@@ -310,7 +314,14 @@ describe('Home — the network grid', () => {
     const { container } = renderHome()
     await waitForMetrics()
 
-    expect(drawnNetworks(container)).toEqual(['Ethereum', 'PulseChain', 'Base', 'Polygon', 'Optimism', 'BNB Smart Chain'])
+    expect(drawnNetworks(container)).toEqual([
+      'Ethereum',
+      'PulseChain',
+      'Base',
+      'Polygon',
+      'Optimism',
+      'BNB Smart Chain',
+    ])
   })
 
   it('counts the remainder against the headline total, not against the chains it drew', async () => {

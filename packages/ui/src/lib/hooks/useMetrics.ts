@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ListDescription, Network, NetworkInfo, PlatformMetrics, Token } from '../types'
+import type { ListDescription, Network, NetworkInfo, PlatformMetrics } from '../types'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import { isTestnet } from '../utils/is-testnet'
@@ -43,11 +43,6 @@ export async function fetchNetworksList(): Promise<Network[]> {
   return fetchJson<Network[]>('/networks')
 }
 
-export async function fetchTokenListByProvider(provider: string): Promise<Token[]> {
-  const data = await fetchJson<{ tokens: Token[] }>(`/list/${provider}`)
-  return data.tokens ?? []
-}
-
 // ---------------------------------------------------------------------------
 // Query hooks
 // ---------------------------------------------------------------------------
@@ -75,16 +70,6 @@ export function useNetworks() {
   return useQuery({
     queryKey: ['networks'],
     queryFn: fetchNetworksList,
-    staleTime: 3 * 60 * 60 * 1000,
-  })
-}
-
-/** Token list for a single provider */
-export function useTokenList(provider: string | null) {
-  return useQuery({
-    queryKey: ['tokenList', provider],
-    queryFn: () => fetchTokenListByProvider(provider!),
-    enabled: !!provider,
     staleTime: 3 * 60 * 60 * 1000,
   })
 }

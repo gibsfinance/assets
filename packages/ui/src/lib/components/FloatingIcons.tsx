@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import { getApiUrl } from '../utils'
 import { prefixImagePath } from '../utils/chain-identifier'
 import Image from './Image'
+import { shuffle } from '../utils/shuffle'
 
 const SIZES = [28, 32, 36]
 const DIRECTIONS: Array<'normal' | 'reverse'> = ['normal', 'reverse', 'normal']
@@ -51,15 +52,6 @@ function ensureKeyframes() {
   const style = document.createElement('style')
   style.textContent = '@keyframes conveyor{from{transform:translateX(0)}to{transform:translateX(-50%)}}'
   document.head.appendChild(style)
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const copy = [...arr]
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
 }
 
 // 438 curated icons (>=64x64 or SVG) from Ethereum, PulseChain, TrustWallet + network icons
@@ -515,14 +507,7 @@ const ICON_PATHS: string[] = [
 
 function ConveyorIcon({ src, href, size }: { src: string; href: string; size: number }) {
   return (
-    <Image
-      src={src}
-      size={size}
-      href={href}
-      skeleton
-      shape="circle"
-      className="rounded-full pointer-events-auto"
-    />
+    <Image src={src} size={size} href={href} skeleton shape="circle" className="rounded-full pointer-events-auto" />
   )
 }
 
@@ -539,8 +524,10 @@ export default function FloatingIcons({ className }: { className?: string }) {
   // Track the container width so each row can repeat its sample enough to span it.
   const [containerWidth, setContainerWidth] = useState(0)
   useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
+    // Present by React's own ordering: the ref is attached in the commit that
+    // creates the node, and this effect runs after it. The container renders
+    // unconditionally, so there is no render where it is missing.
+    const el = containerRef.current as HTMLDivElement
     const measure = () => setContainerWidth(el.clientWidth)
     measure()
     const observer = new ResizeObserver(measure)
@@ -564,13 +551,15 @@ export default function FloatingIcons({ className }: { className?: string }) {
   const rowIcons = useMemo(() => {
     if (!ready) return []
     return [0, 1, 2].map((rowIdx) => {
-      const sample = shuffle(ICON_PATHS).slice(0, ICONS_PER_ROW).map((p) => {
-        const path = prefixImagePath(p)
-        return {
-          src: getApiUrl(conveyorIconSrc(path)),
-          href: getApiUrl(path),
-        }
-      })
+      const sample = shuffle(ICON_PATHS)
+        .slice(0, ICONS_PER_ROW)
+        .map((p) => {
+          const path = prefixImagePath(p)
+          return {
+            src: getApiUrl(conveyorIconSrc(path)),
+            href: getApiUrl(path),
+          }
+        })
       // Widen one conveyor half to at least the viewport, then duplicate it for the
       // seamless -50% loop. Repeats reuse the same URLs, so no extra image fetches.
       const repeats = repeatsToFill(containerWidth, SIZES[rowIdx], sample.length)
@@ -602,11 +591,7 @@ export default function FloatingIcons({ className }: { className?: string }) {
       aria-hidden="true">
       {rowIcons.map((icons, rowIdx) => (
         <div key={rowIdx} className="overflow-hidden">
-          <div
-            ref={rowRefs[rowIdx]}
-            className="flex gap-3 items-center"
-            style={{ width: 'max-content' }}
-          >
+          <div ref={rowRefs[rowIdx]} className="flex gap-3 items-center" style={{ width: 'max-content' }}>
             {icons.map((icon, i) => (
               <ConveyorIcon key={`${rowIdx}-${i}`} src={icon.src} href={icon.href} size={SIZES[rowIdx]} />
             ))}

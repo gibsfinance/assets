@@ -58,6 +58,32 @@ describe('app', () => {
     expect(res.headers['access-control-allow-origin']).toBe('*')
   })
 
+  // Attribution headers are only readable from browser JavaScript when the
+  // server lists them in Access-Control-Expose-Headers — the default cors()
+  // options expose nothing, which is why a browser client could not read
+  // x-uri (or any of the newer x-* attribution headers) at all before this.
+  it('exposes every attribution header for cross-origin browser reads', async () => {
+    const res = await request(app).get('/ping').set('Origin', 'https://example.com')
+    const exposed = res.headers['access-control-expose-headers']
+    expect(exposed).toContain('link')
+    expect(exposed).toContain('x-source-uri')
+    expect(exposed).toContain('x-provider')
+    expect(exposed).toContain('x-provider-name')
+    expect(exposed).toContain('x-license')
+    expect(exposed).toContain('x-license-url')
+    expect(exposed).toContain('x-attribution')
+    expect(exposed).toContain('x-uri')
+  })
+
+  // x-resolved-chain names a chain-resolution outcome, not an attribution
+  // fact, but a browser script reading it cross-origin needs the identical
+  // Access-Control-Expose-Headers treatment as the attribution headers above.
+  it('exposes x-resolved-chain for cross-origin browser reads', async () => {
+    const res = await request(app).get('/ping').set('Origin', 'https://example.com')
+    const exposed = res.headers['access-control-expose-headers']
+    expect(exposed).toContain('x-resolved-chain')
+  })
+
   it('applies the urlencoded and json body parsers ahead of the router', async () => {
     const res = await request(app).post('/echo').send({ hello: 'world' })
     expect(res.status).toBe(200)

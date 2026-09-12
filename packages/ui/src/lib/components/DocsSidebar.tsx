@@ -21,11 +21,7 @@ function scrollToSection(id: string) {
 }
 
 /** Desktop: sticky left sidebar nav */
-function DesktopSidebar({
-  sections,
-  activeSection,
-  onSectionChange,
-}: Omit<DocsSidebarProps, 'variant'>) {
+function DesktopSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSidebarProps, 'variant'>) {
   const handleClick = (id: string) => {
     onSectionChange(id)
     scrollToSection(id)
@@ -45,8 +41,7 @@ function DesktopSidebar({
               activeSection === section.id
                 ? 'bg-accent-500/10 text-accent-500 border-l-2 border-accent-500 pl-[10px]'
                 : 'text-gray-600 dark:text-gray-400 hover:bg-white/5 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
+            }`}>
             {section.label}
           </button>
         ))}
@@ -56,17 +51,17 @@ function DesktopSidebar({
 }
 
 /** Mobile: horizontal scrolling tab bar */
-function MobileSidebar({
-  sections,
-  activeSection,
-  onSectionChange,
-}: Omit<DocsSidebarProps, 'variant'>) {
+function MobileSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSidebarProps, 'variant'>) {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Scroll the active tab into view
+  // Scroll the active tab into view.
+  //
+  // The container ref is attached to a div this component always renders, and React
+  // attaches refs during the commit that runs this effect, so containerRef.current is
+  // always set by the time this callback fires. There is no mount state where it is not.
   useEffect(() => {
-    if (!containerRef.current) return
-    const active = containerRef.current.querySelector('[data-active="true"]')
+    const container = containerRef.current as HTMLDivElement
+    const active = container.querySelector('[data-active="true"]')
     active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
   }, [activeSection])
 
@@ -78,8 +73,7 @@ function MobileSidebar({
   return (
     <div
       ref={containerRef}
-      className="lg:hidden sticky top-14 z-10 flex gap-2 overflow-x-auto border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base py-2 px-4"
-    >
+      className="lg:hidden sticky top-14 z-10 flex gap-2 overflow-x-auto border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base py-2 px-4">
       {sections.map((section) => (
         <button
           key={section.id}
@@ -89,8 +83,7 @@ function MobileSidebar({
             activeSection === section.id
               ? 'bg-accent-500 text-black'
               : 'bg-surface-light-2 dark:bg-surface-2 text-gray-600 dark:text-gray-400 hover:bg-surface-light-3 dark:hover:bg-surface-3'
-          }`}
-        >
+          }`}>
           {section.label}
         </button>
       ))}
@@ -106,22 +99,15 @@ function MobileSidebar({
  * via Tailwind responsive utilities, so both can be rendered in the tree
  * simultaneously without duplication of logic.
  */
-export default function DocsSidebar({ sections, activeSection, onSectionChange, variant = 'desktop' }: DocsSidebarProps) {
+export default function DocsSidebar({
+  sections,
+  activeSection,
+  onSectionChange,
+  variant = 'desktop',
+}: DocsSidebarProps) {
   if (variant === 'mobile') {
-    return (
-      <MobileSidebar
-        sections={sections}
-        activeSection={activeSection}
-        onSectionChange={onSectionChange}
-      />
-    )
+    return <MobileSidebar sections={sections} activeSection={activeSection} onSectionChange={onSectionChange} />
   }
 
-  return (
-    <DesktopSidebar
-      sections={sections}
-      activeSection={activeSection}
-      onSectionChange={onSectionChange}
-    />
-  )
+  return <DesktopSidebar sections={sections} activeSection={activeSection} onSectionChange={onSectionChange} />
 }

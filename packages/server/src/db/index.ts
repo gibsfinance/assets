@@ -1165,14 +1165,18 @@ export const fetchImageAndStoreForToken = async (
     // empty list_id — so every token fell to this branch and downloaded an image the
     // line above had just confirmed fresh, at up to three seconds of timeout each.
     img = existing
-    if (originalUri) {
-      await removeMissing({
-        imageHash: existing.image.imageHash,
-        originalUri,
-        providerKey,
-        listId,
-      })
-    }
+    // `originalUri` is always set here, so this is not guarded. `existing` comes
+    // from getFreshImageFromLink(uri), which only runs when `uri` is a string, and
+    // an absent originalUri defaults to that same uri a few lines above. The only
+    // way out would be a link row stored under an empty address, and nothing can
+    // write one: every insertImage caller passes a guarded originalUri, and
+    // prewarmImages filters its addresses on length before it gets there.
+    await removeMissing({
+      imageHash: existing.image.imageHash,
+      originalUri: originalUri!,
+      providerKey,
+      listId,
+    })
   } else if (uri && originalUri) {
     const image = await fetchImage(uri, signal, providerKey, token.providedId)
     if (!image) {
@@ -1513,7 +1517,10 @@ export const getLists = async (providerKey: string, listKey: string) => {
       .from(s.provider)
       .innerJoin(s.list, eq(s.list.providerId, s.provider.providerId))
       .leftJoin(s.image, eq(s.image.imageHash, s.list.imageHash))
-      .where(whereClause ? and(whereClause, hasTokens) : hasTokens)
+      // `and` drops an undefined condition, so this reads as `hasTokens` alone when the
+      // caller has none to add. The ternary this replaces was answering a type, not a
+      // case: every call site below passes a clause, so its second arm never ran.
+      .where(and(whereClause, hasTokens))
       .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))
@@ -1535,13 +1542,39 @@ export const getLists = async (providerKey: string, listKey: string) => {
  * `header_link` portion of the flattened row.
  */
 /**
- * Recursively convert an object's keys from snake_case to camelCase.
- * Used to post-process row_to_json() results, which return DB column names.
+ * Convert an object's own keys from snake case to camel case.
+ *
+ * One level deep, which is all `row_to_json` produces: it embeds a joined table
+ * as a flat object of that table's columns. Nothing here walks into nested
+ * values, so do not read this as a deep transform.
  */
 const camelCaseKeys = (obj: Record<string, unknown> | null): Record<string, unknown> | null => {
   if (!obj) return null
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [_.camelCase(k), v]))
 }
+
+/**
+ * The joined objects the bridge extension embeds under each token row.
+ *
+ * Two queries select this same set. Naming it once means a seventh embedded
+ * table is added in one place rather than in two that have to be kept in step.
+ */
+const EMBEDDED_EXTENSION_KEYS = ['bridge', 'bridgeLink', 'networkA', 'networkB', 'nativeToken', 'bridgedToken'] as const
+
+/**
+ * Convert the keys of every embedded object on a token row.
+ *
+ * `row_to_json` hands back the database's own snake case column names, and
+ * `normalizeTokens` reads camel case off these nested objects. The row's own
+ * top-level keys are already aliased in the query, so only the embedded objects
+ * are touched — and a row that carries none comes back unchanged.
+ */
+const camelCaseEmbeddedExtensions = (row: Record<string, unknown>): Record<string, unknown> => ({
+  ...row,
+  ...Object.fromEntries(
+    EMBEDDED_EXTENSION_KEYS.map((key) => [key, camelCaseKeys(row[key] as Record<string, unknown> | null)]),
+  ),
+})
 
 /**
  * Fetch tokens under a list with bridge and/or header extensions via raw SQL.
@@ -1632,15 +1665,7 @@ export const getTokensWithExtensions = async (
     ORDER BY "list_token"."list_token_order_id" ASC
   `)
   if (!bridgeInfo) return result.rows
-  return result.rows.map((row) => ({
-    ...row,
-    bridge: camelCaseKeys(row.bridge as Record<string, unknown> | null),
-    bridgeLink: camelCaseKeys(row.bridgeLink as Record<string, unknown> | null),
-    networkA: camelCaseKeys(row.networkA as Record<string, unknown> | null),
-    networkB: camelCaseKeys(row.networkB as Record<string, unknown> | null),
-    nativeToken: camelCaseKeys(row.nativeToken as Record<string, unknown> | null),
-    bridgedToken: camelCaseKeys(row.bridgedToken as Record<string, unknown> | null),
-  }))
+  return result.rows.map(camelCaseEmbeddedExtensions)
 }
 
 export const getListOrderId = async (orderParam: string) => {
@@ -1998,18 +2023,7 @@ export const getTokensByChainRanked = async (
       sub."listDefault" ASC, sub."listKey" ASC, sub."listTokenOrderId" ASC
   `)
   if (!bridgeInfo) return rows.rows
-  // row_to_json hands back the database's own snake_case column names; normalizeTokens
-  // reads camelCase off these nested objects. Same conversion getTokensWithExtensions
-  // applies to the identical shape.
-  return rows.rows.map((row) => ({
-    ...row,
-    bridge: camelCaseKeys(row.bridge as Record<string, unknown> | null),
-    bridgeLink: camelCaseKeys(row.bridgeLink as Record<string, unknown> | null),
-    networkA: camelCaseKeys(row.networkA as Record<string, unknown> | null),
-    networkB: camelCaseKeys(row.networkB as Record<string, unknown> | null),
-    nativeToken: camelCaseKeys(row.nativeToken as Record<string, unknown> | null),
-    bridgedToken: camelCaseKeys(row.bridgedToken as Record<string, unknown> | null),
-  }))
+  return rows.rows.map(camelCaseEmbeddedExtensions)
 }
 
 /**
@@ -2308,6 +2322,12 @@ export const bumpVariantAccess = async (
 
 export const pruneVariants = async (minAccessCount = 3, maxAgeHours = 24, tx?: DrizzleTx): Promise<number> => {
   const db = tx ?? getDrizzle()
+  // Project one narrow column, never the whole row. A bare `.returning()` emits
+  // `RETURNING` over every column, `content` among them — so counting the evictions
+  // meant hauling the image bytes of every evicted variant out of the database and
+  // into this process's heap, to do nothing with them but read `.length`. The cost
+  // scaled with how much was being evicted, which is to say it was worst exactly when
+  // the table had grown largest and the sweep mattered most.
   const deleted = await db
     .delete(s.imageVariant)
     .where(
@@ -2316,7 +2336,7 @@ export const pruneVariants = async (minAccessCount = 3, maxAgeHours = 24, tx?: D
         lt(s.imageVariant.lastAccessedAt, dsql`NOW() - INTERVAL '${dsql.raw(String(maxAgeHours))} hours'`),
       ),
     )
-    .returning()
+    .returning({ imageHash: s.imageVariant.imageHash })
   await db.update(s.imageVariant).set({ accessCount: 0 })
   return deleted.length
 }

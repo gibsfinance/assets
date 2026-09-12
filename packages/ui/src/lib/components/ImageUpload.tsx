@@ -80,14 +80,9 @@ export default function ImageUpload({ onUpload, currentImage, size = 32 }: Image
             : 'border border-dashed border-gray-300 bg-gray-50 hover:border-accent-500/60 hover:bg-accent-500/5 dark:border-white/20 dark:bg-surface-2 dark:hover:border-accent-500/60',
         ].join(' ')}
         title="Upload token image"
-        aria-label="Upload token image"
-      >
+        aria-label="Upload token image">
         {currentImage ? (
-          <img
-            src={currentImage}
-            alt=""
-            className="h-full w-full rounded-full object-cover"
-          />
+          <img src={currentImage} alt="" className="h-full w-full rounded-full object-cover" />
         ) : (
           <i
             className="fas fa-camera text-gray-400 dark:text-white/30"

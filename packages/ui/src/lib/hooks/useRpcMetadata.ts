@@ -68,9 +68,7 @@ export async function fetchTokenMetadata(
 ): Promise<MetadataResult> {
   try {
     const [name, symbol, decimals] = await Promise.all([
-      client
-        .readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'name' })
-        .catch(() => null),
+      client.readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'name' }).catch(() => null),
       client
         .readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'symbol' })
         .catch(() => null),
@@ -93,38 +91,33 @@ export function useRpcMetadata() {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
 
-  const loadMetadata = useCallback(
-    async (tokens: LocalToken[], chainId: number): Promise<MetadataResult[]> => {
-      const client = getClient(chainId)
-      if (!client) {
-        return tokens.map((t) => ({
-          address: t.address,
-          name: null,
-          symbol: null,
-          decimals: null,
-          error: 'No RPC available',
-        }))
-      }
+  const loadMetadata = useCallback(async (tokens: LocalToken[], chainId: number): Promise<MetadataResult[]> => {
+    const client = getClient(chainId)
+    if (!client) {
+      return tokens.map((t) => ({
+        address: t.address,
+        name: null,
+        symbol: null,
+        decimals: null,
+        error: 'No RPC available',
+      }))
+    }
 
-      setIsLoading(true)
-      setProgress({ done: 0, total: tokens.length })
-      const results: MetadataResult[] = []
+    setIsLoading(true)
+    setProgress({ done: 0, total: tokens.length })
+    const results: MetadataResult[] = []
 
-      const batchSize = 10
-      for (let i = 0; i < tokens.length; i += batchSize) {
-        const batch = tokens.slice(i, i + batchSize)
-        const batchResults = await Promise.all(
-          batch.map((token) => fetchTokenMetadata(client, token.address)),
-        )
-        results.push(...batchResults)
-        setProgress({ done: Math.min(i + batchSize, tokens.length), total: tokens.length })
-      }
+    const batchSize = 10
+    for (let i = 0; i < tokens.length; i += batchSize) {
+      const batch = tokens.slice(i, i + batchSize)
+      const batchResults = await Promise.all(batch.map((token) => fetchTokenMetadata(client, token.address)))
+      results.push(...batchResults)
+      setProgress({ done: Math.min(i + batchSize, tokens.length), total: tokens.length })
+    }
 
-      setIsLoading(false)
-      return results
-    },
-    [],
-  )
+    setIsLoading(false)
+    return results
+  }, [])
 
   return { loadMetadata, isLoading, progress }
 }

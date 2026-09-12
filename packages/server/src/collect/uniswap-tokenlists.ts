@@ -9,7 +9,6 @@ import { terminal } from '../utils'
 import { failureLog } from '@gibs/utils'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
 
-const domain = 'https://wispy-bird-88a7.uniswap.workers.dev/?url='
 const providerKey = 'uniswap'
 
 type UsableEntry = {
@@ -22,11 +21,26 @@ type UsableEntry = {
 
 const listBlacklist = new Set<string>(['kleros-t-2-cr', 'testnet-tokens', 'coingecko', 'agora-datafi-tokens'])
 
+/**
+ * Turn a registry entry into a location to fetch.
+ *
+ * These used to go through a Cloudflare worker that exists to add
+ * cross-origin headers for a browser. That worker is gone - every list routed
+ * through it answered 404 - and it was never needed here in the first place:
+ * this is server-side code, and the same-origin policy it worked around is a
+ * browser rule. Of the 34 registered lists, exactly one was still arriving,
+ * and only because its address ends in `manifest.json`, which the old code
+ * happened to exempt. Fetched directly, 22 arrive, carrying about 46,000 token
+ * entries that were being read as none - among them Uniswap's own default list
+ * at 1,704 tokens and its token-pairs list at 30,128.
+ *
+ * A key ending in `.eth` still gains `.link`: that is an Ethereum Name Service
+ * gateway, which is a real redirection rather than a proxy.
+ */
 const buildUsableEntries = (): UsableEntry[] => {
   return Object.entries(lists).map(([key, item]) => {
     const suffixedKey = `${key}${key.slice(-4) === '.eth' ? '.link' : ''}`
-    const fullKey = suffixedKey.startsWith('https://') ? suffixedKey : `https://${suffixedKey}`
-    const uri = fullKey.endsWith('manifest.json') ? fullKey : `${domain}${fullKey}`
+    const uri = suffixedKey.startsWith('https://') ? suffixedKey : `https://${suffixedKey}`
     return {
       key,
       uri,
@@ -51,6 +65,8 @@ class UniswapTokenListsCollector extends BaseCollector {
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
     this.usable = buildUsableEntries()
     const manifest: DiscoveryManifest = []
+    const unreachable: string[] = []
+    let attempted = 0
 
     await promiseLimit<UsableEntry>(4).map(this.usable, async (info) => {
       const subProviderKey = `uniswap-${info.machineName}`
@@ -58,11 +74,19 @@ class UniswapTokenListsCollector extends BaseCollector {
       if (listBlacklist.has(info.machineName)) {
         return
       }
+      attempted += 1
 
       const result = await fetch(info.uri, { signal })
         .then(async (res) => (await res.json()) as types.TokenList)
         .catch(() => null)
-      if (!result?.tokens) return
+      if (!result?.tokens) {
+        // Counted rather than passed over. A list that stops answering looks
+        // exactly like a list with nothing in it, and that is how this
+        // collector came to fetch one of its thirty-four for years without
+        // anything saying so.
+        unreachable.push(info.name)
+        return
+      }
 
       // Apply URL fixes before discover
       applyTokenListFixes(result)
@@ -83,6 +107,19 @@ class UniswapTokenListsCollector extends BaseCollector {
         lists: [{ listKey }],
       })
     })
+
+    if (unreachable.length) {
+      // Counts what was asked, not what is registered: the blacklisted entries
+      // are never fetched, so including them would report a failure rate for
+      // requests that were never made.
+      failureLog(
+        'provider=%o %o of %o lists asked did not answer: %o',
+        providerKey,
+        unreachable.length,
+        attempted,
+        unreachable.join(', '),
+      )
+    }
 
     return manifest
   }

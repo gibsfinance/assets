@@ -37,6 +37,14 @@ describe('toNameMap', () => {
   it('throws when the payload is not an array', () => {
     expect(() => toNameMap({ chains: [] })).toThrow(/did not parse to an array/)
   })
+
+  // The registry is a third-party JSON payload — a `null` array entry is a
+  // malformed record, not an absent one. Without the `?? {}` fallback,
+  // destructuring `null` throws and one bad entry fails the whole regen
+  // instead of being skipped like any other entry missing a usable id.
+  it('skips a null entry instead of throwing, and still keeps valid entries', () => {
+    expect(toNameMap([null, { chainId: 1, name: 'Ethereum Mainnet' }])).toEqual({ '1': 'Ethereum Mainnet' })
+  })
 })
 
 describe('mergeNameMaps', () => {

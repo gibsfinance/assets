@@ -107,8 +107,7 @@ const mountReady = () => {
   return result
 }
 
-const rowsOf = (container: HTMLElement) =>
-  Array.from(container.firstElementChild!.children) as HTMLElement[]
+const rowsOf = (container: HTMLElement) => Array.from(container.firstElementChild!.children) as HTMLElement[]
 
 const iconSourcesIn = (row: HTMLElement) =>
   Array.from(row.querySelectorAll('img')).map((img) => img.getAttribute('src')!)
@@ -353,5 +352,16 @@ describe('FloatingIcons — row animation', () => {
     render(<FloatingIcons />)
     expect(() => flushFrames()).not.toThrow()
     expect(frames.length).toBe(0)
+  })
+
+  it('does not style a row that unmounted before its queued animation frame ran', () => {
+    // The frame that sets each row's animation has no cleanup of its own, so an
+    // unmount just before it fires leaves every row ref pointing at nothing.
+    // Reading `scrollWidth` off a null ref would otherwise throw from inside a
+    // frame callback that fires after the component is already gone.
+    const { unmount } = mountReady()
+    expect(frames.length).toBeGreaterThan(0)
+    unmount()
+    expect(() => flushFrames()).not.toThrow()
   })
 })

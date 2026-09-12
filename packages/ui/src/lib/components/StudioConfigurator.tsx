@@ -1,18 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import {
-  Menu,
-  MenuButton,
-  MenuItems,
-  MenuItem,
-  Popover,
-  PopoverButton,
-  PopoverPanel,
-} from '@headlessui/react'
+import { Menu, MenuButton, MenuItems, MenuItem, Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import { useStudio } from '../contexts/StudioContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { getApiUrl } from '../utils'
 import { getNetworkName } from '../utils/network-name'
 import { badgePositionToCSS } from '../utils/badge-position'
+import { shapeToCSS } from '../utils/code-output'
+import { IDENTITY_TRANSFORM, panBy, zoomAtPointer, clampZoom, type CanvasTransform } from '../utils/canvas-transform'
 import BadgeConfigurator from './BadgeConfigurator'
 import ListResolutionOrder from './ListResolutionOrder'
 import CodeOutput from './CodeOutput'
@@ -29,12 +23,6 @@ const SHADOW_MAP: Record<string, string> = {
   subtle: '0 1px 3px rgba(0,0,0,0.12)',
   medium: '0 4px 12px rgba(0,0,0,0.15)',
   strong: '0 8px 24px rgba(0,0,0,0.2)',
-}
-
-function shapeToRadius(shape: string, borderRadius: number): string {
-  if (shape === 'circle') return '50%'
-  if (shape === 'rounded') return `${borderRadius}px`
-  return '0'
 }
 
 // ---------------------------------------------------------------------------
@@ -59,9 +47,6 @@ const BACKGROUND_SWATCHES = [
   { value: '#000000', label: 'Black' },
   { value: '#ffffff', label: 'White' },
 ] as const
-
-const MIN_ZOOM = 0.25
-const MAX_ZOOM = 4
 
 // ---------------------------------------------------------------------------
 // Toolbar: Size inputs
@@ -104,8 +89,7 @@ function SizeControl() {
             ? 'bg-accent-500/15 text-accent-500'
             : 'bg-gray-100 text-gray-400 hover:text-gray-600 dark:bg-surface-2 dark:text-white/30 dark:hover:text-white/50'
         }`}
-        aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}
-      >
+        aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}>
         <i className={`fas ${aspectLinked ? 'fa-link' : 'fa-link-slash'} text-[9px]`} />
       </button>
       <NumberStepper label="H" value={appearance.height} onChange={handleHeightChange} min={16} max={512} />
@@ -149,8 +133,7 @@ function ShapeDropdown() {
         </MenuButton>
         <MenuItems
           anchor="bottom start"
-          className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2"
-        >
+          className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
           {SHAPE_OPTIONS.map((option) => (
             <MenuItem key={option.value}>
               <button
@@ -160,8 +143,7 @@ function ShapeDropdown() {
                   appearance.shape === option.value
                     ? 'bg-accent-500/10 text-accent-500'
                     : 'text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-surface-3'
-                }`}
-              >
+                }`}>
                 {option.label}
               </button>
             </MenuItem>
@@ -199,8 +181,7 @@ function ShadowDropdown() {
       </MenuButton>
       <MenuItems
         anchor="bottom start"
-        className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2"
-      >
+        className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
         {SHADOW_OPTIONS.map((option) => (
           <MenuItem key={option.value}>
             <button
@@ -210,8 +191,7 @@ function ShadowDropdown() {
                 appearance.shadow === option.value
                   ? 'bg-accent-500/10 text-accent-500'
                   : 'text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-surface-3'
-              }`}
-            >
+              }`}>
               {option.label}
             </button>
           </MenuItem>
@@ -235,9 +215,7 @@ function BackgroundPopover() {
     [updateAppearance],
   )
 
-  const isCustomBackground = !BACKGROUND_SWATCHES.some(
-    (s) => s.value === appearance.backgroundColor,
-  )
+  const isCustomBackground = !BACKGROUND_SWATCHES.some((s) => s.value === appearance.backgroundColor)
 
   /** Inline style for the swatch button showing the current color */
   const swatchStyle =
@@ -259,8 +237,7 @@ function BackgroundPopover() {
       />
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 rounded-lg border border-border-light bg-white p-3 shadow-lg dark:border-border-dark dark:bg-surface-2"
-      >
+        className="z-50 mt-2 rounded-lg border border-border-light bg-white p-3 shadow-lg dark:border-border-dark dark:bg-surface-2">
         <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
           Background
         </p>
@@ -311,11 +288,7 @@ function BackgroundPopover() {
             <i className="fas fa-lightbulb mt-0.5 flex-shrink-0 text-[9px]" />
             <span>
               Background won't be visible without padding.{' '}
-              <button
-                type="button"
-                className="font-medium underline"
-                onClick={() => updateAppearance({ padding: 8 })}
-              >
+              <button type="button" className="font-medium underline" onClick={() => updateAppearance({ padding: 8 })}>
                 Add padding
               </button>
               {appearance.shape === 'square' && (
@@ -324,8 +297,7 @@ function BackgroundPopover() {
                   <button
                     type="button"
                     className="font-medium underline"
-                    onClick={() => updateAppearance({ shape: 'rounded', borderRadius: 12 })}
-                  >
+                    onClick={() => updateAppearance({ shape: 'rounded', borderRadius: 12 })}>
                     round corners
                   </button>
                 </>
@@ -353,34 +325,25 @@ function BadgePopover() {
             ? 'border-accent-500/30 bg-accent-500/10 text-accent-500'
             : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
         }`}
-        aria-label="Badge settings"
-      >
+        aria-label="Badge settings">
         <i className="fas fa-link text-[10px]" />
         <span className="hidden sm:inline">Badge</span>
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-80 rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1"
-      >
+        className="z-50 mt-2 w-80 rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1">
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-800 dark:text-white/90">
-            Network Badge
-          </span>
+          <span className="text-xs font-semibold text-gray-800 dark:text-white/90">Network Badge</span>
           <button
             type="button"
             onClick={() => updateBadge({ enabled: !badge.enabled })}
             className={`relative h-5 w-9 rounded-full transition-colors ${
-              badge.enabled
-                ? 'bg-accent-500/20'
-                : 'bg-gray-200 dark:bg-surface-3'
+              badge.enabled ? 'bg-accent-500/20' : 'bg-gray-200 dark:bg-surface-3'
             }`}
-            aria-label={badge.enabled ? 'Disable badge' : 'Enable badge'}
-          >
+            aria-label={badge.enabled ? 'Disable badge' : 'Enable badge'}>
             <span
               className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-all ${
-                badge.enabled
-                  ? 'translate-x-4 bg-accent-500'
-                  : 'bg-gray-400 dark:bg-white/40'
+                badge.enabled ? 'translate-x-4 bg-accent-500' : 'bg-gray-400 dark:bg-white/40'
               }`}
             />
           </button>
@@ -400,15 +363,13 @@ function ResolutionOrderPopover() {
     <Popover className="relative">
       <PopoverButton
         className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3"
-        aria-label="Resolution order"
-      >
+        aria-label="Resolution order">
         <i className="fas fa-layer-group text-[10px]" />
         <span className="hidden sm:inline">Order</span>
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-72 rounded-lg border border-border-light bg-white shadow-lg dark:border-border-dark dark:bg-surface-1"
-      >
+        className="z-50 mt-2 w-72 rounded-lg border border-border-light bg-white shadow-lg dark:border-border-dark dark:bg-surface-1">
         <ListResolutionOrder />
       </PopoverPanel>
     </Popover>
@@ -430,8 +391,7 @@ function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () =>
           : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
       }`}
       aria-label={active ? 'Hide code output' : 'Show code output'}
-      aria-pressed={active}
-    >
+      aria-pressed={active}>
       <i className="fas fa-code text-[10px]" />
       <span className="hidden sm:inline">Code</span>
     </button>
@@ -473,16 +433,6 @@ function Toolbar({ showCode, onToggleCode }: { showCode: boolean; onToggleCode: 
 // Infinite canvas
 // ---------------------------------------------------------------------------
 
-interface CanvasTransform {
-  x: number
-  y: number
-  zoom: number
-}
-
-function clampZoom(zoom: number): number {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
-}
-
 /** Checkerboard SVG data URI for a transparent-style canvas background */
 const CHECKERBOARD_SVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23f8f8f8'/%3E%3Crect width='10' height='10' fill='%23e0e0e0'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23e0e0e0'/%3E%3C/svg%3E")`
 const CHECKERBOARD_SVG_DARK = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23111113'/%3E%3Crect width='10' height='10' fill='%231a1a1e'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%231a1a1e'/%3E%3C/svg%3E")`
@@ -491,7 +441,7 @@ function InfiniteCanvas() {
   const { selectedToken, selectedChainId, resolutionOrder, appearance, badge } = useStudio()
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const [transform, setTransform] = useState<CanvasTransform>({ x: 0, y: 0, zoom: 1 })
+  const [transform, setTransform] = useState<CanvasTransform>(IDENTITY_TRANSFORM)
   const isDragging = useRef(false)
   const lastPointer = useRef({ x: 0, y: 0 })
 
@@ -501,26 +451,21 @@ function InfiniteCanvas() {
   const imageUrl = useMemo(() => {
     if (!selectedToken || !selectedChainId) return ''
     if (resolutionOrder && resolutionOrder.length > 0) {
-      return getApiUrl(
-        `/image/fallback/${resolutionOrder.join(',')}/${selectedChainId}/${selectedToken.address}`,
-      )
+      return getApiUrl(`/image/fallback/${resolutionOrder.join(',')}/${selectedChainId}/${selectedToken.address}`)
     }
     return getApiUrl(`/image/${toChainIdentifier(selectedChainId)}/${selectedToken.address}`)
   }, [selectedToken, selectedChainId, resolutionOrder])
 
   const networkUrl = useMemo(
-    () => selectedChainId ? getApiUrl(`/image/${toChainIdentifier(selectedChainId)}`) : '',
+    () => (selectedChainId ? getApiUrl(`/image/${toChainIdentifier(selectedChainId)}`) : ''),
     [selectedChainId],
   )
 
-  const networkName = useMemo(
-    () => getNetworkName(selectedChainId ?? '1'),
-    [selectedChainId],
-  )
+  const networkName = useMemo(() => getNetworkName(selectedChainId ?? '1'), [selectedChainId])
 
   // Appearance computations
   const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance
-  const borderRadiusCSS = shapeToRadius(shape, borderRadius)
+  const borderRadiusCSS = shapeToCSS(shape, borderRadius)
   const boxShadow = SHADOW_MAP[shadow] ?? 'none'
 
   // Badge position is relative to the full padded container, not just the image
@@ -545,7 +490,7 @@ function InfiniteCanvas() {
     const dx = event.clientX - lastPointer.current.x
     const dy = event.clientY - lastPointer.current.y
     lastPointer.current = { x: event.clientX, y: event.clientY }
-    setTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }))
+    setTransform((t) => panBy(t, dx, dy))
   }, [])
 
   const handlePointerUp = useCallback(() => {
@@ -555,29 +500,22 @@ function InfiniteCanvas() {
   // ---- Zoom handler ----
   const handleWheel = useCallback((event: React.WheelEvent) => {
     event.preventDefault()
-    const container = containerRef.current
-    if (!container) return
+    // This handler only ever runs as the onWheel prop of the very div that
+    // carries containerRef, and React sets a ref in the same commit that
+    // creates the node it points to -- before that node can receive any
+    // event, including this one. The ref is always populated here.
+    const container = containerRef.current as HTMLDivElement
 
     const rect = container.getBoundingClientRect()
     const pointerX = event.clientX - rect.left
     const pointerY = event.clientY - rect.top
 
-    setTransform((prev) => {
-      const delta = -event.deltaY * 0.001
-      const newZoom = clampZoom(prev.zoom * (1 + delta))
-      const scale = newZoom / prev.zoom
-
-      // Zoom towards the pointer position
-      const newX = pointerX - scale * (pointerX - prev.x)
-      const newY = pointerY - scale * (pointerY - prev.y)
-
-      return { x: newX, y: newY, zoom: newZoom }
-    })
+    setTransform((prev) => zoomAtPointer(prev, { pointerX, pointerY, deltaY: event.deltaY }))
   }, [])
 
   // ---- Reset view ----
   const resetView = useCallback(() => {
-    setTransform({ x: 0, y: 0, zoom: 1 })
+    setTransform(IDENTITY_TRANSFORM)
   }, [])
 
   return (
@@ -592,92 +530,85 @@ function InfiniteCanvas() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      onWheel={handleWheel}
-    >
+      onWheel={handleWheel}>
       {/* Canvas content */}
-      <div
-        className="absolute inset-0 flex items-center justify-center"
-      >
-        <div style={{
-          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
-        }}>
-
-        {!hasToken && (
-          <div className="flex flex-col items-center gap-3 pointer-events-none">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
-              <i className="fas fa-coins text-2xl text-gray-300 dark:text-white/10" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          style={{
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
+          }}>
+          {!hasToken && (
+            <div className="flex flex-col items-center gap-3 pointer-events-none">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
+                <i className="fas fa-coins text-2xl text-gray-300 dark:text-white/10" />
+              </div>
+              <p className="text-sm font-medium text-gray-400 dark:text-white/30">Select a token to preview</p>
             </div>
-            <p className="text-sm font-medium text-gray-400 dark:text-white/30">
-              Select a token to preview
-            </p>
-          </div>
-        )}
+          )}
 
-        {hasToken && (
-          <div
-            className="relative inline-flex items-center justify-center"
-            style={{
-              borderRadius: borderRadiusCSS,
-              boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
-              backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
-              padding: padding > 0 ? padding : undefined,
-            }}
-          >
-            <Image
-              src={imageUrl}
-              alt={tokenName}
-              skeleton
-              fullResolution
-              shape={shape === 'circle' ? 'circle' : 'rect'}
-              width={width}
-              height={height}
+          {hasToken && (
+            <div
+              className="relative inline-flex items-center justify-center"
               style={{
                 borderRadius: borderRadiusCSS,
-                display: 'block',
-              }}
-            />
+                boxShadow: boxShadow !== 'none' ? boxShadow : undefined,
+                backgroundColor: backgroundColor !== 'transparent' ? backgroundColor : undefined,
+                padding: padding > 0 ? padding : undefined,
+              }}>
+              <Image
+                src={imageUrl}
+                alt={tokenName}
+                skeleton
+                fullResolution
+                shape={shape === 'circle' ? 'circle' : 'rect'}
+                width={width}
+                height={height}
+                style={{
+                  borderRadius: borderRadiusCSS,
+                  display: 'block',
+                }}
+              />
 
-            {badge.enabled && badgePosition && (() => {
-              const badgeShape = badge.badgeShape ?? 'circle'
-              const badgePadding = badge.badgePadding ?? 0
-              const badgeBackground = badge.badgeBackground ?? 'transparent'
-              const badgeBorderRadius = badgeShape === 'circle' ? '50%' : '0'
-              // Offset position to account for ring border + padding
-              // so the badge image stays centered at the calculated point
-              const ringOffset = badge.ringEnabled ? badge.ringThickness : 0
-              const positionOffset = ringOffset + badgePadding
-              return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: Math.round(badgePosition.top) - positionOffset,
-                    left: Math.round(badgePosition.left) - positionOffset,
-                    borderRadius: badgeBorderRadius,
-                    padding: badgePadding > 0 ? badgePadding : undefined,
-                    backgroundColor: badgeBackground !== 'transparent' ? badgeBackground : undefined,
-                    ...(badge.ringEnabled
-                      ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` }
-                      : {}),
-                  }}
-                >
-                  <Image
-                    src={networkUrl}
-                    alt={networkName}
-                    skeleton
-                    fullResolution
-                    shape={badgeShape === 'circle' ? 'circle' : 'rect'}
-                    width={Math.round(badgePosition.badgeSize)}
-                    height={Math.round(badgePosition.badgeSize)}
-                    style={{
-                      borderRadius: badgeBorderRadius,
-                      display: 'block',
-                    }}
-                  />
-                </div>
-              )
-            })()}
-          </div>
-        )}
+              {badge.enabled &&
+                badgePosition &&
+                (() => {
+                  const badgeShape = badge.badgeShape ?? 'circle'
+                  const badgePadding = badge.badgePadding ?? 0
+                  const badgeBackground = badge.badgeBackground ?? 'transparent'
+                  const badgeBorderRadius = badgeShape === 'circle' ? '50%' : '0'
+                  // Offset position to account for ring border + padding
+                  // so the badge image stays centered at the calculated point
+                  const ringOffset = badge.ringEnabled ? badge.ringThickness : 0
+                  const positionOffset = ringOffset + badgePadding
+                  return (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: Math.round(badgePosition.top) - positionOffset,
+                        left: Math.round(badgePosition.left) - positionOffset,
+                        borderRadius: badgeBorderRadius,
+                        padding: badgePadding > 0 ? badgePadding : undefined,
+                        backgroundColor: badgeBackground !== 'transparent' ? badgeBackground : undefined,
+                        ...(badge.ringEnabled ? { border: `${badge.ringThickness}px solid ${badge.ringColor}` } : {}),
+                      }}>
+                      <Image
+                        src={networkUrl}
+                        alt={networkName}
+                        skeleton
+                        fullResolution
+                        shape={badgeShape === 'circle' ? 'circle' : 'rect'}
+                        width={Math.round(badgePosition.badgeSize)}
+                        height={Math.round(badgePosition.badgeSize)}
+                        style={{
+                          borderRadius: badgeBorderRadius,
+                          display: 'block',
+                        }}
+                      />
+                    </div>
+                  )
+                })()}
+            </div>
+          )}
         </div>
       </div>
 
@@ -689,8 +620,7 @@ function InfiniteCanvas() {
           onClick={resetView}
           className="flex h-7 w-7 items-center justify-center rounded-t-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Reset view"
-          title="Reset view"
-        >
+          title="Reset view">
           <i className="fas fa-crosshairs text-[10px]" />
         </button>
 
@@ -700,8 +630,7 @@ function InfiniteCanvas() {
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom * 1.25) }))}
           className="flex h-6 w-7 items-center justify-center text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Zoom in"
-          title="Zoom in"
-        >
+          title="Zoom in">
           <i className="fas fa-plus text-[9px]" />
         </button>
 
@@ -716,8 +645,7 @@ function InfiniteCanvas() {
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom / 1.25) }))}
           className="flex h-6 w-7 items-center justify-center rounded-b-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Zoom out"
-          title="Zoom out"
-        >
+          title="Zoom out">
           <i className="fas fa-minus text-[9px]" />
         </button>
       </div>
@@ -735,21 +663,23 @@ function CodePanel({ open }: { open: boolean }) {
 
   // Measure content height for smooth transition
   useEffect(() => {
-    if (!panelRef.current) return
+    // The div holding this ref renders unconditionally above, and React
+    // commits a ref before any effect runs -- so panelElement is always set
+    // by the time this effect body executes.
+    const panelElement = panelRef.current as HTMLDivElement
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setHeight(entry.contentRect.height)
       }
     })
-    observer.observe(panelRef.current)
+    observer.observe(panelElement)
     return () => observer.disconnect()
   }, [])
 
   return (
     <div
       className={`flex-shrink-0 overflow-y-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border-light dark:border-border-dark' : ''}`}
-      style={{ maxHeight: open ? `${Math.min(height, 400)}px` : 0 }}
-    >
+      style={{ maxHeight: open ? `${Math.min(height, 400)}px` : 0 }}>
       <div ref={panelRef} className="p-4 bg-white dark:bg-surface-base overflow-auto" style={{ maxHeight: 400 }}>
         <CodeOutput />
       </div>

@@ -53,7 +53,19 @@ const RESIZE_PARAMS = [
   {
     name: 'as',
     in: 'query' as const,
-    description: 'Convert output format. Invalid values are silently ignored and the original format is served.',
+    description:
+      'Convert output format. Requesting svg succeeds when the stored image already is one and is served ' +
+      'unchanged; against a raster source it returns 404, because a raster image cannot be converted to a ' +
+      'vector one. Every other unrecognised value is ignored and the original format is served.',
+    schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
+  },
+  {
+    name: 'format',
+    in: 'query' as const,
+    deprecated: true,
+    description:
+      'Deprecated alias for `as`, kept because an earlier version of the published documentation named the ' +
+      'output-format parameter `format`. Prefer `as`; when both are present `as` wins.',
     schema: { type: 'string' as const, enum: ['webp', 'png', 'jpg', 'jpeg', 'avif'] },
   },
   {
@@ -221,6 +233,72 @@ export const openapi = {
         responses: {
           '200': { description: 'The definition.', content: { 'application/json': { schema: { type: 'object' } } } },
         },
+      },
+    },
+    '/llms.txt': {
+      get: {
+        tags: ['Service'],
+        summary: 'A machine-readable index of the public API and guides, per the llmstxt.org convention',
+        'x-example': '/llms.txt',
+        responses: {
+          '200': {
+            description: 'Plain-text index with linked sections.',
+            content: { 'text/plain': { schema: { type: 'string' } } },
+          },
+        },
+      },
+    },
+    '/terms': {
+      get: {
+        tags: ['Service'],
+        summary: 'Terms and attribution — the licence/attribution page every image response links back to',
+        'x-example': '/terms',
+        responses: {
+          '200': { description: 'The terms page.', content: { 'text/markdown': { schema: { type: 'string' } } } },
+        },
+      },
+    },
+    '/skills/{filename}': {
+      get: {
+        tags: ['Service'],
+        summary: 'A hand-written guide (api-reference.md, list-management.md, self-hosting.md)',
+        'x-example': '/skills/api-reference.md',
+        parameters: [
+          {
+            name: 'filename',
+            in: 'path',
+            required: true,
+            description: 'Guide filename, e.g. api-reference.md.',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': { description: 'The guide.', content: { 'text/markdown': { schema: { type: 'string' } } } },
+          '404': {
+            description: 'Unknown filename.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+    '/docs': {
+      get: {
+        tags: ['Service'],
+        summary: 'Redirects to the hash-routed documentation page in the interface',
+        description:
+          'The interface uses a hash router, so this plain path is not itself a page — it redirects to /#/docs.',
+        'x-example': '/docs',
+        responses: { '302': { description: 'Redirect to /#/docs.' } },
+      },
+    },
+    '/studio': {
+      get: {
+        tags: ['Service'],
+        summary: 'Redirects to the hash-routed token list studio in the interface',
+        description:
+          'The interface uses a hash router, so this plain path is not itself a page — it redirects to /#/studio.',
+        'x-example': '/studio',
+        responses: { '302': { description: 'Redirect to /#/studio.' } },
       },
     },
     '/networks': {
@@ -462,11 +540,19 @@ export const openapi = {
           'Resize and format-conversion query parameters work here too. A path extension on this route ' +
           'is a SOURCE filter, not a conversion: /image/eip155-369.png serves only a png source, and ' +
           '/image/eip155-369.webp responds 404 when no webp source exists — the opposite of the token ' +
-          '.{ext} route, where the extension converts the output.',
+          '.{ext} route, where the extension converts the output. A bare numeric chainId is resolved ' +
+          'against the chain identifiers this service actually stores, so a number one namespace shares ' +
+          'with another can still resolve to the populated one. Every success response carries ' +
+          'x-resolved-chain, naming the identifier it resolved to in prefixed form (eip155-369), so a ' +
+          'caller can tell an exact match from a best guess.',
         'x-example': '/image/eip155-369',
         parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
         responses: {
           ...IMAGE_RESPONSE,
+          '200': {
+            ...IMAGE_RESPONSE['200'],
+            description: `${IMAGE_RESPONSE['200'].description} x-resolved-chain (see the operation description).`,
+          },
           ...REDIRECT_RESPONSE,
         },
       },
@@ -564,6 +650,13 @@ export const openapi = {
       get: {
         tags: ['Image Endpoints'],
         summary: 'Image by content hash — content-addressed access',
+        description:
+          'The hash in the path is the hash of the bytes this route serves, so the response at a given ' +
+          'address can never change — a resized or transcoded variant of it is equally fixed. Because of ' +
+          'that, this is the one route with a year-long cache: cache-control: public, max-age=31536000, ' +
+          'immutable, in place of the shorter, configured lifetime every other route serves. Callers ' +
+          'making many requests for the same set of images should cache through this route rather than ' +
+          're-fetching by chain and address.',
         'x-example': '/image/direct/048d63e01bc0c7079394113db00275c0001b679cd7b8749d17ee87c2efb32a78',
         parameters: [
           {
@@ -578,7 +671,13 @@ export const openapi = {
           },
           ...RESIZE_PARAMS,
         ],
-        responses: IMAGE_RESPONSE,
+        responses: {
+          ...IMAGE_RESPONSE,
+          '200': {
+            ...IMAGE_RESPONSE['200'],
+            description: `${IMAGE_RESPONSE['200'].description} cache-control: public, max-age=31536000, immutable.`,
+          },
+        },
       },
     },
     '/image/': {

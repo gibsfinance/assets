@@ -110,8 +110,11 @@ export default function Image({
   // Timeout: if the image hasn't loaded or errored within 10s, treat as failed
   useEffect(() => {
     if (loaded || shouldFallback || !visible) return
+    // The effect above already returns early whenever loaded is true, so this closure's
+    // loaded is always false for as long as this timer can fire. A stale-value re-check
+    // here can never take its other path, so there is nothing left to guard.
     const timer = setTimeout(() => {
-      if (!loaded) handleError()
+      handleError()
     }, 10_000)
     return () => clearTimeout(timer)
   }, [loaded, shouldFallback, visible])
@@ -139,25 +142,26 @@ export default function Image({
     />
   ) : null
 
-  const imgEl = visible && !shouldFallback ? (
-    <img
-      src={requestUrl}
-      alt={alt}
-      onError={handleError}
-      onLoad={handleLoad}
-      width={w}
-      height={h}
-      draggable={false}
-      decoding="async"
-      style={{
-        ...style,
-        width: w,
-        height: h,
-        ...(skeleton ? { opacity: loaded ? 1 : 0 } : {}),
-      }}
-      className={`${skeleton ? 'relative' : ''} ${className || ''}`}
-    />
-  ) : null
+  const imgEl =
+    visible && !shouldFallback ? (
+      <img
+        src={requestUrl}
+        alt={alt}
+        onError={handleError}
+        onLoad={handleLoad}
+        width={w}
+        height={h}
+        draggable={false}
+        decoding="async"
+        style={{
+          ...style,
+          width: w,
+          height: h,
+          ...(skeleton ? { opacity: loaded ? 1 : 0 } : {}),
+        }}
+        className={`${skeleton ? 'relative' : ''} ${className || ''}`}
+      />
+    ) : null
 
   const Tag = href ? 'a' : 'span'
   const linkProps = href ? { href, target: '_blank' as const, rel: 'noopener noreferrer' } : {}
@@ -167,8 +171,7 @@ export default function Image({
       ref={containerRef as React.Ref<HTMLAnchorElement & HTMLSpanElement>}
       className={`shrink-0 relative flex ${skeleton ? '' : className || ''}`}
       style={{ width: w, height: h }}
-      {...linkProps}
-    >
+      {...linkProps}>
       {skeletonEl}
       {imgEl}
     </Tag>

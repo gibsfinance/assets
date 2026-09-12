@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDrizzleHarness, createLogAppMock, renderSql } from './__testing__/drizzle-harness'
+import { createDrizzleHarness, createLogAppMock, renderSql, sqlParams } from './__testing__/drizzle-harness'
 
 const harness = createDrizzleHarness()
 vi.mock('./drizzle', () => ({ getDrizzle: () => harness.db }))
@@ -17,6 +17,7 @@ import {
   insertProvider,
   insertOrder,
   insertListToken,
+  markListTokensCollected,
 } from './index'
 import { listsWrittenInRun, withListPublication } from './publication'
 
@@ -371,5 +372,44 @@ describe('insertListToken', () => {
     })
 
     expect(enlisted).toEqual(['list-1'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// markListTokensCollected — the publish marker
+// ---------------------------------------------------------------------------
+
+describe('markListTokensCollected', () => {
+  it('stamps only the named list, and stamps it from the database clock', async () => {
+    // This marker is what `latestListVersionSql` reads to decide which version of a
+    // list is servable, so a WHERE clause that missed would publish every list a
+    // collector touched. The timestamp comes from CURRENT_TIMESTAMP rather than from
+    // the collector's own clock, because the ordering it takes part in is compared
+    // against rows other processes wrote.
+    harness.queueResult([{ listId: 'list-1' }])
+
+    await markListTokensCollected('list-1')
+
+    const query = harness.queries[0]
+    expect(query.root).toBe('update')
+    const set = query.steps.find((step) => step.method === 'set')?.args[0] as Record<string, unknown>
+    expect(renderSql(set.tokensCollectedAt)).toBe('CURRENT_TIMESTAMP')
+    const where = query.steps.find((step) => step.method === 'where')?.args[0]
+    expect(sqlParams(where)).toEqual(['list-1'])
+  })
+
+  it('writes through the transaction it is given, not through a fresh connection', async () => {
+    // Collectors call this at the end of a list, inside the transaction that wrote
+    // the tokens. Going out on a separate connection would let a reader see a list
+    // marked collected whose tokens had not committed yet — and, on a rollback,
+    // leave a list published with no tokens at all. The two handles are distinct
+    // here so "used the transaction" is something the test can actually observe.
+    const tx = createDrizzleHarness()
+    tx.queueResult([{ listId: 'list-1' }])
+
+    await markListTokensCollected('list-1', tx.db as never)
+
+    expect(tx.queries.map((query) => query.root)).toEqual(['update'])
+    expect(harness.queries).toEqual([])
   })
 })

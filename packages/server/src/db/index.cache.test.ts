@@ -21,6 +21,7 @@ import {
   insertCacheRequest,
   cachedJSON,
   cachedJSONRequest,
+  getLargestLists,
   transaction,
 } from './index'
 
@@ -93,6 +94,25 @@ describe('pruneVariants', () => {
     // never actually get evaluated for eviction again on a fair basis.
     const updateQuery = harness.queries.find((query) => query.root === 'update')
     expect(updateQuery?.steps.find((step) => step.method === 'set')?.args[0]).toEqual({ accessCount: 0 })
+  })
+
+  it('counts the evictions without fetching their image bytes', async () => {
+    // The return value feeds nothing but `.length`. A bare `.returning()` projects every
+    // column, `content` included, so counting a sweep used to pull the bytes of every
+    // evicted variant into this process — heaviest precisely when the table had grown
+    // large enough for the sweep to matter. The projection is what stops that, so it is
+    // asserted rather than left to a reviewer to notice.
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult(undefined)
+
+    await pruneVariants(3, 24)
+
+    const deleteQuery = harness.queries.find((query) => query.root === 'delete')
+    const projection = deleteQuery?.steps.find((step) => step.method === 'returning')?.args[0] as
+      | Record<string, unknown>
+      | undefined
+    expect(projection, 'the delete must project explicitly, not return whole rows').toBeDefined()
+    expect(Object.keys(projection ?? {})).not.toContain('content')
   })
 })
 
@@ -256,5 +276,49 @@ describe('transaction', () => {
 
     expect(result).toBe('done')
     expect(harness.queries.some((query) => query.root === 'transaction')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getLargestLists — what the cache warmer decides to warm
+// ---------------------------------------------------------------------------
+
+describe('getLargestLists', () => {
+  it('returns the rows, not the result envelope around them', async () => {
+    // db.execute answers with { rows }, and the warmer iterates what this returns.
+    // Handing back the envelope would make every warm target undefined, and the
+    // warmer would report success having warmed nothing.
+    harness.queueResult({ rows: [{ providerKey: 'coingecko', listKey: 'ethereum' }] })
+
+    const result = await getLargestLists(20)
+
+    expect(result).toEqual([{ providerKey: 'coingecko', listKey: 'ethereum' }])
+  })
+
+  it('counts only the newest version of each list', async () => {
+    // A list keeps its superseded versions. Counting their tokens too would rank a
+    // long-lived small list above a genuinely large one, and the warmer would spend
+    // its twenty slots on rows no response contains.
+    harness.queueResult({ rows: [] })
+
+    await getLargestLists(20)
+
+    const sql = renderSql(harness.queries[0].steps[0].args[0])
+    expect(sql).toContain('NOT EXISTS')
+    expect(sql).toContain('tokens_collected_at IS NOT NULL')
+  })
+
+  it('ranks by token count descending and stops at the requested limit', async () => {
+    // Largest-first is the whole point: the expensive tail is what a cold build
+    // makes a user wait for. The limit is what keeps the warmer from warming all
+    // 1193 lists, which would cost far more than it saves.
+    harness.queueResult({ rows: [] })
+
+    await getLargestLists(20)
+
+    const fragment = harness.queries[0].steps[0].args[0]
+    const sql = renderSql(fragment)
+    expect(sql).toContain('ORDER BY COUNT(*) DESC')
+    expect(sqlParams(fragment)).toContain(20)
   })
 })

@@ -8,10 +8,11 @@
  * render the page and assert what the studio ends up selecting.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Link } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { Token } from '../types'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -23,10 +24,66 @@ vi.mock('../utils', async () => {
 
 // The sibling panels pull in the virtualizer, the list editor, and IndexedDB.
 // None of that participates in URL hydration; a probe reporting what the studio
-// selected is the whole assertion.
-vi.mock('../components/StudioBrowser', () => ({ default: () => createElement('div', null, 'browser') }))
-vi.mock('../components/ListEditor', () => ({ default: () => createElement('div', null, 'editor') }))
-vi.mock('../components/TokenDetailModal', () => ({ default: () => null }))
+// selected is the whole assertion. The chain/token/inspect callbacks Studio
+// passes down are exposed as buttons so tests can drive them the way a real
+// browser click would, without pulling in the virtualizer.
+vi.mock('../components/StudioBrowser', () => ({
+  default: ({
+    onInspectToken,
+    selectChain,
+    selectToken,
+  }: {
+    onInspectToken: (token: Token) => void
+    selectChain?: (chainId: string | null) => void
+    selectToken?: (token: Token) => void
+  }) =>
+    createElement(
+      'div',
+      null,
+      'browser',
+      createElement(
+        'button',
+        { onClick: () => selectChain?.('eip155-137'), 'data-testid': 'browser-select-chain' },
+        'select chain',
+      ),
+      createElement(
+        'button',
+        { onClick: () => selectChain?.(null), 'data-testid': 'browser-clear-chain' },
+        'clear chain',
+      ),
+      createElement(
+        'button',
+        { onClick: () => selectToken?.(BASE_TOKEN), 'data-testid': 'browser-select-token' },
+        'select token',
+      ),
+      createElement(
+        'button',
+        { onClick: () => onInspectToken(BASE_TOKEN), 'data-testid': 'browser-inspect-token' },
+        'inspect token',
+      ),
+    ),
+}))
+vi.mock('../components/ListEditor', async () => {
+  const { useListEditor } = await import('../contexts/ListEditorContext')
+  return {
+    default: () => {
+      const { isOpen, editingListId, editingSourceKey } = useListEditor()
+      return createElement(
+        'div',
+        null,
+        createElement('span', { 'data-testid': 'editor-open' }, String(isOpen)),
+        createElement('span', { 'data-testid': 'editor-list-id' }, editingListId ?? 'none'),
+        createElement('span', { 'data-testid': 'editor-source-key' }, editingSourceKey ?? 'none'),
+      )
+    },
+  }
+})
+vi.mock('../components/TokenDetailModal', () => ({
+  default: ({ token, onClose }: { token: Token | null; onClose: () => void }) =>
+    token
+      ? createElement('button', { onClick: onClose, 'data-testid': 'modal-close' }, `inspecting ${token.symbol}`)
+      : null,
+}))
 
 // The list editor persists to IndexedDB, which jsdom does not provide.
 const idbStore = new Map<string, unknown>()
@@ -67,6 +124,19 @@ import { ListEditorProvider } from '../contexts/ListEditorContext'
 import { SettingsProvider } from '../contexts/SettingsContext'
 
 const SOLANA_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+
+// A token the mocked StudioBrowser hands back through selectToken/onInspectToken,
+// standing in for whatever the real browser would have picked.
+const BASE_TOKEN: Token = {
+  chainId: 8453,
+  address: '0xBaseToken00000000000000000000000000001',
+  name: 'Base Token',
+  symbol: 'BASE',
+  decimals: 18,
+  hasIcon: true,
+  sourceList: 'gib/default',
+  chainIdentifier: 'eip155-8453',
+}
 
 const TOKENS: Record<string, unknown> = {
   'solana-501': {
@@ -126,7 +196,20 @@ function renderStudio(initialUrl: string) {
         createElement(
           SettingsProvider,
           null,
-          createElement(StudioProvider, null, createElement(ListEditorProvider, null, createElement(Studio))),
+          createElement(
+            StudioProvider,
+            null,
+            createElement(
+              ListEditorProvider,
+              null,
+              createElement(Studio),
+              // A plain link into the same router, so a test can drop the URL back to
+              // `/studio` and observe how Studio reacts to a param disappearing —
+              // something calling renderStudio again with a new URL cannot exercise,
+              // since that mounts a fresh page rather than transitioning an existing one.
+              createElement(Link, { to: '/studio' }, 'go to /studio'),
+            ),
+          ),
         ),
       ),
     ),
@@ -179,5 +262,102 @@ describe('Studio URL hydration', () => {
     renderStudio('/studio')
     await waitFor(() => expect(probe('selected-chain')).toBe('none'))
     expect(probe('selected-token')).toBe('none')
+  })
+})
+
+describe('Studio editor URL hydration', () => {
+  it('opens a fresh editor from ?editor=new', async () => {
+    renderStudio('/studio?editor=new')
+    await waitFor(() => expect(probe('editor-open')).toBe('true'))
+    expect(probe('editor-list-id')).toBe('none')
+  })
+
+  it('opens the named list from ?editor=<id>', async () => {
+    renderStudio('/studio?editor=my-list-id')
+    await waitFor(() => expect(probe('editor-open')).toBe('true'))
+    expect(probe('editor-list-id')).toBe('my-list-id')
+  })
+
+  // The editor's own state has no memory of the URL it was opened from — only
+  // this effect closes it back down. If it stopped watching for the param's
+  // removal, a reader who navigated "back" to a plain /studio link would find
+  // the editor still covering the screen.
+  it('closes the editor once its URL param is gone', async () => {
+    renderStudio('/studio?editor=new')
+    await waitFor(() => expect(probe('editor-open')).toBe('true'))
+
+    fireEvent.click(screen.getByText('go to /studio'))
+
+    await waitFor(() => expect(probe('editor-open')).toBe('false'))
+    expect(probe('editor-list-id')).toBe('none')
+  })
+})
+
+describe('Studio chain and token selection write back to the URL', () => {
+  // If this callback forgot to push the chain into the URL, the browser's
+  // selection would work for the current render only — reloading, or sharing
+  // the link, would silently drop back to whatever chain was there before.
+  it('selecting a chain in the browser is reflected by the URL round-trip into context', async () => {
+    renderStudio('/studio')
+    await waitFor(() => expect(probe('selected-chain')).toBe('none'))
+
+    fireEvent.click(screen.getAllByTestId('browser-select-chain')[0])
+
+    await waitFor(() => expect(probe('selected-chain')).toBe('eip155-137'))
+  })
+
+  // Clearing the chain has to drop the token param too — a token belongs to
+  // exactly one chain, so leaving `token=` behind would have the next chain
+  // hydration effect try to match an address against the wrong chain's list.
+  it('clearing the chain also clears the previously selected token', async () => {
+    renderStudio(`/studio?chain=eip155-1&token=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`)
+    await waitFor(() => expect(probe('selected-token')).toBe('USDC-ETH'))
+
+    fireEvent.click(screen.getAllByTestId('browser-clear-chain')[0])
+
+    await waitFor(() => expect(probe('selected-chain')).toBe('none'))
+    expect(probe('selected-token')).toBe('none')
+  })
+
+  // selectToken updates context synchronously, ahead of the URL round-trip —
+  // the configurator must not sit on the previous token while the URL catches up.
+  it('selecting a token updates the configurator immediately, and its own chain with it', async () => {
+    renderStudio('/studio')
+
+    fireEvent.click(screen.getAllByTestId('browser-select-token')[0])
+
+    expect(probe('selected-token')).toBe(BASE_TOKEN.symbol)
+    expect(probe('selected-chain')).toBe(BASE_TOKEN.chainIdentifier)
+    expect(probe('selected-namespace')).toBe(BASE_TOKEN.chainIdentifier)
+  })
+})
+
+describe('Studio testnet toggle', () => {
+  it('flips its own label and title when clicked', async () => {
+    renderStudio('/studio')
+    await screen.findAllByTitle('Testnets hidden')
+
+    fireEvent.click(screen.getAllByTitle('Testnets hidden')[0])
+
+    await waitFor(() => expect(screen.getAllByTitle('Testnets visible').length).toBeGreaterThan(0))
+    expect(screen.getAllByText('Hide testnets').length).toBeGreaterThan(0)
+  })
+})
+
+describe('Studio token inspection modal', () => {
+  // Inspecting a token from the browser, then dismissing the modal, has to
+  // return to "nothing inspected" — otherwise the modal would either never
+  // open (a wiring bug in onInspectToken) or never close (a wiring bug in
+  // onClose), and a reader would be stuck looking at a stale token forever.
+  it('opens the modal for the inspected token, and closing it clears the selection', async () => {
+    renderStudio('/studio')
+    expect(screen.queryByTestId('modal-close')).toBeNull()
+
+    fireEvent.click(screen.getAllByTestId('browser-inspect-token')[0])
+    await waitFor(() => expect(screen.getByTestId('modal-close').textContent).toBe('inspecting BASE'))
+
+    fireEvent.click(screen.getByTestId('modal-close'))
+
+    await waitFor(() => expect(screen.queryByTestId('modal-close')).toBeNull())
   })
 })

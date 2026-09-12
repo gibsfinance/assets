@@ -19,10 +19,7 @@ function buildSpatialGrid(icons: PhysicsIcon[]): Map<string, SpatialCell> {
   return grid
 }
 
-function checkCollisionsInGrid(
-  grid: Map<string, SpatialCell>,
-  config: PhysicsConfig,
-): void {
+function checkCollisionsInGrid(grid: Map<string, SpatialCell>, config: PhysicsConfig): void {
   const checked = new Set<string>()
   for (const [key, cell] of grid) {
     const [cx, cy] = key.split(',').map(Number)
@@ -73,28 +70,55 @@ export function stepPhysics(
   checkCollisionsInGrid(grid, config)
 }
 
+/** A closed-open range: the low value is reachable, the high value is not. */
+type Range = readonly [low: number, high: number]
+
+/** How large, how fast and how solid the icons on each layer are. */
+const LAYER_PROFILES: Record<PhysicsIcon['layer'], { size: Range; speed: Range; opacity: Range }> = {
+  background: { size: [20, 30], speed: [0.2, 0.4], opacity: [0.15, 0.25] },
+  middle: { size: [40, 60], speed: [0.4, 0.6], opacity: [0.3, 0.5] },
+  foreground: { size: [60, 80], speed: [0.6, 0.8], opacity: [0.5, 0.7] },
+}
+
+/**
+ * Produces numbers from zero up to but not including one, like `Math.random`.
+ *
+ * Passing this in rather than reading the global lets a test say which number
+ * comes back and check where it lands. Stubbing `Math.random` for the whole
+ * process answers the same question, but it also answers it for everything else
+ * the call happens to touch.
+ */
+export type RandomSource = () => number
+
+/** Pick a value inside a range. A source of 0 gives the low end. */
+const inRange = ([low, high]: Range, random: RandomSource): number => low + random() * (high - low)
+
+/**
+ * Build one drifting icon.
+ *
+ * @param layer - Which depth band the icon belongs to. It sets every range.
+ * @param config - The canvas the icon is placed on.
+ * @param random - Source of randomness. Defaults to `Math.random`.
+ */
 export function createIcon(
   id: number,
   imgSrc: string,
   layer: PhysicsIcon['layer'],
   config: PhysicsConfig,
+  random: RandomSource = Math.random,
 ): PhysicsIcon {
-  const layerConfig = {
-    background: { sizeRange: [20, 30], speedRange: [0.2, 0.4], opacity: [0.15, 0.25] },
-    middle: { sizeRange: [40, 60], speedRange: [0.4, 0.6], opacity: [0.3, 0.5] },
-    foreground: { sizeRange: [60, 80], speedRange: [0.6, 0.8], opacity: [0.5, 0.7] },
-  }[layer]
+  const profile = LAYER_PROFILES[layer]
 
-  const size = layerConfig.sizeRange[0] + Math.random() * (layerConfig.sizeRange[1] - layerConfig.sizeRange[0])
-  const speed = layerConfig.speedRange[0] + Math.random() * (layerConfig.speedRange[1] - layerConfig.speedRange[0])
-  const opacity = layerConfig.opacity[0] + Math.random() * (layerConfig.opacity[1] - layerConfig.opacity[0])
-  const angle = Math.random() * Math.PI * 2
+  const size = inRange(profile.size, random)
+  const speed = inRange(profile.speed, random)
+  const opacity = inRange(profile.opacity, random)
+  const angle = random() * Math.PI * 2
 
   return {
     id,
     position: {
-      x: Math.random() * config.width,
-      y: Math.random() * config.height,
+      x: random() * config.width,
+      y: random() * config.height,
     },
     velocity: {
       x: Math.cos(angle) * speed,

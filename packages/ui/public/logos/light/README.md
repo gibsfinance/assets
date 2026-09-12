@@ -34,6 +34,7 @@ Images that are missing will not display (hidden via CSS `onerror` handler), so 
 ## Sources
 
 You can find logos from:
+
 - Official websites of each provider
 - Trust Wallet assets repository (available in submodules/trustwallet)
 - Smoldapp token assets repository (available in submodules/smoldapp-tokenassets)

@@ -39,6 +39,39 @@ describe('inmemory-tokenlist discover', () => {
     expect(harness.state.networks.size).toBe(3)
   })
 
+  it('loses only the chain the database refuses, not the rest of the list', async () => {
+    // Token lists really do number non-Ethereum chains as Ethereum ones:
+    // Uniswap's own default list carries Solana as 501000101, and the database
+    // refuses that by name. The refusal used to escape from here, which threw
+    // away the other twenty-four chains in that list and every list queued
+    // behind it - eighteen sub-lists lost to one bad number. The write loop
+    // already drops a token whose network is missing, so skipping the chain is
+    // the whole of what this needs to do.
+    harness.dbModule.insertNetworkFromChainId.mockImplementation(async (chainId: number) => {
+      if (chainId === 501000101) throw new Error('mis-numbered as eip155')
+      return { networkId: `network-${chainId}`, chainId: `eip155-${chainId}` }
+    })
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x1111111111111111111111111111111111111111' }),
+        buildTokenEntry({ chainId: 501000101, address: '0x2222222222222222222222222222222222222222' }),
+        buildTokenEntry({ chainId: 137, address: '0x3333333333333333333333333333333333333333' }),
+      ],
+    })
+
+    const state = await inmemoryTokenlist.discover({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(state).toBeDefined()
+    // The refused chain has no network; the two good ones do.
+    expect([...state!.networks.keys()].sort((a, b) => a - b)).toEqual([1, 137])
+    expect(state!.networks.has(501000101)).toBe(false)
+  })
+
   it('skips network creation for a zero chain id entry without erroring', async () => {
     const tokenList = buildTokenList({
       tokens: [
@@ -181,7 +214,14 @@ describe('inmemory-tokenlist discover', () => {
       controller.abort()
       return { networkId: `network:eip155-${chainId}`, type, chainId: `eip155-${chainId}` }
     })
-    const tokenList = buildTokenList({ tokens: [buildTokenEntry({ chainId: 1 })] })
+    // Two chains, so the abort has a remaining iteration to stop. With one chain the
+    // loop ends on its own and the check after it would carry the test regardless.
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0x111111111111111111111111111111111111111a' }),
+        buildTokenEntry({ chainId: 137, address: '0x222222222222222222222222222222222222222b' }),
+      ],
+    })
 
     const state = await inmemoryTokenlist.discover({
       providerKey: 'acme',
@@ -191,6 +231,9 @@ describe('inmemory-tokenlist discover', () => {
     })
 
     expect(state).toBeUndefined()
+    // The second chain is never inserted: a shutdown stops the walk, it does not merely
+    // discard what the walk produced.
+    expect(harness.dbModule.insertNetworkFromChainId).toHaveBeenCalledTimes(1)
     expect(harness.state.providers).toHaveLength(0)
   })
 
@@ -486,6 +529,151 @@ describe('inmemory-tokenlist collect', () => {
 
     // Only the first token — aborting mid-loop stops the second from being reached.
     expect(harness.state.tokenImages).toHaveLength(1)
+  })
+
+  // The four abort checkpoints below exist because a shutdown has to take effect
+  // now, not at the end of a two-hundred-and-fifty token chunk. Each one guards a
+  // different phase, and a phase whose guard was dropped would keep writing after
+  // the process had been told to stop — which on a version bump means publishing a
+  // partial list over a complete one.
+
+  it('writes nothing when the shutdown arrives between discovery and the logo download', async () => {
+    // A caller that pre-discovers reaches `collect` with the provider and list already
+    // created. That is the window this guard covers: nothing has been downloaded yet,
+    // so stopping here costs nothing and saves the whole download phase.
+    const controller = new AbortController()
+    const tokenList = buildTokenList({ tokens: [buildTokenEntry({ chainId: 1 })] })
+    const discovered = await inmemoryTokenlist.discover({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+    controller.abort()
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      discovered,
+      signal: controller.signal,
+    })
+
+    expect(harness.dbModule.prewarmImages).not.toHaveBeenCalled()
+    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.dbModule.markListTokensCollected).not.toHaveBeenCalled()
+  })
+
+  it('opens no write transaction when the shutdown arrives during the logo download', async () => {
+    // Downloading every logo is the long phase, so this is where a shutdown most often
+    // lands. Asserting on the transaction rather than on the rows written is deliberate:
+    // the per-entry guard inside the transaction would keep the row count at zero on its
+    // own, so a row count cannot tell whether the loop stopped or merely wrote nothing.
+    const controller = new AbortController()
+    harness.dbModule.prewarmImages.mockImplementationOnce(async () => {
+      controller.abort()
+      return { missing: new Set<string>() }
+    })
+    const tokenList = buildTokenList({ tokens: [buildTokenEntry({ chainId: 1 })] })
+    const discovered = await inmemoryTokenlist.discover({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+    // Discovery opens a transaction of its own to create the provider and the list.
+    // Clearing here leaves the count reporting the write loop and nothing else.
+    harness.dbModule.transaction.mockClear()
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      discovered,
+      signal: controller.signal,
+    })
+
+    expect(harness.dbModule.transaction).not.toHaveBeenCalled()
+    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.dbModule.markListTokensCollected).not.toHaveBeenCalled()
+  })
+
+  it('opens no transaction for the chunks it has not reached', async () => {
+    // Tokens are written 250 to a transaction. An abort inside one chunk ends that
+    // transaction early, and this guard is what stops the loop from opening the next
+    // one. Without it a shutdown on a large list still opens, and commits, one empty
+    // transaction per remaining chunk — 39 of them on a 10,000 token list.
+    const controller = new AbortController()
+    harness.dbModule.fetchImageAndStoreForToken.mockImplementationOnce(async (input) => {
+      controller.abort()
+      harness.state.tokenImages.push({
+        providerKey: input.providerKey,
+        listId: input.listId,
+        listTokenOrderId: input.listTokenOrderId,
+        uri: input.uri,
+        originalUri: input.originalUri,
+        token: input.token,
+      })
+    })
+    // One token past the chunk size, so there is a second chunk for the guard to refuse.
+    const tokenList = buildTokenList({
+      tokens: Array.from({ length: 251 }, (_, index) =>
+        buildTokenEntry({ chainId: 1, address: `0x${index.toString(16).padStart(40, '0')}` }),
+      ),
+    })
+    const discovered = await inmemoryTokenlist.discover({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+    harness.dbModule.transaction.mockClear()
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      discovered,
+      signal: controller.signal,
+    })
+
+    // One transaction: the chunk the abort landed in. The second chunk is never opened.
+    expect(harness.dbModule.transaction).toHaveBeenCalledTimes(1)
+    expect(harness.state.tokenImages).toHaveLength(1)
+    expect(harness.dbModule.markListTokensCollected).not.toHaveBeenCalled()
+  })
+
+  it('stops the single-token replay of a failed chunk', async () => {
+    // The replay is the slow path — one transaction per token — so a shutdown during
+    // it has the most to save. The first call fails the whole chunk, the second aborts
+    // during the replay, and the third token must never be attempted.
+    const controller = new AbortController()
+    harness.dbModule.fetchImageAndStoreForToken
+      .mockImplementationOnce(async () => {
+        throw new Error('deadlock detected')
+      })
+      .mockImplementationOnce(async () => {
+        controller.abort()
+      })
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ chainId: 1, address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }),
+        buildTokenEntry({ chainId: 1, address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }),
+        buildTokenEntry({ chainId: 1, address: '0xcccccccccccccccccccccccccccccccccccccccc' }),
+      ],
+    })
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: controller.signal,
+    })
+
+    // Exactly two attempts: the one that failed the chunk, and the first of the replay.
+    expect(harness.dbModule.fetchImageAndStoreForToken).toHaveBeenCalledTimes(2)
+    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.dbModule.markListTokensCollected).not.toHaveBeenCalled()
   })
 
   it('publishes the list once every token has been walked', async () => {

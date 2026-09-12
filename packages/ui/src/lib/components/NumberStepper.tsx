@@ -29,10 +29,7 @@ export default function NumberStepper({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const clamp = useCallback(
-    (v: number) => Math.min(max, Math.max(min, v)),
-    [min, max],
-  )
+  const clamp = useCallback((v: number) => Math.min(max, Math.max(min, v)), [min, max])
 
   const increment = useCallback(() => {
     onChange(clamp(value + step))
@@ -42,15 +39,12 @@ export default function NumberStepper({
     onChange(clamp(value - step))
   }, [onChange, clamp, value, step])
 
-  const startHold = useCallback(
-    (action: () => void) => {
-      // Initial delay before rapid fire
-      timeoutRef.current = setTimeout(() => {
-        intervalRef.current = setInterval(action, 80)
-      }, 400)
-    },
-    [],
-  )
+  const startHold = useCallback((action: () => void) => {
+    // Initial delay before rapid fire
+    timeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(action, 80)
+    }, 400)
+  }, [])
 
   const stopHold = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -76,14 +70,9 @@ export default function NumberStepper({
 
   return (
     <div className="flex items-center gap-1">
-      {label && (
-        <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">
-          {label}
-        </span>
-      )}
+      {label && <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">{label}</span>}
       <div
-        className={`${width} flex h-7 items-stretch rounded-md border border-border-light bg-gray-50 dark:border-border-dark dark:bg-surface-2 overflow-hidden`}
-      >
+        className={`${width} flex h-7 items-stretch rounded-md border border-border-light bg-gray-50 dark:border-border-dark dark:bg-surface-2 overflow-hidden`}>
         <button
           type="button"
           onClick={decrement}
@@ -92,8 +81,7 @@ export default function NumberStepper({
           onMouseLeave={stopHold}
           className={btnClass}
           aria-label="Decrease"
-          disabled={value <= min}
-        >
+          disabled={value <= min}>
           <i className="fas fa-minus" />
         </button>
         <input
@@ -112,8 +100,7 @@ export default function NumberStepper({
           onMouseLeave={stopHold}
           className={btnClass}
           aria-label="Increase"
-          disabled={value >= max}
-        >
+          disabled={value >= max}>
           <i className="fas fa-plus" />
         </button>
       </div>

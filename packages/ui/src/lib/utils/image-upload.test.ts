@@ -130,9 +130,7 @@ describe('submitImage', () => {
       json: async () => ({ error: 'Invalid image format' }),
     } as Response)
 
-    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow(
-      'Invalid image format',
-    )
+    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow('Invalid image format')
   })
 
   it('throws a generic message when server returns non-ok with no error field', async () => {
@@ -142,20 +140,18 @@ describe('submitImage', () => {
       json: async () => ({}),
     } as Response)
 
-    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow(
-      'Upload failed: 500',
-    )
+    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow('Upload failed: 500')
   })
 
   it('throws a fallback message when server returns non-ok and JSON parsing fails', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 503,
-      json: async () => { throw new Error('not json') },
+      json: async () => {
+        throw new Error('not json')
+      },
     } as unknown as Response)
 
-    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow(
-      'Upload failed',
-    )
+    await expect(submitImage(1, '0xdeadbeef', 'data:image/png;base64,bad')).rejects.toThrow('Upload failed')
   })
 })

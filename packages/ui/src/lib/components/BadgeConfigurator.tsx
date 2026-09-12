@@ -43,10 +43,7 @@ function CompactSlider({
 export default function BadgeConfigurator() {
   const { badge, updateBadge } = useStudio()
 
-  const handleAngleChange = useCallback(
-    (angleDeg: number) => updateBadge({ angleDeg }),
-    [updateBadge],
-  )
+  const handleAngleChange = useCallback((angleDeg: number) => updateBadge({ angleDeg }), [updateBadge])
 
   const isDisabled = !badge.enabled
 
@@ -96,8 +93,7 @@ export default function BadgeConfigurator() {
                 (badge.badgeShape ?? 'circle') === shape
                   ? 'bg-accent-500/10 text-accent-500'
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-surface-3 dark:text-white/50'
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-            >
+              } disabled:cursor-not-allowed disabled:opacity-40`}>
               {shape.charAt(0).toUpperCase() + shape.slice(1)}
             </button>
           ))}
@@ -130,7 +126,8 @@ export default function BadgeConfigurator() {
                 : 'border-border-light dark:border-border-dark'
             }`}
             style={{
-              backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
+              backgroundImage:
+                'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
               backgroundSize: '5px 5px',
               backgroundPosition: '0 0, 0 2.5px, 2.5px -2.5px, -2.5px 0px',
             }}

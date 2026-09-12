@@ -27,10 +27,7 @@ export function getTranslateY(state: DrawerState, viewportHeight: number): numbe
 }
 
 /** Determine target state based on flick velocity */
-export function resolveFlickState(
-  velocity: number,
-  currentState: DrawerState,
-): DrawerState | null {
+export function resolveFlickState(velocity: number, currentState: DrawerState): DrawerState | null {
   if (velocity < -0.3) {
     return currentState === 'collapsed' ? 'half' : 'full'
   }
@@ -55,9 +52,7 @@ export function snapToNearestState(finalY: number, viewportHeight: number): Draw
   return 'collapsed'
 }
 
-export type TouchEndResult =
-  | { type: 'tap' }
-  | { type: 'resolved'; state: DrawerState }
+export type TouchEndResult = { type: 'tap' } | { type: 'resolved'; state: DrawerState }
 
 /** Determine the drawer state after a touch ends — tap, flick, or snap. */
 export function resolveTouchEndState(
@@ -88,9 +83,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
   const [drawerState, setDrawerState] = useState<DrawerState>('collapsed')
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState(
-    typeof window !== 'undefined' ? window.innerHeight : 800,
-  )
+  const [viewportHeight, setViewportHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800)
 
   const touchStartY = useRef(0)
   const touchStartTime = useRef(0)
@@ -118,7 +111,9 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
   useEffect(() => {
     if (drawerState === 'full') {
       document.body.style.overflow = 'hidden'
-      return () => { document.body.style.overflow = '' }
+      return () => {
+        document.body.style.overflow = ''
+      }
     }
   }, [drawerState])
 
@@ -166,13 +161,12 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     setIsDragging(false)
 
     // Reset wasTouched after the click event has had a chance to fire
-    requestAnimationFrame(() => { wasTouched.current = false })
+    requestAnimationFrame(() => {
+      wasTouched.current = false
+    })
 
     const elapsed = Date.now() - touchStartTime.current
-    const result = resolveTouchEndState(
-      dragOffset, elapsed, drawerState,
-      currentTranslateY.current, viewportHeight,
-    )
+    const result = resolveTouchEndState(dragOffset, elapsed, drawerState, currentTranslateY.current, viewportHeight)
 
     if (result.type === 'tap') {
       setDrawerState(nextState)
@@ -196,9 +190,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
 
   if (!enabled) return null
 
-  const translateY = isDragging
-    ? Math.max(0, baseTranslateY + dragOffset)
-    : baseTranslateY
+  const translateY = isDragging ? Math.max(0, baseTranslateY + dragOffset) : baseTranslateY
 
   const isOpen = drawerState !== 'collapsed'
   const showBackdrop = drawerState === 'full' && !isDragging
@@ -207,11 +199,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
     <>
       {/* Backdrop */}
       {showBackdrop && (
-        <div
-          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
-          onClick={handleBackdropClick}
-          aria-hidden="true"
-        />
+        <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={handleBackdropClick} aria-hidden="true" />
       )}
 
       {/* Drawer */}
@@ -225,8 +213,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
           transform: `translateY(${translateY}px)`,
           transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
           willChange: 'transform',
-        }}
-      >
+        }}>
         {/* Handle area */}
         <div
           className="flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
@@ -237,17 +224,14 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
           onClick={handleClick}
           role="button"
           tabIndex={0}
-          aria-label={isOpen ? 'Collapse drawer' : 'Expand drawer'}
-        >
+          aria-label={isOpen ? 'Collapse drawer' : 'Expand drawer'}>
           {/* Drag indicator */}
           <div className="flex justify-center pt-2.5 pb-1">
             <div className="w-9 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
           </div>
           {/* Handle content */}
           <div className="px-4 pb-2.5 min-h-[28px] flex items-center">
-            {handle ?? (
-              <span className="text-sm text-gray-400 dark:text-gray-500">Configure</span>
-            )}
+            {handle ?? <span className="text-sm text-gray-400 dark:text-gray-500">Configure</span>}
           </div>
         </div>
 

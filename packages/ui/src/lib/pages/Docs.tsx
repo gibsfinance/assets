@@ -7,6 +7,7 @@ import EndpointCard from '../components/EndpointCard'
 import FrameworkSwitcher from '../components/FrameworkSwitcher'
 import { getApiUrl } from '../utils'
 import { specToSections, type OpenApiDocument, type DocsEndpointSection } from '../utils/openapi-docs'
+import { filterEndpoints } from '../utils/endpoint-filter'
 
 // ---------------------------------------------------------------------------
 // Static data — endpoint sections render from the served OpenAPI definition
@@ -164,17 +165,6 @@ curl "${apiBase}/stats" | jq '.[:5]'`,
 // Helpers
 // ---------------------------------------------------------------------------
 
-function filterEndpoints<T extends { path: string; description: string }>(
-  endpoints: T[],
-  query: string,
-): T[] {
-  if (!query.trim()) return endpoints
-  const lower = query.toLowerCase()
-  return endpoints.filter(
-    (e) => e.path.toLowerCase().includes(lower) || e.description.toLowerCase().includes(lower),
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -188,7 +178,11 @@ export default function Docs() {
 
   // The endpoint documentation is the served OpenAPI definition — one section
   // per tag, one card per operation. Updating the definition updates the page.
-  const { data: spec, isLoading: specLoading, error: specError } = useQuery({
+  const {
+    data: spec,
+    isLoading: specLoading,
+    error: specError,
+  } = useQuery({
     queryKey: ['openapi'],
     queryFn: async () => {
       const response = await fetch(getApiUrl('/openapi.json'))
@@ -198,10 +192,7 @@ export default function Docs() {
     staleTime: 60 * 60 * 1000,
   })
 
-  const endpointSections = useMemo<DocsEndpointSection[]>(
-    () => (spec ? specToSections(spec, apiBase) : []),
-    [spec],
-  )
+  const endpointSections = useMemo<DocsEndpointSection[]>(() => (spec ? specToSections(spec, apiBase) : []), [spec])
 
   const sections = useMemo<DocsSidebarSection[]>(
     () => [...endpointSections.map(({ id, label }) => ({ id, label })), ...STATIC_SECTIONS],
@@ -244,7 +235,11 @@ export default function Docs() {
       })),
     [endpointSections, filterQuery],
   )
-  const activeExample = CODE_EXAMPLES[activeLanguage] ?? CODE_EXAMPLES.javascript
+  // activeLanguage only ever holds a key from CODE_LANGUAGES (its initial value and the
+  // only value FrameworkSwitcher's onSelect ever passes), and every one of those keys is
+  // a key of CODE_EXAMPLES. The lookup below can never miss, so there is no fallback to
+  // fall back to.
+  const activeExample = CODE_EXAMPLES[activeLanguage]
 
   return (
     <div className="min-h-screen">
@@ -254,15 +249,12 @@ export default function Docs() {
           <h1 className="font-heading text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
             API <span className="text-gradient-brand">Documentation</span>
           </h1>
-          <p className="mt-3 text-lg text-gray-600 dark:text-gray-400">
-            Complete reference for the Gib Assets API
-          </p>
+          <p className="mt-3 text-lg text-gray-600 dark:text-gray-400">Complete reference for the Gib Assets API</p>
           <a
             href={getApiUrl('/openapi.json')}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border-light dark:border-border-dark px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:border-accent-500/40 hover:text-accent-500"
-          >
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border-light dark:border-border-dark px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:border-accent-500/40 hover:text-accent-500">
             <i className="fas fa-code text-xs" />
             OpenAPI definition
             <span className="font-mono text-xs text-gray-400 dark:text-gray-500">/openapi.json</span>
@@ -321,9 +313,7 @@ export default function Docs() {
             )}
             {filteredSections.map((section) => (
               <section key={section.id} id={section.id} className="scroll-mt-24 space-y-4">
-                <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">
-                  {section.label}
-                </h2>
+                <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">{section.label}</h2>
                 {section.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400">{section.description}</p>
                 )}
@@ -343,9 +333,7 @@ export default function Docs() {
 
             {/* Features */}
             <section id="features" className="scroll-mt-24 space-y-4">
-              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">
-                Features
-              </h2>
+              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">Features</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 {FEATURES.map((feature) => (
                   <div key={feature.title} className="glass-card p-5 space-y-3">
@@ -353,16 +341,11 @@ export default function Docs() {
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/10">
                         <i className={`fas ${feature.icon} text-accent-500 text-sm`} />
                       </div>
-                      <h3 className="font-heading font-semibold text-gray-900 dark:text-white">
-                        {feature.title}
-                      </h3>
+                      <h3 className="font-heading font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
                     </div>
                     <ul className="space-y-1.5 pl-1">
                       {feature.items.map((item) => (
-                        <li
-                          key={item}
-                          className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
-                        >
+                        <li key={item} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <span className="h-1 w-1 rounded-full bg-accent-500 shrink-0" />
                           {item}
                         </li>
@@ -375,9 +358,7 @@ export default function Docs() {
 
             {/* Code Examples */}
             <section id="code-examples" className="scroll-mt-24 space-y-4">
-              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">
-                Code Examples
-              </h2>
+              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">Code Examples</h2>
               <div className="glass-card overflow-hidden">
                 <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark px-4 py-3">
                   <FrameworkSwitcher
@@ -399,10 +380,7 @@ export default function Docs() {
 
             {/* CTA */}
             <div className="flex justify-center pb-8">
-              <Link
-                to="/studio"
-                className="btn-primary inline-flex items-center gap-2"
-              >
+              <Link to="/studio" className="btn-primary inline-flex items-center gap-2">
                 <i className="fas fa-wand-magic-sparkles" />
                 Open Studio
               </Link>

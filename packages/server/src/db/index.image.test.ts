@@ -880,6 +880,29 @@ describe('fetchImageAndStoreForNetwork', () => {
     expect(result?.network).toMatchObject({ imageHash: 'hash-curated', imageProviderKey: 'smoldapp' })
   })
 
+  it("reports the caller's own network when the claim writes no row", async () => {
+    // The claim selects the incumbent, then updates. Both answer with nothing when the
+    // network row was removed between this collector reading it and writing — a
+    // re-sync does exactly that. The image is still fresh and still worth reporting,
+    // so the caller keeps the network it passed in. Handing back an undefined network
+    // instead would fail one step later, in a collector reading `result.network`, with
+    // no trace of where the row went.
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }])
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult([]) // incumbent lookup: the row is gone
+    harness.queueResult([]) // update: matched nothing, so returning() is empty
+
+    const result = await fetchImageAndStoreForNetwork({
+      network,
+      uri: 'https://x/icon.png',
+      originalUri: 'https://x/icon.png',
+      providerKey: 'chainlist',
+    })
+
+    expect(result?.network).toBe(network)
+    expect(result?.image).toMatchObject({ imageHash: 'hash-1' })
+  })
+
   it('stores a fetched image and the network row inside a single transaction', async () => {
     harness.queueResult([]) // getFreshImageFromLink: link lookup misses
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))

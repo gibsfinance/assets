@@ -32,13 +32,8 @@ export function ThemeToggle() {
             : 'bg-surface-light-2 dark:bg-surface-2 text-gray-700 dark:text-gray-300 hover:bg-surface-light-3 dark:hover:bg-surface-3'
         }`}
         onClick={handleThemeClick}
-        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      >
-        {isDark ? (
-          <i className="fas fa-sun text-base" />
-        ) : (
-          <i className="fas fa-moon text-base" />
-        )}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+        {isDark ? <i className="fas fa-sun text-base" /> : <i className="fas fa-moon text-base" />}
       </button>
       <button
         type="button"
@@ -48,8 +43,7 @@ export function ThemeToggle() {
             : 'bg-surface-light-2 dark:bg-surface-2 text-gray-400 dark:text-gray-500 hover:bg-surface-light-3 dark:hover:bg-surface-3'
         }`}
         onClick={handleSystemClick}
-        title={isSystem ? 'Using system theme' : 'Use system theme'}
-      >
+        title={isSystem ? 'Using system theme' : 'Use system theme'}>
         <i className="fas fa-desktop text-base" />
       </button>
     </div>

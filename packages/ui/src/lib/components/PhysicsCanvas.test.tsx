@@ -82,8 +82,6 @@ const lastFrameIcons = () => {
   return iconsFrom(lastClear === -1 ? calls : calls.slice(lastClear))
 }
 
-const meanY = (icons: DrawnIcon[]) => icons.reduce((sum, icon) => sum + icon.y, 0) / icons.length
-
 /**
  * Match icons between two frames by diameter.
  *
@@ -165,6 +163,8 @@ let failingProviders: string[] = []
 let emptyProviders: string[] = []
 /** Whether the provider list itself comes back with an unusable entry. */
 let malformedProviderList = false
+/** Whether the provider list comes back with no providers at all. */
+let noProvidersConfigured = false
 
 const networksBody = () =>
   Array.from({ length: networkCount }, (_unused, index) => ({
@@ -209,7 +209,7 @@ const stubFetch = () =>
         }
         return { ok: true, json: async () => tokensBody(providerKey) } as unknown as Response
       }
-      const providers = malformedProviderList ? [null, ...providersBody] : providersBody
+      const providers = noProvidersConfigured ? [] : malformedProviderList ? [null, ...providersBody] : providersBody
       return { ok: true, json: async () => providers } as unknown as Response
     }),
   )
@@ -256,6 +256,7 @@ beforeEach(() => {
   failingProviders = []
   emptyProviders = []
   malformedProviderList = false
+  noProvidersConfigured = false
   resetRandom()
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
@@ -384,6 +385,20 @@ describe('PhysicsCanvas — the element itself', () => {
     expect(canvas.width).toBe(700 * PIXEL_RATIO)
     expect(canvas.height).toBe(500 * PIXEL_RATIO)
     expect(canvas.style.width).toBe('700px')
+  })
+
+  it('sizes the element and keeps drawing quiet when the browser refuses a context', async () => {
+    // A canvas can decline to hand back a drawing context, for example once a
+    // browser's context limit is reached. Both the resize handler and the frame
+    // loop read the context before touching it; without that check either one
+    // would throw on the null result and the whole component would come down.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    const { container } = await mountCanvas()
+    const canvas = canvasOf(container)
+    expect(canvas.width).toBe(VIEWPORT_WIDTH * PIXEL_RATIO)
+    calls = []
+    expect(() => step()).not.toThrow()
+    expect(calls.length).toBe(0)
   })
 })
 
@@ -638,6 +653,38 @@ describe('PhysicsCanvas — reduced motion', () => {
     fireResize()
     expect(allDrawnIcons().length).toBeGreaterThan(0)
   })
+
+  it('does not draw to a detached canvas when a still-frame image finishes loading after unmount', async () => {
+    // A real image can finish loading well after the component that requested
+    // it is gone, if a visitor navigates away first. The load event still
+    // fires, but the canvas element is gone. Without this guard, that late
+    // arrival would throw from inside the load callback instead of quietly
+    // doing nothing. Each load is captured instead of firing immediately, so
+    // the test can choose to run it only once the component is unmounted —
+    // the exact ordering a slow image load can produce for real.
+    const pendingLoads: Array<() => void> = []
+    class DeferredFakeImage {
+      crossOrigin = ''
+      onload: (() => void) | null = null
+      private source = ''
+      set src(value: string) {
+        this.source = value
+        requestedImages.push(this as unknown as FakeImage)
+        pendingLoads.push(() => this.onload?.())
+      }
+      get src() {
+        return this.source
+      }
+    }
+    vi.stubGlobal('Image', DeferredFakeImage)
+
+    const { unmount } = render(<PhysicsCanvas />, { wrapper })
+    await waitFor(() => expect(requestedImages.length).toBeGreaterThan(0))
+    calls = []
+    unmount()
+    expect(() => pendingLoads.forEach((load) => load())).not.toThrow()
+    expect(calls.length).toBe(0)
+  })
 })
 
 describe('PhysicsCanvas — building the field', () => {
@@ -688,6 +735,18 @@ describe('PhysicsCanvas — building the field', () => {
     await mountCanvas()
     expect(requestedSources().every((source) => /\/image\/eip155-\d+$/.test(source))).toBe(true)
     expect(requestedImages.length).toBeGreaterThan(0)
+  })
+
+  it('samples no tokens and asks no list for them when no providers are configured', async () => {
+    // An empty provider list is a legitimate state, not a failure. Without this
+    // early exit the function still ends up with no token sources, but a passing
+    // test here pins the more important fact: it does not send a wasted list
+    // request first. If a future rewrite made the empty list start a fetch loop,
+    // this is the test that would catch it.
+    noProvidersConfigured = true
+    await mountCanvas()
+    expect(fetchedUrls.some((url) => url.includes('/list/'))).toBe(false)
+    expect(requestedSources().every((source) => /\/image\/eip155-\d+$/.test(source))).toBe(true)
   })
 
   it('keeps the field when the provider list itself is malformed', async () => {

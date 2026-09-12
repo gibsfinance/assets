@@ -41,6 +41,29 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Byte count for display, or a word when there is no count to show.
+ *
+ * Metadata arrives from the image pipeline with nulls in it — an image whose
+ * size was never recorded is not an image of zero bytes, and must not read as one.
+ */
+export function formatFileSize(bytes: number | null): string {
+  if (bytes === null) return 'Unknown'
+  return formatBytes(bytes)
+}
+
+/**
+ * Pixel dimensions for display.
+ *
+ * A vector image has no pixel size to report, so it says what it is instead of
+ * reporting whatever raster dimensions happened to be stored alongside it.
+ */
+export function formatDimensions(format: string, width: number | null, height: number | null): string {
+  if (format === 'SVG') return 'Scalable'
+  if (width && height) return `${width} × ${height} px`
+  return 'Unknown'
+}
+
 /** Detect image format from a URI (data URI or URL with extension) */
 export function detectImageFormat(imageUri: string): string {
   if (imageUri.startsWith('data:')) {

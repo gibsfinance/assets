@@ -5,6 +5,7 @@ import {
   createGitLabPublisher,
   createGiteaPublisher,
   handleOAuthCallback,
+  buildPublishers,
 } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
 
@@ -109,13 +110,13 @@ describe('toTokenListJson', () => {
 
 describe('createGitHubPublisher', () => {
   it('creates a publisher with correct name and icon', () => {
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     expect(publisher.name).toBe('GitHub')
     expect(publisher.icon).toBe('fab fa-github')
   })
 
   it('starts unauthorized', () => {
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     expect(publisher.isAuthorized()).toBe(false)
   })
 })
@@ -176,28 +177,33 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
 
   it('GitHub: isAuthorized returns true when a valid token is stored', () => {
     seedToken('github', 'ghp_valid')
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     expect(publisher.isAuthorized()).toBe(true)
   })
 
   it('GitHub: isAuthorized returns false when token is expired (>30 days)', () => {
     seedExpiredToken('github', 'ghp_expired')
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     expect(publisher.isAuthorized()).toBe(false)
   })
 
   it('GitHub: expired token is removed from localStorage', () => {
     seedExpiredToken('github', 'ghp_expired')
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     publisher.isAuthorized() // triggers cleanup
     const stored = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || '{}')
     expect(stored.github).toBeUndefined()
   })
 
-  it('GitHub: isAuthorized returns true for legacy plain-string token (no TTL)', () => {
+  // An entry with no timestamp cannot be shown to be inside the thirty-day
+  // window. These three tests used to assert the opposite - that a token written
+  // before the expiry existed keeps working - which let exactly the credentials
+  // with the longest lives in a browser profile skip the only check on them.
+  // The user authorizes once more; the token store keeps its promise.
+  it('GitHub: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('github', 'ghp_legacy')
-    const publisher = createGitHubPublisher('https://gib.show')
-    expect(publisher.isAuthorized()).toBe(true)
+    const publisher = createGitHubPublisher()
+    expect(publisher.isAuthorized()).toBe(false)
   })
 
   it('GitLab: isAuthorized returns true when a valid token is stored', () => {
@@ -212,10 +218,10 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
     expect(publisher.isAuthorized()).toBe(false)
   })
 
-  it('GitLab: isAuthorized returns true for legacy plain-string token', () => {
+  it('GitLab: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('gitlab', 'glpat_legacy')
     const publisher = createGitLabPublisher({ clientId: 'cid', serverBaseUrl: 'https://gib.show' })
-    expect(publisher.isAuthorized()).toBe(true)
+    expect(publisher.isAuthorized()).toBe(false)
   })
 
   it('Gitea: isAuthorized returns true when a valid token is stored', () => {
@@ -230,10 +236,10 @@ describe('token storage — isAuthorized via seeded localStorage', () => {
     expect(publisher.isAuthorized()).toBe(false)
   })
 
-  it('Gitea: isAuthorized returns true for legacy plain-string token', () => {
+  it('Gitea: treats a stored token with no timestamp as expired', () => {
     seedLegacyToken('gitea', 'gt_legacy')
     const publisher = createGiteaPublisher({ serverUrl: 'https://gitea.example.com' })
-    expect(publisher.isAuthorized()).toBe(true)
+    expect(publisher.isAuthorized()).toBe(false)
   })
 })
 
@@ -261,41 +267,46 @@ describe('GitHub publish', () => {
   })
 
   it('throws when token is missing', async () => {
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await expect(publisher.publish(makeList(), {})).rejects.toThrow('Not authorized with GitHub')
   })
 
   it('throws when user fetch fails', async () => {
     seedToken('github', 'ghp_token')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await expect(publisher.publish(makeList(), {})).rejects.toThrow('GitHub auth failed')
   })
 
   it('creates repo (404) and pushes new file (no sha)', async () => {
     seedToken('github', 'ghp_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'testuser' }) })
       // GET /repos/testuser/... → 404 (repo doesn't exist)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST /user/repos (create)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://github.com/testuser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://github.com/testuser/token-list-test-list' }),
+      })
       // GET file contents → 404 (no existing file)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // PUT file
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({
-          commit: { html_url: 'https://github.com/testuser/token-list-test-list/commit/abc' },
-          content: { html_url: 'https://github.com/testuser/token-list-test-list/blob/main/tokenlist.json' },
-        }),
+        json: () =>
+          Promise.resolve({
+            commit: { html_url: 'https://github.com/testuser/token-list-test-list/commit/abc' },
+            content: { html_url: 'https://github.com/testuser/token-list-test-list/blob/main/tokenlist.json' },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     const result = await publisher.publish(makeList(), {})
 
     expect(result.repoUrl).toBe('https://github.com/testuser/token-list-test-list')
@@ -306,25 +317,30 @@ describe('GitHub publish', () => {
   it('updates existing repo and file (has sha)', async () => {
     seedToken('github', 'ghp_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'testuser' }) })
       // GET /repos/testuser/... → ok (existing repo)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://github.com/testuser/my-repo' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://github.com/testuser/my-repo' }),
+      })
       // GET file contents → ok (existing file with sha)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ sha: 'existing-sha-123' }) })
       // PUT file
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({
-          commit: { html_url: 'https://github.com/testuser/my-repo/commit/def' },
-          content: { html_url: 'https://github.com/testuser/my-repo/blob/main/tokenlist.json' },
-        }),
+        json: () =>
+          Promise.resolve({
+            commit: { html_url: 'https://github.com/testuser/my-repo/commit/def' },
+            content: { html_url: 'https://github.com/testuser/my-repo/blob/main/tokenlist.json' },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     const result = await publisher.publish(makeList(), { repoName: 'my-repo' })
 
     expect(result.repoUrl).toBe('https://github.com/testuser/my-repo')
@@ -361,13 +377,17 @@ describe('GitLab publish', () => {
   it('creates project (404) and pushes new file (POST)', async () => {
     seedToken('gitlab', 'glpat_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ username: 'gluser' }) })
       // GET /projects/:path → 404
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST /projects (create)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/token-list-test-list' }),
+      })
       // GET file contents → 404 (no existing file)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST file
@@ -389,11 +409,15 @@ describe('GitLab publish', () => {
   it('updates existing file (PUT) when file already exists', async () => {
     seedToken('gitlab', 'glpat_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ username: 'gluser' }) })
       // GET /projects/:path → ok (existing project)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/my-project' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/my-project' }),
+      })
       // GET file contents → ok (existing file)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ content: 'base64content' }) })
       // PUT file
@@ -436,19 +460,28 @@ describe('Gitea publish', () => {
   it('creates repo (404) and pushes new file (POST)', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/... → 404
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST /user/repos (create)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }),
+      })
       // GET file contents → 404 (no existing file, so no sha)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST file (no sha → POST)
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ content: { html_url: 'https://gitea.example.com/gtuser/token-list-test-list/raw/branch/main/tokenlist.json' } }),
+        json: () =>
+          Promise.resolve({
+            content: {
+              html_url: 'https://gitea.example.com/gtuser/token-list-test-list/raw/branch/main/tokenlist.json',
+            },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
@@ -467,17 +500,24 @@ describe('Gitea publish', () => {
   it('updates existing repo and file (PUT with sha)', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/my-repo → ok
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/my-repo' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/my-repo' }),
+      })
       // GET file contents → ok (returns sha)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ sha: 'file-sha-xyz' }) })
       // PUT file
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ content: { html_url: 'https://gitea.example.com/gtuser/my-repo/raw/branch/main/tokenlist.json' } }),
+        json: () =>
+          Promise.resolve({
+            content: { html_url: 'https://gitea.example.com/gtuser/my-repo/raw/branch/main/tokenlist.json' },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
@@ -540,17 +580,24 @@ describe('Gitea publish — custom repoName', () => {
   it('uses publishOptions.repoName when provided instead of derived name', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/my-custom-repo → ok (repo exists)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/my-custom-repo' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/my-custom-repo' }),
+      })
       // GET file contents → 404 (no existing file)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST file
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ content: { html_url: 'https://gitea.example.com/gtuser/my-custom-repo/raw/branch/main/tokenlist.json' } }),
+        json: () =>
+          Promise.resolve({
+            content: { html_url: 'https://gitea.example.com/gtuser/my-custom-repo/raw/branch/main/tokenlist.json' },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
@@ -581,17 +628,26 @@ describe('Gitea publish — PUT when existing sha present', () => {
   it('uses PUT method and includes sha when existing file check returns ok', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/... → ok (repo exists)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }),
+      })
       // GET file contents → ok (existing file returns sha)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ sha: 'existing-file-sha' }) })
       // PUT file
       .mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ content: { html_url: 'https://gitea.example.com/gtuser/token-list-test-list/raw/branch/main/tokenlist.json' } }),
+        json: () =>
+          Promise.resolve({
+            content: {
+              html_url: 'https://gitea.example.com/gtuser/token-list-test-list/raw/branch/main/tokenlist.json',
+            },
+          }),
       })
 
     vi.stubGlobal('fetch', fetchMock)
@@ -623,7 +679,8 @@ describe('GitHub publish — failed repo creation', () => {
   it('throws when repo creation returns a non-ok response', async () => {
     seedToken('github', 'ghp_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'testuser' }) })
       // GET /repos/testuser/... → 404 (repo doesn't exist)
@@ -633,7 +690,7 @@ describe('GitHub publish — failed repo creation', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await expect(publisher.publish(makeList(), {})).rejects.toThrow('Failed to create repo: 422')
   })
 })
@@ -654,11 +711,15 @@ describe('GitHub publish — failed file push', () => {
   it('throws when file push returns a non-ok response', async () => {
     seedToken('github', 'ghp_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'testuser' }) })
       // GET /repos/testuser/... → ok (existing repo)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://github.com/testuser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://github.com/testuser/token-list-test-list' }),
+      })
       // GET file contents → 404 (no existing file)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // PUT file → failure
@@ -666,7 +727,7 @@ describe('GitHub publish — failed file push', () => {
 
     vi.stubGlobal('fetch', fetchMock)
 
-    const publisher = createGitHubPublisher('https://gib.show')
+    const publisher = createGitHubPublisher()
     await expect(publisher.publish(makeList(), {})).rejects.toThrow('Failed to push file: 500')
   })
 })
@@ -687,7 +748,8 @@ describe('GitLab publish — failed repo creation', () => {
   it('throws when project creation returns a non-ok response', async () => {
     seedToken('gitlab', 'glpat_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ username: 'gluser' }) })
       // GET /projects/:path → 404 (repo doesn't exist)
@@ -718,11 +780,15 @@ describe('GitLab publish — failed file push', () => {
   it('throws when file push returns a non-ok response', async () => {
     seedToken('gitlab', 'glpat_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ username: 'gluser' }) })
       // GET /projects/:path → ok (existing project)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/my-project' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ web_url: 'https://gitlab.com/gluser/my-project' }),
+      })
       // GET file contents → 404 (no existing file)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST file → failure
@@ -751,7 +817,8 @@ describe('Gitea publish — failed repo creation', () => {
   it('throws when repo creation returns a non-ok response', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/... → 404 (repo doesn't exist)
@@ -782,11 +849,15 @@ describe('Gitea publish — failed file push', () => {
   it('throws when file push returns a non-ok response', async () => {
     seedToken('gitea', 'gt_token')
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       // GET /user
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ login: 'gtuser' }) })
       // GET /repos/gtuser/... → ok (existing repo)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ html_url: 'https://gitea.example.com/gtuser/token-list-test-list' }),
+      })
       // GET file contents → 404 (no existing file, so no sha)
       .mockResolvedValueOnce({ ok: false, status: 404 })
       // POST file → failure
@@ -830,9 +901,12 @@ describe('handleOAuthCallback — missing access_token in server response', () =
     })
 
     // Server returns a response without access_token (e.g. an error payload)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ error: 'bad_verification_code' }),
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ error: 'bad_verification_code' }),
+      }),
+    )
 
     const result = handleOAuthCallback('https://gib.show')
     expect(result).toBe(true)
@@ -913,9 +987,12 @@ describe('handleOAuthCallback', () => {
       writable: true,
     })
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ access_token: 'ghp_from_server' }),
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ access_token: 'ghp_from_server' }),
+      }),
+    )
 
     const result = handleOAuthCallback('https://gib.show')
     expect(result).toBe(true)
@@ -937,9 +1014,12 @@ describe('handleOAuthCallback', () => {
       writable: true,
     })
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ access_token: 'glpat_from_server' }),
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ access_token: 'glpat_from_server' }),
+      }),
+    )
 
     const result = handleOAuthCallback('https://gib.show')
     expect(result).toBe(true)
@@ -960,12 +1040,81 @@ describe('handleOAuthCallback', () => {
       writable: true,
     })
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ access_token: 'gt_from_server' }),
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        json: () => Promise.resolve({ access_token: 'gt_from_server' }),
+      }),
+    )
 
     const result = handleOAuthCallback('https://gib.show')
     expect(result).toBe(true)
     expect(sessionStorage.getItem('gitea-oauth-state')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildPublishers — each provider is opt-in via its own environment variable,
+// and GitLab/Gitea each read a second variable to shape the publisher they
+// build. A build that always emitted the fallback (or always emitted the
+// configured value) for one of those second variables would still look
+// correct for the one case every other test happens to exercise, so each
+// direction of each variable gets its own assertion here.
+// ---------------------------------------------------------------------------
+
+describe('buildPublishers', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('builds no publisher when no provider environment variable is set', () => {
+    expect(buildPublishers('https://gib.show')).toEqual([])
+  })
+
+  it('adds a GitHub publisher when VITE_GITHUB_CLIENT_ID is configured', () => {
+    vi.stubEnv('VITE_GITHUB_CLIENT_ID', 'gh-client-id')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitHub'])
+  })
+
+  it('adds a GitLab publisher pointed at gitlab.com when VITE_GITLAB_URL is not set', () => {
+    vi.stubEnv('VITE_GITLAB_CLIENT_ID', 'gl-client-id')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitLab'])
+  })
+
+  it('adds a GitLab publisher pointed at the configured host when VITE_GITLAB_URL is set', () => {
+    vi.stubEnv('VITE_GITLAB_CLIENT_ID', 'gl-client-id')
+    vi.stubEnv('VITE_GITLAB_URL', 'https://git.mycompany.com')
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['GitLab (git.mycompany.com)'])
+  })
+
+  it('adds a Gitea publisher configured for the personal-access-token flow when VITE_GITEA_CLIENT_ID is not set', async () => {
+    vi.stubEnv('VITE_GITEA_URL', 'https://gitea.example.com')
+    vi.stubGlobal('prompt', vi.fn().mockReturnValue('a-personal-access-token'))
+    const publishers = buildPublishers('https://gib.show')
+    expect(publishers.map((publisher) => publisher.name)).toEqual(['Gitea (gitea.example.com)'])
+    // Proves clientId really is undefined, not merely unread: authorize() branches
+    // on it, and the personal-access-token path is the only one that prompts.
+    await publishers[0].authorize()
+    expect(prompt).toHaveBeenCalledOnce()
+  })
+
+  it('adds a Gitea publisher wired for OAuth when VITE_GITEA_CLIENT_ID is also set', async () => {
+    vi.stubEnv('VITE_GITEA_URL', 'https://gitea.example.com')
+    vi.stubEnv('VITE_GITEA_CLIENT_ID', 'gitea-client-id')
+    Object.defineProperty(window, 'location', {
+      value: { href: '', origin: 'http://localhost', pathname: '/' },
+      writable: true,
+    })
+    const publishers = buildPublishers('https://gib.show')
+    // Proves clientId reached createGiteaPublisher: authorize() redirects to the
+    // OAuth URL instead of prompting only when a client id is present.
+    await publishers[0].authorize()
+    const href = (window.location as { href: string }).href
+    expect(href).toContain('https://gitea.example.com/login/oauth/authorize')
+    expect(href).toContain('client_id=gitea-client-id')
   })
 })

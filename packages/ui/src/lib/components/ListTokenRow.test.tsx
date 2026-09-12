@@ -26,6 +26,26 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import ListTokenRow from './ListTokenRow'
 import type { LocalToken } from '../hooks/useLocalLists'
 
+// ---------------------------------------------------------------------------
+// Drag-state override — whether a row is being dragged comes from @dnd-kit's pointer
+// sensors, which do not fire under jsdom's synthetic events, so `isDragging` can never
+// turn true through real interaction here. This wraps the real hook so one test can
+// force it, the same technique StudioBrowser.test.tsx and NetworkSelect.test.tsx use to
+// drive their virtualizer mocks. With the override left at `null` (the default) every
+// other test in this file calls the unmodified real hook.
+// ---------------------------------------------------------------------------
+let isDraggingOverride: boolean | null = null
+vi.mock('@dnd-kit/sortable', async () => {
+  const actual = await vi.importActual<typeof import('@dnd-kit/sortable')>('@dnd-kit/sortable')
+  return {
+    ...actual,
+    useSortable: (...args: Parameters<typeof actual.useSortable>) => {
+      const real = actual.useSortable(...args)
+      return isDraggingOverride === null ? real : { ...real, isDragging: isDraggingOverride }
+    },
+  }
+})
+
 const DAI: LocalToken = {
   chainId: 1,
   address: '0x6B175474E89094C44Da98b954EedeAC495271d0F',
@@ -67,8 +87,7 @@ function renderRow(tokens: LocalToken[] = [DAI]) {
     <DndContext>
       <SortableContext
         items={tokens.map((token) => `${token.chainId}-${token.address}`)}
-        strategy={verticalListSortingStrategy}
-      >
+        strategy={verticalListSortingStrategy}>
         {tokens.map((token) => (
           <ListTokenRow key={`${token.chainId}-${token.address}`} token={token} {...handlers} />
         ))}
@@ -203,5 +222,22 @@ describe('ListTokenRow — removal', () => {
   it('does not remove anything until the control is used', () => {
     const { onRemove } = renderRow()
     expect(onRemove).not.toHaveBeenCalled()
+  })
+})
+
+describe('ListTokenRow — dragging', () => {
+  afterEach(() => {
+    isDraggingOverride = null
+  })
+
+  it('fades the row and lifts it above its neighbours while it is being dragged', () => {
+    // Without this, a row mid-drag looks identical to a row sitting still, so the user
+    // gets no visual sign the drag actually started, and the dragged row can render
+    // underneath the rows it is passing over instead of on top of them.
+    isDraggingOverride = true
+    const { container } = renderRow()
+    const row = container.firstElementChild as HTMLElement
+    expect(row.style.opacity).toBe('0.5')
+    expect(row.style.zIndex).toBe('10')
   })
 })

@@ -75,6 +75,10 @@ function VirtualTokenList({
           const token = tokens[virtualRow.index]
           const iconKey = `${token.chainId}-${token.address}`
           const hasIcon = token.hasIcon && !failedIcons.has(iconKey)
+          // Read once. A token reaching this row from a search result has no references at
+          // all, so the count has to tolerate their absence - and doing that in one place
+          // is what removes the assertion the count below used to need.
+          const listCount = token.listReferences?.length ?? 0
           const isSelected =
             selectedToken?.address.toLowerCase() === token.address.toLowerCase() &&
             selectedToken?.chainId.toString() === token.chainId.toString()
@@ -130,16 +134,16 @@ function VirtualTokenList({
                       className="flex items-center gap-1 truncate text-[10px] text-accent-500/70 hover:text-accent-500"
                       onClick={(e) => {
                         e.stopPropagation()
-                        if ((token.listReferences?.length ?? 0) > 1) {
+                        if (listCount > 1) {
                           onToggleExpand(iconKey)
                         } else {
                           onNavigateToList(token.sourceList)
                         }
                       }}>
                       <span className="truncate hover:underline">{token.sourceList}</span>
-                      {(token.listReferences?.length ?? 0) > 1 && (
+                      {listCount > 1 && (
                         <span className="flex-shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
-                          +{token.listReferences!.length - 1}
+                          +{listCount - 1}
                         </span>
                       )}
                     </button>
@@ -190,15 +194,7 @@ export default function StudioBrowser({
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
   const { metrics } = useMetrics()
-  const {
-    isOpen: editorOpen,
-    activeList,
-    addToken,
-    createList,
-    setActiveList,
-    openEditor,
-    openNewEditor,
-  } = useListEditor()
+  const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor } = useListEditor()
 
   const popularChains = useMemo(() => {
     if (!metrics) return []
@@ -222,7 +218,11 @@ export default function StudioBrowser({
     () => metrics?.networks.supported.find((network) => network.chainIdentifier === selectedIdentifier) ?? null,
     [metrics, selectedIdentifier],
   )
-  const isLogoOnlyChain = !!selectedNetwork && selectedNetwork.tokenCount === 0
+  // The network itself rather than a boolean about it. A separate `isLogoOnlyChain` flag
+  // could not narrow `selectedNetwork` for the block that reads its name and identifier,
+  // so that block asserted the network was there. Carrying the value says the same thing
+  // and proves it.
+  const logoOnlyNetwork = selectedNetwork?.tokenCount === 0 ? selectedNetwork : null
 
   /* ----- Local UI state -------------------------------------------------- */
   const [searchState, setSearchState] = useState<SearchUpdate | null>(null)
@@ -252,12 +252,16 @@ export default function StudioBrowser({
       if (creatingListRef.current) return
       creatingListRef.current = true
       try {
+        // createList always resolves to a real list (useLocalLists.createList returns
+        // Promise<LocalList>, never a falsy value); a rejected promise skips straight to
+        // the finally block below instead of reaching this line. The guard here used to
+        // test a case that cannot happen.
         const newList = await createList({
           name: 'New List',
           source: { type: 'scratch' },
           tokens: [{ ...localToken, order: 0 }],
         })
-        if (newList) setActiveList(newList)
+        setActiveList(newList)
       } finally {
         creatingListRef.current = false
       }
@@ -299,11 +303,16 @@ export default function StudioBrowser({
     const merged = tokensByList.get('merged')
     if (merged) return merged
 
+    // deduplicateTokens answers with MergedToken, whose listReferences is not optional -
+    // merging is the step that decides which lists carry a token, so a merged token always
+    // knows. That is why the popularity read below needs no fallback: the `?? 1` it used to
+    // carry could never run, and it quietly claimed that a token with no references is as
+    // popular as a token with one.
     const tokens = deduplicateTokens(tokensByList, enabledLists, selectedChainId, getApiUrl(''))
     // Client-only path: sort by popularity then alphabetical
     return tokens.sort((a, b) => {
-      const popA = a.listReferences?.length ?? 1
-      const popB = b.listReferences?.length ?? 1
+      const popA = a.listReferences.length
+      const popB = b.listReferences.length
       if (popA !== popB) return popB - popA
       return a.name.localeCompare(b.name)
     })
@@ -386,7 +395,7 @@ export default function StudioBrowser({
       <NetworkSelect selectedChainId={selectedChainId} onSelect={handleChainSelect} />
 
       {/* Search + filter (TokenSearch embeds TokenListFilter internally) */}
-      {selectedChainId && !isLogoOnlyChain && (
+      {selectedChainId && !logoOnlyNetwork && (
         <TokenSearch
           count={tokenCount}
           onSearchUpdate={handleSearchUpdate}
@@ -445,30 +454,30 @@ export default function StudioBrowser({
           </div>
         )}
 
-        {selectedChainId && isLogoOnlyChain && (
+        {selectedChainId && logoOnlyNetwork && (
           <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
             <Image
-              src={getApiUrl(`/image/${selectedNetwork!.chainIdentifier}`)}
+              src={getApiUrl(`/image/${logoOnlyNetwork.chainIdentifier}`)}
               size={64}
               skeleton
               shape="circle"
               className="rounded-full"
             />
-            <div className="text-sm font-medium text-gray-800 dark:text-white/80">{selectedNetwork!.name}</div>
+            <div className="text-sm font-medium text-gray-800 dark:text-white/80">{logoOnlyNetwork.name}</div>
             <p className="max-w-xs text-sm text-gray-400 dark:text-white/40">
               This chain has a logo but no tokens to browse yet.
             </p>
           </div>
         )}
 
-        {selectedChainId && !isLogoOnlyChain && isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && !logoOnlyNetwork && isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
             <i className="fas fa-spinner fa-spin mr-2" />
             Loading tokens...
           </div>
         )}
 
-        {selectedChainId && !isLogoOnlyChain && !isLoadingLists && filteredTokens.length === 0 && (
+        {selectedChainId && !logoOnlyNetwork && !isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
             No tokens found
           </div>
@@ -487,7 +496,7 @@ export default function StudioBrowser({
           </div>
         )}
 
-        {!isLogoOnlyChain && filteredTokens.length > 0 && (
+        {!logoOnlyNetwork && filteredTokens.length > 0 && (
           <VirtualTokenList
             tokens={filteredTokens}
             selectedToken={selectedToken}

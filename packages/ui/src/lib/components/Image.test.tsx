@@ -223,4 +223,29 @@ describe('Image — loading and failure', () => {
     expect(container.querySelector('a')).toBeNull()
     expect(container.querySelector('span')).toBeTruthy()
   })
+
+  it('draws a squared-off skeleton instead of a circle when asked for the rectangle shape', () => {
+    // Badge and banner artwork is not round, so a circular skeleton would flash the wrong
+    // outline before the real image replaces it.
+    const { container } = render(createElement(Image, { src: SRC, skeleton: true, shape: 'rect' }))
+    const skeleton = container.querySelector('span > div') as HTMLElement
+    expect(skeleton.className).toContain('rounded')
+    expect(skeleton.className).not.toContain('rounded-full')
+  })
+
+  it('skips setting up its lazy watcher once the fallback has replaced the container element', () => {
+    // Once shouldFallback and a fallback are both set, this component renders the fallback
+    // in place of its own container element, so the ref that IntersectionObserver needs is
+    // gone. Toggling lazy on after that point must not try to watch a missing element:
+    // IntersectionObserver.observe() throws on anything that is not a real element, which
+    // would crash the page instead of quietly doing nothing.
+    const observers = stubIntersectionObserver()
+    const fallback = () => createElement('span', { 'data-testid': 'fb' })
+    const { container, rerender } = render(createElement(Image, { src: SRC, fallback }))
+    fireEvent.error(container.querySelector('img')!)
+    expect(container.querySelector('[data-testid="fb"]')).toBeTruthy()
+
+    expect(() => rerender(createElement(Image, { src: SRC, fallback, lazy: true }))).not.toThrow()
+    expect(observers.length).toBe(0)
+  })
 })

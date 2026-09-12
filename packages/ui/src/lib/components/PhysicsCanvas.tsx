@@ -27,10 +27,12 @@ export default function PhysicsCanvas() {
   )
 
   const buildIconSources = useCallback(
-    async (tokenSources: string[]): Promise<string[]> => {
-      if (!metrics) return []
-
-      const networkSources = metrics.networks.supported
+    // Takes the metrics rather than reading them, because the only caller has
+    // already established they are there. Checking again here could not fail, and
+    // a second check on the same value is an invitation to believe the two can
+    // disagree.
+    async (tokenSources: string[], resolved: NonNullable<typeof metrics>): Promise<string[]> => {
+      const networkSources = resolved.networks.supported
         .slice(0, 25)
         .map((net) => getApiUrl(`/image/${net.chainIdentifier}`))
 
@@ -102,7 +104,7 @@ export default function PhysicsCanvas() {
 
     const config = configRef.current
     const tokenSources = await fetchTokenSources()
-    const sources = await buildIconSources(tokenSources)
+    const sources = await buildIconSources(tokenSources, metrics)
 
     if (sources.length < 10) return
 
@@ -140,8 +142,6 @@ export default function PhysicsCanvas() {
   }, [metrics, fetchTokenSources, buildIconSources, render])
 
   const loop = useCallback(() => {
-    if (prefersReducedMotion.current) return
-
     const scrollDelta = scrollDeltaRef.current
     scrollDeltaRef.current = 0
 
@@ -151,9 +151,11 @@ export default function PhysicsCanvas() {
   }, [render])
 
   useEffect(() => {
+    // React attaches a ref in the same commit that creates its node, and this
+    // effect runs after that commit, so the canvas is present. The element renders
+    // unconditionally, so there is no path where it is not.
+    const canvas = canvasRef.current as HTMLCanvasElement
     const handleResize = () => {
-      const canvas = canvasRef.current
-      if (!canvas) return
       const dpr = window.devicePixelRatio || 1
       canvas.width = window.innerWidth * dpr
       canvas.height = window.innerHeight * dpr

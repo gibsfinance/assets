@@ -56,10 +56,7 @@ export default function CodeBlock({
   const { isDark } = useTheme()
   const shiki = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
-  const theme = useMemo(
-    () => (themeInput || isDark ? 'dark-plus' : 'light-plus'),
-    [themeInput, isDark],
-  )
+  const theme = useMemo(() => (themeInput || isDark ? 'dark-plus' : 'light-plus'), [themeInput, isDark])
 
   // Shiki generates sanitized HTML from code syntax highlighting.
   // This is equivalent to Svelte's {@html generatedHtml} in the original component.

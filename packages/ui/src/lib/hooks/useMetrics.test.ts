@@ -16,8 +16,7 @@ function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client }, children)
+  return ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 }
 
 // ---------------------------------------------------------------------------
@@ -49,9 +48,7 @@ describe('useStats', () => {
 
     expect(result.current.data).toEqual(statsPayload)
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/stats'),
-    )
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/stats'))
   })
 
   it('reports an error rather than an empty result when /stats fails', async () => {
@@ -86,7 +83,15 @@ describe('useProviders', () => {
 
   it('returns provider list from /list endpoint', async () => {
     const providers = [
-      { key: 'tokens', name: 'CoinGecko', providerKey: 'coingecko', chainId: '0', chainType: 'evm', default: true, description: '' },
+      {
+        key: 'tokens',
+        name: 'CoinGecko',
+        providerKey: 'coingecko',
+        chainId: '0',
+        chainType: 'evm',
+        default: true,
+        description: '',
+      },
     ]
 
     mockFetch.mockResolvedValue({
@@ -122,7 +127,15 @@ describe('useMetrics (composite)', () => {
       { type: 'evm', chainId: '369', networkId: '369', chainIdentifier: 'eip155-369', imageHash: null },
     ]
     const providers = [
-      { key: 'tokens', name: 'CoinGecko', providerKey: 'coingecko', chainId: '0', chainType: 'evm', default: true, description: '' },
+      {
+        key: 'tokens',
+        name: 'CoinGecko',
+        providerKey: 'coingecko',
+        chainId: '0',
+        chainType: 'evm',
+        default: true,
+        description: '',
+      },
     ]
 
     mockFetch.mockImplementation((url: string) => {
@@ -215,5 +228,38 @@ describe('useMetrics (composite)', () => {
 
     expect(result.current.metrics).toBeNull()
     expect(result.current.isLoading).toBe(true)
+  })
+
+  // Stats and networks drive `metrics` on their own — providers is a separate
+  // query. If /list is still in flight (or fails) when the other two resolve,
+  // `providers` is undefined and the ?? [] fallback is what keeps a consumer
+  // from crashing on `providers.length` instead of seeing an empty list.
+  it('falls back to an empty providers array when the providers query has not resolved yet', async () => {
+    const stats = [{ chainId: '1', chainIdentifier: 'eip155-1', count: 5000 }]
+    const networks = [{ type: 'evm', chainId: '1', networkId: '1', chainIdentifier: 'eip155-1', imageHash: 'abc' }]
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/stats')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(stats) })
+      }
+      if (url.includes('/networks')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(networks) })
+      }
+      if (url.includes('/list')) {
+        // Never resolves — providers stays undefined while metrics is computed.
+        return new Promise(() => {})
+      }
+      return Promise.resolve({ ok: false })
+    })
+
+    const { useMetrics } = await import('./useMetrics')
+    const { result } = renderHook(() => useMetrics(), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.metrics).not.toBeNull())
+
+    expect(result.current.providers).toEqual([])
+    expect(result.current.isLoading).toBe(true) // the providers query is still in flight
   })
 })

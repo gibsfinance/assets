@@ -67,9 +67,7 @@ function errorResponse({ status = 500, statusText = 'Internal Server Error' } = 
  * The panel only exists when an `example` is provided and the disclosure is open.
  */
 function renderExpanded(example = 'https://api.example.com/v1/tokens') {
-  render(
-    <EndpointCard method="GET" path="/v1/tokens" description="List tokens" example={example} />,
-  )
+  render(<EndpointCard method="GET" path="/v1/tokens" description="List tokens" example={example} />)
   // Headless UI DisclosurePanel is unmounted while closed; click to open it.
   fireEvent.click(screen.getByRole('button'))
   return screen.getByRole('textbox') as HTMLInputElement
@@ -168,9 +166,7 @@ describe('EndpointCard', () => {
   // -------------------------------------------------------------------------
   it('renders the JSON response body and stats on success', async () => {
     const body = JSON.stringify({ total: 42, tokens: [{ a: 1 }, { b: 2 }] })
-    mockFetch.mockResolvedValue(
-      jsonResponse({ status: 200, body, contentType: 'application/json; charset=utf-8' }),
-    )
+    mockFetch.mockResolvedValue(jsonResponse({ status: 200, body, contentType: 'application/json; charset=utf-8' }))
     renderExpanded()
 
     // The mocked CodeBlock renders the pretty-printed JSON into <pre data-testid="code">
@@ -226,9 +222,7 @@ describe('EndpointCard', () => {
   // Image endpoints — render preview, skip JSON parse
   // -------------------------------------------------------------------------
   it('renders an image preview (not JSON) for image endpoints', async () => {
-    mockFetch.mockResolvedValue(
-      jsonResponse({ contentType: 'image/png', body: 'binarybytes' }),
-    )
+    mockFetch.mockResolvedValue(jsonResponse({ contentType: 'image/png', body: 'binarybytes' }))
     render(
       <EndpointCard
         method="GET"
@@ -258,9 +252,7 @@ describe('EndpointCard', () => {
     fireEvent.change(input, { target: { value: 'https://api.example.com/second' } })
     expect(input.value).toBe('https://api.example.com/second')
 
-    await waitFor(() =>
-      expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/second', expect.anything()),
-    )
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/second', expect.anything()))
   })
 
   // -------------------------------------------------------------------------
@@ -345,5 +337,146 @@ describe('EndpointCard', () => {
     // The first request's signal must be aborted once the URL changed.
     expect(signals[0]!.aborted).toBe(true)
     expect(signals[1]!.aborted).toBe(false)
+  })
+
+  // -------------------------------------------------------------------------
+  // Marking a bad status on an image response
+  // -------------------------------------------------------------------------
+  it('marks an error status in red even when the endpoint answers with an image', async () => {
+    // Image endpoints skip the ok-check that throws for other endpoints, so an
+    // error status must still be visible some other way, or a broken image
+    // preview would look identical to a healthy one in the stats column.
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      headers: makeHeaders({ 'content-type': 'image/png' }),
+      text: () => Promise.resolve(''),
+      blob: () => Promise.resolve({ size: 10 }),
+    })
+    render(
+      <EndpointCard
+        method="GET"
+        path="/image/{chainId}/{address}"
+        description="Token image"
+        example="https://api.example.com/image/1/0xabc"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button'))
+
+    await screen.findByTestId('image')
+    const statusValue = screen.getByText('404')
+    expect(statusValue.className).toContain('text-red-400')
+  })
+
+  // -------------------------------------------------------------------------
+  // Content type missing from the response headers
+  // -------------------------------------------------------------------------
+  it('shows an empty content type instead of crashing when the server sends none', async () => {
+    // Without the empty-string fallback, a missing header leaves contentType
+    // as null, and the later `.split(';')` call throws, taking down the
+    // whole response panel instead of just leaving the type row blank.
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: makeHeaders({}),
+      text: () => Promise.resolve('{"ok":true}'),
+      blob: () => Promise.resolve({ size: 0 }),
+    })
+    renderExpanded()
+
+    await screen.findByTestId('code')
+    const typeLabel = screen.getByText('Type')
+    const typeValue = typeLabel.nextElementSibling
+    expect(typeValue?.textContent).toBe('')
+  })
+
+  // -------------------------------------------------------------------------
+  // A stale image response must not overwrite the current one
+  // -------------------------------------------------------------------------
+  it('ignores an image response that resolves after its request was superseded', async () => {
+    // Without the abort guard, a slow first request that finishes after the
+    // user has already typed a new URL would overwrite the current, correct
+    // stats with stale data from a request nobody is looking at anymore.
+    let resolveFirstBlob: ((blob: { size: number }) => void) | null = null
+    let resolveSecondBlob: ((blob: { size: number }) => void) | null = null
+    let callCount = 0
+    mockFetch.mockImplementation(() => {
+      callCount += 1
+      const isFirstCall = callCount === 1
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: makeHeaders({ 'content-type': 'image/png' }),
+        text: () => Promise.resolve(''),
+        blob: () =>
+          new Promise((resolve) => {
+            if (isFirstCall) resolveFirstBlob = resolve
+            else resolveSecondBlob = resolve
+          }),
+      })
+    })
+
+    const input = renderExpanded('https://api.example.com/image/1/0xaaa')
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
+
+    // Switching the address aborts the first request's controller.
+    fireEvent.change(input, { target: { value: 'https://api.example.com/image/1/0xbbb' } })
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+
+    // The current request finishes first, with its own byte size.
+    await act(async () => {
+      resolveSecondBlob!({ size: 999 })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(screen.getByText('999 B')).toBeTruthy())
+
+    // The superseded first request finishes late, with a different size.
+    await act(async () => {
+      resolveFirstBlob!({ size: 111 })
+      await Promise.resolve()
+    })
+
+    // The display must still show the current request's size.
+    expect(screen.getByText('999 B')).toBeTruthy()
+    expect(screen.queryByText('111 B')).toBeNull()
+  })
+
+  // -------------------------------------------------------------------------
+  // A stale non-image response must not surface a stale error either
+  // -------------------------------------------------------------------------
+  it('does not surface an error from a request that was already superseded', async () => {
+    // If the abort guard on the failure path were missing, a slow first
+    // request that later fails would overwrite a successful current
+    // response with an error message the user has no reason to see.
+    let rejectFirst: ((error: Error) => void) | null = null
+    let callCount = 0
+    mockFetch.mockImplementation(() => {
+      callCount += 1
+      if (callCount === 1) {
+        return new Promise((_resolve, reject) => {
+          rejectFirst = reject
+        })
+      }
+      return Promise.resolve(jsonResponse({ body: '{"ok":true}' }))
+    })
+
+    const input = renderExpanded('https://api.example.com/first')
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(input, { target: { value: 'https://api.example.com/second' } })
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+
+    // Let the stale first request fail now that a newer one has replaced it.
+    await act(async () => {
+      rejectFirst!(new Error('stale request aborted'))
+      await Promise.resolve()
+    })
+
+    // The second, current request's success must stand.
+    await screen.findByTestId('code')
+    expect(screen.queryByText('stale request aborted')).toBeNull()
   })
 })

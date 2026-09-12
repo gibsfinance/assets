@@ -62,8 +62,7 @@ function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client }, children)
+  return ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 }
 
 // ---------------------------------------------------------------------------
@@ -160,8 +159,7 @@ describe('useImageMetadata', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
     })
-    const wrapper = ({ children }: { children: ReactNode }) =>
-      createElement(QueryClientProvider, { client }, children)
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
 
     const { useImageMetadata } = await import('./useImageMetadata')
 
@@ -178,7 +176,12 @@ describe('useImageMetadata', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
-  it('gracefully handles HEAD fetch failure and still attempts Image decode', async () => {
+  it('reports no metadata at all when neither the headers nor the decode answer', async () => {
+    // This used to resolve with format 'unknown' and every field null, which reads
+    // to a caller as "here is the metadata" and renders a table of the word
+    // Unknown. Callers already have a line written for this case - the modal says
+    // "Metadata unavailable" - and it could never appear while the failure was
+    // being dressed up as an answer.
     mockFetch.mockRejectedValue(new Error('network error'))
     stubImageError()
 
@@ -187,12 +190,24 @@ describe('useImageMetadata', () => {
       wrapper: createWrapper(),
     })
 
-    await waitFor(() => expect(result.current.metadata).not.toBeNull())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.metadata).toBeNull()
+  })
 
+  it('still answers when only one of the two readings works', async () => {
+    // Either reading alone tells the reader something, so neither failing on its
+    // own is a failure. Only both of them is.
+    mockFetch.mockRejectedValue(new Error('network error'))
+    stubImageLoad(320, 200)
+
+    const { useImageMetadata } = await import('./useImageMetadata')
+    const { result } = renderHook(() => useImageMetadata('https://example.com/only-decode.png'), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.metadata).not.toBeNull())
+    expect(result.current.metadata?.width).toBe(320)
     expect(result.current.metadata?.format).toBe('unknown')
-    expect(result.current.metadata?.fileSize).toBeNull()
-    expect(result.current.metadata?.width).toBeNull()
-    expect(result.current.metadata?.height).toBeNull()
   })
 })
 
@@ -222,7 +237,7 @@ describe('fetchImageMetadata', () => {
     })
     stubImageLoad(16, 16)
 
-    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/tiny.png')
 
     expect(result.format).toBe('PNG')
@@ -244,11 +259,88 @@ describe('fetchImageMetadata', () => {
     })
     stubImageError()
 
-    const { fetchImageMetadata } = await import('./useImageMetadata') as typeof import('./useImageMetadata')
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
     const result = await fetchImageMetadata('https://example.com/binary.bin')
 
     expect(result.format).toBe('unknown')
     expect(result.fileSize).toBe(256)
     expect(result.contentType).toBe('application/octet-stream')
+  })
+
+  // The format detection reads image/jpeg for most encoders but image/jpg for a
+  // few older ones. Both must resolve to the same label, or a token uploaded
+  // through one of those encoders shows the wrong format in the studio.
+  it('returns JPEG format for a content-type of image/jpeg', async () => {
+    mockFetch.mockResolvedValue({
+      headers: {
+        get: (name: string) => {
+          if (name === 'content-type') return 'image/jpeg'
+          if (name === 'content-length') return '1000'
+          return null
+        },
+      },
+    })
+    stubImageLoad(48, 48)
+
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
+    const result = await fetchImageMetadata('https://example.com/photo.jpeg')
+
+    expect(result.format).toBe('JPEG')
+  })
+
+  it('returns JPEG format for a content-type of image/jpg, not just image/jpeg', async () => {
+    mockFetch.mockResolvedValue({
+      headers: {
+        get: (name: string) => {
+          if (name === 'content-type') return 'image/jpg'
+          if (name === 'content-length') return '900'
+          return null
+        },
+      },
+    })
+    stubImageLoad(48, 48)
+
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
+    const result = await fetchImageMetadata('https://example.com/photo.jpg')
+
+    expect(result.format).toBe('JPEG')
+  })
+
+  it('returns GIF format for a content-type of image/gif', async () => {
+    mockFetch.mockResolvedValue({
+      headers: {
+        get: (name: string) => {
+          if (name === 'content-type') return 'image/gif'
+          if (name === 'content-length') return '700'
+          return null
+        },
+      },
+    })
+    stubImageLoad(24, 24)
+
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
+    const result = await fetchImageMetadata('https://example.com/anim.gif')
+
+    expect(result.format).toBe('GIF')
+  })
+
+  // A HEAD response can omit the content-type header entirely (some static
+  // hosts do this for range requests). Without the fallback, contentType would
+  // be null instead of the string 'unknown' every downstream format check and
+  // display value expects.
+  it('falls back to contentType "unknown" when the HEAD response has no content-type header', async () => {
+    mockFetch.mockResolvedValue({
+      headers: {
+        get: () => null,
+      },
+    })
+    stubImageError()
+
+    const { fetchImageMetadata } = (await import('./useImageMetadata')) as typeof import('./useImageMetadata')
+    const result = await fetchImageMetadata('https://example.com/no-headers')
+
+    expect(result.contentType).toBe('unknown')
+    expect(result.format).toBe('unknown')
+    expect(result.fileSize).toBeNull()
   })
 })

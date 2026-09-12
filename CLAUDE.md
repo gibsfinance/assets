@@ -13,22 +13,31 @@ yarn workspace ui run test
 # Coverage — CI gates on this, and a passing test run does NOT imply a passing
 # coverage run. Run the coverage variant for any workspace you touched before
 # calling the change done.
-#   @gibs/sdk, @gibs/utils, @gibs/react — 100% on all four metrics. A single
-#     untested line fails the build while every test still passes.
-#   server — 99.7/99.3/99.7/99.8 (statements/branches/functions/lines) against
-#     actuals of 99.77/99.39/99.73/99.85. Margin is as thin as 0.03%, so a
-#     handful of new uncovered lines will break CI.
-#   ui — 92.9/87.3/92.3/94.1 against actuals of 93.16/87.57/92.52/94.36.
-#     Same ~0.2 margin as the others, and for a specific reason: this workspace
-#     measures very slightly lower on the CI runner than locally, so floors set
-#     to the local figures fail by hundredths.
+#   Every workspace — 100% on all four metrics, and the floors are set there.
+#     A single untested line fails the build while every test still passes.
+#     Actuals: server 5060 statements / 2428 branches / 824 functions / 4618
+#     lines over 1769 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     92 tests, @gibs/utils 95, @gibs/react 41.
+#   There is no margin under the interface floors any more. The old ones sat
+#     ~0.2 below measured because this workspace used to report slightly lower
+#     on the CI runner than locally. At 100 there is nothing left to absorb, so
+#     a runner that measures lower is reporting a test that depends on its
+#     environment — worth a red build.
+#   A new gap has three honest answers: write a test that fails when the
+#     behaviour breaks, delete the code if nothing can reach it, or report it
+#     with evidence. Never lower a floor to make a run pass, and never fabricate
+#     a state the application cannot produce just to execute a line.
+#   Run one workspace's coverage at a time. Two runs in the same workspace share
+#     its coverage/ directory and overwrite each other, and the loser reports
+#     zeros for files that are fully covered — which reads as a regression.
 yarn workspace @gibs/sdk run vitest run --coverage
 yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
 yarn workspace ui run vitest run --coverage
 
-# Lint (server only — must run from packages/server/)
+# Lint — each workspace runs its own, from its own directory. CI runs both.
 cd packages/server && yarn lint
+cd packages/ui && yarn lint
 
 # Typecheck (from root)
 npx tsc --noEmit -p tsconfig.json
@@ -118,8 +127,16 @@ master.
 
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`
-- Lint runs from `packages/server/` via `yarn lint` (prettier + eslint)
-- ESLint config: `packages/server/.eslintrc.mjs` — `argsIgnorePattern: '^_'`
+- Lint runs per workspace via `yarn lint` (prettier + eslint), from that
+  workspace's directory. The `lint` job runs `packages/server` and `packages/ui`
+  as separate steps so a failure names which one broke. The interface was left
+  out for a long time and drifted to 187 findings, more than half of them about
+  `coverage/` and `dist/` — generated output nobody had told the linter to skip.
+- ESLint config: `packages/server/eslint.config.js` (flat config; `packages/ui` has its own) —
+  `argsIgnorePattern: '^_'`. Both packages migrated off `.eslintrc` some time ago. Staying on
+  eslint 9 is deliberate: the registry now flags the whole 9.x line as unsupported, but 10 is a
+  real behavioural upgrade — three new rules in `eslint:recommended`, `eslint-env` comments
+  become errors, and changed JSX reference tracking surfaces new findings in `ui`.
 
 ## Conventions
 

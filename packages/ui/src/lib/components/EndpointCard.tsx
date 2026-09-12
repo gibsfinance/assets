@@ -3,6 +3,7 @@ import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react
 import CodeBlock from './CodeBlock'
 import Image from './Image'
 import { formatBytes } from '../utils/formatting'
+import { isImageEndpoint } from '../utils/endpoint-filter'
 import { countResults, isCacheHit, parsePathParams } from '../utils/token-search'
 
 interface EndpointCardProps {
@@ -18,17 +19,17 @@ function PathDisplay({ path }: { path: string }) {
     <span className="font-mono text-sm">
       {parts.map((part, index) =>
         part.isParam ? (
-          <span key={index} className="text-accent-500">{part.text}</span>
+          <span key={index} className="text-accent-500">
+            {part.text}
+          </span>
         ) : (
-          <span key={index} className="text-gray-900 dark:text-white">{part.text}</span>
+          <span key={index} className="text-gray-900 dark:text-white">
+            {part.text}
+          </span>
         ),
       )}
     </span>
   )
-}
-
-function isImageEndpoint(url: string): boolean {
-  return /\/image\//.test(url) || /\/sprite\//.test(url)
 }
 
 interface ResponseStats {
@@ -40,8 +41,15 @@ interface ResponseStats {
   resultCount: number | null
 }
 
-
-function StatsPanel({ stats, loading, error }: { stats: ResponseStats | null; loading: boolean; error: string | null }) {
+function StatsPanel({
+  stats,
+  loading,
+  error,
+}: {
+  stats: ResponseStats | null
+  loading: boolean
+  error: string | null
+}) {
   if (loading) {
     return (
       <div className="text-xs text-gray-400 dark:text-white/30">
@@ -72,17 +80,21 @@ function StatsPanel({ stats, loading, error }: { stats: ResponseStats | null; lo
       {rows.map(([label, value]) => (
         <div key={label} className="flex items-baseline justify-between gap-3">
           <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30">{label}</span>
-          <span className={`font-mono text-xs ${
-            label === 'Status' && stats.status >= 400 ? 'text-red-400' :
-            label === 'Cache' && stats.cacheHit ? 'text-green-400' :
-            'text-gray-700 dark:text-white/70'
-          }`}>{value}</span>
+          <span
+            className={`font-mono text-xs ${
+              label === 'Status' && stats.status >= 400
+                ? 'text-red-400'
+                : label === 'Cache' && stats.cacheHit
+                  ? 'text-green-400'
+                  : 'text-gray-700 dark:text-white/70'
+            }`}>
+            {value}
+          </span>
         </div>
       ))}
     </div>
   )
 }
-
 
 function ResponsePanel({ url }: { url: string }) {
   const [json, setJson] = useState<unknown>(null)
@@ -210,11 +222,15 @@ export default function EndpointCard({ method, path, description, example }: End
               <PathDisplay path={path} />
               <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
             </div>
-            <i className={`fas fa-chevron-down mt-1 text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            <i
+              className={`fas fa-chevron-down mt-1 text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            />
           </DisclosureButton>
           <DisclosurePanel className="border-t border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">{method}</span>
+              <span className="shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+                {method}
+              </span>
               <input
                 type="text"
                 value={url}

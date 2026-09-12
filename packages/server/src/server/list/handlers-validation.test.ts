@@ -79,6 +79,10 @@ import { getDrizzle } from '../../db/drizzle'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
 import { merged, tokensByChain, all, versioned, providerKeyed, search } from './handlers'
 import { SEARCH_CANDIDATE_CAP } from '../../db/search'
+// The router registers every one of these handlers inside `nextOnError`, so a
+// thrown error and a `next(error)` reach the same place. Calling the bare handler
+// here would make the tests distinguish two paths that production merges.
+import { nextOnError } from '../utils'
 import { getDefaultListOrderId } from '../../db/sync-order'
 
 /** Chainable drizzle query-builder mock matching getFilteredLists' call shape. */
@@ -101,7 +105,7 @@ const mockResponse = () => ({
 const callMerged = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
   const res = mockResponse()
   const next = vi.fn()
-  await merged({ params: { order: 'default' }, query, headers } as never, res as never, next as never)
+  await nextOnError(merged)({ params: { order: 'default' }, query, headers } as never, res as never, next as never)
   return { res, next }
 }
 
@@ -343,7 +347,7 @@ describe('tokensByChain handler', () => {
     const next = vi.fn()
     // Headers are always present on a real express request; the handler reads
     // Authorization for the admin-gated refresh parameter.
-    await tokensByChain({ params: { chainId }, query, headers } as never, res as never, next as never)
+    await nextOnError(tokensByChain)({ params: { chainId }, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -559,15 +563,14 @@ describe('all handler', () => {
   it('rejects ?default=banana with 400 before any query runs — it used to 500 in Postgres', async () => {
     const res = mockResponse()
     const next = vi.fn()
-    await expect(
-      all({ query: { default: 'banana' } } as never, res as never, next as never) as unknown as Promise<void>,
-    ).rejects.toMatchObject({ status: 400 })
+    await nextOnError(all)({ query: { default: 'banana' } } as never, res as never, next as never)
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 400 })
     expect(res.json).not.toHaveBeenCalled()
   })
 
   const callAll = async (query: Record<string, unknown>) => {
     const res = mockResponse()
-    await all({ query } as never, res as never, undefined as never)
+    await nextOnError(all)({ query } as never, res as never, undefined as never)
     return res
   }
 
@@ -666,7 +669,7 @@ describe('versioned handler', () => {
   ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await versioned({ params, query, headers } as never, res as never, next as never)
+    await nextOnError(versioned)({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -687,9 +690,8 @@ describe('versioned handler', () => {
 
     // The not-found check now lives inside the cache build, so it surfaces as a throw
     // that nextOnError forwards to next() in production.
-    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })).rejects.toMatchObject(
-      { status: 404 },
-    )
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended', version: '2.0.0' })
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 404 })
     expect(listUtils.buildListPayload).not.toHaveBeenCalled()
   })
 
@@ -698,7 +700,8 @@ describe('versioned handler', () => {
     // fallback must produce ['', undefined, undefined] rather than throwing on split.
     vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 0, patch: 0 }] as never)
 
-    await expect(callVersioned({ providerKey: 'pulsex', listKey: 'extended' })).rejects.toMatchObject({ status: 404 })
+    const { next } = await callVersioned({ providerKey: 'pulsex', listKey: 'extended' })
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 404 })
   })
 
   it('passes the matching version projection to the payload builder', async () => {
@@ -725,6 +728,47 @@ describe('versioned handler', () => {
     const [list] = vi.mocked(listUtils.buildListPayload).mock.calls[0]
     expect(list).toMatchObject({ major: 1, minor: 2, patch: 3, name: 'PulseX', imageHash: 'listlogohash' })
   })
+
+  // The refresh parameter is gated on every other list route. This one was the
+  // exception, and an ungated refresh here is the same denial-of-service lever it
+  // is everywhere else: getLists joins the whole list, and a caller who can force
+  // it on every request can force the expensive path on every request.
+  it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 2, patch: 3 }] as never)
+
+    const { res, next } = await callVersioned(
+      { providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' },
+      { refresh: '1' },
+    )
+
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(401)
+    // Told plainly that the token was rejected, rather than handed a cached body a
+    // caller would then believe was rebuilt.
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('rebuilds, rewrites, and marks no-store for an authorized refresh', async () => {
+    vi.mocked(db.getLists).mockResolvedValue([{ major: 1, minor: 2, patch: 3 }] as never)
+    vi.mocked(db.getCachedRequest).mockResolvedValue({
+      value: '{"tokens":[{"address":"0xstale"}]}',
+      expiresAt: new Date(Date.now() + STALE_TTL_MS),
+    } as never)
+
+    const { res, next } = await callVersioned(
+      { providerKey: 'pulsex', listKey: 'extended', version: '1.2.3' },
+      { refresh: '1' },
+      { authorization: 'Bearer test-admin-token' },
+    )
+
+    expect(next).not.toHaveBeenCalled()
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+    expect(listUtils.buildListPayload).toHaveBeenCalled()
+    expect(db.insertCacheRequest).toHaveBeenCalled()
+    // A refresh response that a content delivery network stored would pin the
+    // rebuilt body for everyone else, which is the staleness the refresh clears.
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+  })
 })
 
 describe('providerKeyed handler', () => {
@@ -735,7 +779,7 @@ describe('providerKeyed handler', () => {
   ) => {
     const res = mockResponse()
     const next = vi.fn()
-    await providerKeyed({ params, query, headers } as never, res as never, next as never)
+    await nextOnError(providerKeyed)({ params, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 
@@ -759,11 +803,11 @@ describe('providerKeyed handler', () => {
   it('rejects with the documented JSON 404 shape when no list matches', async () => {
     vi.mocked(db.getLists).mockResolvedValue([] as never)
 
-    // The not-found check runs inside the cache build now, so it throws rather than
-    // calling next directly; nextOnError forwards it in production.
-    const error = (await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' }).catch(
-      (e) => e,
-    )) as { status: number; message: string }
+    // The not-found check runs inside the cache build, so it throws rather than
+    // calling next directly. The wrapper forwards it, which is why this reads the
+    // error off next like every other error assertion here.
+    const { next } = await callProviderKeyed({ providerKey: 'unknown-provider', listKey: 'extended' })
+    const error = next.mock.calls[0][0] as { status: number; message: string }
     expect(error.status).toBe(404)
     expect(JSON.parse(error.message)).toEqual({ providerKey: 'unknown-provider', listKey: 'extended' })
   })
@@ -846,6 +890,35 @@ describe('providerKeyed handler', () => {
     expect(filtered).not.toBe(unfiltered)
   })
 
+  // Express hands back an array when a filter repeats. Without the sort, the two
+  // orders below mint two keys for one body — identical bytes stored twice, built
+  // twice, and expiring separately. Extensions are already sorted for this reason;
+  // the repeated query values were not covered by a test until now.
+  it('folds a repeated filter in a stable order, so argument order cannot fork the cache', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { decimals: ['6', '18'] })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' }, { decimals: ['18', '6'] })
+
+    const [forward, reversed] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(forward).toBe(reversed)
+    expect(forward).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:extended::::18,6`)
+  })
+
+  // `/list/pulsex` serves the provider's default list and `/list/pulsex/extended`
+  // serves a named one. They are different bodies, so they must be different keys —
+  // an absent list key has to occupy its segment rather than vanish from the string.
+  it('keys a bare provider request apart from a named list', async () => {
+    vi.mocked(db.getLists).mockResolvedValue(listRows())
+
+    await callProviderKeyed({ providerKey: 'pulsex' })
+    await callProviderKeyed({ providerKey: 'pulsex', listKey: 'extended' })
+
+    const [bare, named] = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+    expect(bare).toBe(`${RESPONSE_SHAPE_VERSION}:list:pulsex:::::`)
+    expect(bare).not.toBe(named)
+  })
+
   it('rejects an unauthorized refresh rather than quietly serving the cache', async () => {
     // Provider lists are the same expensive assembly as merged; an open refresh would
     // let anyone force the full per-list join on every request.
@@ -916,7 +989,7 @@ describe('search handler', () => {
   const callSearch = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
     const res = mockResponse()
     const next = vi.fn()
-    await search({ params: {}, query, headers } as never, res as never, next as never)
+    await nextOnError(search)({ params: {}, query, headers } as never, res as never, next as never)
     return { res, next }
   }
 

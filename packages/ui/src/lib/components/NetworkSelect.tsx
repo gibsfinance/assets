@@ -5,6 +5,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
+import { sortNetworks } from '../utils/network-sort'
 import { searchNetworks } from '../utils/network-metrics'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
@@ -21,7 +22,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 
   const sortedNetworks = useMemo(() => {
     if (!metrics) return []
-    return sortNetworks(metrics.networks.supported, showTestnets)
+    return sortNetworks(metrics.networks.supported, { showTestnets })
   }, [metrics, showTestnets])
 
   // Normalize the incoming selection to its canonical identifier so a bare
@@ -56,21 +57,33 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
           <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
         )}
         <span className="flex flex-shrink-0 items-center gap-1">
-          {selectedNetwork && (
-            <button
-              type="button"
-              className="flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
-              onClick={(e) => {
-                e.stopPropagation()
-                onSelect(null)
-              }}
-              aria-label="Clear network selection">
-              <i className="fas fa-times text-[10px]" />
-            </button>
-          )}
+          {/*
+            Holds the place of the clear button, which is a sibling of this
+            button rather than a child of it and so cannot take up room here.
+            Same box, same gap, so the arrow sits where it always has.
+          */}
+          {selectedNetwork && <span className="h-5 w-5" aria-hidden="true" />}
           <i className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
+
+      {/*
+        Beside the trigger, not inside it. A button inside a button is markup no
+        parser accepts: the browser closes the outer button early and rebuilds
+        the tree, so what renders is not what this file describes, and React
+        reports it on every render that has a selection. Sitting on top of the
+        trigger keeps the appearance, and being a sibling means a click here
+        never reaches the trigger - which is why no handler stops it any more.
+      */}
+      {selectedNetwork && (
+        <button
+          type="button"
+          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
+          onClick={() => onSelect(null)}
+          aria-label="Clear network selection">
+          <i className="fas fa-times text-[10px]" />
+        </button>
+      )}
 
       <NetworkDialog
         isOpen={isOpen}
@@ -89,37 +102,6 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
 /* -------------------------------------------------------------------------- */
 /*  Shared helpers                                                            */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Order the drawer: Ethereum, then PulseChain, then everything else by name.
- *
- * Reads the `name` and `isTestnet` useMetrics already resolved rather than re-deriving
- * them. Beyond being the single source, that fixes what re-deriving got wrong: it
- * passed the bare `chainId`, so every non-Ethereum-Virtual-Machine chain looked up its
- * coin type as if it were an Ethereum chain id — Bitcoin (bip122-0) resolved to
- * "Chain 0" and sorted under C, and the testnet filter matched that same wrong string.
- */
-function sortNetworks(networks: NetworkInfo[], showTestnets: boolean): NetworkInfo[] {
-  const priorityChains = ['1', '369']
-
-  let filtered = networks
-  if (!showTestnets) {
-    filtered = networks.filter((network) => !network.isTestnet)
-  }
-
-  return [...filtered].sort((a, b) => {
-    const aId = a.chainId.toString()
-    const bId = b.chainId.toString()
-    const aIdx = priorityChains.indexOf(aId)
-    const bIdx = priorityChains.indexOf(bId)
-
-    if (aIdx !== -1 && bIdx === -1) return -1
-    if (aIdx === -1 && bIdx !== -1) return 1
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-
-    return a.name.localeCompare(b.name)
-  })
-}
 
 /** Height of one drawer row in pixels; the virtualizer's size estimate. */
 const NETWORK_ROW_HEIGHT = 45

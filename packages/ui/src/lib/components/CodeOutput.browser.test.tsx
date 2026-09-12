@@ -55,9 +55,7 @@ describe('CodeOutput — generated snippet (browser / Chromium)', () => {
     // on a React element. We use its `render` here with a component
     // that pipes the generator's HTML string into a real DOM subtree
     // via `dangerouslySetInnerHTML` — Chromium parses it for real.
-    const HtmlHost = () => (
-      <div data-testid="host" dangerouslySetInnerHTML={{ __html: html }} />
-    )
+    const HtmlHost = () => <div data-testid="host" dangerouslySetInnerHTML={{ __html: html }} />
     const { getByTestId } = render(<HtmlHost />)
     const host = getByTestId('host')
 
@@ -89,21 +87,13 @@ describe('CodeOutput — generated snippet (browser / Chromium)', () => {
 
   it('React snippet carries the same image/network/size/ring values as the HTML snippet', () => {
     // This keeps the two generator outputs in sync without runtime JSX eval.
-    const reactSnippet = generateReactSnippet(
-      TOKEN_NAME,
-      IMAGE_URL,
-      NETWORK_URL,
-      appearance,
-      badge,
-    )
+    const reactSnippet = generateReactSnippet(TOKEN_NAME, IMAGE_URL, NETWORK_URL, appearance, badge)
     expect(reactSnippet).toContain(`src="${IMAGE_URL}"`)
     expect(reactSnippet).toContain(`src="${NETWORK_URL}"`)
     expect(reactSnippet).toContain(`alt="${TOKEN_NAME}"`)
     expect(reactSnippet).toContain('alt="Network"')
     expect(reactSnippet).toContain(`width: ${appearance.width}`)
     expect(reactSnippet).toContain(`height: ${appearance.height}`)
-    expect(reactSnippet).toContain(
-      `border: '${badge.ringThickness}px solid ${badge.ringColor}'`,
-    )
+    expect(reactSnippet).toContain(`border: '${badge.ringThickness}px solid ${badge.ringColor}'`)
   })
 })

@@ -40,8 +40,7 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
             value === tab.value
               ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
               : 'text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70'
-          }`}
-        >
+          }`}>
           {tab.label}
         </button>
       ))}
@@ -52,24 +51,21 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
 interface ModeSwitchProps {
   value: CodeMode
   onChange: (mode: CodeMode) => void
-  disabled: boolean
 }
 
-function ModeSwitch({ value, onChange, disabled }: ModeSwitchProps) {
+function ModeSwitch({ value, onChange }: ModeSwitchProps) {
   return (
-    <div className={`flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+    <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
       {(['snippet', 'component'] as CodeMode[]).map((mode) => (
         <button
           key={mode}
           type="button"
           onClick={() => onChange(mode)}
-          disabled={disabled}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-all ${
             value === mode
               ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
               : 'text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70'
-          }`}
-        >
+          }`}>
           {mode}
         </button>
       ))}
@@ -147,19 +143,12 @@ export default function CodeOutput() {
   const apiBase = root ?? ''
 
   const imageUrl = useMemo(() => {
-    if (!selectedToken || !selectedChainId) return `${apiBase}/image/eip155-1/0x0000000000000000000000000000000000000000`
-    return buildImageUrl(
-      selectedChainId,
-      selectedToken.address,
-      resolutionOrder,
-      apiBase,
-    )
+    if (!selectedToken || !selectedChainId)
+      return `${apiBase}/image/eip155-1/0x0000000000000000000000000000000000000000`
+    return buildImageUrl(selectedChainId, selectedToken.address, resolutionOrder, apiBase)
   }, [selectedToken, selectedChainId, resolutionOrder, apiBase])
 
-  const networkUrl = useMemo(
-    () => buildNetworkUrl(selectedChainId ?? '1', apiBase),
-    [selectedChainId, apiBase],
-  )
+  const networkUrl = useMemo(() => buildNetworkUrl(selectedChainId ?? '1', apiBase), [selectedChainId, apiBase])
 
   const tokenName = selectedToken?.name ?? 'Token'
 
@@ -198,9 +187,7 @@ export default function CodeOutput() {
       {/* Controls row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <FormatTabs value={codeFormat} onChange={setCodeFormat} />
-        {!isModeDisabled && (
-          <ModeSwitch value={codeMode} onChange={setCodeMode} disabled={false} />
-        )}
+        {!isModeDisabled && <ModeSwitch value={codeMode} onChange={setCodeMode} />}
       </div>
 
       {/* Badge + img warning */}
@@ -208,8 +195,8 @@ export default function CodeOutput() {
         <div className="flex items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-50 px-4 py-3 text-sm text-yellow-700 dark:bg-yellow-500/5 dark:text-yellow-400">
           <i className="fas fa-triangle-exclamation mt-0.5 flex-shrink-0" />
           <span>
-            Badge requires a wrapper element — switch to <strong>React</strong> or{' '}
-            <strong>HTML</strong> for badge support.
+            Badge requires a wrapper element — switch to <strong>React</strong> or <strong>HTML</strong> for badge
+            support.
           </span>
         </div>
       )}

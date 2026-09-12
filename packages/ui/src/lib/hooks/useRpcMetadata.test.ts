@@ -36,10 +36,7 @@ describe('setCustomRpc', () => {
 
     setCustomRpc(369, 'https://rpc.pulsechain.com')
 
-    expect(setItemSpy).toHaveBeenCalledWith(
-      'gib-custom-rpcs',
-      expect.stringContaining('369'),
-    )
+    expect(setItemSpy).toHaveBeenCalledWith('gib-custom-rpcs', expect.stringContaining('369'))
     setItemSpy.mockRestore()
   })
 
@@ -163,7 +160,8 @@ describe('getClient', () => {
     // createPublicClient is called with the custom chain config containing the URL
     const callArg = mockCreatePublicClient.mock.calls[0][0]
     // The chain's rpcUrls or the transport should include the custom URL
-    const chainRpcHttp = (callArg as any).chain?.rpcUrls?.default?.http
+    const chainRpcHttp = (callArg as { chain?: { rpcUrls?: { default?: { http?: string[] } } } }).chain?.rpcUrls
+      ?.default?.http
     const hasCustomUrl =
       (Array.isArray(chainRpcHttp) && chainRpcHttp.includes('https://my-eth-node.example.com')) ||
       // when a known chain is given a custom RPC, getClient still passes chain: chain (known),
@@ -271,9 +269,7 @@ describe('useRpcMetadata hook', () => {
       return Promise.resolve(null)
     })
 
-    const tokens = Array.from({ length: 15 }, (_, i) =>
-      makeToken(`0x${String(i).padStart(40, '0')}`, 1),
-    )
+    const tokens = Array.from({ length: 15 }, (_, i) => makeToken(`0x${String(i).padStart(40, '0')}`, 1))
     let results: Awaited<ReturnType<typeof result.current.loadMetadata>>
 
     await act(async () => {

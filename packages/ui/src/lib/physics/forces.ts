@@ -21,11 +21,7 @@ export function applyWallBounce(icon: PhysicsIcon, config: PhysicsConfig): void 
   }
 }
 
-export function applyMouseRepel(
-  icon: PhysicsIcon,
-  mousePos: Vector2D | null,
-  config: PhysicsConfig,
-): void {
+export function applyMouseRepel(icon: PhysicsIcon, mousePos: Vector2D | null, config: PhysicsConfig): void {
   if (!mousePos) return
   const dx = icon.position.x - mousePos.x
   const dy = icon.position.y - mousePos.y
@@ -38,11 +34,7 @@ export function applyMouseRepel(
   icon.velocity.y += (dy / dist) * force
 }
 
-export function applyScrollForce(
-  icon: PhysicsIcon,
-  scrollDelta: number,
-  config: PhysicsConfig,
-): void {
+export function applyScrollForce(icon: PhysicsIcon, scrollDelta: number, config: PhysicsConfig): void {
   icon.velocity.y += scrollDelta * config.scrollForceMultiplier
   const centerX = config.width / 2
   const dx = icon.position.x - centerX
@@ -87,10 +79,7 @@ export function resolveCollision(a: PhysicsIcon, b: PhysicsIcon, damping: number
   b.velocity.y += impulse * a.mass * ny
 }
 
-export function computeEdgeOpacity(
-  icon: PhysicsIcon,
-  config: PhysicsConfig,
-): number {
+export function computeEdgeOpacity(icon: PhysicsIcon, config: PhysicsConfig): number {
   const { position, radius } = icon
   const { width, height, edgeFadePercent } = config
   const fadeX = width * edgeFadePercent

@@ -4,7 +4,7 @@ Run your own Gib.Show instance for private token metadata and image serving.
 
 ## Requirements
 
-- Node.js 20+ (24 recommended)
+- Node.js 22+ (24 recommended — matches the Docker image)
 - PostgreSQL 14+
 - Yarn 4 (via corepack)
 - ~2GB RAM minimum (sharp image processing)
@@ -33,7 +33,6 @@ yarn server:dev
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `DATABASE_SCHEMA` | No | Schema name (default: `public`) |
 | `PORT` | No | Server port (default: `3000`) |
 | `COINGECKO_API_KEY` | No | CoinGecko API key for token list collection |
 | `GITHUB_OAUTH_CLIENT_ID` | No | GitHub OAuth app client ID (for list publishing) |
@@ -101,7 +100,7 @@ CoinGecko ranks lower but covers the most tokens. The system stores both `/thumb
 The server supports on-the-fly image resizing via query params:
 
 ```
-GET /image/{chainId}/{address}?w=72&h=72&format=webp
+GET /image/{chainId}/{address}?w=72&h=72&as=webp
 ```
 
 - **sharp** processes the resize
@@ -112,7 +111,9 @@ GET /image/{chainId}/{address}?w=72&h=72&format=webp
 
 ## Database Migrations
 
-Migrations run automatically on server start (`db.getDB().migrate.latest()`). No manual migration step needed.
+The service uses Drizzle, not Knex. Migrations run automatically on server start (`db.migrate()` in
+`packages/server/src/db/drizzle.ts`). No manual migration step needed — `yarn db:migrate-latest` runs
+the same migration outside of server startup, if you need to apply them ahead of time.
 
 ## Docker
 

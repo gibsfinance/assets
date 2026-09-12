@@ -134,7 +134,10 @@ describe('retry', () => {
 })
 
 describe('cacheResult', () => {
-  it('returns cached result within TTL', async () => {
+  it('returns cached result within TTL using the real clock (default now)', async () => {
+    // No clock is injected here, so this exercises the default `now = Date.now`
+    // parameter. Both calls happen back-to-back, well inside any duration, so
+    // the assertion holds regardless of how fast the real clock ticks.
     let calls = 0
     const worker = async () => ++calls
     const cached = cacheResult(worker, 1000)
@@ -146,18 +149,47 @@ describe('cacheResult', () => {
     expect(calls).toBe(1)
   })
 
-  it('refreshes after TTL expires', async () => {
+  it('returns the memoized value while inside the window (injected clock)', async () => {
     let calls = 0
+    let currentTime = 1_000_000
     const worker = async () => ++calls
-    // TTL of 1ms
-    const cached = cacheResult(worker, 1)
+    const cached = cacheResult(worker, 1000, { now: () => currentTime })
 
-    await cached()
-    // Wait for TTL to expire
-    await new Promise((r) => setTimeout(r, 10))
+    const first = await cached()
+    currentTime += 500 // still inside the one-second window
     const second = await cached()
-    expect(second).toBe(2)
+
+    expect(first).toBe(1)
+    expect(second).toBe(1)
+    expect(calls).toBe(1)
+  })
+
+  it('re-runs the worker once the window has fully elapsed (injected clock)', async () => {
+    let calls = 0
+    let currentTime = 1_000_000
+    const worker = async () => ++calls
+    const cached = cacheResult(worker, 1000, { now: () => currentTime })
+
+    expect(await cached()).toBe(1)
+    currentTime += 1000 // exactly `duration` later — see the boundary test below
+    expect(await cached()).toBe(2)
     expect(calls).toBe(2)
+  })
+
+  it('treats the boundary as stale, matching the strict "greater than" comparison', async () => {
+    // The freshness check reads `timestamp > now() - duration`, a strict
+    // inequality. At exactly `duration` elapsed the cache reads as stale (the
+    // test above), so one millisecond earlier must still read as fresh — this
+    // pins that boundary rather than changing it.
+    let calls = 0
+    let currentTime = 1_000_000
+    const worker = async () => ++calls
+    const cached = cacheResult(worker, 1000, { now: () => currentTime })
+
+    expect(await cached()).toBe(1)
+    currentTime += 999
+    expect(await cached()).toBe(1)
+    expect(calls).toBe(1)
   })
 
   it('reset forces the next call to re-run the worker inside the live window', async () => {
@@ -195,7 +227,9 @@ describe('cacheResult', () => {
 })
 
 describe('limitByTime', () => {
-  it('enforces minimum delay between calls', async () => {
+  it('enforces a minimum delay between calls using the real clock (default now and wait)', async () => {
+    // No options are injected here, so this exercises the default `now = Date.now`
+    // and `wait = waitRealTime` parameters against the real clock and a real timer.
     const limiter = limitByTime(50)
     const start = Date.now()
     await limiter()
@@ -204,12 +238,59 @@ describe('limitByTime', () => {
     expect(elapsed).toBeGreaterThanOrEqual(45) // ~50ms with timing tolerance
   })
 
-  it('allows immediate first call', async () => {
-    const limiter = limitByTime(1000)
-    const start = Date.now()
+  it('allows an immediate first call with no prior spacing to enforce', async () => {
+    let currentTime = 5_000
+    const waitCalls: number[] = []
+    const limiter = limitByTime(1000, {
+      now: () => currentTime,
+      wait: async (duration) => {
+        waitCalls.push(duration)
+      },
+    })
+
     await limiter()
-    const elapsed = Date.now() - start
-    expect(elapsed).toBeLessThan(50)
+
+    // Nothing was throttled — `last` starts at zero, so the first call is
+    // always ahead of any window and must not request a pause.
+    expect(waitCalls).toEqual([])
+  })
+
+  it('requests a pause sized to the time still remaining in the window (injected clock and wait)', async () => {
+    // The clock and the pause are both injected, so this proves the spacing
+    // arithmetic itself — the requested duration — without waiting out real
+    // milliseconds or reaching into global fake timers.
+    let currentTime = 10_000
+    const waitCalls: number[] = []
+    const limiter = limitByTime(100, {
+      now: () => currentTime,
+      wait: async (duration) => {
+        waitCalls.push(duration)
+        currentTime += duration // the injected pause is the only thing that advances time
+      },
+    })
+
+    await limiter()
+    currentTime += 30 // only 30ms of the 100ms window has passed
+    await limiter()
+
+    expect(waitCalls).toEqual([70]) // 100ms window minus the 30ms already elapsed
+  })
+
+  it('does not request a pause once enough time has passed on its own', async () => {
+    let currentTime = 20_000
+    const waitCalls: number[] = []
+    const limiter = limitByTime(100, {
+      now: () => currentTime,
+      wait: async (duration) => {
+        waitCalls.push(duration)
+      },
+    })
+
+    await limiter()
+    currentTime += 150 // more than the 100ms window has elapsed
+    await limiter()
+
+    expect(waitCalls).toEqual([])
   })
 })
 

@@ -8,9 +8,7 @@ vi.mock('../utils', () => ({
 
 // Mock Image component to capture props
 vi.mock('./Image', () => ({
-  default: ({ src, size }: { src: string; size: number }) => (
-    <img data-testid={`image-${size}`} src={src} alt="" />
-  ),
+  default: ({ src, size }: { src: string; size: number }) => <img data-testid={`image-${size}`} src={src} alt="" />,
 }))
 
 import TokenImageManager from './TokenImageManager'
@@ -43,12 +41,7 @@ describe('TokenImageManager', () => {
   })
 
   it('detects format from custom data URI', () => {
-    render(
-      <TokenImageManager
-        {...defaultProps}
-        currentImageUri="data:image/svg+xml;base64,abc"
-      />,
-    )
+    render(<TokenImageManager {...defaultProps} currentImageUri="data:image/svg+xml;base64,abc" />)
 
     expect(screen.getAllByText('svg+xml').length).toBeGreaterThanOrEqual(1)
   })
@@ -92,9 +85,7 @@ describe('TokenImageManager', () => {
       const { container } = render(<TokenImageManager {...defaultProps} />)
       const ui = within(container)
 
-      const fileInput = container.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
       const clickSpy = vi.spyOn(fileInput, 'click')
 
       fireEvent.click(ui.getByText('Upload image'))
@@ -104,14 +95,10 @@ describe('TokenImageManager', () => {
 
     it('reads a selected file and updates the preview to the uploaded image', async () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
       const ui = within(container)
 
-      const fileInput = container.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
       const file = new File(['binary'], 'logo.png', { type: 'image/png' })
 
       fireEvent.change(fileInput, { target: { files: [file] } })
@@ -127,13 +114,9 @@ describe('TokenImageManager', () => {
 
     it('does nothing when the file selection is empty', () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
 
-      const fileInput = container.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
 
       fireEvent.change(fileInput, { target: { files: [] } })
 
@@ -144,9 +127,7 @@ describe('TokenImageManager', () => {
   describe('custom URL submit', () => {
     it('sets the preview and notifies the parent when a URL is submitted via the Set button', () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
       const ui = within(container)
 
       const url = 'https://example.com/coin.png'
@@ -175,9 +156,7 @@ describe('TokenImageManager', () => {
 
     it('submits the URL when Enter is pressed in the input', () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
       const ui = within(container)
 
       const url = 'https://example.com/token.svg'
@@ -190,9 +169,7 @@ describe('TokenImageManager', () => {
 
     it('trims surrounding whitespace from the submitted URL', () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
       const ui = within(container)
 
       fireEvent.change(ui.getByPlaceholderText('Image URL...'), {
@@ -205,9 +182,7 @@ describe('TokenImageManager', () => {
 
     it('does not submit a blank/whitespace-only URL', () => {
       const onImageChange = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onImageChange={onImageChange} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onImageChange={onImageChange} />)
       const ui = within(container)
 
       // Set button is disabled while the trimmed value is empty
@@ -237,15 +212,12 @@ describe('TokenImageManager', () => {
 
       // Sanity: starts on the custom image
       const before = ui.getAllByTestId('image-32') as HTMLImageElement[]
-      expect(
-        before.some((img) => img.src.startsWith('https://example.com/custom.png')),
-      ).toBe(true)
+      expect(before.some((img) => img.src.startsWith('https://example.com/custom.png'))).toBe(true)
 
       fireEvent.click(ui.getByText('Reset to default'))
 
       // Default URI is derived from the mocked getApiUrl + chain identifier
-      const expectedDefault =
-        'https://gib.show/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
+      const expectedDefault = 'https://gib.show/image/eip155-369/0xA1077a294dDE1B09bB078844df40758a5D0f9a27'
       expect(onImageChange).toHaveBeenCalledWith(expectedDefault)
 
       const after = ui.getAllByTestId('image-32') as HTMLImageElement[]
@@ -256,9 +228,7 @@ describe('TokenImageManager', () => {
   describe('close', () => {
     it('invokes onClose when the close button is clicked', () => {
       const onClose = vi.fn()
-      const { container } = render(
-        <TokenImageManager {...defaultProps} onClose={onClose} />,
-      )
+      const { container } = render(<TokenImageManager {...defaultProps} onClose={onClose} />)
       const ui = within(container)
 
       // The close button is the icon button in the header next to "Token Image"

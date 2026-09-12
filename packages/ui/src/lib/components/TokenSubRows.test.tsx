@@ -58,8 +58,7 @@ afterEach(() => {
 })
 
 /** The rendered sub-row that carries a given list's name. */
-const rowFor = (reference: TokenListReference) =>
-  screen.getByText(reference.sourceList).closest('div')!
+const rowFor = (reference: TokenListReference) => screen.getByText(reference.sourceList).closest('div')!
 
 describe('TokenSubRows', () => {
   it('renders nothing when only one list publishes the token', () => {
@@ -122,9 +121,7 @@ describe('TokenSubRows', () => {
     expect(without.querySelectorAll('button')).toHaveLength(0)
 
     cleanup()
-    const { container: with_ } = render(
-      <TokenSubRows references={[UNISWAP, BRIDGE]} onNavigateToList={vi.fn()} />,
-    )
+    const { container: with_ } = render(<TokenSubRows references={[UNISWAP, BRIDGE]} onNavigateToList={vi.fn()} />)
     expect(with_.querySelectorAll('button')).toHaveLength(2)
   })
 
@@ -166,12 +163,8 @@ describe('TokenSubRows', () => {
     // Vector is the outcome the studio steers users toward, so it is the one format the
     // badge highlights rather than greys out.
     render(<TokenSubRows references={[UNISWAP, BRIDGE]} />)
-    const vectorBadge = Array.from(rowFor(UNISWAP).querySelectorAll('span')).find(
-      (span) => span.textContent === 'svg',
-    )!
-    const rasterBadge = Array.from(rowFor(BRIDGE).querySelectorAll('span')).find(
-      (span) => span.textContent === 'png',
-    )!
+    const vectorBadge = Array.from(rowFor(UNISWAP).querySelectorAll('span')).find((span) => span.textContent === 'svg')!
+    const rasterBadge = Array.from(rowFor(BRIDGE).querySelectorAll('span')).find((span) => span.textContent === 'png')!
     expect(vectorBadge.className).toContain('accent')
     expect(rasterBadge.className).not.toContain('accent')
   })

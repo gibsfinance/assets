@@ -51,6 +51,11 @@ import pangolinCollector from './pangolin'
 import arbitrumCollector from './arbitrum'
 import mewCollector from './mew'
 import jupiterCollector from './jupiter'
+// Bridge aggregators. Broad, cross-chain, and verified-only — see ./aggregator.
+import lifiCollector from './lifi'
+import relayCollector from './relay'
+import nearIntentsCollector from './near-intents'
+import debridgeCollector from './debridge'
 import type { BaseCollector } from './base-collector'
 
 /**
@@ -104,6 +109,10 @@ type CollectableKey =
   | 'arbitrum'
   | 'mew'
   | 'jupiter'
+  | 'lifi'
+  | 'relay'
+  | 'debridge'
+  | 'near-intents'
   | 'ethereum-lists'
   | 'cryptocurrency-icons'
   | 'chainlist'
@@ -180,6 +189,19 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
       },
     ]),
     dfyn: dfynCollector,
+    // LiFi outranks CoinGecko, and only CoinGecko: the two contest 2,630 tokens,
+    // and on 97% of them LiFi's artwork is not CoinGecko's — 68% comes from
+    // DeBank and 25% from Ondo, curators nothing else here represents. So the
+    // choice between them is a real one rather than a mirror swap, and it is
+    // settled the way a tie between two broad automated feeds should be: in
+    // favour of the one that is maintained continuously.
+    //
+    // It stops here on purpose. Everything above is either chain-native
+    // (smoldapp) or hand-curated for one ecosystem (Trust Wallet, balancer,
+    // kleros, the Uniswap lists), and a routing aggregator has no standing to
+    // overrule a person who chose that art deliberately. An aggregator may
+    // outrank another aggregate source; it may not outrank a curator.
+    lifi: lifiCollector,
     coingecko: new CoinGeckoCollector(),
     '9mm': nineMM,
     uma: umaCollector,
@@ -199,6 +221,31 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     jupiter: jupiterCollector,
     // MyEtherWallet's Ethereum mainnet token metadata (name/symbol/decimals, no logos).
     mew: mewCollector,
+    // Relay and NEAR Intents, the two aggregators that do not outrank CoinGecko.
+    //
+    // Relay contests CoinGecko on 2,148 tokens, and on 94% of them the artwork it
+    // would serve is CoinGecko's own, from CoinGecko's CDN. Ranking it higher
+    // would hand back the same picture through a second-hand host that lags when
+    // the original changes. Its worth is the 990 tokens nothing else covers and
+    // the 106 chains it reaches, and it delivers both from here — rank decides
+    // contested tokens only, never coverage.
+    //
+    // NEAR Intents carries no artwork at all, so its position affects only where
+    // its 84 tokens fall in a list.
+    relay: relayCollector,
+    // deBridge brings the most artwork nothing else here has - 4,139 tokens
+    // across the seven largest chains, 27% of what it carries - and it ranks
+    // below CoinGecko all the same. Its logos sit on its own store, which reads
+    // as first-hand until the records are opened: 80% of them carry a coingecko
+    // tag, so the picture is CoinGecko's, re-hosted. Self-hosted is a fact about
+    // an address, not about where a picture came from. Its worth is the coverage,
+    // and rank has never decided coverage.
+    debridge: debridgeCollector,
+    // NEAR Intents settles a small, deliberate set - 84 tokens over 13 Ethereum
+    // Virtual Machine chains - and carries no artwork for any of them, so it
+    // ranks below the two aggregators that do. What it contributes is the fact
+    // of being settleable, which no other source here states.
+    'near-intents': nearIntentsCollector,
     // Broad metadata source (name/symbol/decimals plus a logo where one exists) from
     // the ethereum-lists/tokens repository. Kept near the bottom because it is not an
     // authoritative logo source, so every curated provider above must outrank it when

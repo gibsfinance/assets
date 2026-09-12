@@ -9,7 +9,7 @@
 
   /* Primary accent (lower = lighter, higher = darker) */
   --color-accent-400: #33e69b;
-  --color-accent-500: #00DC82;
+  --color-accent-500: #00dc82;
   --color-accent-600: #00b368;
 
   /* Cyan secondary */
@@ -102,8 +102,12 @@ body {
 
 /* Conveyor belt animation */
 @keyframes scroll-left {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .animate-scroll {

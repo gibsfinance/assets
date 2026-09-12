@@ -74,8 +74,19 @@ export const discover = async ({
   )
   for (const chainId of chainIds) {
     if (chainId) {
-      const network = await db.insertNetworkFromChainId(chainId, undefined)
+      // A chain the database will not file costs that chain, not the whole list.
+      // Token lists really do number non-Ethereum chains as Ethereum ones -
+      // Uniswap's own default list carries Solana as 501000101 - and the database
+      // refuses those by name. Letting the refusal escape here threw away the
+      // other twenty-four chains in that list, and every other list behind it.
+      // The write loop below already drops a token whose network is missing, so
+      // skipping the chain is all this needs to do.
+      const network = await db.insertNetworkFromChainId(chainId, undefined).catch((err: unknown) => {
+        failureLog('provider=%o list=%o chain=%o refused: %o', providerKey, listKey, chainId, (err as Error).message)
+        return null
+      })
       if (signal.aborted) return undefined
+      if (!network) continue
       networks.set(chainId, network)
       row.increment(terminalCounterTypes.NETWORK, `${chainId}`)
     }
@@ -211,7 +222,6 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
       signal,
     })
     const entries = planned.map((entry) => (entry.uri && missing.has(entry.uri) ? { ...entry, uri: null } : entry))
-    if (signal.aborted) return
 
     /** Write one entry. Shared by the grouped path and the one-at-a-time replay below. */
     const store = async (entry: (typeof entries)[number], tx?: DrizzleTx) =>

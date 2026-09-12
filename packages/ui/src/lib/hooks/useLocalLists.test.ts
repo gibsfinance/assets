@@ -70,9 +70,7 @@ describe('useLocalLists', () => {
         name: 'With Desc',
         description: 'A test list',
         source: { type: 'fork', remoteProvider: 'provA', remoteKey: 'listA' },
-        tokens: [
-          { chainId: 1, address: '0xabc', name: 'A', symbol: 'A', decimals: 18, order: 0 },
-        ],
+        tokens: [{ chainId: 1, address: '0xabc', name: 'A', symbol: 'A', decimals: 18, order: 0 }],
       })
     })
 
@@ -177,9 +175,7 @@ describe('useLocalLists', () => {
       list = await result.current.createList({
         name: 'Test',
         source: { type: 'scratch' },
-        tokens: [
-          { chainId: 1, address: '0xAbC', name: 'A', symbol: 'A', decimals: 18, order: 0 },
-        ],
+        tokens: [{ chainId: 1, address: '0xAbC', name: 'A', symbol: 'A', decimals: 18, order: 0 }],
       })
     })
 

@@ -20,7 +20,7 @@ describe('badgePositionToCSS', () => {
   })
 
   describe('angle positioning', () => {
-    it('places badge at top (12 o\'clock) when angle is 0', () => {
+    it("places badge at top (12 o'clock) when angle is 0", () => {
       const result = badgePositionToCSS(100, 0, 0.3, 0)
       // At 0 degrees (top): rad = -90 deg, cos(-90)=0, sin(-90)=-1
       // So left should be centered, top should be above center
@@ -28,7 +28,7 @@ describe('badgePositionToCSS', () => {
       expect(result.top).toBeLessThan(50)
     })
 
-    it('places badge at right (3 o\'clock) when angle is 90', () => {
+    it("places badge at right (3 o'clock) when angle is 90", () => {
       const result = badgePositionToCSS(100, 90, 0.3, 0)
       // At 90 degrees (right): rad = 0, cos(0)=1, sin(0)=0
       // So left should be to the right of center, top should be centered
@@ -36,7 +36,7 @@ describe('badgePositionToCSS', () => {
       expect(result.top).toBeCloseTo(50 - 15, 5)
     })
 
-    it('places badge at bottom (6 o\'clock) when angle is 180', () => {
+    it("places badge at bottom (6 o'clock) when angle is 180", () => {
       const result = badgePositionToCSS(100, 180, 0.3, 0)
       // At 180 degrees (bottom): rad = 90 deg, cos(90)=0, sin(90)=1
       // So left should be centered, top should be below center
@@ -44,7 +44,7 @@ describe('badgePositionToCSS', () => {
       expect(result.top).toBeGreaterThan(50)
     })
 
-    it('places badge at left (9 o\'clock) when angle is 270', () => {
+    it("places badge at left (9 o'clock) when angle is 270", () => {
       const result = badgePositionToCSS(100, 270, 0.3, 0)
       // At 270 degrees (left): rad = 180 deg, cos(180)=-1, sin(180)=0
       // So left should be to the left of center, top should be centered

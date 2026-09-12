@@ -20,9 +20,7 @@ export default function NotFound() {
     <div className="mx-auto flex max-w-2xl flex-col items-center px-4 py-24 text-center">
       <p className="font-heading text-7xl font-bold text-gradient-brand">404</p>
 
-      <h1 className="mt-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">
-        This page does not exist
-      </h1>
+      <h1 className="mt-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">This page does not exist</h1>
 
       <p className="mt-3 text-gray-500 dark:text-gray-400">
         Nothing is served at{' '}
@@ -41,8 +39,7 @@ export default function NotFound() {
         </Link>
         <Link
           to="/docs"
-          className="text-sm font-medium text-gray-500 transition-colors hover:text-accent-500 dark:text-gray-400"
-        >
+          className="text-sm font-medium text-gray-500 transition-colors hover:text-accent-500 dark:text-gray-400">
           Read the docs
         </Link>
       </div>
