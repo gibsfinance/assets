@@ -48,6 +48,18 @@ yarn run build
 # Dev
 cd packages/server && yarn dev     # server
 cd packages/ui && yarn dev         # frontend
+
+# Smoke test a deployed instance — every documented endpoint, plus the inputs
+# that should be refused. Exits non-zero on any failure, so it can gate a deploy.
+# Defaults to staging; pass a target to check production.
+yarn smoke                         # staging
+yarn smoke:production              # gib.show
+#   Each request carries a random query parameter on purpose. Image responses
+#   cache at the edge for a day, so a plain request after a deploy can be
+#   answered by a copy made before it — which looks like missing response
+#   headers rather than a stale body. `link` and `x-license` are set
+#   unconditionally by attributionHeaders, so if either is absent the response
+#   did not come from that code at all: suspect the cache before the code.
 ```
 
 ## Architecture
