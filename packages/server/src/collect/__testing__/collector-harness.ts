@@ -475,6 +475,8 @@ export type CollectorHarnessDbModule = {
   /** Stamps the publish marker set by `markListTokensCollected` onto the recorded list row. */
   markListTokensCollected: Mock
   insertNetworkFromChainId: Mock
+  /** Read-only listing of every recorded network — see `getNetworks`'s doc comment. */
+  getNetworks: Mock
   fetchImage: Mock
   fetchImageAndStoreForList: Mock
   fetchImageAndStoreForNetwork: Mock
@@ -781,6 +783,13 @@ export const createCollectorHarness = (): CollectorHarness => {
     state.networks.set(canonicalChainId, created)
     return created
   })
+
+  /**
+   * Mirrors the real `getNetworks`: a read-only listing of every network row
+   * recorded so far, for a collector (web3icons) that attaches artwork to an
+   * existing network but must never create one itself.
+   */
+  const getNetworks = vi.fn(async (_tx?: DrizzleTx) => [...state.networks.values()])
 
   const fetchImage = vi.fn(
     async (
@@ -1123,6 +1132,7 @@ export const createCollectorHarness = (): CollectorHarness => {
     insertList,
     markListTokensCollected,
     insertNetworkFromChainId,
+    getNetworks,
     fetchImage,
     fetchImageAndStoreForList,
     fetchImageAndStoreForNetwork,

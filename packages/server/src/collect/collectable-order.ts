@@ -57,6 +57,7 @@ export const collectableOrder = [
   'debridge',
   'near-intents',
   'ethereum-lists',
+  'web3icons',
   'cryptocurrency-icons',
   'chainlist',
 ] as const
