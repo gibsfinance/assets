@@ -42,6 +42,7 @@ import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
 import ethereumListsCollector from './ethereum-lists'
+import web3iconsCollector from './web3icons'
 import cryptocurrencyIconsCollector from './cryptocurrency-icons'
 import chainlistCollector from './chainlist'
 // Additional curated third-party lists, each an actively-maintained source.
@@ -114,6 +115,7 @@ type CollectableKey =
   | 'debridge'
   | 'near-intents'
   | 'ethereum-lists'
+  | 'web3icons'
   | 'cryptocurrency-icons'
   | 'chainlist'
 
@@ -251,6 +253,13 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     // authoritative logo source, so every curated provider above must outrank it when
     // they cover the same token; only the pure network-icon fallbacks sit lower.
     'ethereum-lists': ethereumListsCollector,
+    // Network artwork from 0xa3k5/web3icons, matched to an existing network by
+    // caip2id alone (never by name — see web3icons.ts). Ranked below ethereum-lists
+    // because it is a general-purpose icon set rather than a source a chain
+    // publishes about itself, but above the two generic icon sets below it because
+    // it is actively maintained, mostly vector, and carries real chain identifiers
+    // instead of guessing from names.
+    web3icons: web3iconsCollector,
     'cryptocurrency-icons': cryptocurrencyIconsCollector,
     // Broadest, lowest-priority network-icon source: fills eip155 chains no
     // curated provider covers. Kept last so any chain-specific logo outranks it.

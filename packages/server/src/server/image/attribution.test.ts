@@ -68,6 +68,13 @@ describe('resolveAttribution', () => {
     expect(byUri.license).toBe('MIT')
   })
 
+  it('resolves the web3icons provider key, fetched live rather than through a submodule alias', () => {
+    const source = resolveAttribution({ providerKey: 'web3icons' })
+    expect(source.sourceKey).toBe('web3icons')
+    expect(source.license).toBe('MIT')
+    expect(source.attribution).toBe('Copyright (c) 2024 0xa3k5 - MIT')
+  })
+
   it('resolves pls369 to an unverified licence even though the source is identifiable', () => {
     const byProviderKey = resolveAttribution({ providerKey: 'pls369' })
     const byUri = resolveAttribution({
@@ -164,7 +171,7 @@ describe('attributionHeaders', () => {
     expect(headers).not.toHaveProperty('x-provider-name')
   })
 
-  // The licence registry holds the four sources whose LICENSE files have been
+  // The licence registry holds the five sources whose licence files have been
   // read. Production serves images from 59 provider keys. Naming the provider
   // only for registry members would leave the large majority of responses with
   // no provider at all, so the recorded provider key must survive an unverified
@@ -196,6 +203,18 @@ describe('attributionHeaders', () => {
     // The display name is withheld rather than guessed: naming this "Smol" beside
     // x-provider: gibs would assert the two are the same party.
     expect(headers).not.toHaveProperty('x-provider-name')
+  })
+
+  it('publishes the full attribution set for web3icons, fetched live rather than through a submodule', () => {
+    const headers = attributionHeaders({
+      providerKey: 'web3icons',
+      uri: 'https://raw.githubusercontent.com/0xa3k5/web3icons/main/packages/core/src/svgs/networks/branded/zksync.svg',
+    })
+    expect(headers['x-provider']).toBe('web3icons')
+    expect(headers['x-provider-name']).toBe('0xa3k5/web3icons')
+    expect(headers['x-license']).toBe('MIT')
+    expect(headers['x-license-url']).toBe('https://github.com/0xa3k5/web3icons/blob/main/LICENCE')
+    expect(headers['x-attribution']).toBe('Copyright (c) 2024 0xa3k5 - MIT')
   })
 
   it('omits x-attribution when the resolved source has none', () => {

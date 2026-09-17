@@ -20,7 +20,9 @@
     "db:migrate-latest": "yarn workspace server run db:migrate-latest",
     "db:seed": "yarn workspace server run db:seed",
     "cronworker": "/usr/local/bin/update_submodules.sh && yarn workspace server run collect --logger=pretty --concurrency=8",
-    "db:migrate-make": "yarn workspace server run db:migrate-make"
+    "db:migrate-make": "yarn workspace server run db:migrate-make",
+    "smoke": "node scripts/smoke-test.mjs",
+    "smoke:production": "node scripts/smoke-test.mjs https://gib.show"
   },
   "workspaces": [
     "packages/utils",

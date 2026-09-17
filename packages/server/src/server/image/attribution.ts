@@ -3,13 +3,14 @@
  * Copyright attribution for redistributed token and chain artwork.
  *
  * gib.show redistributes artwork collected from third-party sources. Three of the
- * submodules under `submodules/` carry the Massachusetts-Institute-of-Technology
- * (MIT) licence, which requires the copyright and permission notice to travel with
- * every copy. This module is the single place that decides which source produced a
- * served image and what attribution that source requires, so `sendImage` and
- * `sendVariant` cannot drift apart on the answer.
+ * submodules under `submodules/` and one source fetched live (web3icons) carry the
+ * Massachusetts-Institute-of-Technology (MIT) licence, which requires the copyright
+ * and permission notice to travel with every copy. This module is the single place
+ * that decides which source produced a served image and what attribution that
+ * source requires, so `sendImage` and `sendVariant` cannot drift apart on the
+ * answer.
  *
- * Every entry below was populated by opening the named submodule's `LICENSE` file
+ * Every entry below was populated by opening the named source's own licence file
  * and copying its real copyright line. A source with no verified licence is marked
  * `'unknown'` — never guessed — because a guessed licence is worse than an absent one.
  */
@@ -81,6 +82,24 @@ const ETHEREUM_LISTS: SourceLicense = Object.freeze({
 })
 
 /**
+ * web3icons — provider key `web3icons`, fetched directly from the 0xa3k5/web3icons
+ * GitHub repository rather than a vendored submodule (it supplies only network
+ * artwork, and the collector reads its metadata and icon files straight from
+ * `raw.githubusercontent.com` on every run). Verified against the repository's own
+ * `LICENCE` file (note the British spelling — there is no `LICENSE` at the root) at
+ * `https://raw.githubusercontent.com/0xa3k5/web3icons/main/LICENCE`, and confirmed
+ * independently by the GitHub API's `license.spdx_id`: MIT, copyright line
+ * "Copyright (c) 2024 0xa3k5".
+ */
+const WEB3ICONS: SourceLicense = Object.freeze({
+  sourceKey: 'web3icons',
+  name: '0xa3k5/web3icons',
+  license: 'MIT',
+  licenseUrl: 'https://github.com/0xa3k5/web3icons/blob/main/LICENCE',
+  attribution: 'Copyright (c) 2024 0xa3k5 - MIT',
+})
+
+/**
  * PLS369 pulsechain-assets — submodule `submodules/pulsechain-assets`, provider key
  * `pls369`. Checked and confirmed: this submodule carries no `LICENSE` file at all.
  *
@@ -117,6 +136,7 @@ const SOURCE_REGISTRY: Readonly<Record<string, SourceLicense>> = Object.freeze({
   'smoldapp-tokenassets': SMOLDAPP,
   'ethereum-lists': ETHEREUM_LISTS,
   'ethereum-lists-tokens': ETHEREUM_LISTS,
+  web3icons: WEB3ICONS,
   pls369: PULSECHAIN_ASSETS,
   'pulsechain-assets': PULSECHAIN_ASSETS,
 })

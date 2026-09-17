@@ -259,7 +259,7 @@ class DexscreenerCollector extends BaseCollector {
           for (const token of startingTokens) {
             collector.markTokenAsPending(token)
           }
-          let nextKeys = new Set<string>()
+          let nextKeys: Set<string>
           while ((nextKeys = collector.getPendingTokens(16)).size) {
             if (signal.aborted) return
             await Promise.all([collector.collect(nextKeys, signal), collector.collectDecimals(nextKeys)])

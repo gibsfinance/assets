@@ -277,6 +277,37 @@ describe('inmemory-tokenlist collect', () => {
     expect(second?.listTokenOrderId).toBe(1)
   })
 
+  it('stores the tokens of a list that numbers its chains as strings', async () => {
+    // A token list is JSON from a stranger, and the standard's `chainId: number` is a
+    // hope rather than a guarantee. discover() already coerces with `+` when it fills
+    // the network map, which is the evidence that the author did not trust it either -
+    // but the lookup in collect() used the raw value, and a Map keyed by the number 1
+    // answers nothing for the string '1'. Every token in such a list was dropped as
+    // having no network, so the list stored clean and empty, which is the failure this
+    // codebase keeps meeting: a source that reads as having nothing in it.
+    const tokenList = buildTokenList({
+      tokens: [
+        buildTokenEntry({ address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', symbol: 'AAA' }),
+        buildTokenEntry({ address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', symbol: 'BBB' }),
+      ],
+    })
+    // Cast rather than typed, because the type is exactly what the wire disagrees with.
+    for (const entry of tokenList.tokens) {
+      ;(entry as unknown as { chainId: string }).chainId = '1'
+    }
+
+    await inmemoryTokenlist.collect({
+      providerKey: 'acme',
+      listKey: 'default',
+      tokenList,
+      signal: new AbortController().signal,
+    })
+
+    expect(harness.state.tokenImages).toHaveLength(2)
+    expect(harness.state.tokenImages[0]?.token.providedId).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    expect(harness.state.tokenImages[1]?.token.providedId).toBe('0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+  })
+
   it('normalizes the provided address before storing it', async () => {
     const tokenList = buildTokenList({
       tokens: [buildTokenEntry({ chainId: 1, address: '0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC' })],

@@ -489,7 +489,7 @@ const WARM_PROVIDER_LIST_COUNT = 20
 export const warmProviderListCache = async (topN = WARM_PROVIDER_LIST_COUNT): Promise<void> => {
   const extensions = new Set<string>()
   const filters = utils.tokenFilters({})
-  let lists: { providerKey: string; listKey: string }[] = []
+  let lists: { providerKey: string; listKey: string }[]
   try {
     lists = await db.getLargestLists(topN)
   } catch {
