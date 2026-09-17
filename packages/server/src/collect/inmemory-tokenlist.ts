@@ -183,7 +183,17 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
     // never mutate the entries; normalize into locals instead.
     const planned = tokenList.tokens.flatMap((entry, index) => {
       const address = db.normalizeProvidedId(entry.address)
-      const network = networks.get(entry.chainId)
+      // Coerced the same way discover() coerces it when filling the map. The standard
+      // declares chainId a number, but a token list is JSON from a stranger and some of
+      // them write it as a string - the `+` in discover() is the evidence that the type
+      // was never trusted there either. A Map keyed by the number 1 answers nothing for
+      // the string '1', so a mismatch here dropped every token in the list as having no
+      // network, and the list stored clean and empty. That is the hardest failure in
+      // this codebase to notice: a source that simply reads as having nothing in it.
+      //
+      // Only the lookup needs this. The counter ids a few lines down interpolate their
+      // chain id into a string, where '1' and 1 are already the same id.
+      const network = networks.get(+entry.chainId)
       if (!network) {
         failureLog('no network found for %o %o', tokenList, entry)
         return []
