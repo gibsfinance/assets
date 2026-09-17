@@ -510,6 +510,7 @@ const iterateOverRange = async (
       if (consecutiveErrors >= maxConsecutiveErrors) {
         throw new Error(
           `Failed after ${maxConsecutiveErrors} consecutive attempts with last error: ${err.message || err}`,
+          { cause: error },
         )
       }
 
@@ -519,7 +520,9 @@ const iterateOverRange = async (
       if (isLimitError) {
         currentStep = currentStep / 2n
         if (currentStep < minStep) {
-          throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`)
+          throw new Error(`Block range too small (${currentStep} blocks) - minimum viable range is ${minStep} blocks`, {
+            cause: error,
+          })
         }
       }
 

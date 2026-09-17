@@ -365,7 +365,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
   } = params
   const tokenFolder = path.join(tokensPath, chainIdString, token.toLowerCase())
   const address = (utils.commonNativeNames.has(token.toLowerCase() as Hex) ? zeroAddress : token).toLowerCase() as Hex
-  let metadata: [string, string, number] | null = null
+  let metadata: [string, string, number] | null
   const chain = utils.findChain(+chainIdString)
   if (!chain) {
     return

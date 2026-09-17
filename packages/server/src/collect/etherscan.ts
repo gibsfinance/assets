@@ -450,7 +450,6 @@ async function fetchTopTokensViaPuppeteer({
   } finally {
     if (page) {
       await page.close()
-      page = null
     }
   }
 }

@@ -145,10 +145,16 @@ master.
   out for a long time and drifted to 187 findings, more than half of them about
   `coverage/` and `dist/` — generated output nobody had told the linter to skip.
 - ESLint config: `packages/server/eslint.config.js` (flat config; `packages/ui` has its own) —
-  `argsIgnorePattern: '^_'`. Both packages migrated off `.eslintrc` some time ago. Staying on
-  eslint 9 is deliberate: the registry now flags the whole 9.x line as unsupported, but 10 is a
-  real behavioural upgrade — three new rules in `eslint:recommended`, `eslint-env` comments
-  become errors, and changed JSX reference tracking surfaces new findings in `ui`.
+  `argsIgnorePattern: '^_'`. Both packages migrated off `.eslintrc` some time ago. The project
+  now runs eslint 10, moved up from eslint 9 in 2026-09. Eslint 10 needs Node version 20.19 or
+  higher, Node version 22.13 or higher, or Node version 24 or higher; our Node version 24
+  satisfies this. Three new rules joined `eslint:recommended` in this release. Two of them,
+  `no-useless-assignment` and `preserve-caught-error`, found real issues in
+  `packages/server/src/collect/` and `packages/server/src/server/list/handlers.ts` — dead
+  variable initializers, and two thrown errors that dropped their original cause. Both are
+  fixed in the source, not suppressed. The third new rule, `no-unassigned-vars`, found nothing.
+  Changed JSX reference tracking did not surface new findings in `ui` for this codebase.
+  `typescript-eslint` moved to a version whose peer range includes eslint 10.
 
 ## Conventions
 
