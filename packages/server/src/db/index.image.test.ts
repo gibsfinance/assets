@@ -27,6 +27,7 @@ vi.mock('fs', () => ({ promises: fsPromises }))
 // inside a test's own timeout budget — see index.order.test.ts.
 import {
   insertImage,
+  insertLinkOnlyImage,
   fetchImage,
   resolveImage,
   getImageFromLink,
@@ -1716,5 +1717,141 @@ describe('prewarmImages', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(result.fetched).toBe(0)
     expect(harness.queries).toHaveLength(0)
+  })
+})
+
+describe('link-only hosts', () => {
+  const DEBANK = 'https://static.debank.com/image/eth_token/logo_url/0xabc/1d0390168de63ca803e8db7990e4f6ec.png'
+
+  it('records a link-only address without ever downloading it', async () => {
+    // The whole point. DeBank's terms forbid keeping a copy and forbid making a
+    // derivative, and every resize this service serves is a derivative. So the bytes
+    // are never fetched at all - not even to sanitize and throw away.
+    harness.queueResult([{ imageHash: 'hash-debank' }])
+    harness.queueResult([{ uri: DEBANK }])
+
+    const result = await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: DEBANK, listId: 'list-1' })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(detectImageExt).not.toHaveBeenCalled()
+    expect(result?.image.imageHash).toBe('hash-debank')
+  })
+
+  it('stores an empty body and the link mode, so the serving path redirects', async () => {
+    harness.queueResult([{ imageHash: 'hash-debank' }])
+    harness.queueResult([{ uri: DEBANK }])
+
+    await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: DEBANK, listId: 'list-1' })
+
+    const insert = harness.queries.find((query) => query.root === 'insert')
+    const row = insert?.steps.find((step) => step.method === 'values')?.args[0] as {
+      content: Buffer
+      mode: string
+      ext: string
+    }
+    // Zero-length rather than absent: image.content is declared not-null, so a link
+    // cannot be expressed as a row without one.
+    expect(row.content.length).toBe(0)
+    expect(row.mode).toBe('link')
+    expect(row.ext).toBe('.png')
+  })
+
+  it('gives two different link-only addresses two different rows', async () => {
+    // The hash folds the address in beside the content, so two addresses that share
+    // the same empty body still land apart. Were that not so, every link-only image
+    // in the service would collapse onto one row holding one address.
+    const other = 'https://static.debank.com/image/eth_token/logo_url/0xdef/99990168de63ca803e8db7990e4f6ec.png'
+    harness.queueResult([{ imageHash: 'h1' }])
+    harness.queueResult([{ uri: DEBANK }])
+    harness.queueResult([{ imageHash: 'h2' }])
+    harness.queueResult([{ uri: other }])
+
+    await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: DEBANK, listId: 'list-1' })
+    await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: other, listId: 'list-1' })
+
+    const hashes = harness.queries
+      .filter((query) => query.root === 'insert')
+      .map(
+        (query) => (query.steps.find((step) => step.method === 'values')?.args[0] as { imageHash?: string })?.imageHash,
+      )
+      .filter((hash): hash is string => typeof hash === 'string')
+    expect(hashes[0]).not.toBe(hashes[1])
+  })
+
+  it('refuses an address whose path carries no extension, rather than guessing one', async () => {
+    // There are no bytes to sniff, so the extension can only come from the address.
+    // An address that does not offer one is recorded as missing artwork - the same
+    // answer a failed download gets - instead of being stored under a guess.
+    const noExtension = 'https://static.debank.com/image/eth_token/logo_url/0xabc/plain'
+
+    const result = await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: noExtension, listId: 'list-1' })
+
+    expect(result).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads the extension from the path and not from a query string', async () => {
+    const withQuery = 'https://static.debank.com/image/eth_token/logo_url/0xabc/pic.svg?width=64#fragment'
+    harness.queueResult([{ imageHash: 'hash-svg' }])
+    harness.queueResult([{ uri: withQuery }])
+
+    await insertLinkOnlyImage({ providerKey: 'lifi', originalUri: withQuery, listId: 'list-1' })
+
+    const insert = harness.queries.find((query) => query.root === 'insert')
+    const row = insert?.steps.find((step) => step.method === 'values')?.args[0] as { ext: string }
+    expect(row.ext).toBe('.svg')
+  })
+
+  it('will not fetch a link-only address even when asked directly', async () => {
+    // The backstop. Every caller that knows an address is link-only skips the fetch
+    // itself; this is what stops a future caller reintroducing the download simply by
+    // not knowing it had to check.
+    const image = await fetchImage(DEBANK, undefined, 'lifi')
+
+    expect(image).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('stores a token against a link-only address without downloading it', async () => {
+    harness.queueResult([]) // getFreshImageFromLink: nothing stored for this address yet
+    harness.queueResult([{ imageHash: 'hash-debank' }])
+    harness.queueResult([{ uri: DEBANK }])
+    for (let spare = 0; spare < 8; spare++) {
+      harness.queueResult([{ tokenId: 'token-1', providedId: '0xabc', listId: 'list-1', imageHash: 'hash-debank' }])
+    }
+
+    await fetchImageAndStoreForToken({
+      listId: 'list-1',
+      listTokenOrderId: 0,
+      uri: DEBANK,
+      originalUri: DEBANK,
+      providerKey: 'lifi',
+      token: { name: 'Maker', symbol: 'MKR', decimals: 18, networkId: 'net-1', providedId: '0xabc' },
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    // Asserting the absence of a download is not enough on its own: fetchImage refuses a
+    // link-only address anyway, so "nothing was downloaded" stays true even if this
+    // branch disappears. What distinguishes the branch is that the address is RECORDED -
+    // the other path marks it missing and stores no image at all.
+    const imageInsert = harness.queries
+      .filter((query) => query.root === 'insert')
+      .map((query) => query.steps.find((step) => step.method === 'values')?.args[0] as { mode?: string })
+      .find((row) => row?.mode === 'link')
+    expect(imageInsert).toBeDefined()
+  })
+
+  it('prewarms a link-only address by recording it, not by downloading it', async () => {
+    // Recorded here rather than left to the write loop, and deliberately kept out of
+    // `missing`: the loop blanks every address in that set, which would throw away a
+    // perfectly resolvable address as though the host had refused it.
+    harness.queueResult([]) // getFreshImageFromLink: no fresh row yet
+    harness.queueResult([{ imageHash: 'hash-debank' }])
+    harness.queueResult([{ uri: DEBANK }])
+
+    const result = await prewarmImages({ uris: [DEBANK], providerKey: 'lifi', listId: 'list-1' })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.missing.has(DEBANK)).toBe(false)
   })
 })

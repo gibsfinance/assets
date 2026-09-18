@@ -24,6 +24,7 @@ import { imageMode } from '../../db/tables'
 import { failureLog } from '@gibs/utils'
 import { attributionHeaders } from './attribution'
 import { createRateLimiter } from './rate-limit'
+import { isLinkOnlyHost } from '../../link-only-hosts'
 
 // ---------------------------------------------------------------------------
 // Section 1: Query param parsing, SVG detection, format helpers
@@ -280,6 +281,13 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   let content = img.content
   if (img.mode === imageMode.LINK && (!content || content.length === 0)) {
     if (!img.uri || !img.uri.startsWith('http')) return false
+    // A link-only host's terms forbid a copy as much as a derivative, and a
+    // resize or a format conversion is a derivative. Fetching the bytes here
+    // just to transcode them would be exactly what storage already refuses to
+    // do — so this returns false the same way an unfetchable image does, and
+    // the caller falls through to sendImage, which redirects to the address
+    // honestly instead of serving a converted copy of it.
+    if (isLinkOnlyHost(img.uri)) return false
     try {
       const fetchRes = await fetch(img.uri, { signal: AbortSignal.timeout(5000) })
       if (!fetchRes.ok) return false

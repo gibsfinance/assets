@@ -15,10 +15,11 @@ import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
 import { isPlaceholderImage, isPlaceholderUri, placeholderByteLengths } from '../image-placeholders'
+import { isLinkOnlyHost } from '../link-only-hosts'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import config from '../../config'
-import { imageMode } from './tables'
+import { imageMode, type ImageMode } from './tables'
 import type {
   InsertableList,
   InsertableListToken,
@@ -160,6 +161,56 @@ const writeMissing = async ({
   })
 }
 
+/**
+ * Write one `image` row and its `link` row together, keyed on the same
+ * conflict targets `insertImage` and `insertLinkOnlyImage` both rely on: a
+ * re-collected `imageHash` refreshes content/mode/uri, and a re-collected
+ * `uri` refreshes the link. The single shared write is what keeps a
+ * downloaded image and a link-only one from drifting onto two different
+ * upsert shapes.
+ */
+const upsertImageAndLink = async (
+  {
+    originalUri,
+    content,
+    ext,
+    imageHash,
+    mode,
+  }: {
+    originalUri: string
+    content: Buffer
+    ext: string
+    imageHash: string
+    mode: ImageMode
+  },
+  tx?: DrizzleTx,
+) => {
+  const db = tx ?? getDrizzle()
+  const [inserted] = await db
+    .insert(s.image)
+    .values({ uri: originalUri, content, imageHash, ext, mode })
+    .onConflictDoUpdate({
+      target: s.image.imageHash,
+      set: { content: dsql`excluded.content`, mode: dsql`excluded.mode`, uri: dsql`excluded.uri` },
+    })
+    .returning()
+  const [link] = await db
+    .insert(s.link)
+    .values({
+      uri: originalUri,
+      imageHash: inserted.imageHash,
+    })
+    .onConflictDoUpdate({
+      target: s.link.uri,
+      set: { uri: dsql`excluded.uri` },
+    })
+    .returning()
+  return {
+    image: inserted,
+    link,
+  }
+}
+
 export const insertImage = async (
   {
     providerKey,
@@ -174,7 +225,6 @@ export const insertImage = async (
   },
   tx?: DrizzleTx,
 ) => {
-  const db = tx ?? getDrizzle()
   const ext = await detectImageExt(image, path.extname(originalUri))
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
@@ -209,52 +259,84 @@ export const insertImage = async (
     return null
   }
   const shouldSave = args.checkShouldSave(providerKey)
-  const insertable = {
-    uri: originalUri,
-    content: shouldSave ? sanitized : Buffer.from([]),
-    imageHash,
-    ext,
-    mode: shouldSave ? imageMode.SAVE : imageMode.LINK,
-  }
-  const [, [inserted]] = await Promise.all([
+  const content = shouldSave ? sanitized : Buffer.from([])
+  const mode = shouldSave ? imageMode.SAVE : imageMode.LINK
+  const [, result] = await Promise.all([
     removeMissing({
       imageHash,
       originalUri,
       providerKey,
       listId,
     }),
-    db
-      .insert(s.image)
-      .values(insertable)
-      .onConflictDoUpdate({
-        target: s.image.imageHash,
-        set: { content: dsql`excluded.content`, mode: dsql`excluded.mode`, uri: dsql`excluded.uri` },
-      })
-      .returning(),
+    upsertImageAndLink({ originalUri, content, ext, imageHash, mode }, tx),
   ])
-  // this fails for some reason when the db creates the image hash
-  // figure out why
-  // if (imageHash !== inserted.imageHash) {
-  //   log(insertable, inserted, imageHash)
-  //   throw new Error('image hash mismatch')
-  // } else {
-  //   log('image hash match %o', imageHash)
-  // }
-  const [link] = await db
-    .insert(s.link)
-    .values({
-      uri: originalUri,
-      imageHash: inserted.imageHash,
+  return result
+}
+
+/**
+ * Extract a usable extension from a source address's own path, ignoring any
+ * query string or fragment. Returns null when the address carries none — a
+ * path with no dot in its final segment — so the caller can fall back to
+ * `writeMissing` rather than store a row against the `image.ext` column,
+ * which is `notNull`.
+ */
+const extensionFromAddress = (uri: string): string | null => {
+  const [withoutQuery] = uri.split(/[?#]/)
+  const ext = path.extname(withoutQuery)
+  return ext || null
+}
+
+/**
+ * Record a link-only image: an address whose host's terms forbid keeping a
+ * copy or making a derivative (see `isLinkOnlyHost`). Never downloads —
+ * callers of this function must not have fetched the address either, because
+ * the whole point is that nothing about the source's bytes is ever read.
+ *
+ * The stored row carries a zero-length `content`, so its extension cannot
+ * come from content sniffing: `detectImageExt` always answers null for an
+ * empty buffer (there are no magic bytes to match, and `looksLikeSvg` finds
+ * no root element in an empty string either). It comes from the address's own
+ * path instead.
+ *
+ * `ids.imageHash` folds the address into the hash alongside the (always
+ * empty) content, so two different link-only addresses still land on two
+ * different rows rather than colliding on the shared empty buffer.
+ */
+export const insertLinkOnlyImage = async (
+  {
+    providerKey,
+    originalUri,
+    listId,
+  }: {
+    providerKey: string
+    originalUri: string
+    listId: string | null
+  },
+  tx?: DrizzleTx,
+) => {
+  const ext = extensionFromAddress(originalUri)
+  const emptyContent = Buffer.alloc(0)
+  const imageHash = ids.imageHash(emptyContent, originalUri, ext)
+  if (!ext) {
+    failureLog('link-only address has no extension %o -> %o', providerKey, originalUri)
+    await writeMissing({
+      providerKey,
+      originalUri,
+      imageHash,
+      listId,
     })
-    .onConflictDoUpdate({
-      target: s.link.uri,
-      set: { uri: dsql`excluded.uri` },
-    })
-    .returning()
-  return {
-    image: inserted,
-    link,
+    return null
   }
+  const [, result] = await Promise.all([
+    removeMissing({
+      imageHash,
+      originalUri,
+      providerKey,
+      listId,
+    }),
+    upsertImageAndLink({ originalUri, content: emptyContent, ext, imageHash, mode: imageMode.LINK }, tx),
+  ])
+  return result
 }
 
 export const fetchImage = async (
@@ -273,6 +355,15 @@ export const fetchImage = async (
   // request is made. Treated as no image at all, which is what the caller would
   // have concluded from a 404 — every one of them already handles that.
   if (isPlaceholderUri(url)) {
+    return null
+  }
+  // A host whose terms forbid keeping a copy or a derivative must never be
+  // fetched at all — not even to sanitize and discard. Callers that know an
+  // address is link-only in advance (fetchImageAndStoreForToken, prewarmImages)
+  // skip this function entirely and record the address without ever fetching
+  // it; this is the backstop for every other path that still calls fetchImage
+  // directly, so a new one cannot reintroduce a download by omission.
+  if (isLinkOnlyHost(url)) {
     return null
   }
   if (url.startsWith('/')) {
@@ -1178,26 +1269,34 @@ export const fetchImageAndStoreForToken = async (
       listId,
     })
   } else if (uri && originalUri) {
-    const image = await fetchImage(uri, signal, providerKey, token.providedId)
-    if (!image) {
-      // Deliberate: a failed image fetch records the miss but still stores the token
-      // (image-less) below — list endpoints filter imageless tokens server-side, and
-      // a later collection can attach the image without re-discovering the token.
-      await writeMissing({
-        providerKey,
-        originalUri,
-        listId,
-      })
+    // A link-only host (DeBank today) must never be fetched, even once — see
+    // `isLinkOnlyHost`. Recording the address directly, without an intervening
+    // fetch, is what makes this different from the ordinary miss path below:
+    // there is no download to fail, so there is nothing to mark missing.
+    if (_.isString(uri) && isLinkOnlyHost(originalUri)) {
+      img = await insertLinkOnlyImage({ providerKey, originalUri, listId }, tx)
     } else {
-      img = await insertImage(
-        {
+      const image = await fetchImage(uri, signal, providerKey, token.providedId)
+      if (!image) {
+        // Deliberate: a failed image fetch records the miss but still stores the token
+        // (image-less) below — list endpoints filter imageless tokens server-side, and
+        // a later collection can attach the image without re-discovering the token.
+        await writeMissing({
           providerKey,
           originalUri,
-          image,
           listId,
-        },
-        tx,
-      )
+        })
+      } else {
+        img = await insertImage(
+          {
+            providerKey,
+            originalUri,
+            image,
+            listId,
+          },
+          tx,
+        )
+      }
     }
   }
   const insertedToken = await insertToken(
@@ -1278,6 +1377,16 @@ export const prewarmImages = async ({
         // Already on disk and inside its freshness window — nothing to do, and the loop
         // downstream will find exactly this row.
         if (await getFreshImageFromLink(uri, maxImageAge)) return
+        // A link-only host must never be fetched — record the address directly
+        // instead of downloading it and throwing the bytes away. Recording it
+        // here, rather than leaving it for the write loop below, is what keeps
+        // this uri out of `missing`: the loop blanks any uri in that set, which
+        // would drop a perfectly resolvable DeBank address as if the host had
+        // refused it.
+        if (isLinkOnlyHost(uri)) {
+          await insertLinkOnlyImage({ providerKey, originalUri: uri, listId })
+          return
+        }
         const image = await fetchImage(uri, signal, providerKey)
         if (!image) {
           // Recorded here rather than left for the loop, because the caller blanks these
