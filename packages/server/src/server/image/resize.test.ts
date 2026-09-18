@@ -673,6 +673,27 @@ describe('maybeResize', () => {
     expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
   })
 
+  it('will not fetch a link-only host in order to resize it', async () => {
+    // A resize is a derivative, and a link-only host's terms forbid a derivative as
+    // firmly as a copy. Fetching the bytes here purely to transcode them would be
+    // exactly what the storage path already refuses to do, so this declines the same
+    // way an unfetchable image does and lets the caller redirect to the source.
+    global.fetch = vi.fn() as never
+    const req = mockReq({ w: '72' })
+    const res = mockRes()
+    const img = makeImage({
+      mode: 'link',
+      content: Buffer.from(''),
+      uri: 'https://static.debank.com/image/eth_token/logo_url/0xabc/1d039016.png',
+    })
+
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+
+    expect(result).toBe(false)
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
   // -------------------------------------------------------------------------
   // 8. Returns false for LINK-mode with non-http URI
   // -------------------------------------------------------------------------

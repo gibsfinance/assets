@@ -290,6 +290,25 @@ describe('image handlers', () => {
       expect(res.redirect).toHaveBeenCalledWith('https://example.com/token.png')
     })
 
+    it('sends the licence and provenance headers with a redirect, not only with content', () => {
+      // The terms page at /terms states plainly, in a table, that every image response
+      // carries its own provenance. A redirect is an image response. It used to carry
+      // none of these headers, which mattered little while redirects were rare - and
+      // would have become a published falsehood the moment link-only storage made every
+      // address on such a host a redirect. A caller being sent to a third-party host
+      // needs the licence more than one receiving our own bytes, not less.
+      const res = mockResponse()
+      const img = makeImage()
+
+      sendImage(res, img, 'link')
+
+      const headerNames = vi.mocked(res.set).mock.calls.map(([name]) => name)
+      expect(headerNames).toContain('link')
+      expect(headerNames).toContain('x-license')
+      expect(headerNames).toContain('x-source-uri')
+      expect(res.redirect).toHaveBeenCalledWith('https://example.com/token.png')
+    })
+
     it('returns 404 when content is empty and no redirect uri', () => {
       const res = mockResponse()
       const img = makeImage({ content: Buffer.from([]), uri: '' })

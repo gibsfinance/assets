@@ -534,7 +534,19 @@ export const sendImage = (
   cachePolicy: CachePolicy = 'mutable',
 ) => {
   const decision = classifyImageServe(img, mode)
+  // attributionHeaders() normalizes img.uri itself — an absolute submodule
+  // filesystem path, an http(s)/ipfs uri, or a data: uri all resolve to the
+  // right x-source-uri/x-uri (or no uri header at all) from the raw value.
+  const headers = attributionHeaders({ uri: img.uri, providerKey: img.providerKey })
   if (decision === 'redirect') {
+    // A caller sent away to fetch from the source directly still needs to know
+    // its licence and provenance — arguably more than one served our own bytes,
+    // since they are about to leave for a third-party host entirely. Without
+    // this, every link-only image (every DeBank address, by design) would
+    // redirect with none of the headers /terms promises on every response.
+    for (const [name, value] of Object.entries(headers)) {
+      res.set(name, value)
+    }
     return res.redirect(img.uri)
   }
   if (decision === 'unavailable') {
@@ -543,10 +555,6 @@ export const sendImage = (
 
   let r = res.set('cache-control', cacheControlFor(cachePolicy))
   r = r.set('x-resize', 'original')
-  // attributionHeaders() normalizes img.uri itself — an absolute submodule
-  // filesystem path, an http(s)/ipfs uri, or a data: uri all resolve to the
-  // right x-source-uri/x-uri (or no uri header at all) from the raw value.
-  const headers = attributionHeaders({ uri: img.uri, providerKey: img.providerKey })
   for (const [name, value] of Object.entries(headers)) {
     r = r.set(name, value)
   }

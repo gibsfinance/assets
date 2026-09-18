@@ -1,8 +1,14 @@
 # Terms and attribution
 
-Gib.Show is an index. It collects artwork that other projects publish, stores a
-copy so it loads quickly, and serves it back at a predictable address. It is a
-convenience layer over other people's work.
+Gib.Show is an index. It collects artwork that other projects publish, usually
+stores a copy so it loads quickly, and serves it back at a predictable address.
+It is a convenience layer over other people's work.
+
+Some sources we do not copy at all. Where a source asks that its artwork not be
+stored or altered, we keep only the address and send you there instead: the
+predictable address still works, and answers with a redirect to the source
+rather than with our own copy. Those responses carry the same provenance
+headers as any other.
 
 ## We claim nothing
 
