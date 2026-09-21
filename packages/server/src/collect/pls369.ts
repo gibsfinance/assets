@@ -7,6 +7,7 @@ import { pulsechain, pulsechainV4 } from 'viem/chains'
 import * as paths from '../paths'
 import { erc20Read } from '@gibs/utils'
 import * as db from '../db'
+import * as submoduleSource from '../submodule-source'
 import promiseLimit from 'promise-limit'
 import { chainToPublicClient, counterId, mapToSet, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
@@ -204,13 +205,17 @@ class Pls369Collector extends BaseCollector {
             }
 
             const [name, symbol, decimals] = response
-            const path = piece.fullPath.replace('hhttps://', 'https://')
+            const localImagePath = piece.fullPath.replace('hhttps://', 'https://')
+            // Bytes are still read from the local submodule checkout below (`uri`);
+            // only the RECORDED address changes, to a public, commit-pinned
+            // raw.githubusercontent.com address a caller can actually fetch.
+            const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
 
             await db
               .fetchImageAndStoreForToken({
                 listId: dbList.listId,
-                uri: path,
-                originalUri: path,
+                uri: localImagePath,
+                originalUri: publicUri,
                 providerKey: provider.key,
                 listTokenOrderId: i,
                 signal,

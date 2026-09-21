@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as path from 'path'
+import * as paths from '../paths'
 import { harness } from './__testing__/collector-harness'
 
 /**
@@ -20,6 +22,19 @@ vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
   return { ...actual, promises: { ...actual.promises, readdir, stat } }
 })
+
+// pls369.ts asks submodule-source for the public address to RECORD for every
+// local path it reads bytes from. Real commit resolution shells out to `git`
+// against the actual checked-out submodule, which would make this suite
+// depend on that checkout and its current commit — mocked here to a
+// deterministic, obviously-fake transform instead, so a test can assert
+// precisely which local path was turned into which recorded address without
+// caring what commit happens to be checked out when the suite runs.
+const publicUriFor = (localPath: string) => `https://fixture.example/${path.relative(paths.submodules, localPath)}`
+vi.mock('../submodule-source', () => ({
+  requirePublicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+  publicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+}))
 
 beforeEach(() => {
   harness.reset()
@@ -96,6 +111,33 @@ describe('pls369 collector', () => {
     // queued erc20 metadata must never reach image storage.
     expect(harness.state.tokenImages.some((image) => image.token.providedId === NO_METADATA_ADDRESS)).toBe(false)
     expect(harness.state.tokenImages).toHaveLength(2)
+  })
+
+  it('reads bytes from the local asset path while recording the public address', async () => {
+    wireFakeAssetTree()
+    harness.setErc20Metadata(GOOD_ADDRESS, ['Fixture Token', 'FIX', 18])
+
+    await pls369.collect(new AbortController().signal)
+
+    const localImagePath = path.join(
+      paths.submodules,
+      'pulsechain-assets',
+      'blockchain',
+      'pulsechain',
+      'assets',
+      GOOD_ADDRESS,
+      'logo.png',
+    )
+    const goodImages = harness.state.tokenImages.filter((image) => image.token.providedId === GOOD_ADDRESS)
+    expect(goodImages.length).toBeGreaterThan(0)
+    for (const image of goodImages) {
+      // uri (what bytes are read from) stays the local submodule checkout path —
+      // this is the regression that would matter most: getting this backwards
+      // starts downloading thousands of files instead of reading the vendored copy.
+      expect(image.uri).toBe(localImagePath)
+      // originalUri (what gets published as x-source-uri) is the public address.
+      expect(image.originalUri).toBe(publicUriFor(localImagePath))
+    }
   })
 
   it('propagates a per-token storage failure as a rejected collect(), tagging the network as erred', async () => {

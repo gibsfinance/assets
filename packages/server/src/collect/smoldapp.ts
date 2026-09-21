@@ -4,6 +4,7 @@ import * as db from '../db'
 import * as utils from '../utils'
 import type { List } from '../db/schema-types'
 import * as paths from '../paths'
+import * as submoduleSource from '../submodule-source'
 import { zeroAddress, type Hex } from 'viem'
 import { isBareNumeric } from '../chain-id'
 import promiseLimit from 'promise-limit'
@@ -164,15 +165,19 @@ class SmoldappCollector extends BaseCollector {
           const networkList = this.chainIdToNetworkId.get(networkKey)
           if (!networkList) continue
 
-          const originalUri = path.join(chainFolder, file)
+          const localImagePath = path.join(chainFolder, file)
+          // Bytes are still read from the local submodule checkout (`uri` /
+          // `db.fetchImage(localImagePath, …)` below); only the RECORDED address
+          // becomes the public, commit-pinned raw.githubusercontent.com address.
+          const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
 
           if (listKey === 'svg') {
             await db.transaction(async (tx) => {
               await db.fetchImageAndStoreForNetwork(
                 {
                   network,
-                  uri: originalUri,
-                  originalUri,
+                  uri: localImagePath,
+                  originalUri: publicUri,
                   providerKey,
                 },
                 tx,
@@ -181,21 +186,21 @@ class SmoldappCollector extends BaseCollector {
                 {
                   listId: networkList.listId,
                   providerKey,
-                  uri: originalUri,
-                  originalUri,
+                  uri: localImagePath,
+                  originalUri: publicUri,
                 },
                 tx,
               )
             })
           } else {
-            const img = await db.fetchImage(originalUri, signal, providerKey, cID)
+            const img = await db.fetchImage(localImagePath, signal, providerKey, cID)
             await db.transaction(async (tx) => {
               await db.fetchImageAndStoreForList(
                 {
                   listId: networkList.listId,
                   providerKey,
                   uri: img,
-                  originalUri,
+                  originalUri: publicUri,
                 },
                 tx,
               )
@@ -204,7 +209,7 @@ class SmoldappCollector extends BaseCollector {
                 {
                   providerKey,
                   image: img,
-                  originalUri,
+                  originalUri: publicUri,
                   listId: networkList.listId,
                 },
                 tx,
@@ -426,10 +431,14 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     if (signal.aborted) {
       throw new Error('aborted')
     }
-    const uri = path.join(tokenFolder, imageName)
+    const localImagePath = path.join(tokenFolder, imageName)
+    // Bytes are still read from the local submodule checkout (`uri`); only the
+    // RECORDED address (`originalUri`) becomes the public, commit-pinned
+    // raw.githubusercontent.com address.
+    const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
     const baseInput = {
-      uri,
-      originalUri: uri,
+      uri: localImagePath,
+      originalUri: publicUri,
       providerKey: provider.key,
       listTokenOrderId: i,
       token: {
