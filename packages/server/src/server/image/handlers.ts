@@ -157,7 +157,13 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
 
   return {
     filter: { networkId },
-    img: row ? ({ ...row.image, ...row.network } as any) : undefined,
+    // The network row records which collector supplied its icon as
+    // `imageProviderKey`, but everything downstream reads `providerKey`. Without
+    // this the provider never reached attribution for a network icon at all, and
+    // the licence came out right only because the old local path happened to name
+    // its source - which stopped being true the moment that path became a public
+    // address. The token path above had the same gap and closed it the same way.
+    img: row ? ({ ...row.image, ...row.network, providerKey: row.network?.imageProviderKey } as any) : undefined,
   }
 }
 

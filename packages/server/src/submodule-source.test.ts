@@ -295,3 +295,47 @@ describe('requirePublicSourceAddress', () => {
     )
   })
 })
+
+describe('submoduleNameForPublicAddress', () => {
+  it('reads each known repository back out of its public address', async () => {
+    const { submoduleNameForPublicAddress } = await importModule()
+    const base = 'https://raw.githubusercontent.com'
+    expect(submoduleNameForPublicAddress(`${base}/trustwallet/assets/abc/blockchains/x/logo.png`)).toBe('trustwallet')
+    expect(submoduleNameForPublicAddress(`${base}/SmolDapp/tokenAssets/abc/chains/1/logo.svg`)).toBe(
+      'smoldapp-tokenassets',
+    )
+    expect(submoduleNameForPublicAddress(`${base}/ethereum-lists/tokens/abc/tokens/eth/x.json`)).toBe(
+      'ethereum-lists-tokens',
+    )
+    expect(submoduleNameForPublicAddress(`${base}/PLS369/pulsechain-assets/abc/x/logo.png`)).toBe('pulsechain-assets')
+  })
+
+  it('ignores case in the owner and repository, the way the forge does', async () => {
+    const { submoduleNameForPublicAddress } = await importModule()
+    expect(submoduleNameForPublicAddress('https://raw.githubusercontent.com/smoldapp/TOKENASSETS/abc/logo.svg')).toBe(
+      'smoldapp-tokenassets',
+    )
+  })
+
+  it('does not claim a repository it does not know, even on the same host', async () => {
+    // Every public address shares this host, so the host alone names nothing. An
+    // unknown repository is somebody else's, and gets no source rather than a guess.
+    const { submoduleNameForPublicAddress } = await importModule()
+    expect(submoduleNameForPublicAddress('https://raw.githubusercontent.com/someone/else/abc/logo.png')).toBeNull()
+  })
+
+  it('does not claim an address on another host, even with an identical path', async () => {
+    // The path is copied exactly, so only the host check can turn this away. An earlier
+    // version of this test used a mirror whose path is shaped differently, and it passed
+    // with the host check deleted - it was testing the path, not the host.
+    const { submoduleNameForPublicAddress } = await importModule()
+    expect(submoduleNameForPublicAddress('https://example.com/SmolDapp/tokenAssets/abc/chains/1/logo.svg')).toBeNull()
+  })
+
+  it('answers null for an address it cannot read at all', async () => {
+    const { submoduleNameForPublicAddress } = await importModule()
+    expect(submoduleNameForPublicAddress(undefined)).toBeNull()
+    expect(submoduleNameForPublicAddress('not an address')).toBeNull()
+    expect(submoduleNameForPublicAddress('https://raw.githubusercontent.com/only-owner')).toBeNull()
+  })
+})

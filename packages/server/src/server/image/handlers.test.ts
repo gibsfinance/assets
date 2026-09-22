@@ -573,6 +573,23 @@ describe('image handlers', () => {
       expect(result.img).toBeDefined()
     })
 
+    it('carries the collector that supplied the icon, so attribution can name it', async () => {
+      // The network row stores it as imageProviderKey; everything downstream reads
+      // providerKey. Without the rename a network icon reached attribution with no
+      // provider at all, and served its licence as unknown once its address stopped
+      // naming its source.
+      const fakeRow = {
+        image: makeImage(),
+        network: { networkId: 'eip155:1', imageProviderKey: 'smoldapp' },
+      }
+      const chain = makeDrizzleChain([fakeRow])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const result = await getNetworkIcon(1)
+
+      expect((result.img as { providerKey?: string }).providerKey).toBe('smoldapp')
+    })
+
     it('returns undefined img when no match', async () => {
       const chain = makeDrizzleChain([])
       vi.mocked(getDrizzle).mockReturnValue(chain as any)

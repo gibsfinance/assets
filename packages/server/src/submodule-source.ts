@@ -72,6 +72,42 @@ export const SUBMODULE_REPOSITORIES: Readonly<Record<string, SubmoduleRepository
   'pulsechain-assets': Object.freeze({ owner: 'PLS369', repo: 'pulsechain-assets', defaultBranch: 'main' }),
 })
 
+/** The host every public address this module builds is served from. */
+const PUBLIC_CONTENT_HOST = 'raw.githubusercontent.com'
+
+/**
+ * Which known submodule a public address points into, or null.
+ *
+ * The inverse of `publicSourceAddress`, and the reason it matters: once these
+ * collectors record a public address instead of a local path, the address is the
+ * only thing some serving paths have to go on. The content-addressed image route
+ * holds no provider at all - one stored image can belong to several - so its
+ * attribution comes from the address alone. A local path used to name its source in
+ * its first segment; a public address names it in its owner and repository, and
+ * this reads it back out of there.
+ *
+ * Owner and repository are compared without regard to case, because the forge
+ * treats them that way: `smoldapp/tokenassets` and `SmolDapp/tokenAssets` are the
+ * same repository. An address on any other host, or naming a repository this module
+ * does not know, is not one of ours and answers null rather than a guess.
+ */
+export const submoduleNameForPublicAddress = (uri: string | null | undefined): string | null => {
+  if (!uri) return null
+  let parsed: URL
+  try {
+    parsed = new URL(uri)
+  } catch {
+    return null
+  }
+  if (parsed.hostname !== PUBLIC_CONTENT_HOST) return null
+  const [owner, repo] = parsed.pathname.split('/').filter(Boolean)
+  if (!owner || !repo) return null
+  const match = Object.entries(SUBMODULE_REPOSITORIES).find(
+    ([, known]) => known.owner.toLowerCase() === owner.toLowerCase() && known.repo.toLowerCase() === repo.toLowerCase(),
+  )
+  return match ? match[0] : null
+}
+
 /** Where a local path lands inside a known submodule. */
 export type SubmoduleLocation = {
   /** The directory name under `submodules/`, and the key into `SUBMODULE_REPOSITORIES`. */
