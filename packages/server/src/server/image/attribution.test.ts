@@ -258,3 +258,26 @@ describe('attributionHeaders', () => {
     }
   })
 })
+
+describe('a public address into a vendored repository', () => {
+  const SMOLDAPP = 'https://raw.githubusercontent.com/SmolDapp/tokenAssets/1b2352b8/chains/1/logo.svg'
+
+  it('names its source by repository, not by the host every one of them shares', () => {
+    expect(sourceKeyFromUri(SMOLDAPP)).toBe('smoldapp-tokenassets')
+  })
+
+  it('keeps its licence when nothing but the address is known', () => {
+    // The content-addressed route holds no provider - one stored image can belong to
+    // several - so the address is all attribution has. Recording a public address in
+    // place of a local path turned this into "unknown" until the address could be
+    // read for its repository.
+    const source = resolveAttribution({ providerKey: null, uri: SMOLDAPP })
+    expect(source.license).toBe('MIT')
+  })
+
+  it('still falls back to the host for a repository that is not one of ours', () => {
+    expect(sourceKeyFromUri('https://raw.githubusercontent.com/someone/else/abc/logo.png')).toBe(
+      'raw.githubusercontent.com',
+    )
+  })
+})

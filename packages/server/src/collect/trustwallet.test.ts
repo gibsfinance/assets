@@ -21,6 +21,19 @@ vi.mock('@gibs/utils', () => ({
   }),
 }))
 
+// trustwallet.ts asks submodule-source for the public address to RECORD for
+// every local path it reads bytes from. Real commit resolution shells out to
+// `git` against the actual checked-out submodule, which would make this suite
+// depend on that checkout and its current commit — mocked here to a
+// deterministic, obviously-fake transform instead, so a test can assert
+// precisely which local path was turned into which recorded address without
+// caring what commit happens to be checked out when the suite runs.
+const publicUriFor = (localPath: string) => `https://fixture.example/${path.relative(paths.submodules, localPath)}`
+vi.mock('../submodule-source', () => ({
+  requirePublicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+  publicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+}))
+
 const blockchainsRoot = path.join(paths.submodules, 'trustwallet', 'blockchains')
 const folderPath = (key: string) => path.join(blockchainsRoot, key)
 const infoJsonPath = (key: string) => path.join(folderPath(key), 'info', 'info.json')
@@ -397,6 +410,42 @@ describe('TrustWalletCollector collect', () => {
     }
     expect(harness.state.networkImages).toHaveLength(1)
     expect(harness.state.listImages).toHaveLength(1)
+  })
+
+  it('reads bytes from the local logo path while recording the public address, for both the network logo and every token image', async () => {
+    setInfoJson('smartchain')
+    fakeFilesystem.setFile(logoPngPath('smartchain'), 'network-logo-bytes')
+    fakeFilesystem.setDirectory(blockchainsRoot, ['smartchain'])
+    fakeFilesystem.setDirectory(assetsFolderPath('smartchain'), ['0xAsset1'])
+    fakeFilesystem.setFile(
+      assetInfoJsonPath('smartchain', '0xAsset1'),
+      JSON.stringify({ name: 'Asset One', symbol: 'AST1', decimals: 18 }),
+    )
+    fakeFilesystem.setFile(assetLogoPngPath('smartchain', '0xAsset1'), 'asset-logo-bytes')
+
+    const { default: TrustWalletCollector } = await importTrustWallet()
+    const collector = new TrustWalletCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const networkLocalPath = logoPngPath('smartchain')
+    // uri (what bytes are read from) stays the local submodule checkout path —
+    // this is the regression that would matter most: getting this backwards
+    // starts downloading thousands of files instead of reading the vendored copy.
+    expect(harness.state.networkImages[0]?.uri).toBe(networkLocalPath)
+    expect(harness.state.listImages[0]?.uri).toBe(networkLocalPath)
+    // originalUri (what gets published as x-source-uri) is the public address instead.
+    expect(harness.state.networkImages[0]?.originalUri).toBe(publicUriFor(networkLocalPath))
+    expect(harness.state.listImages[0]?.originalUri).toBe(publicUriFor(networkLocalPath))
+
+    const tokenLocalPath = assetLogoPngPath('smartchain', '0xAsset1')
+    expect(harness.state.tokenImages).toHaveLength(2)
+    for (const image of harness.state.tokenImages) {
+      // `uri` here is the Buffer already read from disk by `db.fetchImage`, not
+      // the path itself — passing it on stores the bytes without a second read.
+      expect(Buffer.isBuffer(image.uri)).toBe(true)
+      expect(image.originalUri).toBe(publicUriFor(tokenLocalPath))
+    }
   })
 
   it('skips an asset folder whose info.json is unreadable', async () => {

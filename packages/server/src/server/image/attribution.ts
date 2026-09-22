@@ -16,6 +16,7 @@
  */
 import * as path from 'path'
 import { submodules } from '../../paths'
+import { submoduleNameForPublicAddress } from '../../submodule-source'
 
 /**
  * What is known about the licence terms of one redistributed source.
@@ -153,6 +154,12 @@ const SOURCE_REGISTRY: Readonly<Record<string, SourceLicense>> = Object.freeze({
 export function sourceKeyFromUri(uri: string): string | null {
   if (!uri) return null
   if (uri.startsWith('http://') || uri.startsWith('https://')) {
+    // A public address into one of our vendored repositories names its source in
+    // the owner and repository, not the host - every one of them shares the same
+    // host. Read the source from there, so moving these collectors from a local
+    // path to a public address did not cost them their licence.
+    const submoduleName = submoduleNameForPublicAddress(uri)
+    if (submoduleName) return submoduleName
     // http(s) is a "special" scheme in the WHATWG URL standard, so a
     // successfully parsed instance always has a non-empty host — the only
     // failure mode worth handling is the parse itself throwing.

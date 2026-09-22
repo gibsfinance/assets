@@ -6,6 +6,7 @@ import * as db from '../db'
 import * as types from '../types'
 import * as utils from '../utils'
 import * as paths from '../paths'
+import * as submoduleSource from '../submodule-source'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy } from '@gibs/utils'
 import _ from 'lodash'
@@ -325,17 +326,20 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
 
   const stat = await fs.promises.stat(networkLogoPath).catch(() => false)
   if (stat) {
+    // Bytes are still read from the local checkout (`uri`); only the RECORDED
+    // address (`originalUri`) becomes the public, commit-pinned address.
+    const publicNetworkLogoUri = await submoduleSource.requirePublicSourceAddress(networkLogoPath)
     await db.fetchImageAndStoreForNetwork({
       network,
       uri: networkLogoPath,
-      originalUri: networkLogoPath,
+      originalUri: publicNetworkLogoUri,
       providerKey,
       signal,
     })
     await db.fetchImageAndStoreForList({
       listId: networkList.listId,
       uri: networkLogoPath,
-      originalUri: networkLogoPath,
+      originalUri: publicNetworkLogoUri,
       providerKey,
       signal,
     })
@@ -382,11 +386,16 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       symbol: info.symbol,
       decimals: info.decimals,
     }
+    // `file` already holds the bytes read from the local checkout — passing it
+    // as `uri` below stores it without reading anything again. Only the
+    // RECORDED address (`originalUri`) changes, from the local `logoPath` to
+    // its public, commit-pinned equivalent.
+    const publicLogoUri = await submoduleSource.requirePublicSourceAddress(logoPath)
     await Promise.all([
       db.fetchImageAndStoreForToken({
         listId: networkList.listId,
         uri: file,
-        originalUri: logoPath,
+        originalUri: publicLogoUri,
         providerKey,
         signal,
         listTokenOrderId: i,
@@ -395,7 +404,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       db.fetchImageAndStoreForToken({
         listId: trustwalletList.listId,
         uri: file,
-        originalUri: logoPath,
+        originalUri: publicLogoUri,
         providerKey,
         signal,
         listTokenOrderId: globalCount + i,

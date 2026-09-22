@@ -67,6 +67,19 @@ const existingTokenLookup = vi.hoisted(() => {
 })
 vi.mock('../db/drizzle', () => ({ getDrizzle: () => ({ select: () => existingTokenLookup.selectChain }) }))
 
+// smoldapp.ts asks submodule-source for the public address to RECORD for every
+// local path it reads bytes from. Real commit resolution shells out to `git`
+// against the actual checked-out submodule, which would make this suite
+// depend on that checkout and its current commit — mocked here to a
+// deterministic, obviously-fake transform instead, so a test can assert
+// precisely which local path was turned into which recorded address without
+// caring what commit happens to be checked out when the suite runs.
+const publicUriFor = (localPath: string) => `https://fixture.example/${path.relative(paths.submodules, localPath)}`
+vi.mock('../submodule-source', () => ({
+  requirePublicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+  publicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+}))
+
 import SmoldappCollector, { collect } from './smoldapp'
 
 const root = path.join(paths.submodules, 'smoldapp-tokenassets')
@@ -249,7 +262,27 @@ describe('SmoldappCollector collect — chain images', () => {
     expect(harness.state.listImages).toHaveLength(1)
     expect(harness.state.listImages[0]?.uri).not.toBeNull()
     expect(insertedImages).toHaveLength(1)
-    expect(insertedImages[0]?.originalUri).toBe(chainFilePath('1', 'logo-128.png'))
+    // The bytes are still read from the local path — recorded is the public address.
+    expect(insertedImages[0]?.originalUri).toBe(publicUriFor(chainFilePath('1', 'logo-128.png')))
+  })
+
+  it('reads chain logo bytes from the local path while recording the public address', async () => {
+    fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
+    fakeFilesystem.setDirectory(chainsPath, ['1'])
+    fakeFilesystem.setDirectory(chainFolderPath('1'), ['logo.svg'])
+    fakeFilesystem.setFile(chainFilePath('1', 'logo.svg'), '<svg/>')
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const localPath = chainFilePath('1', 'logo.svg')
+    // uri (what bytes are read from) stays the local submodule checkout path.
+    expect(harness.state.networkImages[0]?.uri).toBe(localPath)
+    expect(harness.state.listImages[0]?.uri).toBe(localPath)
+    // originalUri (what gets published) is the public address instead.
+    expect(harness.state.networkImages[0]?.originalUri).toBe(publicUriFor(localPath))
+    expect(harness.state.listImages[0]?.originalUri).toBe(publicUriFor(localPath))
   })
 
   it('never calls insertImage, and never records a list image, when the non-svg chain logo fetch fails', async () => {
@@ -468,6 +501,32 @@ describe('SmoldappCollector collect — tokens', () => {
     expect(harness.gibsUtilsModule.erc20Read).not.toHaveBeenCalled()
     expect(harness.state.tokenImages[0]?.token.symbol).toBe('EXIST')
     expect(harness.state.tokenImages[0]?.token.decimals).toBe(6)
+  })
+
+  it('reads a token image from its local path while recording the public address', async () => {
+    fakeFilesystem.setFile(
+      listJsonPath,
+      JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: { '1': ['0xToken1'] } }),
+    )
+    setupOneChainWithSvgFormat()
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken1'), ['icon.svg'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'icon.svg'), 'token-svg-bytes')
+    harness.setErc20Metadata('0xtoken1', ['Token One', 'TOK1', 18])
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const localPath = tokenImagePath('1', '0xToken1', 'icon.svg')
+    expect(harness.state.tokenImages.length).toBeGreaterThan(0)
+    for (const image of harness.state.tokenImages) {
+      // uri (what bytes are read from) stays the local submodule checkout path —
+      // this is the regression that would matter most: getting this backwards
+      // starts downloading thousands of files instead of reading the vendored copy.
+      expect(image.uri).toBe(localPath)
+      // originalUri (what gets published as x-source-uri) is the public address.
+      expect(image.originalUri).toBe(publicUriFor(localPath))
+    }
   })
 
   it('normalizes a common native-currency placeholder address to the zero address', async () => {
