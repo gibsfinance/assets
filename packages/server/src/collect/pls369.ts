@@ -93,6 +93,7 @@ class Pls369Collector extends BaseCollector {
       const network = await db.insertNetworkFromChainId(chain.id)
       await db.insertList({
         providerId: provider.providerId,
+        providerKey,
         networkId: network.networkId,
         ...list,
       })
@@ -172,6 +173,7 @@ class Pls369Collector extends BaseCollector {
         const network = await db.insertNetworkFromChainId(chain.id)
         const [dbList] = await db.insertList({
           providerId: provider.providerId,
+          providerKey: provider.key,
           networkId: network.networkId,
           ...list,
         })
@@ -217,6 +219,7 @@ class Pls369Collector extends BaseCollector {
                 uri: localImagePath,
                 originalUri: publicUri,
                 providerKey: provider.key,
+                listLicense: dbList.license,
                 listTokenOrderId: i,
                 signal,
                 token: {

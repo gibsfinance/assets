@@ -120,6 +120,13 @@
       "when": 1785734000000,
       "tag": "0016_token_search_trigram",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790194161687,
+      "tag": "0017_add_list_and_list_token_license",
+      "breakpoints": true
     }
   ]
 }

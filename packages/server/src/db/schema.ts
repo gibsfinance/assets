@@ -206,6 +206,20 @@ export const list = pgTable(
      * the switchover atomic even though the rows behind it were written piecemeal.
      */
     tokensCollectedAt: timestamp('tokens_collected_at', { withTimezone: true, mode: 'string' }),
+    /**
+     * The licence this list's PUBLISHER distributes its own work under — a
+     * Software-Package-Data-Exchange identifier such as `MIT`, or null when
+     * unknown. This is the list-level truth `packages/server/src/server/image/attribution.ts`
+     * defaults from its registry by provider key, and a collector may override
+     * per list (see `insertList`) when one provider publishes lists under more
+     * than one licence. Null means unknown, never "no licence" — an absent fact,
+     * not a negative one.
+     */
+    license: text(),
+    /** Where to read the full text of `license`, or null when there is none to point to. */
+    licenseUrl: text('license_url'),
+    /** The copyright or attribution notice `license` requires travel with a copy, or null. */
+    attribution: text(),
   },
   (table) => [
     index('list_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),
@@ -250,6 +264,16 @@ export const listToken = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     listTokenOrderId: integer('list_token_order_id').notNull(),
+    /**
+     * The EFFECTIVE licence of THIS entry's image, decided once at collection time
+     * (see `packages/server/src/server/image/attribution.ts`'s `effectiveEntryLicense`)
+     * and never recomputed from `image.uri` afterward — that column can be overwritten
+     * by a later, unrelated list sharing the same content-addressed image, so it cannot
+     * answer "which address did THIS list use". Null means unknown: either the address
+     * was never verified as anyone's own artwork, or this row predates the column and
+     * awaits its next collection run.
+     */
+    license: text(),
   },
   (table) => [
     index('list_token_imagehash_index').using('btree', table.imageHash.asc().nullsLast().op('text_ops')),

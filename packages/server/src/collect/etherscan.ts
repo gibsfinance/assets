@@ -502,11 +502,14 @@ async function processChainTokens({
   chainConfig,
   row,
   listId,
+  listLicense,
   signal,
 }: {
   chainConfig: ChainConfig
   row: TerminalRowProxy
   listId: string
+  /** The owning list's own registered licence (see insertList), for effectiveEntryLicense. */
+  listLicense: string | null
   providerId: string
   signal: AbortSignal
 }): Promise<void> {
@@ -580,6 +583,7 @@ async function processChainTokens({
       uri: string | null
       originalUri: string | null
       providerKey: string
+      listLicense: string | null
     }[] = []
 
     try {
@@ -617,6 +621,7 @@ async function processChainTokens({
               uri: token.logoURI,
               originalUri: token.logoURI,
               providerKey,
+              listLicense,
             })
           }
 
@@ -733,6 +738,7 @@ class EtherscanCollector extends BaseCollector {
           chainConfig,
           row,
           listId: list.listId,
+          listLicense: list.license,
           providerId: provider.providerId,
           signal,
         })

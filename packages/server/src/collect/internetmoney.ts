@@ -258,6 +258,7 @@ class InternetMoneyCollector extends BaseCollector {
               {
                 ...insertion,
                 listId: networkList.listId,
+                listLicense: networkList.license,
                 listTokenOrderId: scopedOrderId,
                 signal,
               },
@@ -267,6 +268,7 @@ class InternetMoneyCollector extends BaseCollector {
               {
                 ...insertion,
                 listId: this.insertedList.listId,
+                listLicense: this.insertedList.license,
                 listTokenOrderId: globalOrderId,
                 signal,
               },

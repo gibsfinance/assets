@@ -247,7 +247,14 @@ export function resetRateLimit(): void {
 
 export interface MaybeResizeOptions {
   res: Response
-  img: Image & { providerKey?: string }
+  img: Image & {
+    providerKey?: string
+    /** The list_token row's precomputed effective licence, when a list_token is known. */
+    license?: string | null
+    listLicense?: string | null
+    listLicenseUrl?: string | null
+    listAttribution?: string | null
+  }
   /** Pre-parsed resize/format options from `parseResizeParams`; null = no resize requested */
   params: ResizeParams | null
   /** Which of the two cache lifetimes a served variant gets. Defaults to `mutable`. */
@@ -316,7 +323,15 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
     db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch((e: Error) =>
       failureLog('variant op failed: %s', e.message),
     )
-    sendVariant(res, existing, { uri: img.uri, providerKey: img.providerKey, cachePolicy })
+    sendVariant(res, existing, {
+      uri: img.uri,
+      providerKey: img.providerKey,
+      entryLicense: img.license,
+      listLicense: img.listLicense,
+      listLicenseUrl: img.listLicenseUrl,
+      listAttribution: img.listAttribution,
+      cachePolicy,
+    })
     return true
   }
 
@@ -355,7 +370,15 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
       createdAt: new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     },
-    { uri: img.uri, providerKey: img.providerKey, cachePolicy },
+    {
+      uri: img.uri,
+      providerKey: img.providerKey,
+      entryLicense: img.license,
+      listLicense: img.listLicense,
+      listLicenseUrl: img.listLicenseUrl,
+      listAttribution: img.listAttribution,
+      cachePolicy,
+    },
   )
 
   return true
@@ -366,6 +389,12 @@ export interface SendVariantOptions {
   uri?: string | null
   /** The provider key recorded on the original image row, if any. */
   providerKey?: string | null
+  /** The list_token row's precomputed effective licence, when a list_token is known. */
+  entryLicense?: string | null
+  /** The owning list's own registered licence, for url/attribution enrichment. */
+  listLicense?: string | null
+  listLicenseUrl?: string | null
+  listAttribution?: string | null
   /** Which of the two cache lifetimes this response gets. Defaults to `mutable`. */
   cachePolicy?: CachePolicy
 }
@@ -382,11 +411,19 @@ export interface SendVariantOptions {
 export function sendVariant(
   res: Response,
   variant: ImageVariant,
-  { uri, providerKey, cachePolicy = 'mutable' }: SendVariantOptions = {},
+  {
+    uri,
+    providerKey,
+    entryLicense,
+    listLicense,
+    listLicenseUrl,
+    listAttribution,
+    cachePolicy = 'mutable',
+  }: SendVariantOptions = {},
 ): void {
   let r = res.set('cache-control', cacheControlFor(cachePolicy))
   r = r.set('x-resize', variant.width && variant.height ? `${variant.width}x${variant.height}` : 'transcoded')
-  const headers = attributionHeaders({ uri, providerKey })
+  const headers = attributionHeaders({ uri, providerKey, entryLicense, listLicense, listLicenseUrl, listAttribution })
   for (const [name, value] of Object.entries(headers)) {
     r = r.set(name, value)
   }

@@ -49,6 +49,8 @@ type PreparedList = {
   /** The database list key, e.g. `tag-lst` or `top-traded-24h`; also labels the progress counters. */
   listKey: string
   listId: string
+  /** This list's own registered licence (see insertList), for effectiveEntryLicense. */
+  license: string | null
   tokens: OrderedToken[]
 }
 
@@ -120,11 +122,12 @@ class JupiterCollector extends BaseCollector {
         }
         const [list] = await db.insertList({
           providerId: provider.providerId,
+          providerKey,
           networkId: network.networkId,
           key: `tag-${tag}`,
           name: `Jupiter: ${tag}`,
         })
-        prepared.push({ listKey: `tag-${tag}`, listId: list.listId, tokens: withOrder(tagged) })
+        prepared.push({ listKey: `tag-${tag}`, listId: list.listId, license: list.license, tokens: withOrder(tagged) })
       }
 
       // One list per dynamic category feed, fetched fresh (not from the request cache).
@@ -142,11 +145,17 @@ class JupiterCollector extends BaseCollector {
         }
         const [list] = await db.insertList({
           providerId: provider.providerId,
+          providerKey,
           networkId: network.networkId,
           key: source.listKey,
           name: source.name,
         })
-        prepared.push({ listKey: source.listKey, listId: list.listId, tokens: withOrder(categoryTokens) })
+        prepared.push({
+          listKey: source.listKey,
+          listId: list.listId,
+          license: list.license,
+          tokens: withOrder(categoryTokens),
+        })
       }
 
       this.prepared = prepared
@@ -185,6 +194,7 @@ class JupiterCollector extends BaseCollector {
               uri,
               originalUri: uri,
               providerKey,
+              listLicense: list.license,
               signal,
               token: {
                 name: token.name,

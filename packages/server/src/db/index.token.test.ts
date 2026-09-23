@@ -157,6 +157,7 @@ describe('insertTokenBatch', () => {
 describe('storeToken', () => {
   it('threads the freshly inserted token id into the list-token insert', async () => {
     harness.queueResult([{ tokenId: 'token-9' }])
+    harness.queueResult([]) // license read-back: no existing row yet
     harness.queueResult([{ listTokenId: 'lt-1', tokenId: 'token-9', listId: 'list-1' }])
 
     const result = await storeToken({
@@ -179,6 +180,33 @@ describe('storeToken', () => {
     expect(row[0].tokenId).toBe('token-9')
     expect(result.token.tokenId).toBe('token-9')
     expect(result.listToken.listTokenId).toBe('lt-1')
+  })
+
+  it('carries an existing licence forward rather than wiping it, since it has no address to recompute one from', async () => {
+    // storeToken is used precisely when artwork is handled separately
+    // (batchFetchImagesForTokens) or not at all, so it never has an opinion of
+    // its own about licence — see the comment on storeToken itself. Without
+    // this read-back, every re-collection through storeToken would blank a
+    // licence batchFetchImagesForTokens had already established for this row.
+    harness.queueResult([{ tokenId: 'token-9' }])
+    harness.queueResult([{ license: 'MIT' }]) // license read-back: an existing row
+    harness.queueResult([{ listTokenId: 'lt-1', tokenId: 'token-9', listId: 'list-1', license: 'MIT' }])
+
+    await storeToken({
+      token: {
+        networkId: 'network-1',
+        providedId: '0x2222222222222222222222222222222222222222',
+        name: 'X',
+        symbol: 'X',
+        decimals: 18,
+      },
+      listId: 'list-1',
+      listTokenOrderId: 3,
+    })
+
+    const listTokenInsert = harness.queries.filter((query) => query.root === 'insert')[1]
+    const row = listTokenInsert.steps.find((step) => step.method === 'values')?.args[0] as { license?: string }[]
+    expect(row[0].license).toBe('MIT')
   })
 })
 
@@ -203,6 +231,89 @@ describe('insertList', () => {
     // Losing the quoting here only breaks on a real Postgres round-trip, so it
     // must be pinned down at the unit level.
     expect(renderSql(conflictArgs.set.default)).toBe('excluded."default"')
+  })
+
+  it('defaults the licence fields from the attribution registry by provider key', async () => {
+    harness.queueResult([{ listId: 'list-1' }])
+
+    await insertList({ providerId: 'provider-1', key: 'wallet', providerKey: 'trustwallet' })
+
+    const insertQuery = harness.queries.find((query) => query.root === 'insert')
+    const row = insertQuery?.steps.find((step) => step.method === 'values')?.args[0] as {
+      license?: string
+      licenseUrl?: string
+      attribution?: string
+    }
+    expect(row.license).toBe('MIT')
+    expect(row.licenseUrl).toBe('https://github.com/trustwallet/assets/blob/master/LICENSE')
+    expect(row.attribution).toBe('Copyright (c) 2019-2023 Trust Wallet - MIT')
+  })
+
+  it('leaves the licence fields unset for a provider key the registry does not know', async () => {
+    harness.queueResult([{ listId: 'list-1' }])
+
+    await insertList({ providerId: 'provider-1', key: 'wallet', providerKey: 'some-unregistered-provider' })
+
+    const insertQuery = harness.queries.find((query) => query.root === 'insert')
+    const row = insertQuery?.steps.find((step) => step.method === 'values')?.args[0] as { license?: string }
+    expect(row.license).toBeUndefined()
+  })
+
+  it('leaves the licence fields unset when no provider key is given at all', async () => {
+    harness.queueResult([{ listId: 'list-1' }])
+
+    await insertList({ providerId: 'provider-1', key: 'wallet' })
+
+    const insertQuery = harness.queries.find((query) => query.root === 'insert')
+    const row = insertQuery?.steps.find((step) => step.method === 'values')?.args[0] as { license?: string }
+    expect(row.license).toBeUndefined()
+  })
+
+  it('maps a registry licence of "unknown" to null, but still carries its evidence fields', async () => {
+    harness.queueResult([{ listId: 'list-1' }])
+
+    await insertList({ providerId: 'provider-1', key: 'repo', providerKey: 'pls369' })
+
+    const insertQuery = harness.queries.find((query) => query.root === 'insert')
+    const row = insertQuery?.steps.find((step) => step.method === 'values')?.args[0] as {
+      license?: string | null
+      licenseUrl?: string
+      attribution?: string
+    }
+    expect(row.license).toBeNull()
+    expect(row.licenseUrl).toBe('https://github.com/PLS369/pulsechain-assets/blob/main/README.md')
+    expect(row.attribution).toContain('open for all projects to use')
+  })
+
+  // This is the whole reason licence lives on the LIST rather than the
+  // provider: one provider (LiFi's collector shape, or any other) can publish
+  // several lists under different terms, and each has to be able to say so.
+  it('lets an explicit licence override the registry default, per list, under one provider', async () => {
+    harness.queueResult([{ listId: 'list-1' }])
+    harness.queueResult([{ listId: 'list-2' }])
+
+    await insertList({ providerId: 'provider-1', key: 'permissive', providerKey: 'trustwallet' })
+    await insertList({
+      providerId: 'provider-1',
+      key: 'restricted',
+      providerKey: 'trustwallet',
+      license: 'Apache-2.0',
+      licenseUrl: 'https://example.test/apache',
+      attribution: 'Example Corp',
+    })
+
+    const [firstInsert, secondInsert] = harness.queries.filter((query) => query.root === 'insert')
+    const firstRow = firstInsert.steps.find((step) => step.method === 'values')?.args[0] as { license?: string }
+    const secondRow = secondInsert.steps.find((step) => step.method === 'values')?.args[0] as {
+      license?: string
+      licenseUrl?: string
+      attribution?: string
+    }
+    expect(firstRow.license).toBe('MIT')
+    expect(secondRow.license).toBe('Apache-2.0')
+    expect(secondRow.licenseUrl).toBe('https://example.test/apache')
+    expect(secondRow.attribution).toBe('Example Corp')
+    expect(firstRow.license).not.toBe(secondRow.license)
   })
 })
 
@@ -307,6 +418,22 @@ describe('insertListToken', () => {
     // listTokenOrderId is always overwritten — unlike imageHash it is not
     // preserved from a prior run, since order is expected to shift freely.
     expect(renderSql(conflictArgs.set.listTokenOrderId)).toBe('excluded.list_token_order_id')
+  })
+
+  it('overwrites the licence unconditionally rather than coalescing it', async () => {
+    harness.queueResult([{ listTokenId: 'lt-1' }])
+
+    await insertListToken({ tokenId: 'token-1', listId: 'list-1', listTokenOrderId: 1, license: null })
+
+    const insertQuery = harness.queries.find((query) => query.root === 'insert')
+    const conflictStep = insertQuery?.steps.find((step) => step.method === 'onConflictDoUpdate')
+    const conflictArgs = conflictStep?.args[0] as { set: Record<string, unknown> }
+    // Unlike image_hash, a caller that knows the address always has an
+    // authoritative answer — including null, meaning "no longer verifiable" —
+    // so this must never fall back to the row's previous value. A caller with
+    // no address (storeToken) is responsible for reading the prior value back
+    // itself; see storeToken's own test for that half of the contract.
+    expect(renderSql(conflictArgs.set.license)).toBe('excluded.license')
   })
 
   it('normalizes a single list-token input into the same array shape as a batch', async () => {

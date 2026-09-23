@@ -45,6 +45,17 @@ When `x-license` reads `unknown`, we could not establish terms for that source.
 Treat it as reserved. Do not assume a licence we could not find, and go to the
 source before you ship it.
 
+## Asking for only licensed artwork
+
+Every token and chain image route accepts a repeatable `license` query
+parameter, matched without regard to case (`?license=MIT&license=Apache-2.0`).
+When you send it, only images whose licence gib.show has verified fall inside
+that set are candidates, and you get the best one among them — not a missing
+response just because a higher-ranked image happened to be unlicensed. When
+nothing qualifies, you get the same not-found response as any other request
+with no match. An unverified licence is unknown, and unknown is never treated
+as permitted, so it never satisfies this filter.
+
 ## Trademarks are a separate question
 
 A licence on a file is not a licence to a trademark. The MIT licence on an icon

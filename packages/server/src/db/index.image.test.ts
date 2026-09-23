@@ -1205,7 +1205,7 @@ describe('batchFetchImagesForTokens', () => {
 
   it('skips an item with no uri, leaving its result null, without touching the database', async () => {
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: null, originalUri: null, providerKey: 'trustwallet' },
+      { listTokenId: 'lt-1', uri: null, originalUri: null, providerKey: 'trustwallet', listLicense: null },
     ])
 
     // Deliberately null rather than a { success: false } shape — a caller has
@@ -1225,13 +1225,45 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueResult([{ listTokenId: 'lt-1' }]) // update .set(imageHash).where(...)
 
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     const updateQuery = harness.queries.find((query) => query.root === 'update')
     const whereStep = updateQuery?.steps.find((step) => step.method === 'where')
     expect(renderSql(whereStep?.args[0])).toContain('list_token"."list_token_id"')
     expect(result[0].result).toMatchObject({ listTokenId: 'lt-1', success: true })
+  })
+
+  it('falls back to uri for the licence address when originalUri is not given', async () => {
+    fetchMock.mockResolvedValue(new Response(PNG_BYTES))
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // getFreshImageFromLink: no cached link, so the download runs
+    harness.queueResult([{ imageHash: 'hash-new' }])
+    harness.queueResult([{ uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png' }])
+    harness.queueResult([{ listTokenId: 'lt-1' }]) // update .set(imageHash, license).where(...)
+
+    await batchFetchImagesForTokens([
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png',
+        originalUri: null,
+        providerKey: 'trustwallet',
+        listLicense: 'MIT',
+      },
+    ])
+
+    const updateQuery = harness.queries.find((query) => query.root === 'update')
+    const setStep = updateQuery?.steps.find((step) => step.method === 'set')
+    // MIT, not null: proof the licence was computed from `uri`, since
+    // `originalUri` was never given to compute it from.
+    expect((setStep?.args[0] as { license?: string }).license).toBe('MIT')
   })
 
   it('leaves one failed fetch as a null result without aborting the rest of the batch', async () => {
@@ -1255,12 +1287,14 @@ describe('batchFetchImagesForTokens', () => {
         uri: 'https://x/icon-1.png',
         originalUri: 'https://x/icon-1.png',
         providerKey: 'trustwallet',
+        listLicense: null,
       },
       {
         listTokenId: 'lt-2',
         uri: 'https://x/icon-2.png',
         originalUri: 'https://x/icon-2.png',
         providerKey: 'trustwallet',
+        listLicense: null,
       },
     ])
 
@@ -1277,7 +1311,13 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueResult([]) // freshness miss, so the download path is the one under test
 
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     // Distinct from the null case above: resolveImage succeeded (real bytes,
@@ -1297,7 +1337,13 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueRejection(new Error('connection terminated unexpectedly'))
 
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     expect(result[0].result).toMatchObject({ listTokenId: 'lt-1', success: false })
@@ -1314,7 +1360,13 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueResult([{ listTokenId: 'lt-1' }])
 
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -1335,13 +1387,21 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueResult([{ listTokenId: 'lt-1' }])
 
     await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     const updateQuery = harness.queries.find((query) => query.root === 'update')
     const setStep = updateQuery?.steps.find((step) => step.method === 'set')
     const whereStep = updateQuery?.steps.find((step) => step.method === 'where')
-    expect(setStep?.args[0]).toEqual({ imageHash: 'hash-cached' })
+    // license: null alongside it — 'https://x/icon.png' verifies nobody's own
+    // artwork, so the update carries both facts about this row, not just the hash.
+    expect(setStep?.args[0]).toEqual({ imageHash: 'hash-cached', license: null })
     expect(sqlParams(whereStep?.args[0])).toEqual(['lt-1'])
   })
 
@@ -1359,7 +1419,13 @@ describe('batchFetchImagesForTokens', () => {
     harness.queueResult([{ listTokenId: 'lt-1' }])
 
     const result = await batchFetchImagesForTokens([
-      { listTokenId: 'lt-1', uri: 'https://x/icon.png', originalUri: 'https://x/icon.png', providerKey: 'trustwallet' },
+      {
+        listTokenId: 'lt-1',
+        uri: 'https://x/icon.png',
+        originalUri: 'https://x/icon.png',
+        providerKey: 'trustwallet',
+        listLicense: null,
+      },
     ])
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1386,6 +1452,7 @@ describe('batchFetchImagesForTokens', () => {
         uri: 'https://x/icon.png',
         originalUri: 'https://x/icon.png',
         providerKey: 'trustwallet',
+        listLicense: null,
         maxImageAge: 60_000,
       },
     ])
@@ -1423,6 +1490,7 @@ describe('fetchImageAndStoreForToken', () => {
         originalUri: null,
         token: baseToken,
         providerKey: 'trustwallet',
+        listLicense: null,
       }),
     ).rejects.toThrow('listId is required')
 
@@ -1433,7 +1501,13 @@ describe('fetchImageAndStoreForToken', () => {
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }]) // getFreshImageFromLink: link
     harness.queueResult([{ imageHash: 'hash-1' }]) // getFreshImageFromLink: image
     harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken
-    harness.queueResult([{ tokenId: 'token-1', listTokenOrderId: 5, listTokenId: 'lt-1', listId: 'list-1' }]) // getListToken
+    // license: null matches what this call's own address computes (trustwallet's
+    // provider key, but 'https://x/icon.png' verifies nobody's own artwork) — a
+    // mismatch here would fall to the refresh path and add a query, which the
+    // next test covers.
+    harness.queueResult([
+      { tokenId: 'token-1', listTokenOrderId: 5, listTokenId: 'lt-1', listId: 'list-1', license: null },
+    ]) // getListToken
 
     const result = await fetchImageAndStoreForToken({
       listId: 'list-1',
@@ -1442,6 +1516,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: 'https://x/icon.png',
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     // No re-fetch and no second insertToken/insertListToken — the entire point
@@ -1451,6 +1526,48 @@ describe('fetchImageAndStoreForToken', () => {
     expect(harness.queries).toHaveLength(4)
     expect(result.listToken).toMatchObject({ listTokenId: 'lt-1' })
     expect(result.token).toMatchObject({ tokenId: 'token-1' })
+  })
+
+  it('refreshes the licence on the freshness shortcut, without re-downloading, when it has changed', async () => {
+    // Everything else about this row already matches — same image, same metadata,
+    // same list position — so without this check it would take the early return
+    // above and never write the newly-computed licence. A row written before this
+    // column existed (license: null here) is exactly that case: the next
+    // collection run must still bring it up to date.
+    harness.queueResult([
+      { uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png', imageHash: 'hash-1' },
+    ]) // getFreshImageFromLink: link
+    harness.queueResult([{ imageHash: 'hash-1' }]) // getFreshImageFromLink: image
+    harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken
+    harness.queueResult([
+      { tokenId: 'token-1', listTokenOrderId: 5, listTokenId: 'lt-1', listId: 'list-1', license: null },
+    ]) // getListToken — stale licence
+    harness.queueResult([
+      { listTokenId: 'lt-1', tokenId: 'token-1', listId: 'list-1', imageHash: 'hash-1', license: 'MIT' },
+    ]) // insertListToken — the refresh write
+
+    const result = await fetchImageAndStoreForToken({
+      listId: 'list-1',
+      listTokenOrderId: 5,
+      uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png',
+      originalUri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png',
+      token: baseToken,
+      providerKey: 'trustwallet',
+      listLicense: 'MIT',
+    })
+
+    // No download — the shortcut still skips fetching the (already fresh) bytes.
+    expect(fetchMock).not.toHaveBeenCalled()
+    // One more query than the true no-op case: the extra insertListToken write.
+    expect(harness.queries).toHaveLength(5)
+    // Index 1, not 0 — insertToken's own upsert is the first 'insert' query;
+    // insertListToken's refresh write is the second. insertListToken always
+    // batches its rows, even a single one, so `.values()` receives an array.
+    const licenseWrite = harness.queries.filter((query) => query.root === 'insert')[1]
+    const valuesStep = licenseWrite?.steps.find((step) => step.method === 'values')
+    const [insertedRow] = valuesStep?.args[0] as [{ license?: string }]
+    expect(insertedRow.license).toBe('MIT')
+    expect(result.listToken).toMatchObject({ listTokenId: 'lt-1', license: 'MIT' })
   })
 
   it('rewrites the list-token row against the cached image rather than downloading it again', async () => {
@@ -1473,6 +1590,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: 'https://x/icon.png',
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -1507,6 +1625,7 @@ describe('fetchImageAndStoreForToken', () => {
         originalUri: 'https://x/icon.png',
         token: baseToken,
         providerKey: 'trustwallet',
+        listLicense: null,
       })
 
       // Exactly 5 queries: no getListToken select — the metadata mismatch skips straight
@@ -1538,6 +1657,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: 'https://x/icon.png',
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     expect(fetchMock).toHaveBeenCalled()
@@ -1555,6 +1675,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: null,
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     expect(fetchMock).not.toHaveBeenCalled()
@@ -1575,6 +1696,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: 'https://x/icon.png',
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     // Deliberate (see the comment above this branch in db/index.ts): a token
@@ -1603,6 +1725,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: 'https://x/icon.png',
       token: solanaToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     expect(result.image).toMatchObject({ imageHash: 'hash-new' })
@@ -1626,6 +1749,7 @@ describe('fetchImageAndStoreForToken', () => {
       originalUri: null,
       token: baseToken,
       providerKey: 'trustwallet',
+      listLicense: null,
     })
 
     const linkInsert = harness.queries.filter((query) => query.root === 'insert')[1]
@@ -1826,6 +1950,7 @@ describe('link-only hosts', () => {
       uri: DEBANK,
       originalUri: DEBANK,
       providerKey: 'lifi',
+      listLicense: null,
       token: { name: 'Maker', symbol: 'MKR', decimals: 18, networkId: 'net-1', providedId: '0xabc' },
     })
 

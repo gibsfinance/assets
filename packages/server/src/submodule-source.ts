@@ -72,8 +72,12 @@ export const SUBMODULE_REPOSITORIES: Readonly<Record<string, SubmoduleRepository
   'pulsechain-assets': Object.freeze({ owner: 'PLS369', repo: 'pulsechain-assets', defaultBranch: 'main' }),
 })
 
-/** The host every public address this module builds is served from. */
-const PUBLIC_CONTENT_HOST = 'raw.githubusercontent.com'
+/**
+ * The host every public address this module builds is served from. Exported so
+ * `image/attribution.ts` can recognize a live-fetched (non-submodule) GitHub
+ * address, such as web3icons's, without retyping the hostname.
+ */
+export const PUBLIC_CONTENT_HOST = 'raw.githubusercontent.com'
 
 /**
  * Which known submodule a public address points into, or null.

@@ -20,7 +20,7 @@ import {
   searchTokens,
 } from './index'
 import { SEARCH_CANDIDATE_CAP } from './search'
-import { eq } from 'drizzle-orm'
+import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from './schema'
 
 beforeEach(() => {
@@ -89,6 +89,22 @@ describe('applyOrder', () => {
     expect(withContent).toMatch(/"image"\."content"/)
   })
 
+  // handlers.test.ts mocks db.applyOrder entirely, so it cannot see whether
+  // these columns are actually selected — only a test against the real SQL
+  // text can. Without them, every image served through the ordered path
+  // (the common one — any request with a list order) would report no
+  // entry-level licence at all, silently falling back to the pre-migration
+  // guesswork for every response, opt-in filter or not.
+  it('selects the entry licence and the list-level licence fields the ordered route reports', async () => {
+    harness.queueResult({ rows: [] })
+    await applyOrder('0xorder' as never, eq(s.network.chainId, 'eip155-1'), 'provider')
+    const rendered = renderSql((harness.queries[0].steps[0].args as unknown[])[0])
+    expect(rendered).toContain('"list_token"."license" AS "license"')
+    expect(rendered).toContain('"list"."license" AS "listLicense"')
+    expect(rendered).toContain('"list"."license_url" AS "listLicenseUrl"')
+    expect(rendered).toContain('"list"."attribution" AS "listAttribution"')
+  })
+
   it('ranks svg above webp above other formats above no-image by default', async () => {
     harness.queueResult({ rows: [] })
 
@@ -122,6 +138,47 @@ describe('applyOrder', () => {
     // null (no image) extension falls through to the final ELSE, rank 3.
     // The trailing two params are the CTE's own listOrderId/chainId bindings.
     expect(params).toEqual(['.png', 0, '.jpg', 1, 2, 3, '0xorder', 'eip155-1'])
+  })
+
+  // The opt-in `?license=` filter (packages/server/src/server/image/handlers.ts's
+  // getListTokens) builds exactly this shape of condition and folds it into the
+  // same whereClause as every other filter. Proving it lands inside the `ls` CTE's
+  // own WHERE — the same clause dense_rank() reads — is what guarantees SQL
+  // evaluates it before the window function ranks anything: FROM/WHERE run before
+  // window functions by definition, so a row a license filter excludes here was
+  // never a candidate for the ranking to pick, and the caller never needed a
+  // separate "is the winner actually licensed" check afterward.
+  it('places a licence filter inside the ranking CTE, ahead of the window function, case-insensitively', async () => {
+    harness.queueResult({ rows: [] })
+
+    const whereClause = and(
+      eq(s.network.chainId, 'eip155-1'),
+      inArray(dsql`lower(${s.listToken.license})`, ['mit', 'apache-2.0']),
+    )!
+    await applyOrder('0xorder' as never, whereClause)
+
+    const fragment = (harness.queries[0].steps[0].args as unknown[])[0]
+    const rendered = renderSql(fragment)
+    const params = sqlParams(fragment)
+
+    const cteStart = rendered.indexOf('WITH ls AS')
+    const denseRankStart = rendered.indexOf('dense_rank()')
+    const cteWhereStart = rendered.indexOf('WHERE', denseRankStart)
+    const licenseFilterStart = rendered.indexOf('lower(')
+    const outerRankFilter = rendered.indexOf('WHERE ls.rank = 1')
+
+    // Ordering that only holds if the licence filter sits in the CTE's own
+    // WHERE, which SQL evaluates before dense_rank() computes a rank, and
+    // before the outer query even exists to ask for rank = 1.
+    expect(cteStart).toBeGreaterThan(-1)
+    expect(denseRankStart).toBeGreaterThan(cteStart)
+    expect(cteWhereStart).toBeGreaterThan(denseRankStart)
+    expect(licenseFilterStart).toBeGreaterThan(cteWhereStart)
+    expect(outerRankFilter).toBeGreaterThan(licenseFilterStart)
+
+    expect(rendered).toContain('lower("list_token"."license") in')
+    expect(params).toContain('mit')
+    expect(params).toContain('apache-2.0')
   })
 })
 

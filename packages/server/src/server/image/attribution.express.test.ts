@@ -31,22 +31,53 @@ const appFor = (input: { uri?: string | null; providerKey?: string | null }) => 
   return app
 }
 
-/** Every source the registry can resolve, reached the way production reaches it. */
-const REGISTERED_PROVIDERS = ['trustwallet', 'smoldapp', 'ethereum-lists', 'pls369'] as const
+/**
+ * Every source the registry can resolve, paired with a real address that
+ * verifies as THAT source's own artwork — exactly what every production
+ * serving path passes alongside providerKey. pls369 needs no such address:
+ * its own licence is already 'unknown', which resolveAttribution grants
+ * unconditionally since there is no real permission to over-claim.
+ *
+ * ethereum-lists is deliberately absent: it has no artwork of its own to
+ * verify an address against (see attribution.test.ts), so it cannot appear
+ * in a list of sources that publish attribution from provider key. A
+ * dedicated test below covers it instead.
+ */
+const REGISTERED_PROVIDERS = [
+  {
+    providerKey: 'trustwallet',
+    uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xabc/logo.png',
+  },
+  { providerKey: 'smoldapp', uri: 'smoldapp-tokenassets/chains/1/logo.svg' },
+  { providerKey: 'pls369', uri: 'https://example.test/logo.png' },
+] as const
 
 describe('attribution headers on a real response', () => {
-  it.each(REGISTERED_PROVIDERS)('serves 200 and publishes the attribution for provider %s', async (providerKey) => {
-    const res = await request(appFor({ providerKey, uri: 'https://example.test/logo.png' })).get('/')
+  it.each(REGISTERED_PROVIDERS)(
+    'serves 200 and publishes the attribution for provider $providerKey',
+    async ({ providerKey, uri }) => {
+      const res = await request(appFor({ providerKey, uri })).get('/')
 
-    // The assertion that would have caught the em dash: a real ServerResponse
-    // throws rather than dropping the header, so an unsendable value is a 500.
-    expect(res.status).toBe(200)
+      // The assertion that would have caught the em dash: a real ServerResponse
+      // throws rather than dropping the header, so an unsendable value is a 500.
+      expect(res.status).toBe(200)
 
-    // And the header must actually arrive, not merely fail to crash — a guard
-    // that silently dropped every attribution would also return 200.
-    const expected = resolveAttribution({ providerKey, uri: null }).attribution
-    expect(expected, `${providerKey} has no attribution to publish`).toBeTruthy()
-    expect(res.headers['x-attribution']).toBe(expected)
+      // And the header must actually arrive, not merely fail to crash — a guard
+      // that silently dropped every attribution would also return 200.
+      const expected = resolveAttribution({ providerKey, uri }).attribution
+      expect(expected, `${providerKey} has no attribution to publish`).toBeTruthy()
+      expect(res.headers['x-attribution']).toBe(expected)
+    },
+  )
+
+  it('serves 200 for ethereum-lists but grants no attribution from the provider key alone', () => {
+    return request(appFor({ providerKey: 'ethereum-lists', uri: 'https://i.imgur.com/abc123.png' }))
+      .get('/')
+      .then((res) => {
+        expect(res.status).toBe(200)
+        expect(res.headers['x-license']).toBe('unknown')
+        expect(res.headers['x-attribution']).toBeUndefined()
+      })
   })
 
   it('publishes a licence link and a licence on every response', async () => {

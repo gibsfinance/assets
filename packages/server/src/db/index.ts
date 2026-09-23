@@ -46,6 +46,7 @@ import { noteListTokensWritten } from './publication'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 import { escapeLikePattern, SEARCH_CANDIDATE_CAP } from './search'
 import { collectablePriority } from '../collect/collectable-order'
+import { effectiveEntryLicense, sourceLicenseForProviderKey } from '../server/image/attribution'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
 export { normalizeProvidedId }
@@ -631,13 +632,28 @@ export const storeToken = async (
   },
   tx?: DrizzleTx,
 ) => {
+  const db = tx ?? getDrizzle()
   const insertedToken = await insertToken({ type: 'erc20', ...token }, tx)
+  // This function never sees an image address — callers use it precisely because
+  // artwork is handled separately (batchFetchImagesForTokens) or not at all — so
+  // it has no licence opinion of its own. insertListToken's onConflict update is
+  // NOT COALESCEd for licence (see its own comment: a caller that DOES know the
+  // address needs an omitted/null value to mean "no longer verifiable", not "no
+  // change"), so a caller with no opinion has to read the current value back and
+  // carry it forward itself, or every re-collection would wipe a licence that
+  // batchFetchImagesForTokens had already established for this exact row.
+  const [existing] = await db
+    .select({ license: s.listToken.license })
+    .from(s.listToken)
+    .where(and(eq(s.listToken.tokenId, insertedToken.tokenId), eq(s.listToken.listId, listId)))
+    .limit(1)
   const [listToken] = await insertListToken(
     {
       tokenId: insertedToken.tokenId,
       listId,
       imageHash,
       listTokenOrderId,
+      license: existing?.license ?? null,
     },
     tx,
   )
@@ -658,6 +674,12 @@ export const batchFetchImagesForTokens = async (
     uri: string | null
     originalUri: string | null
     providerKey: string
+    /**
+     * The owning list's own registered licence (`list.license`), required for the
+     * same reason `fetchImageAndStoreForToken` requires it — this is the one
+     * place that holds both the list and the address this item uses.
+     */
+    listLicense: string | null
     signal?: AbortSignal
     /** Overrides the shared freshness window for this item. Defaults to IMAGE_MAX_AGE_HOURS. */
     maxImageAge?: number
@@ -668,12 +690,21 @@ export const batchFetchImagesForTokens = async (
   const db = tx ?? getDrizzle()
 
   /**
-   * Point a list_token at the image it should serve. Runs on both the reuse and the
-   * download path: cached bytes say nothing about whether *this* list_token — which
-   * may belong to a list version created minutes ago — already references them.
+   * Point a list_token at the image it should serve, and at the effective
+   * licence its address (and this item's list) verify. Runs on both the reuse
+   * and the download path: cached bytes say nothing about whether *this*
+   * list_token — which may belong to a list version created minutes ago —
+   * already references them.
    */
-  const linkListTokenToImage = async (listTokenId: string, imageHash: string) => {
-    await db.update(s.listToken).set({ imageHash }).where(eq(s.listToken.listTokenId, listTokenId))
+  const linkListTokenToImage = async (
+    listTokenId: string,
+    imageHash: string,
+    entryLicense: string | null,
+  ): Promise<void> => {
+    await db
+      .update(s.listToken)
+      .set({ imageHash, license: entryLicense })
+      .where(eq(s.listToken.listTokenId, listTokenId))
   }
 
   // Use promiseLimit to control concurrency
@@ -697,9 +728,14 @@ export const batchFetchImagesForTokens = async (
           //
           // Only the download is skipped. The list_token still gets linked below, because
           // cached bytes tell us nothing about whether this list_token points at them yet.
+          const entryLicense = effectiveEntryLicense({
+            listProviderKey: item.providerKey,
+            listLicense: item.listLicense,
+            imageAddress: item.originalUri ?? item.uri,
+          })
           const fresh = await getFreshImageFromLink(item.uri, item.maxImageAge ?? defaultImageMaxAge, tx)
           if (fresh) {
-            await linkListTokenToImage(item.listTokenId, fresh.image.imageHash)
+            await linkListTokenToImage(item.listTokenId, fresh.image.imageHash, entryLicense)
             return { listTokenId: item.listTokenId, success: true, image: fresh.image }
           }
 
@@ -724,7 +760,7 @@ export const batchFetchImagesForTokens = async (
           const { image } = imageResult
 
           // Update the list token with the image hash
-          await linkListTokenToImage(item.listTokenId, image.imageHash)
+          await linkListTokenToImage(item.listTokenId, image.imageHash, entryLicense)
 
           return { listTokenId: item.listTokenId, success: true, image }
         } catch (error) {
@@ -1160,6 +1196,14 @@ export const fetchImageAndStoreForToken = async (
     originalUri: string | null
     token: InsertableToken
     providerKey: string
+    /**
+     * The owning list's own registered licence (`list.license`), required so the
+     * effective per-entry licence can be computed here — the one place that holds
+     * both the list and the address it used for this entry. Pass `list.license`
+     * from whatever `insertList` call created/returned the list; pass `null`
+     * explicitly for a list with no registered licence, never omit it.
+     */
+    listLicense: string | null
     signal?: AbortSignal
     maxImageAge?: number
   },
@@ -1171,7 +1215,16 @@ export const fetchImageAndStoreForToken = async (
   image?: typeof s.image.$inferSelect
 }> => {
   const db = tx ?? getDrizzle()
-  const { listId, uri, token, providerKey, signal, listTokenOrderId, maxImageAge = defaultImageMaxAge } = inputs
+  const {
+    listId,
+    uri,
+    token,
+    providerKey,
+    listLicense,
+    signal,
+    listTokenOrderId,
+    maxImageAge = defaultImageMaxAge,
+  } = inputs
   if (!listId) {
     throw new Error('listId is required')
   }
@@ -1179,6 +1232,10 @@ export const fetchImageAndStoreForToken = async (
   if (!originalUri && _.isString(uri)) {
     originalUri = uri
   }
+  // Decided once, here, from the one address this call actually used — the only
+  // moment a collector holds both the list's own licence and the address it gave
+  // this entry. See attribution.ts's effectiveEntryLicense for the three rules.
+  const entryLicense = effectiveEntryLicense({ listProviderKey: providerKey, listLicense, imageAddress: originalUri })
   let providedId = token.providedId
   if (viem.isAddress(providedId)) {
     providedId = viem.getAddress(token.providedId)
@@ -1191,6 +1248,7 @@ export const fetchImageAndStoreForToken = async (
         imageHash: s.listToken.imageHash,
         listTokenId: s.listToken.listTokenId,
         listTokenOrderId: s.listToken.listTokenOrderId,
+        license: s.listToken.license,
         createdAt: s.listToken.createdAt,
         updatedAt: s.listToken.updatedAt,
       })
@@ -1233,9 +1291,31 @@ export const fetchImageAndStoreForToken = async (
       ) {
         const listToken = await getListToken(insertedToken.tokenId, existing.image.imageHash)
         if (listToken && listToken.listTokenOrderId === listTokenOrderId) {
+          // Nothing changed, including the licence — the fully-idempotent case,
+          // and the one this early return exists to make cheap. A row written
+          // before the licence column existed (or whose computed licence has
+          // since changed) still needs a write, so this is checked rather than
+          // assumed — see "the freshness shortcut writes the licence too".
+          if (listToken.license === entryLicense) {
+            return {
+              ...existing,
+              listToken,
+              token: insertedToken,
+            }
+          }
+          const [refreshed] = await insertListToken(
+            {
+              tokenId: insertedToken.tokenId,
+              listId,
+              imageHash: existing.image.imageHash,
+              listTokenOrderId,
+              license: entryLicense,
+            },
+            tx,
+          )
           return {
             ...existing,
-            listToken,
+            listToken: refreshed,
             token: insertedToken,
           }
         }
@@ -1313,6 +1393,7 @@ export const fetchImageAndStoreForToken = async (
       listId,
       imageHash: img?.image.imageHash,
       listTokenOrderId,
+      license: entryLicense,
     },
     tx,
   )
@@ -1426,6 +1507,18 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
       set: {
         imageHash: dsql`COALESCE(excluded.image_hash, ${s.listToken.imageHash})`,
         listTokenOrderId: dsql`excluded.list_token_order_id`,
+        // Deliberately NOT COALESCEd, unlike image_hash: the licence is address-
+        // derived (see effectiveEntryLicense, sourceOwningAddress), which needs no
+        // network fetch to compute, so a caller that DOES know the address — every
+        // fetchImageAndStoreForToken write, and batchFetchImagesForTokens' own
+        // direct UPDATE below — always has an authoritative answer, including
+        // "null, because the address no longer verifies". COALESCing here would
+        // let a licence that stopped applying (the address moved to somewhere
+        // unverified) survive under the OLD image's old licence forever. A caller
+        // with no licence opinion at all (`storeToken`, which inserts token
+        // metadata before any artwork is known) is responsible for reading the
+        // current value back itself rather than relying on this to no-op.
+        license: dsql`excluded.license`,
       },
     })
     .returning()
@@ -1439,8 +1532,43 @@ export const insertListToken = async (listToken: InsertableListToken | Insertabl
   return written
 }
 
-export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
+/**
+ * Default a list's licence fields from the attribution registry entry for a
+ * provider key. A registry licence of `'unknown'` maps to `null` — the list
+ * table's own "unknown" representation — but its `licenseUrl`/`attribution`
+ * are still carried over as evidence (pls369's README note, for example),
+ * exactly as `attribution.ts` itself treats an unverified-but-identifiable
+ * source. Answers `{}` for an unregistered or absent provider key, so spreading
+ * it changes nothing.
+ */
+const licenseDefaultsForProviderKey = (
+  providerKey: string | undefined,
+): Pick<InsertableList, 'license' | 'licenseUrl' | 'attribution'> | Record<string, never> => {
+  const entry = sourceLicenseForProviderKey(providerKey)
+  if (!entry) return {}
+  return {
+    license: entry.license === 'unknown' ? null : entry.license,
+    licenseUrl: entry.licenseUrl,
+    attribution: entry.attribution,
+  }
+}
+
+export const insertList = async (
+  list: InsertableList & {
+    /**
+     * Defaults `license`/`licenseUrl`/`attribution` from the attribution registry
+     * entry for this provider key — pass it so a list gets its provider's
+     * registered licence without every collector re-deriving the same mapping.
+     * An explicit `license`/`licenseUrl`/`attribution` on `list` always wins, so a
+     * collector whose lists carry different terms (the reason licence lives on
+     * the list, not the provider) can override per call.
+     */
+    providerKey?: string
+  },
+  tx?: DrizzleTx,
+) => {
   const db = tx ?? getDrizzle()
+  const { providerKey, ...rest } = list
   // listId is generated by a DB trigger from (providerId, key, major, minor, patch) — provide placeholder
   return await db
     .insert(s.list)
@@ -1449,7 +1577,8 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
       patch: 0,
       minor: 0,
       major: 0,
-      ...list,
+      ...licenseDefaultsForProviderKey(providerKey),
+      ...rest,
     })
     .onConflictDoUpdate({
       target: s.list.listId,
@@ -1468,6 +1597,12 @@ export const insertList = async (list: InsertableList, tx?: DrizzleTx) => {
         minor: dsql`excluded.minor`,
         patch: dsql`excluded.patch`,
         default: dsql`excluded."default"`,
+        // Refreshed on every re-collection, same as every other descriptive field
+        // above — a corrected registry entry (or a corrected override) reaches an
+        // existing version without waiting for a version bump.
+        license: dsql`excluded.license`,
+        licenseUrl: dsql`excluded.license_url`,
+        attribution: dsql`excluded.attribution`,
       },
     })
     .returning()
@@ -1899,6 +2034,10 @@ export const applyOrder = async (
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",
+        ${s.listToken.license} AS "license",
+        ${s.list.license} AS "listLicense",
+        ${s.list.licenseUrl} AS "listLicenseUrl",
+        ${s.list.attribution} AS "listAttribution",
         ${s.list.major} AS "listMajor",
         ${s.list.minor} AS "listMinor",
         ${s.list.patch} AS "listPatch",

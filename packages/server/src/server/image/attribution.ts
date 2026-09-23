@@ -13,10 +13,28 @@
  * Every entry below was populated by opening the named source's own licence file
  * and copying its real copyright line. A source with no verified licence is marked
  * `'unknown'` — never guessed — because a guessed licence is worse than an absent one.
+ *
+ * A PROVIDER is not the right unit for a licence: one provider can publish many
+ * lists under different terms (the Uniswap collector alone reads twenty-two lists
+ * from twenty-two different publishers), and a list can only license artwork it
+ * actually owns — a list that merely points at someone else's image cannot grant
+ * a licence to it. So the licence lives on the LIST (`list.license` and friends,
+ * set by `insertList`), and the EFFECTIVE licence of one entry's image is decided
+ * once, at collection time, by `effectiveEntryLicense` below, using both the
+ * list's own licence and the `ownArtwork` location recorded on each registry entry
+ * here. Never a provider key alone: `sourceOwningAddress` and `resolveAttribution`
+ * both require the served address to verify against a registry entry's own
+ * artwork location before trusting that entry's licence for it.
  */
 import * as path from 'path'
 import { submodules } from '../../paths'
-import { submoduleNameForPublicAddress } from '../../submodule-source'
+import { submoduleNameForPublicAddress, SUBMODULE_REPOSITORIES, PUBLIC_CONTENT_HOST } from '../../submodule-source'
+
+/** A GitHub repository where a source keeps its OWN artwork — never a repository it merely links to. */
+export type OwnArtworkRepository = {
+  readonly owner: string
+  readonly repo: string
+}
 
 /**
  * What is known about the licence terms of one redistributed source.
@@ -24,14 +42,21 @@ import { submoduleNameForPublicAddress } from '../../submodule-source'
 export type SourceLicense = {
   /** Canonical identifier for this source (its provider key, or submodule directory name). */
   readonly sourceKey: string
-  /** Human-readable name of the source, for display. */
-  readonly name: string
+  /** Human-readable name of the source, for display, or null when none applies. */
+  readonly name: string | null
   /** A Software-Package-Data-Exchange (SPDX) licence identifier, or the literal `'unknown'`. */
   readonly license: string
   /** Where to read the full licence text, or `null` when there is none to point to. */
   readonly licenseUrl: string | null
   /** The copyright line to reproduce, or `null` when there is none to reproduce. */
   readonly attribution: string | null
+  /**
+   * Where this source keeps its OWN artwork, or `null` when it hosts none (ethereum-lists:
+   * its repository holds token definitions, never images). An address only earns this
+   * source's licence when it verifiably falls inside this location — see
+   * `sourceOwningAddress` — never from a provider key or a list's own claim alone.
+   */
+  readonly ownArtwork: OwnArtworkRepository | null
 }
 
 /** The entry returned when a source cannot be identified or has no verified licence. */
@@ -41,6 +66,7 @@ const UNKNOWN_SOURCE: SourceLicense = Object.freeze({
   license: 'unknown',
   licenseUrl: null,
   attribution: null,
+  ownArtwork: null,
 })
 
 /**
@@ -54,6 +80,9 @@ const TRUSTWALLET: SourceLicense = Object.freeze({
   license: 'MIT',
   licenseUrl: 'https://github.com/trustwallet/assets/blob/master/LICENSE',
   attribution: 'Copyright (c) 2019-2023 Trust Wallet - MIT',
+  // Reused from submodule-source.ts's own owner/repository mapping rather than
+  // retyped, so the two never drift apart on where this repository lives.
+  ownArtwork: { owner: SUBMODULE_REPOSITORIES.trustwallet.owner, repo: SUBMODULE_REPOSITORIES.trustwallet.repo },
 })
 
 /**
@@ -67,6 +96,10 @@ const SMOLDAPP: SourceLicense = Object.freeze({
   license: 'MIT',
   licenseUrl: 'https://github.com/SmolDapp/tokenAssets/blob/main/LICENSE',
   attribution: 'Copyright (c) 2024 Smol - MIT',
+  ownArtwork: {
+    owner: SUBMODULE_REPOSITORIES['smoldapp-tokenassets'].owner,
+    repo: SUBMODULE_REPOSITORIES['smoldapp-tokenassets'].repo,
+  },
 })
 
 /**
@@ -80,7 +113,24 @@ const ETHEREUM_LISTS: SourceLicense = Object.freeze({
   license: 'MIT',
   licenseUrl: 'https://github.com/ethereum-lists/tokens/blob/master/LICENSE',
   attribution: 'Copyright (c) 2018 ethereum-lists - MIT',
+  // No artwork ownership on purpose: this repository holds token DEFINITIONS
+  // (each entry's `logo` field is a URL into whatever host the submitter chose —
+  // imgur and others), never the images themselves. Its MIT licence covers its
+  // own data, not a file it merely points at, so it never earns an entry's
+  // effective licence — see effectiveEntryLicense and sourceOwningAddress.
+  ownArtwork: null,
 })
+
+/**
+ * web3icons's own GitHub repository. Not in submodule-source.ts's
+ * SUBMODULE_REPOSITORIES — that map resolves a checked-out commit for a vendored
+ * submodule, and web3icons has no local checkout; it is fetched live on every
+ * collection run. Recorded once, here, both as this entry's `ownArtwork` and as
+ * the pattern `sourceKeyFromUri` matches a public address against, so a list
+ * belonging to some OTHER provider that happens to point into this repository
+ * (see `effectiveEntryLicense`'s rule 2) still resolves to web3icons's own terms.
+ */
+const WEB3ICONS_REPOSITORY: OwnArtworkRepository = Object.freeze({ owner: '0xa3k5', repo: 'web3icons' })
 
 /**
  * web3icons — provider key `web3icons`, fetched directly from the 0xa3k5/web3icons
@@ -98,6 +148,11 @@ const WEB3ICONS: SourceLicense = Object.freeze({
   license: 'MIT',
   licenseUrl: 'https://github.com/0xa3k5/web3icons/blob/main/LICENCE',
   attribution: 'Copyright (c) 2024 0xa3k5 - MIT',
+  // Not in submodule-source.ts's SUBMODULE_REPOSITORIES: that map resolves a
+  // checked-out commit, and web3icons has no local checkout to resolve — it is
+  // fetched live on every run. Recorded once, here, since this registry is the
+  // single source of truth for where a source's own artwork lives.
+  ownArtwork: WEB3ICONS_REPOSITORY,
 })
 
 /**
@@ -122,6 +177,16 @@ const PULSECHAIN_ASSETS: SourceLicense = Object.freeze({
   licenseUrl: 'https://github.com/PLS369/pulsechain-assets/blob/main/README.md',
   attribution:
     'PLS369 / pulsechain-assets - the source states its data is "open for all projects to use" but grants no formal licence.',
+  // This repository DOES hold its own artwork — the README's informal invitation
+  // is what makes the LICENCE 'unknown', not a claim that the files live
+  // elsewhere. Recorded honestly so a future real licence grant (or a list that
+  // explicitly overrides this provider's default) has something to verify
+  // against; effectiveEntryLicense never grants a licence for an 'unknown' match
+  // regardless, so this stays inert for licensing today.
+  ownArtwork: {
+    owner: SUBMODULE_REPOSITORIES['pulsechain-assets'].owner,
+    repo: SUBMODULE_REPOSITORIES['pulsechain-assets'].repo,
+  },
 })
 
 /**
@@ -143,6 +208,39 @@ const SOURCE_REGISTRY: Readonly<Record<string, SourceLicense>> = Object.freeze({
 })
 
 /**
+ * Non-submodule sources whose own artwork is still verifiable by a fixed GitHub
+ * owner/repository, keyed the same way `submoduleNameForPublicAddress` keys the
+ * vendored submodules — so `sourceKeyFromUri` can check both with one pattern.
+ * Currently only web3icons; add an entry here for any future source that is
+ * fetched live rather than vendored.
+ */
+const LIVE_GITHUB_SOURCES: Readonly<Record<string, OwnArtworkRepository>> = Object.freeze({
+  web3icons: WEB3ICONS_REPOSITORY,
+})
+
+/**
+ * Which known live-fetched (non-submodule) source a public GitHub address names,
+ * or `null`. The inverse of `submoduleNameForPublicAddress`, scoped to
+ * `LIVE_GITHUB_SOURCES` instead of the vendored submodules.
+ */
+function liveGithubSourceKeyForPublicAddress(uri: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(uri)
+  } catch {
+    return null
+  }
+  if (parsed.hostname !== PUBLIC_CONTENT_HOST) return null
+  const [owner, repo] = parsed.pathname.split('/').filter(Boolean)
+  if (!owner || !repo) return null
+  const match = Object.entries(LIVE_GITHUB_SOURCES).find(
+    ([, repository]) =>
+      repository.owner.toLowerCase() === owner.toLowerCase() && repository.repo.toLowerCase() === repo.toLowerCase(),
+  )
+  return match ? match[0] : null
+}
+
+/**
  * Derive the registry lookup key a source uri names, or `null` when the uri
  * carries no source identity of its own.
  *
@@ -160,6 +258,10 @@ export function sourceKeyFromUri(uri: string): string | null {
     // path to a public address did not cost them their licence.
     const submoduleName = submoduleNameForPublicAddress(uri)
     if (submoduleName) return submoduleName
+    // A public address into a live-fetched (non-submodule) source's own
+    // repository — currently only web3icons — names its source the same way.
+    const liveGithubSource = liveGithubSourceKeyForPublicAddress(uri)
+    if (liveGithubSource) return liveGithubSource
     // http(s) is a "special" scheme in the WHATWG URL standard, so a
     // successfully parsed instance always has a non-empty host — the only
     // failure mode worth handling is the parse itself throwing.
@@ -202,9 +304,83 @@ function normalizeSourceUri(uri: string | null | undefined): string | undefined 
 }
 
 /**
- * Resolve the licence and attribution for one served image. Tries the provider
- * key recorded on the database row first, then the source key the uri itself
- * names, and falls back to the unknown entry when neither resolves.
+ * Which registered source, if any, verifiably owns the artwork at this address —
+ * the address itself falls inside that source's `ownArtwork` location, not merely
+ * inside a repository or path the source's provider key happens to be recorded
+ * against. Returns `null` for an address that resolves to no registry entry, or
+ * that resolves to one with no artwork of its own (ethereum-lists).
+ *
+ * This is the one check `resolveAttribution` and `effectiveEntryLicense` both
+ * build on, so an address is never trusted as "some source's own artwork" two
+ * different ways.
+ */
+export function sourceOwningAddress(uri: string | null | undefined): SourceLicense | null {
+  const normalized = normalizeSourceUri(uri)
+  if (!normalized) return null
+  const key = sourceKeyFromUri(normalized)
+  if (!key) return null
+  const entry = SOURCE_REGISTRY[key]
+  return entry?.ownArtwork ? entry : null
+}
+
+/**
+ * The registry entry for a provider key, or `null` when the key is absent or
+ * unregistered. Used by `insertList` to default a list's licence from its
+ * provider, and by `resolveAttribution` to look up what a provider key CLAIMS
+ * before deciding whether the address backs that claim up.
+ */
+export function sourceLicenseForProviderKey(providerKey: string | null | undefined): SourceLicense | null {
+  if (!providerKey) return null
+  return SOURCE_REGISTRY[providerKey] ?? null
+}
+
+/**
+ * Decide the EFFECTIVE licence of one list_token entry, at collection time —
+ * the only moment a collector holds both the list and the address it used.
+ *
+ * 1. The list's own licence, but ONLY for an address that verifies as its own
+ *    provider's own artwork — never for an address the list merely points at.
+ * 2. Otherwise, an address that independently verifies as some OTHER known
+ *    source's own artwork (a LiFi entry pointing into trustwallet/assets, for
+ *    example) earns THAT source's licence.
+ * 3. Otherwise `null` — unknown, never guessed.
+ *
+ * A matched source whose own licence is `'unknown'` never reaches either rule:
+ * there is nothing to grant. See `sourceOwningAddress` for the address check.
+ */
+export function effectiveEntryLicense({
+  listProviderKey,
+  listLicense,
+  imageAddress,
+}: {
+  listProviderKey: string | null | undefined
+  listLicense: string | null | undefined
+  imageAddress: string | null | undefined
+}): string | null {
+  const owning = sourceOwningAddress(imageAddress)
+  const ownEntry = sourceLicenseForProviderKey(listProviderKey)
+  if (listLicense && owning && ownEntry && owning.sourceKey === ownEntry.sourceKey) {
+    return listLicense
+  }
+  if (owning && owning.license !== 'unknown') {
+    return owning.license
+  }
+  return null
+}
+
+/**
+ * Resolve the licence and attribution for one served image when no precomputed
+ * `list_token.license` is available — a row collected before this column
+ * existed, or a route with no list context at all (a network icon, or the
+ * content-addressed route).
+ *
+ * A provider key is never trusted for its licence alone. A `'unknown'` claim
+ * costs nothing to surface (there is no permission being over-claimed), so it
+ * is returned unconditionally; a REAL licence claim is returned only once the
+ * address itself verifies as that same source's own artwork — exactly
+ * `effectiveEntryLicense`'s rule 1, applied without a list to draw the claim
+ * from. Failing that, the address may still independently verify as some other
+ * known source's own artwork (rule 2). Otherwise, unknown.
  */
 export function resolveAttribution({
   providerKey,
@@ -213,14 +389,17 @@ export function resolveAttribution({
   providerKey?: string | null
   uri?: string | null
 }): SourceLicense {
-  if (providerKey && SOURCE_REGISTRY[providerKey]) {
-    return SOURCE_REGISTRY[providerKey]
+  const claimed = sourceLicenseForProviderKey(providerKey)
+  if (claimed) {
+    if (claimed.license === 'unknown') return claimed
+    const owning = sourceOwningAddress(uri)
+    if (owning && owning.sourceKey === claimed.sourceKey) return claimed
+    // A real licence claimed by the provider key alone, with no address
+    // confirming it is that provider's own artwork, is exactly the
+    // ethereum-lists defect this guards against — never granted.
   }
-  const normalizedUri = normalizeSourceUri(uri)
-  const uriSourceKey = normalizedUri ? sourceKeyFromUri(normalizedUri) : null
-  if (uriSourceKey && SOURCE_REGISTRY[uriSourceKey]) {
-    return SOURCE_REGISTRY[uriSourceKey]
-  }
+  const owning = sourceOwningAddress(uri)
+  if (owning) return owning
   return UNKNOWN_SOURCE
 }
 
@@ -324,6 +503,63 @@ export const ATTRIBUTION_HEADER_NAMES = [
 const LICENSE_LINK_HEADER = '<https://gib.show/terms>; rel="license"'
 
 /**
+ * Resolve the source to publish headers for, preferring a precomputed
+ * `list_token.license` (the entry's EFFECTIVE licence, decided once at
+ * collection time with full knowledge of the address the list actually used)
+ * over the legacy provider-key/uri guesswork `resolveAttribution` falls back to
+ * for a row collected before that column existed, or a route with no list_token
+ * at all.
+ *
+ * The stored licence is the authoritative fact; only its url/attribution need
+ * re-deriving, since those are not columns of their own. The current address is
+ * tried first (freshest, independently verifiable), then the list's own
+ * registered licence, and if neither still lines up with the stored value the
+ * licence is still reported — computed once, correctly, it does not need
+ * re-justifying — just without a url or attribution to accompany it.
+ */
+function resolveEffectiveSource({
+  uri,
+  providerKey,
+  entryLicense,
+  listLicense,
+  listLicenseUrl,
+  listAttribution,
+}: {
+  uri?: string | null
+  providerKey?: string | null
+  entryLicense?: string | null
+  listLicense?: string | null
+  listLicenseUrl?: string | null
+  listAttribution?: string | null
+}): SourceLicense {
+  if (!entryLicense) {
+    return resolveAttribution({ providerKey, uri })
+  }
+  const owning = sourceOwningAddress(uri)
+  if (owning && owning.license === entryLicense) {
+    return owning
+  }
+  if (listLicense && listLicense === entryLicense) {
+    return Object.freeze({
+      sourceKey: providerKey || 'list',
+      name: (providerKey && SOURCE_REGISTRY[providerKey]?.name) || null,
+      license: entryLicense,
+      licenseUrl: listLicenseUrl ?? null,
+      attribution: listAttribution ?? null,
+      ownArtwork: null,
+    })
+  }
+  return Object.freeze({
+    sourceKey: providerKey || 'unknown',
+    name: null,
+    license: entryLicense,
+    licenseUrl: null,
+    attribution: null,
+    ownArtwork: null,
+  })
+}
+
+/**
  * Build the full set of attribution headers for one served image. Pure — it
  * returns a plain record for the caller to apply to a response, rather than
  * touching a Response object itself, so `sendImage` and `sendVariant` can share
@@ -336,11 +572,28 @@ const LICENSE_LINK_HEADER = '<https://gib.show/terms>; rel="license"'
 export function attributionHeaders({
   uri,
   providerKey,
+  entryLicense,
+  listLicense,
+  listLicenseUrl,
+  listAttribution,
 }: {
   uri?: string | null
   providerKey?: string | null
+  /** The list_token row's precomputed effective licence, when one is known. */
+  entryLicense?: string | null
+  /** The owning list's own registered licence, for url/attribution enrichment. */
+  listLicense?: string | null
+  listLicenseUrl?: string | null
+  listAttribution?: string | null
 }): Record<string, string> {
-  const source = resolveAttribution({ providerKey, uri })
+  const source = resolveEffectiveSource({
+    uri,
+    providerKey,
+    entryLicense,
+    listLicense,
+    listLicenseUrl,
+    listAttribution,
+  })
   const headers: Record<string, string> = {
     link: LICENSE_LINK_HEADER,
     'x-license': source.license,

@@ -94,6 +94,7 @@ class SmoldappCollector extends BaseCollector {
         const [networkList] = await db.insertList({
           key: networkKey,
           providerId: provider.providerId,
+          providerKey,
           networkId: utils.chainIdToNetworkId(networkChainId, 'evm'),
         })
         this.chainIdToNetworkId.set(networkList.key, networkList)
@@ -107,6 +108,7 @@ class SmoldappCollector extends BaseCollector {
       const [list] = await db
         .insertList({
           providerId: provider.providerId,
+          providerKey,
           key: `tokens-${listKey}`,
           default: listKey === 'svg',
         })
@@ -270,6 +272,7 @@ class SmoldappCollector extends BaseCollector {
                     .insertList({
                       key: networkKey,
                       providerId: provider.providerId,
+                      providerKey,
                       networkId: network.networkId,
                     })
                     .then((list) => list?.[0] as List)
@@ -452,6 +455,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     const [list] = await db
       .insertList({
         providerId: provider.providerId,
+        providerKey: provider.key,
         key: `tokens-${listKey}`,
         default: listKey === 'svg',
       })
@@ -469,6 +473,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
         {
           listId: list.listId,
           ...baseInput,
+          listLicense: list.license,
           listTokenOrderId: globalOrderId,
           signal,
         },
@@ -478,6 +483,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
         {
           listId: networkList.listId,
           ...baseInput,
+          listLicense: networkList.license,
           signal,
         },
         tx,

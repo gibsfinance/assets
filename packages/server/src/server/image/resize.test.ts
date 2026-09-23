@@ -1060,20 +1060,42 @@ describe('sendVariant (via maybeResize)', () => {
     expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2024 Smol - MIT')
   })
 
-  it('resolves attribution from the provider key when the row carries one, even without a uri match', async () => {
+  it("threads the list_token's precomputed effective licence into a resized response", async () => {
+    vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
+    const req = mockReq({ w: '72', as: 'webp' })
+    const res = mockRes()
+    const img = {
+      ...makeImage({ uri: 'https://cdn.unrelated-host.example/logo.png' }),
+      providerKey: 'some-provider',
+      license: 'Apache-2.0',
+      listLicense: 'Apache-2.0',
+      listLicenseUrl: 'https://example.test/apache',
+      listAttribution: 'Example Corp',
+    }
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+
+    expect(res.set).toHaveBeenCalledWith('x-license', 'Apache-2.0')
+    expect(res.set).toHaveBeenCalledWith('x-license-url', 'https://example.test/apache')
+    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Example Corp')
+  })
+
+  it('names the recorded provider but withholds a licence the address cannot confirm', async () => {
     vi.mocked(db.getVariant).mockResolvedValue(makeVariant())
     const req = mockReq({ w: '72', as: 'webp' })
     const res = mockRes()
     // A link-mode row could carry a provider key with a uri that names no
-    // recognisable source (e.g. a bare CDN host) — the provider key alone
-    // must still resolve the correct licence.
+    // recognisable source (e.g. a bare CDN host) — this is the ethereum-lists
+    // defect: its own repository holds no images, and ethereum-lists entries'
+    // real image addresses are exactly this shape (an arbitrary external
+    // host). The provider key alone must never grant that provider's licence.
     const img = { ...makeImage({ uri: 'https://cdn.unknown-host.example/icon.png' }), providerKey: 'ethereum-lists' }
 
     await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(res.set).toHaveBeenCalledWith('x-provider', 'ethereum-lists')
-    expect(res.set).toHaveBeenCalledWith('x-license', 'MIT')
-    expect(res.set).toHaveBeenCalledWith('x-attribution', 'Copyright (c) 2018 ethereum-lists - MIT')
+    expect(res.set).toHaveBeenCalledWith('x-license', 'unknown')
+    expect(res.set).not.toHaveBeenCalledWith('x-attribution', expect.any(String))
   })
 })
 
