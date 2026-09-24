@@ -31,6 +31,9 @@ const filenameToListKey = (filename: string) => {
   const noPrefix = noExt.split('logo-').join('')
   return `png${noPrefix}`
 }
+/** The file types SmolDapp publishes as token and chain artwork. Anything else in a folder is metadata. */
+const ARTWORK_EXTENSIONS = new Set(['.svg', '.png'])
+const isArtworkFile = (filename: string) => ARTWORK_EXTENSIONS.has(path.extname(filename).toLowerCase())
 const providerKey = 'smoldapp'
 
 /**
@@ -420,10 +423,17 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     return
   }
   const [name, symbol, decimals] = metadata
-  const tokenImages = (await utils.folderContents(tokenFolder).catch((err) => {
-    failureLog('Error getting folder contents for token %o on chain %o: %o', token, networkChainId, err)
-    return []
-  })) as string[]
+  // Only the artwork. Since 9 July 2026 SmolDapp ships an info.json beside the
+  // logos in nearly every token folder, and a folder lists alphabetically, so it
+  // came first: the list key was read from it ('pnginfo', which names no list) and
+  // the whole token was skipped before any of its images were looked at. That is
+  // why smoldapp stopped storing tokens the day after it appeared.
+  const tokenImages = (
+    (await utils.folderContents(tokenFolder).catch((err) => {
+      failureLog('Error getting folder contents for token %o on chain %o: %o', token, networkChainId, err)
+      return []
+    })) as string[]
+  ).filter(isArtworkFile)
 
   if (!tokenImages.length) {
     row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-images`)

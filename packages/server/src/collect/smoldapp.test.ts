@@ -542,6 +542,30 @@ describe('SmoldappCollector collect — tokens', () => {
     expect(harness.state.tokenImages.some((image) => image.token.providedId === '0xtrontoken')).toBe(false)
   })
 
+  it('collects a token whose folder also carries an info.json, as every one has since July', async () => {
+    // A folder lists alphabetically, so info.json sorts first. The list key used to
+    // be read from it - 'pnginfo', which names no list - and the whole token was
+    // skipped. On staging that skipped 4,228 of 4,256 tokens.
+    fakeFilesystem.setFile(
+      listJsonPath,
+      JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: { '1': ['0xToken1'] } }),
+    )
+    setupOneChainWithSvgFormat()
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken1'), ['info.json', 'logo.svg'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'info.json'), '{"name":"Token One"}')
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'logo.svg'), 'token-svg-bytes')
+    harness.setErc20Metadata('0xtoken1', ['Token One', 'TOK1', 18])
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const stored = harness.state.tokenImages.filter((image) => image.token.providedId === '0xtoken1')
+    expect(stored.length).toBeGreaterThan(0)
+    // And the metadata file is never treated as an image.
+    expect(stored.some((image) => String(image.uri).endsWith('info.json'))).toBe(false)
+  })
+
   it('reuses an existing token’s stored metadata instead of calling erc20Read', async () => {
     fakeFilesystem.setFile(
       listJsonPath,
@@ -722,8 +746,10 @@ describe('SmoldappCollector collect — tokens', () => {
       JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: { '1': ['0xToken8'] } }),
     )
     setupOneChainWithSvgFormat()
-    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken8'), ['icon.weird'])
-    fakeFilesystem.setFile(tokenImagePath('1', '0xToken8', 'icon.weird'), 'token-bytes')
+    // A real image whose size has no list on this chain. This used to be a made-up
+    // 'icon.weird', which non-artwork filtering now drops before this branch.
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken8'), ['logo-64.png'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken8', 'logo-64.png'), 'token-bytes')
     harness.setErc20Metadata('0xtoken8', ['Token Eight', 'TOK8', 18])
 
     const collector = new SmoldappCollector()
