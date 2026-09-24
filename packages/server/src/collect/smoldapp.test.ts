@@ -160,6 +160,24 @@ describe('SmoldappCollector discover', () => {
     expect(harness.state.networks.get('eip155-1')).toBeDefined()
   })
 
+  it('skips a chain the database refuses instead of failing the whole provider', async () => {
+    // SmolDapp numbers Tron as 728126428 - an Ethereum-style id for a chain that is
+    // not one - and the database refuses it by name. That refusal escaped discover()
+    // and failed every smoldapp run on staging and production, leaving its lists
+    // unpublished since July. It must now cost that one chain and nothing else.
+    fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
+    fakeFilesystem.setDirectory(chainsPath, ['1', '728126428'])
+    fakeFilesystem.setDirectory(chainFolderPath('1'), ['logo.svg'])
+    fakeFilesystem.setDirectory(chainFolderPath('728126428'), ['logo.svg'])
+
+    const manifest = await new SmoldappCollector().discover(new AbortController().signal)
+
+    const listKeys = new Set(manifest[0]?.lists.map((list) => list.listKey))
+    expect(listKeys.has('tokens-1-svg')).toBe(true)
+    expect([...listKeys].some((key) => key.includes('728126428'))).toBe(false)
+    expect(harness.state.networks.get('eip155-1')).toBeDefined()
+  })
+
   it('stops before creating anything once the signal aborts while listing chain folders', async () => {
     fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
     fakeFilesystem.setDirectory(chainsPath, ['1'])
@@ -232,6 +250,25 @@ describe('SmoldappCollector collect — chain images', () => {
 
     expect(harness.state.networkImages).toHaveLength(0)
     expect(insertedImages).toHaveLength(0)
+  })
+
+  it('still stores every other chain’s logo when one chain folder is refused', async () => {
+    // The chain-image pass walks the chain folders again on its own, so skipping
+    // the refused chain in discover() is not enough by itself - this pass must
+    // skip it too, or the same refusal fails the run here instead.
+    fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
+    fakeFilesystem.setDirectory(chainsPath, ['1', '728126428'])
+    fakeFilesystem.setDirectory(chainFolderPath('1'), ['logo.svg'])
+    fakeFilesystem.setFile(chainFilePath('1', 'logo.svg'), '<svg/>')
+    fakeFilesystem.setDirectory(chainFolderPath('728126428'), ['logo.svg'])
+    fakeFilesystem.setFile(chainFilePath('728126428', 'logo.svg'), '<svg/>')
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    expect(harness.state.networkImages).toHaveLength(1)
+    expect(harness.state.networkImages[0]?.uri).toBe(chainFilePath('1', 'logo.svg'))
   })
 
   it('stores an svg chain logo against both the network and its list via one transaction', async () => {
@@ -484,6 +521,51 @@ describe('SmoldappCollector collect — tokens', () => {
     }
   })
 
+  it('still collects every other chain’s tokens when one chain is refused', async () => {
+    fakeFilesystem.setFile(
+      listJsonPath,
+      JSON.stringify({
+        version: { major: 1, minor: 0, patch: 0 },
+        tokens: { '1': ['0xToken1'], '728126428': ['0xTronToken'] },
+      }),
+    )
+    setupOneChainWithSvgFormat()
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken1'), ['icon.svg'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'icon.svg'), 'token-svg-bytes')
+    harness.setErc20Metadata('0xtoken1', ['Token One', 'TOK1', 18])
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    expect(harness.state.tokenImages.some((image) => image.token.providedId === '0xtoken1')).toBe(true)
+    expect(harness.state.tokenImages.some((image) => image.token.providedId === '0xtrontoken')).toBe(false)
+  })
+
+  it('collects a token whose folder also carries an info.json, as every one has since July', async () => {
+    // A folder lists alphabetically, so info.json sorts first. The list key used to
+    // be read from it - 'pnginfo', which names no list - and the whole token was
+    // skipped. On staging that skipped 4,228 of 4,256 tokens.
+    fakeFilesystem.setFile(
+      listJsonPath,
+      JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: { '1': ['0xToken1'] } }),
+    )
+    setupOneChainWithSvgFormat()
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken1'), ['info.json', 'logo.svg'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'info.json'), '{"name":"Token One"}')
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken1', 'logo.svg'), 'token-svg-bytes')
+    harness.setErc20Metadata('0xtoken1', ['Token One', 'TOK1', 18])
+
+    const collector = new SmoldappCollector()
+    await collector.discover(new AbortController().signal)
+    await collector.collect(new AbortController().signal)
+
+    const stored = harness.state.tokenImages.filter((image) => image.token.providedId === '0xtoken1')
+    expect(stored.length).toBeGreaterThan(0)
+    // And the metadata file is never treated as an image.
+    expect(stored.some((image) => String(image.uri).endsWith('info.json'))).toBe(false)
+  })
+
   it('reuses an existing token’s stored metadata instead of calling erc20Read', async () => {
     fakeFilesystem.setFile(
       listJsonPath,
@@ -664,8 +746,10 @@ describe('SmoldappCollector collect — tokens', () => {
       JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: { '1': ['0xToken8'] } }),
     )
     setupOneChainWithSvgFormat()
-    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken8'), ['icon.weird'])
-    fakeFilesystem.setFile(tokenImagePath('1', '0xToken8', 'icon.weird'), 'token-bytes')
+    // A real image whose size has no list on this chain. This used to be a made-up
+    // 'icon.weird', which non-artwork filtering now drops before this branch.
+    fakeFilesystem.setDirectory(tokenFolderPath('1', '0xToken8'), ['logo-64.png'])
+    fakeFilesystem.setFile(tokenImagePath('1', '0xToken8', 'logo-64.png'), 'token-bytes')
     harness.setErc20Metadata('0xtoken8', ['Token Eight', 'TOK8', 18])
 
     const collector = new SmoldappCollector()

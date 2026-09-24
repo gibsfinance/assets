@@ -108,6 +108,18 @@ const IMAGE_FILTER_PARAMS = [
     description: 'Comma-separated list slugs to restrict image sources.',
     schema: { type: 'string' as const },
   },
+  {
+    name: 'license',
+    in: 'query' as const,
+    description:
+      'Opt-in licence allowlist, matched case-insensitively (repeatable or comma-separated, e.g. ' +
+      '?license=MIT&license=Apache-2.0). When present, only candidates whose EFFECTIVE licence — the ' +
+      "list entry's own, verified against where its image actually lives, never a provider's licence by " +
+      'default — is in this set are considered, and the best-ranked one among them is served. A ' +
+      'licence gib.show has not verified is unknown, not permitted, so it never matches this filter. ' +
+      'When no candidate qualifies the response is the ordinary 404 for this route, never an unlicensed image.',
+    schema: { type: 'string' as const, examples: ['MIT', 'MIT,Apache-2.0'] },
+  },
   MODE_PARAM,
 ]
 

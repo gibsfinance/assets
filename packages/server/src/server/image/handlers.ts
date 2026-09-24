@@ -28,9 +28,9 @@ import { ParsedQs } from 'qs'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 import { maybeResize, parseResizeParams, cacheControlFor, stripRootSvgDimensions, type CachePolicy } from './resize'
-import { attributionHeaders } from './attribution'
+import { attributionHeaders, resolveAttribution } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
-import { eq, and, inArray, type SQL } from 'drizzle-orm'
+import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored } from '../../chain-id'
 import { RESOLVED_CHAIN_HEADER } from './headers'
@@ -77,6 +77,7 @@ export const getListTokens = async ({
   exts,
   providerKey,
   listKey,
+  license,
 }: {
   chainId: ChainId
   address: string
@@ -84,6 +85,15 @@ export const getListTokens = async ({
   exts?: string[]
   providerKey?: string[]
   listKey?: string[]
+  /**
+   * Opt-in licence allowlist (`?license=`), matched case-insensitively. When
+   * given, only list_token rows whose EFFECTIVE licence is in this set are
+   * candidates for `applyOrder`'s ranking — applied here, at the same funnel as
+   * `providerKey`/`listKey`, so the filter narrows candidates BEFORE a winner is
+   * picked rather than after, and a caller gets the best LICENSED image rather
+   * than a 404 because the top-ranked image was unlicensed.
+   */
+  license?: string[]
 }) => {
   const networkId = utils.chainIdToNetworkId(chainId)
   const drizzle = getDrizzle()
@@ -98,6 +108,14 @@ export const getListTokens = async ({
   }
   if (listKey?.length) {
     conditions.push(inArray(s.list.key, listKey))
+  }
+  if (license?.length) {
+    conditions.push(
+      inArray(
+        dsql`lower(${s.listToken.license})`,
+        license.map((value) => value.toLowerCase()),
+      ),
+    )
   }
   const whereClause = and(...conditions)!
 
@@ -129,13 +147,43 @@ export const getListTokens = async ({
   // LIST, not the provider. Read the provider key out first, under its own name,
   // before the spread destroys it, the way applyOrder's SQL already aliases it as
   // "providerKey". Never read `img.key` for provider identity on this path.
+  //
+  // `list` and `list_token` both carry a `license` column, and `list_token` is
+  // spread last, so `img.license` already lands on the entry's EFFECTIVE licence
+  // — the one attribution headers must report. The list's own registered
+  // licence/url/attribution would otherwise be lost in that collision (license)
+  // or simply unreachable under a distinguishing name (url/attribution), so all
+  // three are read out separately, under the same "list*" names `applyOrder`'s
+  // raw SQL aliases them to, keeping both query paths one shape.
   const img = row
-    ? { ...row.provider, ...row.list, ...row.list_token, ...row.token, ...row.image, providerKey: row.provider?.key }
+    ? {
+        ...row.provider,
+        ...row.list,
+        ...row.list_token,
+        ...row.token,
+        ...row.image,
+        providerKey: row.provider?.key,
+        listLicense: row.list?.license,
+        listLicenseUrl: row.list?.licenseUrl,
+        listAttribution: row.list?.attribution,
+      }
     : undefined
 
   return {
     filter: { networkId, providedId: address },
-    img: img as (Image & Token & ListOrder & ListOrderItem & ListToken & List & { providerKey?: string }) | undefined,
+    img: img as
+      | (Image &
+          Token &
+          ListOrder &
+          ListOrderItem &
+          ListToken &
+          List & {
+            providerKey?: string
+            listLicense?: string | null
+            listLicenseUrl?: string | null
+            listAttribution?: string | null
+          })
+      | undefined,
   }
 }
 
@@ -243,6 +291,7 @@ const getListImage =
     typeFilter,
     providerKey,
     listKey,
+    license,
   }: {
     chainId: ChainId
     address: string
@@ -250,6 +299,7 @@ const getListImage =
     typeFilter?: string[]
     providerKey?: string[]
     listKey?: string[]
+    license?: string[]
   }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
     if (!chainId) {
       throw httpErrors.BadRequest('chainId')
@@ -267,6 +317,7 @@ const getListImage =
       exts: typeFilter,
       providerKey,
       listKey,
+      license,
     })
     if (!img) {
       throw httpErrors.NotFound('list image missing')
@@ -309,6 +360,7 @@ export const getImage =
       typeFilter: parseTypeFilter(req.query.only),
       providerKey: queryStringToList(req.query.providerKey),
       listKey: queryStringToList(req.query.listKey),
+      license: queryStringToList(req.query.license),
     })
     // Path extension (.webp, .png) = output format conversion. Parsed once and
     // passed explicitly — Express 5 re-parses req.query on every access, so a
@@ -321,6 +373,7 @@ export const getImage =
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   const providerKey = queryStringToList(req.query.providerKey)
   const listKey = queryStringToList(req.query.listKey)
+  const license = queryStringToList(req.query.license)
   const typeFilter = parseTypeFilter(req.query.only)
   let result = await getListImage(true)({
     chainId: req.params.chainId,
@@ -329,6 +382,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
     typeFilter,
     providerKey,
     listKey,
+    license,
   }).catch(ignoreNotFound)
   if (!result) {
     result = await getListImage(false)({
@@ -337,6 +391,7 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
       typeFilter,
       providerKey,
       listKey,
+      license,
     }).catch(ignoreNotFound)
   }
   if (!result) return next(httpErrors.NotFound('image not found'))
@@ -368,6 +423,9 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     return next(httpErrors.NotFound('image not found'))
   }
   const image = img as Image
+  if (!imageSatisfiesLicense(image, queryStringToList(req.query.license))) {
+    return next(httpErrors.NotFound('image not available under the requested license'))
+  }
   const params = parseResizeParams({ query: req.query })
   // Content-addressed: the hash in the URL is the hash of these exact bytes, so
   // they can never change at this address. A year-long, immutable cache is
@@ -415,12 +473,38 @@ const bestGuessNeworkImage = async (
   return { img, resolvedChainId }
 }
 
+/**
+ * Whether one already-chosen image satisfies a caller's `?license=` request.
+ *
+ * The list routes narrow their candidates before ranking, so they never reach a
+ * choice they then have to refuse. The network and content-addressed routes have
+ * no candidates to narrow: a network has one icon, and a hash names one set of
+ * bytes. For them the only honest answers are this image or not found - never an
+ * image outside the licences the caller asked for, which is the whole promise of
+ * the filter. The licence is resolved exactly as the response headers resolve it,
+ * so the filter and x-license can never disagree, and an unknown licence never
+ * satisfies a request for a named one.
+ */
+export const imageSatisfiesLicense = (
+  img: { uri?: string | null; providerKey?: string | null },
+  requested: string[] | undefined,
+): boolean => {
+  if (!requested?.length) return true
+  const { license } = resolveAttribution({ providerKey: img.providerKey, uri: img.uri })
+  if (license === 'unknown') return false
+  const wanted = new Set(requested.map((value) => value.toLowerCase()))
+  return wanted.has(license.toLowerCase())
+}
+
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
   const { img, resolvedChainId } = await bestGuessNeworkImage(req.params.chainId)
   // A caller who gets a 200 cannot otherwise tell an exact match from an
   // approximation — worse than an outright 404 for a page identifying a chain
   // to a user. Set before serving, so it rides on every success shape below
   // (redirect, resized variant, or the original).
+  if (!imageSatisfiesLicense(img, queryStringToList(req.query.license))) {
+    throw httpErrors.NotFound('no network image under the requested license')
+  }
   res.set(RESOLVED_CHAIN_HEADER, resolvedChainId)
   // Note: a path extension on the network route is a source filter (handled in
   // bestGuessNeworkImage), not an output conversion — so no pathExt here.
@@ -440,6 +524,7 @@ export const ignoreNotFound = (err: HttpError) => {
 export type KeyFilterQuery = {
   providerKey: string | string[]
   listKey: string | string[]
+  license: string | string[]
 }
 
 export const tryMultiple: RequestHandler<
@@ -471,6 +556,7 @@ export const tryMultiple: RequestHandler<
     }
     const providerKey = queryStringToList(req.query.providerKey)
     const listKey = queryStringToList(req.query.listKey)
+    const license = queryStringToList(req.query.license)
     const typeFilter = parseTypeFilter(req.query.only)
     // Pass the raw segment like the path handlers do — chainIdToNetworkId owns
     // the conversion, so prefixed (eip155-369) and bare (369) forms both work.
@@ -482,6 +568,7 @@ export const tryMultiple: RequestHandler<
       typeFilter,
       providerKey,
       listKey,
+      license,
     }).catch(ignoreNotFound)
     if (!result) {
       result = await getListImage(false)({
@@ -490,6 +577,7 @@ export const tryMultiple: RequestHandler<
         typeFilter,
         providerKey,
         listKey,
+        license,
       }).catch(ignoreNotFound)
     }
     if (result) {
@@ -535,7 +623,14 @@ export const classifyImageServe = (
 
 export const sendImage = (
   res: Response,
-  img: Image & { providerKey?: string },
+  img: Image & {
+    providerKey?: string
+    /** The list_token row's precomputed effective licence, when a list_token is known. */
+    license?: string | null
+    listLicense?: string | null
+    listLicenseUrl?: string | null
+    listAttribution?: string | null
+  },
   mode: ImageModeParam,
   cachePolicy: CachePolicy = 'mutable',
 ) => {
@@ -543,7 +638,18 @@ export const sendImage = (
   // attributionHeaders() normalizes img.uri itself — an absolute submodule
   // filesystem path, an http(s)/ipfs uri, or a data: uri all resolve to the
   // right x-source-uri/x-uri (or no uri header at all) from the raw value.
-  const headers = attributionHeaders({ uri: img.uri, providerKey: img.providerKey })
+  // `img.license` is the list_token's EFFECTIVE licence when one was joined —
+  // network icons and the content-addressed route carry no such field, so this
+  // is simply undefined there and attributionHeaders falls back to resolving
+  // from the address, exactly as before.
+  const headers = attributionHeaders({
+    uri: img.uri,
+    providerKey: img.providerKey,
+    entryLicense: img.license,
+    listLicense: img.listLicense,
+    listLicenseUrl: img.listLicenseUrl,
+    listAttribution: img.listAttribution,
+  })
   if (decision === 'redirect') {
     // A caller sent away to fetch from the source directly still needs to know
     // its licence and provenance — arguably more than one served our own bytes,

@@ -42,6 +42,8 @@ type PreparedList = {
   listKey: string
   listId: string
   networkId: string
+  /** This list's own registered licence (see insertList), for effectiveEntryLicense. */
+  license: string | null
   tokens: OrderedToken[]
 }
 
@@ -100,6 +102,7 @@ export class AggregatorCollector extends BaseCollector {
         const listKey = chainListKey(chainId)
         const [list] = await db.insertList({
           providerId: provider.providerId,
+          providerKey,
           networkId: network.networkId,
           key: listKey,
           name: `${providerName}: chain ${chainId}`,
@@ -108,6 +111,7 @@ export class AggregatorCollector extends BaseCollector {
           listKey,
           listId: list.listId,
           networkId: network.networkId,
+          license: list.license,
           tokens: dedupeByAddress(chainTokens).map((token, orderIdx) => ({ ...token, orderIdx })),
         })
       }
@@ -146,6 +150,7 @@ export class AggregatorCollector extends BaseCollector {
               uri: token.logoURI,
               originalUri: token.logoURI,
               providerKey,
+              listLicense: list.license,
               signal,
               token: {
                 name: token.name,

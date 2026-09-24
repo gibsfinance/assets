@@ -283,6 +283,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
           uri: originalUri,
           originalUri,
           providerKey,
+          listLicense: pumptiresList.license,
           listTokenOrderId: i,
           signal,
           token: {
@@ -315,6 +316,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
           uri: originalUri,
           originalUri,
           providerKey,
+          listLicense: pumptiresLaunchedList.license,
           listTokenOrderId: i,
           signal,
           token: {
@@ -363,6 +365,7 @@ export const collectAttempt = async (signal: AbortSignal) => {
               uri: originalUri,
               originalUri,
               providerKey,
+              listLicense: highMarketCapList.license,
               signal,
               listTokenOrderId: 0,
               wplsReserve,

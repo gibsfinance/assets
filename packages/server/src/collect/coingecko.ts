@@ -45,6 +45,8 @@ type ChainCoin = {
   chainIdentifier: string
   networkId: string
   listId: string
+  /** The list's own registered licence (see insertList), for effectiveEntryLicense. */
+  license: string | null
   orderIdx: number
 }
 
@@ -167,6 +169,7 @@ class CoinGeckoCollector extends BaseCollector {
         chainIdentifier: resolved.chainIdentifier,
         networkId: network.networkId,
         listId: dbList.listId,
+        license: dbList.license,
         orderIdx: i,
       }))
       this.platformCoins.set(platformId, chainCoins)
@@ -279,6 +282,7 @@ class CoinGeckoCollector extends BaseCollector {
               uri: imageUri,
               originalUri: imageUri,
               providerKey: provider.key,
+              listLicense: coin.license,
               listTokenOrderId: coin.orderIdx,
               signal,
               token: {

@@ -1,4 +1,5 @@
 import * as fs from 'fs'
+import { isFakedEvmReference } from '../chain-id'
 import * as path from 'path'
 import * as db from '../db'
 import * as utils from '../utils'
@@ -30,6 +31,9 @@ const filenameToListKey = (filename: string) => {
   const noPrefix = noExt.split('logo-').join('')
   return `png${noPrefix}`
 }
+/** The file types SmolDapp publishes as token and chain artwork. Anything else in a folder is metadata. */
+const ARTWORK_EXTENSIONS = new Set(['.svg', '.png'])
+const isArtworkFile = (filename: string) => ARTWORK_EXTENSIONS.has(path.extname(filename).toLowerCase())
 const providerKey = 'smoldapp'
 
 /**
@@ -80,6 +84,13 @@ class SmoldappCollector extends BaseCollector {
       // produced corrupt eip155-<n>/btc rows. Non-EVM chains are served by the
       // curated roster instead.
       if (!isBareNumeric(cID)) continue
+      // A chain the database refuses by name costs that chain, not the whole
+      // provider. SmolDapp numbers Tron as 728126428, an Ethereum-style id for a
+      // chain that is not one, and insertNetworkFromChainId rightly refuses it.
+      // That refusal used to escape and fail every smoldapp run, which left its
+      // lists unpublished since July on both staging and production. The check is
+      // the database's own rule, so this can never skip a chain it would accept.
+      if (isFakedEvmReference(cID)) continue
 
       const networkChainId = +cID
       this.folderToNetworkChainId.set(cID, networkChainId)
@@ -94,6 +105,7 @@ class SmoldappCollector extends BaseCollector {
         const [networkList] = await db.insertList({
           key: networkKey,
           providerId: provider.providerId,
+          providerKey,
           networkId: utils.chainIdToNetworkId(networkChainId, 'evm'),
         })
         this.chainIdToNetworkId.set(networkList.key, networkList)
@@ -107,6 +119,7 @@ class SmoldappCollector extends BaseCollector {
       const [list] = await db
         .insertList({
           providerId: provider.providerId,
+          providerKey,
           key: `tokens-${listKey}`,
           default: listKey === 'svg',
         })
@@ -148,7 +161,7 @@ class SmoldappCollector extends BaseCollector {
         }
 
         // Non-numeric folders have no eip155 id — skip (see discoverLists above).
-        if (!isBareNumeric(cID)) {
+        if (!isBareNumeric(cID) || isFakedEvmReference(cID)) {
           row.increment('skipped', `${providerKey}-${cID}`)
           continue
         }
@@ -251,7 +264,7 @@ class SmoldappCollector extends BaseCollector {
         if (signal.aborted) return
 
         // Non-numeric chains have no eip155 id — skip (see discoverLists above).
-        if (!isBareNumeric(chainIdString)) return
+        if (!isBareNumeric(chainIdString) || isFakedEvmReference(chainIdString)) return
 
         const networkChainId = this.folderToNetworkChainId.get(chainIdString) ?? +chainIdString
         this.folderToNetworkChainId.set(chainIdString, networkChainId)
@@ -270,6 +283,7 @@ class SmoldappCollector extends BaseCollector {
                     .insertList({
                       key: networkKey,
                       providerId: provider.providerId,
+                      providerKey,
                       networkId: network.networkId,
                     })
                     .then((list) => list?.[0] as List)
@@ -409,10 +423,17 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     return
   }
   const [name, symbol, decimals] = metadata
-  const tokenImages = (await utils.folderContents(tokenFolder).catch((err) => {
-    failureLog('Error getting folder contents for token %o on chain %o: %o', token, networkChainId, err)
-    return []
-  })) as string[]
+  // Only the artwork. Since 9 July 2026 SmolDapp ships an info.json beside the
+  // logos in nearly every token folder, and a folder lists alphabetically, so it
+  // came first: the list key was read from it ('pnginfo', which names no list) and
+  // the whole token was skipped before any of its images were looked at. That is
+  // why smoldapp stopped storing tokens the day after it appeared.
+  const tokenImages = (
+    (await utils.folderContents(tokenFolder).catch((err) => {
+      failureLog('Error getting folder contents for token %o on chain %o: %o', token, networkChainId, err)
+      return []
+    })) as string[]
+  ).filter(isArtworkFile)
 
   if (!tokenImages.length) {
     row.increment('skipped', `${providerKey}-${chainIdString}-${token}-no-images`)
@@ -452,6 +473,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     const [list] = await db
       .insertList({
         providerId: provider.providerId,
+        providerKey: provider.key,
         key: `tokens-${listKey}`,
         default: listKey === 'svg',
       })
@@ -469,6 +491,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
         {
           listId: list.listId,
           ...baseInput,
+          listLicense: list.license,
           listTokenOrderId: globalOrderId,
           signal,
         },
@@ -478,6 +501,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
         {
           listId: networkList.listId,
           ...baseInput,
+          listLicense: networkList.license,
           signal,
         },
         tx,

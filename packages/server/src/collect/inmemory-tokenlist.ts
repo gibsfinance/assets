@@ -105,10 +105,13 @@ export const discover = async ({
       tx,
     )
 
-    // Create list entry
+    // Create list entry. `providerKey` lets insertList default this list's licence
+    // from the attribution registry (see packages/server/src/server/image/attribution.ts)
+    // when this provider is one of the few whose terms have been verified.
     ;[list] = await db.insertList(
       {
         providerId: provider.providerId,
+        providerKey,
         networkId: utils.chainIdToNetworkId(chainIds.length === 1 ? chainIds[0] : 0),
         name: tokenList.name,
         key: listKey,
@@ -241,6 +244,7 @@ export const collect = async (input: CollectInput & { discovered?: DiscoveredSta
           uri: entry.uri,
           originalUri: entry.uri,
           providerKey,
+          listLicense: list.license,
           token: entry.token,
           listTokenOrderId: entry.listTokenOrderId,
         },

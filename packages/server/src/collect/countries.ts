@@ -102,6 +102,7 @@ class CountriesCollector extends BaseCollector {
               uri: bytes,
               originalUri: country.flag,
               providerKey,
+              listLicense: list.license,
               signal,
               listTokenOrderId: i,
               token: {

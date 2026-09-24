@@ -417,6 +417,10 @@ export const collectByBridgeConfig = async (config: BridgeConfig, signal: AbortS
                     tokenId: token.tokenId,
                     listId: chainId === config.home.chain.id ? onHomeList.listId : onForeignList.listId,
                     listTokenOrderId,
+                    // Omnibridge never fetches or records artwork for a bridged
+                    // token — there is no address here to verify a licence
+                    // against, so this is explicitly unknown rather than omitted.
+                    license: null,
                   },
                   tx,
                 )

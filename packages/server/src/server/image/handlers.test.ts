@@ -64,7 +64,7 @@ import {
 import type { Image } from '../../db/schema-types'
 import * as db from '../../db'
 import * as utils from '../../utils'
-import { inArray } from 'drizzle-orm'
+import { inArray, and } from 'drizzle-orm'
 import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { maybeResize } from './resize'
@@ -224,6 +224,45 @@ describe('image handlers', () => {
       expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/token.png')
       expect(res.contentType).toHaveBeenCalledWith('.png')
       expect(res.send).toHaveBeenCalledWith(img.content)
+    })
+
+    // -----------------------------------------------------------------------
+    // The entry's precomputed effective licence (list_token.license), when the
+    // route joined one, must reach attributionHeaders — this is what lets a
+    // known list_token report its OWN verified licence instead of falling back
+    // to guessing from providerKey/uri alone.
+    // -----------------------------------------------------------------------
+    it("reports the list_token's precomputed effective licence, not a guess from providerKey alone", () => {
+      const res = mockResponse()
+      const img = {
+        ...makeImage({ uri: 'https://cdn.unrelated-host.example/logo.png' }),
+        providerKey: 'ethereum-lists',
+        // The row's own computed licence — real production data, since this
+        // address was never verified as ethereum-lists' own artwork.
+        license: null,
+      }
+
+      sendImage(res, img, 'save')
+
+      expect(res.set).toHaveBeenCalledWith('x-license', 'unknown')
+    })
+
+    it("carries the list's own licence url/attribution through when the entry licence matches it", () => {
+      const res = mockResponse()
+      const img = {
+        ...makeImage({ uri: 'https://cdn.unrelated-host.example/logo.png' }),
+        providerKey: 'some-provider',
+        license: 'Apache-2.0',
+        listLicense: 'Apache-2.0',
+        listLicenseUrl: 'https://example.test/apache',
+        listAttribution: 'Example Corp',
+      }
+
+      sendImage(res, img, 'save')
+
+      expect(res.set).toHaveBeenCalledWith('x-license', 'Apache-2.0')
+      expect(res.set).toHaveBeenCalledWith('x-license-url', 'https://example.test/apache')
+      expect(res.set).toHaveBeenCalledWith('x-attribution', 'Example Corp')
     })
 
     // -----------------------------------------------------------------------
@@ -513,6 +552,40 @@ describe('image handlers', () => {
       expect((result.img as unknown as { providerKey?: string })?.providerKey).toBe('trustwallet')
     })
 
+    // Companion to the test above: `list` and `list_token` both carry a
+    // `license` column too, and the SAME spread collision leaves the list's
+    // own registered licence unreachable under its own name unless it is read
+    // out separately — exactly like providerKey.
+    it("carries the list's own licence/url/attribution under distinguishing names, on the unordered path", async () => {
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+
+      const fakeRow = {
+        provider: { key: 'trustwallet' },
+        list: { listId: '1', license: 'MIT', licenseUrl: 'https://example.test/license', attribution: 'Corp' },
+        list_token: { tokenId: '1', license: 'MIT' },
+        token: { networkId: 'eip155:1' },
+        image: makeImage(),
+      }
+      const chain = makeDrizzleChain([fakeRow])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const result = await getListTokens({ chainId: 1, address: TEST_ADDRESS })
+
+      const img = result.img as unknown as {
+        license?: string
+        listLicense?: string
+        listLicenseUrl?: string
+        listAttribution?: string
+      }
+      // The entry's own effective licence — from list_token, spread last, so it
+      // wins the collision.
+      expect(img.license).toBe('MIT')
+      // The list's own registered fields, under their own names, never lost.
+      expect(img.listLicense).toBe('MIT')
+      expect(img.listLicenseUrl).toBe('https://example.test/license')
+      expect(img.listAttribution).toBe('Corp')
+    })
+
     it('returns undefined img when no rows match', async () => {
       vi.mocked(getDefaultListOrderId).mockReturnValue(null)
 
@@ -552,6 +625,77 @@ describe('image handlers', () => {
       expect(db.applyOrder).toHaveBeenCalledWith('0xcustom', expect.anything(), 'provider', undefined, {
         includeContent: true,
       })
+    })
+
+    // -------------------------------------------------------------------
+    // The opt-in ?license= filter. It has to land in the SAME conditions array
+    // as providerKey/listKey — the funnel applyOrder's WHERE clause reads —
+    // because that is what makes it narrow candidates BEFORE the dense_rank
+    // window function inside the same CTE picks a winner, rather than being
+    // applied to whatever that ranking already chose.
+    // -------------------------------------------------------------------
+    it('adds a case-insensitive licence condition only when the license filter is given', async () => {
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
+      vi.mocked(db.applyOrder).mockResolvedValue([makeImage()])
+      vi.mocked(inArray).mockClear()
+
+      await getListTokens({
+        chainId: 1,
+        address: TEST_ADDRESS,
+        license: ['MIT', 'Apache-2.0'],
+      })
+
+      // Lowercased in JS before ever reaching SQL — the column side is folded
+      // with lower() in the actual (unmocked) query, so both sides agree. The
+      // mocked `sql` tag has no implementation and returns undefined, which is
+      // fine here — this test is about the array being case-folded and reaching
+      // inArray, not about the SQL text (drizzle-orm itself is mocked in this file).
+      expect(inArray).toHaveBeenCalledWith(undefined, ['mit', 'apache-2.0'])
+      // `and(...conditions)` is called with each condition as its own argument
+      // — reading `and`'s own recorded call args (not casting applyOrder's real
+      // SQL-typed parameter) is what proves the licence inArray's return value
+      // is one of the SAME conditions providerKey/listKey already combine into,
+      // not a separate, later filter.
+      const andConditions = vi.mocked(and).mock.calls[0]
+      expect(andConditions).toContainEqual(vi.mocked(inArray).mock.results[0]!.value)
+    })
+
+    it('omits the licence condition entirely when no license filter is given', async () => {
+      vi.mocked(getDefaultListOrderId).mockReturnValue('0xdefault' as const)
+      vi.mocked(db.applyOrder).mockResolvedValue([makeImage()])
+      vi.mocked(inArray).mockClear()
+
+      await getListTokens({ chainId: 1, address: TEST_ADDRESS })
+
+      expect(inArray).not.toHaveBeenCalled()
+    })
+  })
+
+  // -------------------------------------------------------------------
+  // getImage with ?license= — the caller-visible half of the filter. The
+  // filter itself lives inside the WHERE clause (proved above and in
+  // db/index.order.test.ts), so from a caller's side this is really a test
+  // of what happens once the database has already excluded every candidate:
+  // the ordinary not-found for this route, never a served-but-unlicensed image.
+  // -------------------------------------------------------------------
+  describe('getImage with a license filter', () => {
+    it('answers the ordinary not-found when the licence filter excludes every candidate', async () => {
+      vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+      // Standing in for "the WHERE clause's licence predicate matched nothing":
+      // an empty result reads identically whether providerKey, listKey, or
+      // license excluded the only candidate — there is no separate "found an
+      // image but it was unlicensed" path to fall into.
+      const chain = makeDrizzleChain([])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+
+      const handler = getImage(false)
+      const req = mockRequest({
+        params: { chainId: '1', address: TEST_ADDRESS },
+        query: { license: 'MIT' },
+      })
+      const res = mockResponse()
+
+      await expect(handler(req, res, vi.fn())).rejects.toThrow(/list image missing/)
     })
   })
 
@@ -959,6 +1103,38 @@ describe('image handlers', () => {
   // getImageByHash handler
   // -----------------------------------------------------------------------
   describe('getImageByHash', () => {
+    it('refuses an image whose licence is not among those requested', async () => {
+      // A hash names one set of bytes, so there is nothing else to offer. Serving it
+      // anyway would break the filter's one promise: never an image outside the
+      // licences the caller asked for.
+      const chain = makeDrizzleChain([makeImage({ uri: 'https://static.debank.com/image/x/0xabc/1d03.png' })])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      const req = mockRequest({ params: { imageHash: 'abc123' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('serves an image whose licence is among those requested, matched without regard to case', async () => {
+      const chain = makeDrizzleChain([
+        makeImage({ uri: 'https://raw.githubusercontent.com/SmolDapp/tokenAssets/21d8743b/chains/1/logo.svg' }),
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      const req = mockRequest({ params: { imageHash: 'abc123' }, query: { license: ['apache-2.0', 'mit'] } })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(next).not.toHaveBeenCalled()
+      expect(res.send).toHaveBeenCalled()
+    })
+
     it('serves image found by hash with an extension filter', async () => {
       const img = makeImage()
       const chain = makeDrizzleChain([img])
@@ -1085,6 +1261,36 @@ describe('image handlers', () => {
   // bestGuessNetworkImageFromOnOnChainInfo handler
   // -----------------------------------------------------------------------
   describe('bestGuessNetworkImageFromOnOnChainInfo', () => {
+    it('refuses a network icon whose licence is not among those requested', async () => {
+      // Found on staging: PulseChain's icon has no known licence, and
+      // ?license=MIT served it anyway because this route never read the filter.
+      const fakeRow = {
+        image: makeImage({ uri: 'https://tokens.app.pulsex.com/images/tokens/0xabc.png' }),
+        network: { networkId: 'eip155:369', imageProviderKey: 'pulsex' },
+      }
+      vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([fakeRow]) as any)
+      const req = mockRequest({ params: { chainId: '369' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())).rejects.toMatchObject({ status: 404 })
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('serves a network icon whose own licence satisfies the request', async () => {
+      const fakeRow = {
+        image: makeImage({ uri: 'https://raw.githubusercontent.com/SmolDapp/tokenAssets/21d8743b/chains/1/logo.svg' }),
+        network: { networkId: 'eip155:1', imageProviderKey: 'smoldapp' },
+      }
+      vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([fakeRow]) as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      const req = mockRequest({ params: { chainId: '1' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())
+
+      expect(res.send).toHaveBeenCalled()
+    })
+
     it('serves network icon when found', async () => {
       const fakeRow = {
         image: makeImage(),

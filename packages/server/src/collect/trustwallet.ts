@@ -311,6 +311,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     key: 'wallet',
     default: true,
     providerId: provider.providerId,
+    providerKey,
     patch: 1,
   })
 
@@ -318,6 +319,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
   const network = await insertNetworkForFolder(blockchainKey, chainId)
   const [networkList] = await db.insertList({
     providerId: provider.providerId,
+    providerKey,
     networkId: network.networkId,
     name: key,
     key,
@@ -397,6 +399,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
         uri: file,
         originalUri: publicLogoUri,
         providerKey,
+        listLicense: networkList.license,
         signal,
         listTokenOrderId: i,
         token: tokenData,
@@ -406,6 +409,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
         uri: file,
         originalUri: publicLogoUri,
         providerKey,
+        listLicense: trustwalletList.license,
         signal,
         listTokenOrderId: globalCount + i,
         token: tokenData,
@@ -445,6 +449,7 @@ class TrustWalletCollector extends BaseCollector {
       key: 'wallet',
       default: true,
       providerId: provider.providerId,
+      providerKey,
       patch: 1,
     })
 
@@ -459,6 +464,7 @@ class TrustWalletCollector extends BaseCollector {
       const key = `wallet-${folder}`
       const [networkList] = await db.insertList({
         providerId: provider.providerId,
+        providerKey,
         networkId: network.networkId,
         name: key,
         key,

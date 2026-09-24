@@ -59,6 +59,7 @@ class GibsCollector extends BaseCollector {
       uri: file,
       originalUri: pathToNativeV4Pulse,
       providerKey,
+      listLicense: list.license,
       token: {
         name: 'V4 Pulse',
         symbol: 'V4PLS',
