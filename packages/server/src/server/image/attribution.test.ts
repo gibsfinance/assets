@@ -579,3 +579,65 @@ describe('attributionHeaders with a precomputed entry licence', () => {
     expect(unmatched).not.toHaveProperty('x-license-url')
   })
 })
+
+describe('licensed GitHub repositories found by the list audit', () => {
+  it("licenses an image that lives in a registered repository, with that repository's own copyright line", () => {
+    const source = resolveAttribution({
+      providerKey: 'lifi',
+      uri: 'https://raw.githubusercontent.com/ErikThiart/cryptocurrency-icons/master/32/hemule.png',
+    })
+    expect(source.license).toBe('MIT')
+    expect(source.attribution).toBe('Copyright (c) 2018 Erik Thiart - MIT')
+  })
+
+  it('recognises a project GitHub Pages address as the same repository', () => {
+    // Scroll's list points at its artwork on scroll-tech.github.io/token-list/..., which
+    // serves the scroll-tech/token-list repository's files.
+    const source = resolveAttribution({
+      providerKey: null,
+      uri: 'https://scroll-tech.github.io/token-list/data/USDC/logo.svg',
+    })
+    expect(source.license).toBe('MIT')
+    expect(source.attribution).toBe('Copyright (c) 2022 Scroll - MIT')
+  })
+
+  it('attributes a GPL repository to the repository, not to the author of the licence', () => {
+    // The only copyright line in GPL text is the Free Software Foundation's, for the
+    // licence itself. Naming it would credit the wrong party for the artwork.
+    const source = resolveAttribution({
+      providerKey: null,
+      uri: 'https://raw.githubusercontent.com/1Hive/default-token-list/master/src/assets/xdai/0xabc/logo.png',
+    })
+    expect(source.license).toBe('GPL-3.0')
+    expect(source.attribution).toBe('1Hive/default-token-list - GPL-3.0')
+  })
+
+  it('gives an entry the licence of the repository its image lives in, whichever list carries it', () => {
+    expect(
+      effectiveEntryLicense({
+        listProviderKey: 'aave',
+        listLicense: null,
+        imageAddress: 'https://raw.githubusercontent.com/aave-dao/web3-icons/main/src/assets/tokens/aave.svg',
+      }),
+    ).toBe('MIT')
+  })
+
+  it('does not license a repository it has not verified, on either host', () => {
+    expect(
+      resolveAttribution({ providerKey: null, uri: 'https://raw.githubusercontent.com/someone/else/main/logo.png' })
+        .license,
+    ).toBe('unknown')
+    expect(
+      resolveAttribution({ providerKey: null, uri: 'https://scroll-tech.github.io/other-repo/logo.svg' }).license,
+    ).toBe('unknown')
+  })
+
+  it('does not license ethereum-lists/chains icons, whose images live on IPFS rather than in the repository', () => {
+    expect(
+      resolveAttribution({
+        providerKey: null,
+        uri: 'https://raw.githubusercontent.com/ethereum-lists/chains/master/_data/icons/ethereum.json',
+      }).license,
+    ).toBe('unknown')
+  })
+})

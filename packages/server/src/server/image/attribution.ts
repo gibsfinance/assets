@@ -196,7 +196,190 @@ const PULSECHAIN_ASSETS: SourceLicense = Object.freeze({
  * lookup by provider key, or uri inspection when no provider is joined) reaches the
  * same entry.
  */
+/**
+ * Public GitHub repositories whose artwork other lists point at, each with a
+ * licence file of its own. Found by auditing every list the collectors read: for
+ * each logo address, which repository it lives in, and what that repository's
+ * licence file says. A repository's licence covers only the files in it, so this
+ * licenses an image only when its address points INTO the repository - that is
+ * what `ownArtwork` and `sourceOwningAddress` enforce.
+ *
+ * Every row was read from the repository's own licence file through the forge's
+ * API, not inferred from a name. Where the licence text carries no project
+ * copyright line - GPL's names only the Free Software Foundation, which wrote the
+ * licence and not the artwork - the attribution names the repository instead.
+ * Three forks of trustwallet/assets carry Trust Wallet's copyright because that is
+ * what their own licence files say.
+ *
+ * Deliberately absent: ethereum-lists/chains is MIT, but its network icons live on
+ * IPFS rather than in the repository, so its licence covers the metadata and not
+ * the images. Three renamed repositories referenced by at most one image each, at
+ * least one of which no longer resolves, were also left out.
+ *
+ * Adding a source is one row here. It then counts for every list whose entries
+ * point into it, on the next collection run.
+ */
+const LICENSED_GITHUB_REPOSITORIES: readonly (OwnArtworkRepository & {
+  license: string
+  licenseUrl: string
+  attribution: string
+})[] = Object.freeze([
+  {
+    owner: '0xlaozi',
+    repo: 'qidao',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/0xlaozi/qidao/blob/main/LICENSE',
+    attribution: 'Copyright (c) 2020 Mai.Finance - MIT',
+  },
+  {
+    owner: '1Hive',
+    repo: 'default-token-list',
+    license: 'GPL-3.0',
+    licenseUrl: 'https://github.com/1Hive/default-token-list/blob/master/LICENSE',
+    attribution: '1Hive/default-token-list - GPL-3.0',
+  },
+  {
+    owner: 'aave-dao',
+    repo: 'web3-icons',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/aave-dao/web3-icons/blob/main/LICENSE',
+    attribution: 'Copyright (c) 2024 BGD labs - MIT',
+  },
+  {
+    owner: 'Badger-Finance',
+    repo: 'badger-system',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/Badger-Finance/badger-system/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2019 brownie-mix - MIT',
+  },
+  {
+    owner: 'balancer',
+    repo: 'tokenlists',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/balancer/tokenlists/blob/main/LICENSE.md',
+    attribution: 'Copyright (c) Balancer - MIT',
+  },
+  {
+    owner: 'beefyfinance',
+    repo: 'beefy-app',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/beefyfinance/beefy-app/blob/master/LICENSE',
+    attribution: 'Copyright (c) Beefy Finance - MIT',
+  }, // archived upstream
+  {
+    owner: 'cosmos',
+    repo: 'chain-registry',
+    license: 'CC-BY-4.0',
+    licenseUrl: 'https://github.com/cosmos/chain-registry/blob/master/LICENSE',
+    attribution: 'cosmos/chain-registry - CC-BY-4.0',
+  },
+  {
+    owner: 'dfx-finance',
+    repo: 'assets',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/dfx-finance/assets/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2019-2020 Trust Wallet - MIT',
+  },
+  {
+    owner: 'ErikThiart',
+    repo: 'cryptocurrency-icons',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/ErikThiart/cryptocurrency-icons/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2018 Erik Thiart - MIT',
+  },
+  {
+    owner: 'firebird-finance',
+    repo: 'firebird-assets',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/firebird-finance/firebird-assets/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2019-2020 Trust Wallet - MIT',
+  },
+  {
+    owner: 'iotexproject',
+    repo: 'iotex-token-metadata',
+    license: 'Apache-2.0',
+    licenseUrl: 'https://github.com/iotexproject/iotex-token-metadata/blob/master/LICENSE',
+    attribution: 'iotexproject/iotex-token-metadata - Apache-2.0',
+  },
+  {
+    owner: 'OriginProtocol',
+    repo: 'origin-website',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/OriginProtocol/origin-website/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2018 Origin Protocol - MIT',
+  },
+  {
+    owner: 'pangolindex',
+    repo: 'tokens',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/pangolindex/tokens/blob/main/LICENSE',
+    attribution: 'Copyright (c) 2020-2021 Pangolin - MIT',
+  },
+  {
+    owner: 'parallel-protocol',
+    repo: 'parallel-brand-kit',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/parallel-protocol/parallel-brand-kit/blob/main/LICENSE',
+    attribution: 'Copyright (c) 2025 Parallel Protocol - MIT',
+  },
+  {
+    owner: 'sameepsi',
+    repo: 'quickswap-default-token-list',
+    license: 'GPL-3.0',
+    licenseUrl: 'https://github.com/sameepsi/quickswap-default-token-list/blob/master/LICENSE',
+    attribution: 'sameepsi/quickswap-default-token-list - GPL-3.0',
+  },
+  {
+    owner: 'scroll-tech',
+    repo: 'token-list',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/scroll-tech/token-list/blob/main/LICENSE',
+    attribution: 'Copyright (c) 2022 Scroll - MIT',
+  },
+  {
+    owner: 'Synthetixio',
+    repo: 'synthetix-assets',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/Synthetixio/synthetix-assets/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2020 Synthetix - MIT',
+  },
+  {
+    owner: 'Ubeswap',
+    repo: 'default-token-list',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/Ubeswap/default-token-list/blob/master/LICENSE.txt',
+    attribution: 'Copyright (c) 2021 Ube Labs Inc. - MIT',
+  },
+  {
+    owner: 'Uniswap',
+    repo: 'assets',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/Uniswap/assets/blob/master/LICENSE',
+    attribution: 'Copyright (c) 2019-2023 Trust Wallet - MIT',
+  },
+])
+
+/** The registry key for a licensed repository: its owner and name, which no provider key can collide with. */
+const repositoryKey = ({ owner, repo }: OwnArtworkRepository) => `${owner}/${repo}`.toLowerCase()
+
+const LICENSED_GITHUB_SOURCES: Readonly<Record<string, SourceLicense>> = Object.freeze(
+  Object.fromEntries(
+    LICENSED_GITHUB_REPOSITORIES.map((entry) => [
+      repositoryKey(entry),
+      Object.freeze({
+        sourceKey: repositoryKey(entry),
+        name: `${entry.owner}/${entry.repo}`,
+        license: entry.license,
+        licenseUrl: entry.licenseUrl,
+        attribution: entry.attribution,
+        ownArtwork: Object.freeze({ owner: entry.owner, repo: entry.repo }),
+      }),
+    ]),
+  ),
+)
+
 const SOURCE_REGISTRY: Readonly<Record<string, SourceLicense>> = Object.freeze({
+  ...LICENSED_GITHUB_SOURCES,
   trustwallet: TRUSTWALLET,
   smoldapp: SMOLDAPP,
   'smoldapp-tokenassets': SMOLDAPP,
@@ -216,6 +399,9 @@ const SOURCE_REGISTRY: Readonly<Record<string, SourceLicense>> = Object.freeze({
  */
 const LIVE_GITHUB_SOURCES: Readonly<Record<string, OwnArtworkRepository>> = Object.freeze({
   web3icons: WEB3ICONS_REPOSITORY,
+  ...Object.fromEntries(
+    Object.entries(LICENSED_GITHUB_SOURCES).map(([key, entry]) => [key, entry.ownArtwork as OwnArtworkRepository]),
+  ),
 })
 
 /**
@@ -230,8 +416,12 @@ function liveGithubSourceKeyForPublicAddress(uri: string): string | null {
   } catch {
     return null
   }
-  if (parsed.hostname !== PUBLIC_CONTENT_HOST) return null
-  const [owner, repo] = parsed.pathname.split('/').filter(Boolean)
+  const segments = parsed.pathname.split('/').filter(Boolean)
+  // A project's GitHub Pages site (owner.github.io/repo/...) serves that same
+  // repository's files, so it names the repository as surely as the raw host does.
+  // Scroll's list points at its artwork this way.
+  const pagesOwner = parsed.hostname.endsWith('.github.io') ? parsed.hostname.slice(0, -'.github.io'.length) : null
+  const [owner, repo] = pagesOwner ? [pagesOwner, segments[0]] : parsed.hostname === PUBLIC_CONTENT_HOST ? segments : []
   if (!owner || !repo) return null
   const match = Object.entries(LIVE_GITHUB_SOURCES).find(
     ([, repository]) =>
