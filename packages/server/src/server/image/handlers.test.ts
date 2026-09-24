@@ -1103,6 +1103,38 @@ describe('image handlers', () => {
   // getImageByHash handler
   // -----------------------------------------------------------------------
   describe('getImageByHash', () => {
+    it('refuses an image whose licence is not among those requested', async () => {
+      // A hash names one set of bytes, so there is nothing else to offer. Serving it
+      // anyway would break the filter's one promise: never an image outside the
+      // licences the caller asked for.
+      const chain = makeDrizzleChain([makeImage({ uri: 'https://static.debank.com/image/x/0xabc/1d03.png' })])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      const req = mockRequest({ params: { imageHash: 'abc123' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('serves an image whose licence is among those requested, matched without regard to case', async () => {
+      const chain = makeDrizzleChain([
+        makeImage({ uri: 'https://raw.githubusercontent.com/SmolDapp/tokenAssets/21d8743b/chains/1/logo.svg' }),
+      ])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      const req = mockRequest({ params: { imageHash: 'abc123' }, query: { license: ['apache-2.0', 'mit'] } })
+      const res = mockResponse()
+      const next = vi.fn()
+
+      await getImageByHash(req, res, next)
+
+      expect(next).not.toHaveBeenCalled()
+      expect(res.send).toHaveBeenCalled()
+    })
+
     it('serves image found by hash with an extension filter', async () => {
       const img = makeImage()
       const chain = makeDrizzleChain([img])
@@ -1229,6 +1261,36 @@ describe('image handlers', () => {
   // bestGuessNetworkImageFromOnOnChainInfo handler
   // -----------------------------------------------------------------------
   describe('bestGuessNetworkImageFromOnOnChainInfo', () => {
+    it('refuses a network icon whose licence is not among those requested', async () => {
+      // Found on staging: PulseChain's icon has no known licence, and
+      // ?license=MIT served it anyway because this route never read the filter.
+      const fakeRow = {
+        image: makeImage({ uri: 'https://tokens.app.pulsex.com/images/tokens/0xabc.png' }),
+        network: { networkId: 'eip155:369', imageProviderKey: 'pulsex' },
+      }
+      vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([fakeRow]) as any)
+      const req = mockRequest({ params: { chainId: '369' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+
+      await expect(bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())).rejects.toMatchObject({ status: 404 })
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('serves a network icon whose own licence satisfies the request', async () => {
+      const fakeRow = {
+        image: makeImage({ uri: 'https://raw.githubusercontent.com/SmolDapp/tokenAssets/21d8743b/chains/1/logo.svg' }),
+        network: { networkId: 'eip155:1', imageProviderKey: 'smoldapp' },
+      }
+      vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([fakeRow]) as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      const req = mockRequest({ params: { chainId: '1' }, query: { license: 'MIT' } })
+      const res = mockResponse()
+
+      await bestGuessNetworkImageFromOnOnChainInfo(req, res, vi.fn())
+
+      expect(res.send).toHaveBeenCalled()
+    })
+
     it('serves network icon when found', async () => {
       const fakeRow = {
         image: makeImage(),

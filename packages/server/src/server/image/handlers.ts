@@ -28,7 +28,7 @@ import { ParsedQs } from 'qs'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { ImageModeParam } from '../../types'
 import { maybeResize, parseResizeParams, cacheControlFor, stripRootSvgDimensions, type CachePolicy } from './resize'
-import { attributionHeaders } from './attribution'
+import { attributionHeaders, resolveAttribution } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
@@ -423,6 +423,9 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     return next(httpErrors.NotFound('image not found'))
   }
   const image = img as Image
+  if (!imageSatisfiesLicense(image, queryStringToList(req.query.license))) {
+    return next(httpErrors.NotFound('image not available under the requested license'))
+  }
   const params = parseResizeParams({ query: req.query })
   // Content-addressed: the hash in the URL is the hash of these exact bytes, so
   // they can never change at this address. A year-long, immutable cache is
@@ -470,12 +473,38 @@ const bestGuessNeworkImage = async (
   return { img, resolvedChainId }
 }
 
+/**
+ * Whether one already-chosen image satisfies a caller's `?license=` request.
+ *
+ * The list routes narrow their candidates before ranking, so they never reach a
+ * choice they then have to refuse. The network and content-addressed routes have
+ * no candidates to narrow: a network has one icon, and a hash names one set of
+ * bytes. For them the only honest answers are this image or not found - never an
+ * image outside the licences the caller asked for, which is the whole promise of
+ * the filter. The licence is resolved exactly as the response headers resolve it,
+ * so the filter and x-license can never disagree, and an unknown licence never
+ * satisfies a request for a named one.
+ */
+export const imageSatisfiesLicense = (
+  img: { uri?: string | null; providerKey?: string | null },
+  requested: string[] | undefined,
+): boolean => {
+  if (!requested?.length) return true
+  const { license } = resolveAttribution({ providerKey: img.providerKey, uri: img.uri })
+  if (license === 'unknown') return false
+  const wanted = new Set(requested.map((value) => value.toLowerCase()))
+  return wanted.has(license.toLowerCase())
+}
+
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
   const { img, resolvedChainId } = await bestGuessNeworkImage(req.params.chainId)
   // A caller who gets a 200 cannot otherwise tell an exact match from an
   // approximation — worse than an outright 404 for a page identifying a chain
   // to a user. Set before serving, so it rides on every success shape below
   // (redirect, resized variant, or the original).
+  if (!imageSatisfiesLicense(img, queryStringToList(req.query.license))) {
+    throw httpErrors.NotFound('no network image under the requested license')
+  }
   res.set(RESOLVED_CHAIN_HEADER, resolvedChainId)
   // Note: a path extension on the network route is a source filter (handled in
   // bestGuessNeworkImage), not an output conversion — so no pathExt here.
