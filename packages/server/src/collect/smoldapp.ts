@@ -1,4 +1,5 @@
 import * as fs from 'fs'
+import { isFakedEvmReference } from '../chain-id'
 import * as path from 'path'
 import * as db from '../db'
 import * as utils from '../utils'
@@ -80,6 +81,13 @@ class SmoldappCollector extends BaseCollector {
       // produced corrupt eip155-<n>/btc rows. Non-EVM chains are served by the
       // curated roster instead.
       if (!isBareNumeric(cID)) continue
+      // A chain the database refuses by name costs that chain, not the whole
+      // provider. SmolDapp numbers Tron as 728126428, an Ethereum-style id for a
+      // chain that is not one, and insertNetworkFromChainId rightly refuses it.
+      // That refusal used to escape and fail every smoldapp run, which left its
+      // lists unpublished since July on both staging and production. The check is
+      // the database's own rule, so this can never skip a chain it would accept.
+      if (isFakedEvmReference(cID)) continue
 
       const networkChainId = +cID
       this.folderToNetworkChainId.set(cID, networkChainId)
@@ -150,7 +158,7 @@ class SmoldappCollector extends BaseCollector {
         }
 
         // Non-numeric folders have no eip155 id — skip (see discoverLists above).
-        if (!isBareNumeric(cID)) {
+        if (!isBareNumeric(cID) || isFakedEvmReference(cID)) {
           row.increment('skipped', `${providerKey}-${cID}`)
           continue
         }
@@ -253,7 +261,7 @@ class SmoldappCollector extends BaseCollector {
         if (signal.aborted) return
 
         // Non-numeric chains have no eip155 id — skip (see discoverLists above).
-        if (!isBareNumeric(chainIdString)) return
+        if (!isBareNumeric(chainIdString) || isFakedEvmReference(chainIdString)) return
 
         const networkChainId = this.folderToNetworkChainId.get(chainIdString) ?? +chainIdString
         this.folderToNetworkChainId.set(chainIdString, networkChainId)
