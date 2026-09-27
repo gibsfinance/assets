@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, onTestFinished } from 'vitest'
 import * as path from 'path'
 import * as paths from '../paths'
 import { NETWORK_MAPPING, parseTokenRecord, resolveChainId, resolveLogo } from './ethereum-lists-parse'
@@ -290,6 +290,37 @@ describe('EthereumListsCollector discover', () => {
 })
 
 describe('EthereumListsCollector collect', () => {
+  it('stores tokens when discover and collect run in one cycle, as the real progress display allows', async () => {
+    // The real display (log/App.tsx) throws `duplicated row <id>` when an id is issued
+    // a second time, and complete() never frees one. Every staging and production run
+    // failed that way here: discover() issued the provider's row, collect() issued it
+    // again, and the throw ended the run before a single token was written. The
+    // harness's display is made to behave the same way for this test.
+    const issued = new Map<string, ReturnType<typeof harness.utilsModule.terminal.issue>>()
+    // Restored afterwards so this stricter display cannot leak into other tests.
+    const originalGet = harness.utilsModule.terminal.get.getMockImplementation()
+    const originalIssue = harness.utilsModule.terminal.issue.getMockImplementation()
+    onTestFinished(() => {
+      harness.utilsModule.terminal.get.mockImplementation(originalGet!)
+      harness.utilsModule.terminal.issue.mockImplementation(originalIssue!)
+    })
+    harness.utilsModule.terminal.get.mockImplementation((id: string) => issued.get(id) ?? null)
+    harness.utilsModule.terminal.issue.mockImplementation((options: { id: string }) => {
+      if (issued.has(options.id)) throw new Error(`duplicated row ${options.id}`)
+      const row = harness.utilsModule.terminalRow
+      issued.set(options.id, row)
+      return row
+    })
+    fakeFilesystem.setDirectory(tokensRoot, ['eth'])
+    fakeFilesystem.setDirectory(ethFolder, ['0xeth-token.json'])
+    fakeFilesystem.setFile(path.join(ethFolder, '0xeth-token.json'), JSON.stringify(buildRecord()))
+
+    await ethereumLists.discover(new AbortController().signal)
+    await ethereumLists.collect(new AbortController().signal)
+
+    expect(harness.state.tokenImages.length).toBeGreaterThan(0)
+  })
+
   it('inserts every discovered token across every network', async () => {
     fakeFilesystem.setDirectory(tokensRoot, ['eth', 'bsc'])
     fakeFilesystem.setDirectory(ethFolder, ['0xeth-token.json'])
