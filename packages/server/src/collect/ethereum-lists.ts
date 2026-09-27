@@ -118,10 +118,13 @@ class EthereumListsCollector extends BaseCollector {
   private networks: IncludedNetwork[] = []
 
   async discover(signal: AbortSignal): Promise<DiscoveryManifest> {
-    const row = utils.terminal.issue({
-      type: terminalRowTypes.SETUP,
-      id: providerKey,
-    })
+    // Get-or-issue, as jupiter and aggregator do. The terminal registry persists
+    // across collection cycles and complete() only marks a row done without freeing
+    // its id, so a bare issue() throws `duplicated row ethereum-lists` from the
+    // second cycle on. That throw failed every run on staging and production, so
+    // this provider's twelve lists were created and never received a single token.
+    const row =
+      utils.terminal.get(providerKey) ?? utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
     // Insert the provider with its name first: inmemory-tokenlist inserts the same
     // provider by key alone, and the upsert leaves an existing name untouched, so
     // establishing the name here keeps it from ever being left null.
@@ -182,10 +185,9 @@ class EthereumListsCollector extends BaseCollector {
   }
 
   async collect(signal: AbortSignal): Promise<void> {
-    const row = utils.terminal.issue({
-      type: terminalRowTypes.SETUP,
-      id: providerKey,
-    })
+    // discover() has already registered this id within the same cycle - reuse it.
+    const row =
+      utils.terminal.get(providerKey) ?? utils.terminal.issue({ type: terminalRowTypes.SETUP, id: providerKey })
     try {
       for (const network of this.networks) {
         if (signal.aborted) {
