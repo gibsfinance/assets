@@ -13,42 +13,24 @@
  * the provenance claim `/terms` makes is unverifiable for exactly these four,
  * top-ranked sources.
  *
- * The fix keeps the local read and changes only what is recorded: a permanent,
- * commit-pinned `raw.githubusercontent.com` address built from the submodule's
- * own remote and the commit actually checked out. A commit-pinned address names
- * exactly the bytes this service ingested; a branch address drifts as the
- * upstream repository moves and breaks the moment a file is renamed or removed.
+ * The fix keeps the local read and changes only what is recorded: the file's
+ * `raw.githubusercontent.com` address on the repository's default branch - the
+ * same form every other source and token list uses, keyed by chain and token
+ * address, and stable for as long as the file itself is.
  *
- * This module never fetches anything itself. It only maps a local path to the
- * address that names the same bytes in public — pure string and process work,
- * so it is testable without a database or a network call standing in for one.
+ * It was briefly pinned to the checked-out commit instead, and that was wrong.
+ * An image's identity hashes its bytes together with its address, so a commit
+ * in the address gave every file a new identity - and a new stored copy - on
+ * every upstream commit, changed or not. Trust Wallet commits about daily; its
+ * 14,603 files had reached five copies each within a week. The bytes already
+ * version the image: a file that really changes upstream gets a new identity
+ * from its new content, with no help from the address.
+ *
+ * This module never fetches anything itself and runs no processes. It only maps a
+ * local path to the public address of the same file - pure string work.
  */
 import * as path from 'node:path'
-import { execFile } from 'node:child_process'
 import { submodules as submodulesRoot } from './paths'
-
-/**
- * A minimal, explicit promise wrapper around `execFile`, rather than
- * `util.promisify(execFile)`. Node's built-in `child_process.execFile` carries
- * a `util.promisify.custom` implementation that resolves with `{ stdout,
- * stderr }`, but nothing about that contract is visible at this call site — a
- * mock standing in for `execFile` in a test has no reason to know it must
- * reproduce that undocumented-at-the-call-site symbol too, and one that
- * doesn't makes `promisify()` silently resolve with an array of both streams
- * instead. Handling the callback here directly means this module's behaviour
- * depends only on the ordinary error-first callback every `execFile` mock
- * already provides.
- */
-const runGitRevParseHead = (cwd: string): Promise<string> =>
-  new Promise((resolve, reject) => {
-    execFile('git', ['-C', cwd, 'rev-parse', 'HEAD'], (error, stdout) => {
-      if (error) {
-        reject(error)
-        return
-      }
-      resolve(stdout.toString())
-    })
-  })
 
 /** Where one vendored submodule's artwork actually lives in public. */
 export type SubmoduleRepository = {
@@ -150,58 +132,6 @@ export const locateSubmodulePath = (localPath: string | null | undefined): Submo
 }
 
 /**
- * One resolved commit (or default-branch fallback) per submodule, memoized for
- * the lifetime of the process. A collection run touches thousands of images
- * from the same four submodules, and the commit checked out does not change
- * mid-run, so every one of those images reuses the single resolution made for
- * the first — this is what "resolve once per run" means in practice: a cache
- * that make the first caller pay the cost and every later caller pay nothing.
- */
-const commitCache = new Map<string, Promise<string>>()
-
-/**
- * Shell out to `git rev-parse HEAD` inside one submodule's checkout. Not
- * memoized itself — `resolveSubmoduleRef` owns the cache — so this always
- * reflects a fresh process invocation when called directly.
- */
-const readCheckedOutCommit = async (submoduleName: string): Promise<string> => {
-  const cwd = path.join(submodulesRoot, submoduleName)
-  const stdout = await runGitRevParseHead(cwd)
-  const commit = stdout.trim()
-  if (!commit) {
-    throw new Error(`git rev-parse HEAD produced no commit for submodule ${submoduleName}`)
-  }
-  return commit
-}
-
-/**
- * Resolve the git ref to address a submodule's public repository at: the
- * commit actually checked out, or that repository's default branch when the
- * commit cannot be resolved (a shallow clone missing `.git`, a submodule not
- * yet initialized, `git` unavailable in the environment). The fallback is
- * still a real, permanent, fetchable address — never the local filesystem
- * path, which is the one address that must never leave this container.
- *
- * The result is cached per submodule name for the life of the process; call
- * `resetSubmoduleRefCache` to force re-resolution (tests only — a running
- * collection process never needs to, because the checked-out commit cannot
- * change during a single run).
- */
-export const resolveSubmoduleRef = (submoduleName: string): Promise<string> => {
-  const cached = commitCache.get(submoduleName)
-  if (cached) return cached
-  const repository = SUBMODULE_REPOSITORIES[submoduleName]
-  const promise = readCheckedOutCommit(submoduleName).catch(() => repository.defaultBranch)
-  commitCache.set(submoduleName, promise)
-  return promise
-}
-
-/** Clears the per-process commit cache. Exists for tests; production code never needs it. */
-export const resetSubmoduleRefCache = (): void => {
-  commitCache.clear()
-}
-
-/**
  * A path segment, percent-encoded the way a URL path segment must be, without
  * touching the `/` separators between segments. Real submodule paths are
  * lowercase hex addresses and ordinary filenames and never need this, but a
@@ -214,24 +144,20 @@ const encodePathSegments = (relativePath: string): string => relativePath.split(
  * Build the public, fetchable address for a local path inside a known
  * submodule, or `null` when the path names no known submodule.
  *
- * The address is always `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>`
- * — the commit checked out, or the repository's default branch as a fallback.
+ * The address is always `https://raw.githubusercontent.com/<owner>/<repo>/<default branch>/<path>`.
  * Never the local filesystem path: a caller cannot fetch that, which is the
- * defect this module exists to close. This function does no filesystem or
- * network I/O of its own beyond the one memoized `git rev-parse` per
- * submodule — it never reads the image bytes at `localPath`, so it is safe to
- * call for every image without affecting how those bytes are read.
+ * defect this module exists to close. No I/O at all - it never reads the image
+ * bytes at `localPath` - so it is safe to call for every image.
  *
  * @param localPath An absolute filesystem path, ideally one already known to be
  *   inside `paths.submodules` (that is what every caller in `collect/` has).
  */
-export const publicSourceAddress = async (localPath: string | null | undefined): Promise<string | null> => {
+export const publicSourceAddress = (localPath: string | null | undefined): string | null => {
   const location = locateSubmodulePath(localPath)
   if (!location) return null
   const repository = SUBMODULE_REPOSITORIES[location.submoduleName]
-  const ref = await resolveSubmoduleRef(location.submoduleName)
   const encodedPath = encodePathSegments(location.pathWithinSubmodule)
-  return `https://raw.githubusercontent.com/${repository.owner}/${repository.repo}/${ref}/${encodedPath}`
+  return `https://raw.githubusercontent.com/${repository.owner}/${repository.repo}/${repository.defaultBranch}/${encodedPath}`
 }
 
 /**
@@ -249,8 +175,8 @@ export const publicSourceAddress = async (localPath: string | null | undefined):
  * @param localPath An absolute filesystem path a collector built under `paths.submodules`.
  * @throws When `localPath` does not map to a known submodule.
  */
-export const requirePublicSourceAddress = async (localPath: string): Promise<string> => {
-  const uri = await publicSourceAddress(localPath)
+export const requirePublicSourceAddress = (localPath: string): string => {
+  const uri = publicSourceAddress(localPath)
   if (!uri) {
     throw new Error(`no public address for submodule path ${localPath}`)
   }

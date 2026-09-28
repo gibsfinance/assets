@@ -32,8 +32,8 @@ vi.mock('fs', async (importOriginal) => {
 // caring what commit happens to be checked out when the suite runs.
 const publicUriFor = (localPath: string) => `https://fixture.example/${path.relative(paths.submodules, localPath)}`
 vi.mock('../submodule-source', () => ({
-  requirePublicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
-  publicSourceAddress: vi.fn(async (localPath: string) => publicUriFor(localPath)),
+  requirePublicSourceAddress: vi.fn((localPath: string) => publicUriFor(localPath)),
+  publicSourceAddress: vi.fn((localPath: string) => publicUriFor(localPath)),
 }))
 
 beforeEach(() => {

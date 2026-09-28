@@ -79,3 +79,35 @@ migrations), the two `DELETE` statements can be lifted verbatim into a numbered
 `drizzle/000N_*.sql` migration — drop the temp table and `_data_migrations` marker and
 keep the predicate. Do that only after the manual runs have confirmed the predicate
 selects exactly the intended rows on real data.
+
+## Commit-pinned duplicate images
+
+For about a week the trustwallet, smoldapp and pls369 collectors recorded each
+image at the repository's checked-out commit. An image's identity hashes its bytes
+together with its address, so every upstream commit stored a new copy of every
+file, changed or not. Commit 3b7abe3d switched the collectors to the default
+branch, which stops new copies. These scripts remove the copies already made.
+
+1. Preview what would go (reads only):
+
+   ```bash
+   psql "$DATABASE_URL" -X -f scripts/preview-commit-pinned-duplicates.sql
+   ```
+
+2. Delete it:
+
+   ```bash
+   psql "$DATABASE_URL" -X -f scripts/cleanup-commit-pinned-duplicates.sql
+   ```
+
+The cleanup deletes only commit-pinned copies that nothing references: no list
+entry, network, list or header link. That guard matters, because `list` and
+`header_link` cascade on image delete — removing a referenced image would remove
+the list. Copies a list entry still uses stay until the next collection moves the
+entry onto the branch copy; re-run the cleanup after that to pick them up.
+
+Each batch of 2,000 is its own statement and commits on its own, so the run stays
+under the statement time limit and an interrupted run keeps its progress. On
+staging on 2026-09-27 it removed 132,741 rows (about 2.9 GB of image content) in
+roughly four minutes. The table's disk size does not shrink until a vacuum; the
+space is reused by new rows.
