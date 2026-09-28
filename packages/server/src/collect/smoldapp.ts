@@ -182,7 +182,7 @@ class SmoldappCollector extends BaseCollector {
           // Bytes are still read from the local submodule checkout (`uri` /
           // `db.fetchImage(localImagePath, …)` below); only the RECORDED address
           // becomes the public, commit-pinned raw.githubusercontent.com address.
-          const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
+          const publicUri = submoduleSource.requirePublicSourceAddress(localImagePath)
 
           if (listKey === 'svg') {
             await db.transaction(async (tx) => {
@@ -456,7 +456,7 @@ const processSmoldappToken = async (params: ProcessTokenParams) => {
     // Bytes are still read from the local submodule checkout (`uri`); only the
     // RECORDED address (`originalUri`) becomes the public, commit-pinned
     // raw.githubusercontent.com address.
-    const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
+    const publicUri = submoduleSource.requirePublicSourceAddress(localImagePath)
     const baseInput = {
       uri: localImagePath,
       originalUri: publicUri,

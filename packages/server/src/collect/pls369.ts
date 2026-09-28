@@ -211,7 +211,7 @@ class Pls369Collector extends BaseCollector {
             // Bytes are still read from the local submodule checkout below (`uri`);
             // only the RECORDED address changes, to a public, commit-pinned
             // raw.githubusercontent.com address a caller can actually fetch.
-            const publicUri = await submoduleSource.requirePublicSourceAddress(localImagePath)
+            const publicUri = submoduleSource.requirePublicSourceAddress(localImagePath)
 
             await db
               .fetchImageAndStoreForToken({

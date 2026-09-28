@@ -330,7 +330,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
   if (stat) {
     // Bytes are still read from the local checkout (`uri`); only the RECORDED
     // address (`originalUri`) becomes the public, commit-pinned address.
-    const publicNetworkLogoUri = await submoduleSource.requirePublicSourceAddress(networkLogoPath)
+    const publicNetworkLogoUri = submoduleSource.requirePublicSourceAddress(networkLogoPath)
     await db.fetchImageAndStoreForNetwork({
       network,
       uri: networkLogoPath,
@@ -392,7 +392,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
     // as `uri` below stores it without reading anything again. Only the
     // RECORDED address (`originalUri`) changes, from the local `logoPath` to
     // its public, commit-pinned equivalent.
-    const publicLogoUri = await submoduleSource.requirePublicSourceAddress(logoPath)
+    const publicLogoUri = submoduleSource.requirePublicSourceAddress(logoPath)
     await Promise.all([
       db.fetchImageAndStoreForToken({
         listId: networkList.listId,
