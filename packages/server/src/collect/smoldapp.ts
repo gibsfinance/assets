@@ -206,27 +206,15 @@ class SmoldappCollector extends BaseCollector {
               )
             })
           } else {
-            const img = await db.fetchImage(localImagePath, signal, providerKey, cID)
-            await db.transaction(async (tx) => {
-              await db.fetchImageAndStoreForList(
-                {
-                  listId: networkList.listId,
-                  providerKey,
-                  uri: img,
-                  originalUri: publicUri,
-                },
-                tx,
-              )
-              if (!img) return
-              await db.insertImage(
-                {
-                  providerKey,
-                  image: img,
-                  originalUri: publicUri,
-                  listId: networkList.listId,
-                },
-                tx,
-              )
+            // The local path goes in as `uri`, exactly as for the svg above: the store
+            // looks the recorded address up first and reads the file only when that row
+            // is missing or stale. It also inserts the image itself, so no separate
+            // `insertImage` follows.
+            await db.fetchImageAndStoreForList({
+              listId: networkList.listId,
+              providerKey,
+              uri: localImagePath,
+              originalUri: publicUri,
             })
           }
         }

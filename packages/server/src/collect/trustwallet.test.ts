@@ -441,9 +441,9 @@ describe('TrustWalletCollector collect', () => {
     const tokenLocalPath = assetLogoPngPath('smartchain', '0xAsset1')
     expect(harness.state.tokenImages).toHaveLength(2)
     for (const image of harness.state.tokenImages) {
-      // `uri` here is the Buffer already read from disk by `db.fetchImage`, not
-      // the path itself — passing it on stores the bytes without a second read.
-      expect(Buffer.isBuffer(image.uri)).toBe(true)
+      // `uri` is the local path, not a Buffer: the store looks the recorded address
+      // up before it reads anything, and a Buffer would skip that lookup entirely.
+      expect(image.uri).toBe(tokenLocalPath)
       expect(image.originalUri).toBe(publicUriFor(tokenLocalPath))
     }
   })
@@ -480,23 +480,23 @@ describe('TrustWalletCollector collect', () => {
     expect(harness.state.tokenImages).toHaveLength(0)
   })
 
-  it('skips an asset whose image fetch fails', async () => {
+  it('reads no logo itself, leaving the freshness lookup and the read to the store', async () => {
     setInfoJson('smartchain')
     fakeFilesystem.setDirectory(blockchainsRoot, ['smartchain'])
-    fakeFilesystem.setDirectory(assetsFolderPath('smartchain'), ['0xFailsFetch'])
+    fakeFilesystem.setDirectory(assetsFolderPath('smartchain'), ['0xFresh'])
     fakeFilesystem.setFile(
-      assetInfoJsonPath('smartchain', '0xFailsFetch'),
-      JSON.stringify({ name: 'Fails Fetch', symbol: 'FAILS', decimals: 18 }),
+      assetInfoJsonPath('smartchain', '0xFresh'),
+      JSON.stringify({ name: 'Fresh', symbol: 'FRSH', decimals: 18 }),
     )
-    fakeFilesystem.setFile(assetLogoPngPath('smartchain', '0xFailsFetch'), 'asset-logo-bytes')
-    harness.failImageFetch(assetLogoPngPath('smartchain', '0xFailsFetch'))
+    fakeFilesystem.setFile(assetLogoPngPath('smartchain', '0xFresh'), 'asset-logo-bytes')
 
     const { default: TrustWalletCollector } = await importTrustWallet()
     const collector = new TrustWalletCollector()
     await collector.discover(new AbortController().signal)
     await collector.collect(new AbortController().signal)
 
-    expect(harness.state.tokenImages).toHaveLength(0)
+    expect(harness.dbModule.fetchImage).not.toHaveBeenCalled()
+    expect(harness.state.tokenImages).toHaveLength(2)
   })
 
   it('does not store a network logo or list image when the network logo.png is missing', async () => {

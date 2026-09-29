@@ -7,27 +7,7 @@ import { fakeFilesystem } from './__testing__/fake-filesystem'
 
 vi.mock('fs', () => ({ promises: fakeFilesystem.promises }))
 
-// smoldapp.ts calls `db.insertImage`, which the shared harness does not model (no
-// other collector under test needs it) — reuse everything else from harness.dbModule
-// and record insertImage calls locally. Worth upstreaming a minimal insertImage mock
-// into collector-harness.ts if a future collector needs it too.
-//
-// `vi.mock()` factories are hoisted above every import and top-level `const`, so the
-// mock's own supporting state has to be built inside `vi.hoisted()` rather than
-// referenced as an ordinary module-level binding (see collector-harness.ts's doc
-// comment for the same trap with `vi.hoisted()` vs. lazily-evaluated factories).
-export type RecordedInsertedImage = { providerKey: string; originalUri: string; listId: string | null; image: Buffer }
-const { insertedImages, insertImage } = vi.hoisted(() => {
-  const images: RecordedInsertedImage[] = []
-  return {
-    insertedImages: images,
-    insertImage: vi.fn(async (input: RecordedInsertedImage) => {
-      images.push(input)
-      return { image: { imageHash: `fake-hash:${input.originalUri}` }, link: { uri: input.originalUri } }
-    }),
-  }
-})
-vi.mock('../db', () => ({ ...harness.dbModule, insertImage }))
+vi.mock('../db', () => harness.dbModule)
 
 // smoldapp.ts reads `folderContents` and `commonNativeNames` from `../utils`, neither
 // of which the shared harness models (no other collector under test needs them).
@@ -100,7 +80,6 @@ const UNKNOWN_CHAIN_ID = 999999
 beforeEach(() => {
   harness.reset()
   fakeFilesystem.reset()
-  insertedImages.length = 0
   existingTokenLookup.state.rows = []
 })
 
@@ -249,7 +228,7 @@ describe('SmoldappCollector collect — chain images', () => {
     await new SmoldappCollector().collect(new AbortController().signal)
 
     expect(harness.state.networkImages).toHaveLength(0)
-    expect(insertedImages).toHaveLength(0)
+    expect(harness.state.listImages).toHaveLength(0)
   })
 
   it('still stores every other chain’s logo when one chain folder is refused', async () => {
@@ -286,7 +265,7 @@ describe('SmoldappCollector collect — chain images', () => {
     expect(harness.state.listImages).toHaveLength(1)
   })
 
-  it('fetches, stores, and inserts a non-svg chain logo', async () => {
+  it('hands a non-svg chain logo to the list store as its local path, recorded under the public address', async () => {
     fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
     fakeFilesystem.setDirectory(chainsPath, ['1'])
     fakeFilesystem.setDirectory(chainFolderPath('1'), ['logo-128.png'])
@@ -296,11 +275,14 @@ describe('SmoldappCollector collect — chain images', () => {
     await collector.discover(new AbortController().signal)
     await collector.collect(new AbortController().signal)
 
+    const localPath = chainFilePath('1', 'logo-128.png')
     expect(harness.state.listImages).toHaveLength(1)
-    expect(harness.state.listImages[0]?.uri).not.toBeNull()
-    expect(insertedImages).toHaveLength(1)
-    // The bytes are still read from the local path — recorded is the public address.
-    expect(insertedImages[0]?.originalUri).toBe(publicUriFor(chainFilePath('1', 'logo-128.png')))
+    // A path, not a Buffer: the store looks the recorded address up before it reads
+    // anything, and a Buffer would skip that lookup and force a read every run.
+    expect(harness.state.listImages[0]?.uri).toBe(localPath)
+    expect(harness.state.listImages[0]?.originalUri).toBe(publicUriFor(localPath))
+    // The collector itself reads nothing: reading is the store's decision.
+    expect(harness.dbModule.fetchImage).not.toHaveBeenCalled()
   })
 
   it('reads chain logo bytes from the local path while recording the public address', async () => {
@@ -320,24 +302,6 @@ describe('SmoldappCollector collect — chain images', () => {
     // originalUri (what gets published) is the public address instead.
     expect(harness.state.networkImages[0]?.originalUri).toBe(publicUriFor(localPath))
     expect(harness.state.listImages[0]?.originalUri).toBe(publicUriFor(localPath))
-  })
-
-  it('never calls insertImage, and never records a list image, when the non-svg chain logo fetch fails', async () => {
-    fakeFilesystem.setFile(listJsonPath, JSON.stringify({ version: { major: 1, minor: 0, patch: 0 }, tokens: {} }))
-    fakeFilesystem.setDirectory(chainsPath, ['1'])
-    fakeFilesystem.setDirectory(chainFolderPath('1'), ['logo-32.png'])
-    fakeFilesystem.setFile(chainFilePath('1', 'logo-32.png'), 'png-bytes')
-    harness.failImageFetch(chainFilePath('1', 'logo-32.png'))
-
-    const collector = new SmoldappCollector()
-    await collector.discover(new AbortController().signal)
-    await collector.collect(new AbortController().signal)
-
-    // A null uri is never persisted as a list image (see collector-harness.ts's
-    // fetchImageAndStoreForList mock), and insertImage is explicitly skipped by
-    // the collector itself (`if (!img) return`) — both must stay empty.
-    expect(harness.state.listImages).toHaveLength(0)
-    expect(insertedImages).toHaveLength(0)
   })
 
   it('skips a json/dotfile/non-numeric entry with a skip counter, and a file whose list was never discovered', async () => {
