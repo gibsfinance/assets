@@ -7,6 +7,8 @@ import { eq, and, ne, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { normalizeProvidedId } from '../../db/provided-id'
 import { chainIdFilterMatch } from '../../chain-id'
+import { isLinkOnlyHost } from '../../link-only-hosts'
+import { LICENSE_LINK_HEADER } from './attribution'
 
 const DEFAULT_SIZE = 32
 const DEFAULT_COLS = 25
@@ -40,6 +42,10 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
     let buf: Buffer
     if (image.mode === 'link' || !image.content || image.content.length === 0) {
       if (!image.uri) return null
+      // A link-only host's terms forbid a copy and a derivative; a sprite cell is
+      // both. Treated as an image that failed to rasterize: the cell stays empty
+      // and the grid coordinates do not move.
+      if (isLinkOnlyHost(image.uri)) return null
       const res = await fetch(image.uri, { signal: AbortSignal.timeout(5000) })
       if (!res.ok) return null
       buf = Buffer.from(await res.arrayBuffer())
@@ -170,6 +176,7 @@ export const manifest: RequestHandler = async (req, res, _next) => {
   })
 
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  res.set('link', LICENSE_LINK_HEADER)
   res.json({
     spriteUrl: `/sprite/${providerKey}/${listKey}/sheet?${params}`,
     size,
@@ -260,6 +267,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
     .toBuffer()
 
   res.set('content-type', 'image/webp')
+  res.set('link', LICENSE_LINK_HEADER)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   // Grid metadata in headers (small, always fits)
   res.set('x-sprite-size', String(size))

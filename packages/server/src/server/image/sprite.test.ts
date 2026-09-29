@@ -31,6 +31,7 @@ import sharp from 'sharp'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { manifest, sheet, spriteKey } from './sprite'
+import { LICENSE_LINK_HEADER } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import type { Request, Response } from 'express'
 
@@ -273,6 +274,40 @@ describe('sprite endpoints', () => {
       expect(res.send).toHaveBeenCalled()
     })
 
+    it('never fetches a link-only host image and leaves its cell empty while other cells render', async () => {
+      const debankUri = 'https://static.debank.com/image/token/logo.png'
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => pngContent.buffer.slice(0) })
+      vi.stubGlobal('fetch', fetchMock)
+      const stored = linkToken({
+        address: '0x00000000000000000000000000000000000000BB',
+        content: pngContent,
+        mode: 'stored',
+        uri: '',
+      })
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken({ uri: debankUri }), stored])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(fetchMock).not.toHaveBeenCalledWith(debankUri, expect.anything())
+      expect(fetchMock).not.toHaveBeenCalled()
+      const size = 32
+      const { data, info } = await sharp((res.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      const alphaAt = (cellX: number) => data[((size / 2) * info.width + cellX * size + size / 2) * 4 + 3]
+      expect(alphaAt(0)).toBe(0)
+      expect(alphaAt(1)).toBeGreaterThan(0)
+      // The empty cell keeps its slot, so the sheet still agrees with the manifest.
+      expect(headerValue(res, 'x-sprite-count')).toBe('2')
+      const tokenMap = JSON.parse(headerValue(res, 'x-sprite-tokens')!)
+      expect(Object.values(tokenMap)).toEqual([
+        [0, 0],
+        [1, 0],
+      ])
+    })
+
     it('skips a token when the remote fetch responds not-ok', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
       queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
@@ -292,6 +327,27 @@ describe('sprite endpoints', () => {
       // must not fail the whole sheet for every other token in the list.
       await expect(sheet(mockRequest(), res, vi.fn())).resolves.not.toThrow()
       expect(res.send).toHaveBeenCalled()
+    })
+  })
+
+  describe('licence pointer', () => {
+    it('manifest carries the terms link header', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+
+      await manifest(mockRequest(), res, vi.fn())
+
+      expect(headerValue(res, 'link')).toBe(LICENSE_LINK_HEADER)
+      expect(headerValue(res, 'link')).toContain('rel="license"')
+    })
+
+    it('sheet carries the terms link header', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(headerValue(res, 'link')).toBe(LICENSE_LINK_HEADER)
     })
   })
 
