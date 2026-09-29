@@ -548,6 +548,13 @@ export const getImageFromLink = async (uri: string, tx?: DrizzleTx) => {
  * `insertImage` rejects it once and the chain is recorded as having no artwork.
  * That costs one request per placeholder address per run, against twenty-one
  * addresses.
+ *
+ * `uri` here is the address a `link` row is stored under, which is the RECORDED
+ * address (`originalUri`), not necessarily the address the bytes were read from.
+ * A collector that reads a vendored file from disk records that file's public
+ * address, so asking with the local path never matches a row and the file is
+ * read, sanitized and hashed again on every run. Callers holding both pass the
+ * recorded one.
  */
 export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
@@ -831,7 +838,10 @@ export const fetchImageAndStoreForList = async (
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
+    // Keyed on the address the row is WRITTEN under (see `getFreshImageFromLink`): `uri` may be
+    // a local path whose public address is what `insertImage` recorded. Defaulted above,
+    // so it is set whenever `uri` is a string.
+    const existing = await getFreshImageFromLink(originalUri!, maxImageAge, tx)
     if (existing) {
       const list = await getListFromId(listId, tx)
       if (list && list.imageHash && list.imageHash === existing.image.imageHash) {
@@ -1078,7 +1088,8 @@ export const fetchImageAndStoreForNetwork = async (
     originalUri = uri
   }
   if (_.isString(uri)) {
-    const existing = await getFreshImageFromLink(uri, maxImageAge, tx)
+    // Keyed on the recorded address, not the read address — see `getFreshImageFromLink`.
+    const existing = await getFreshImageFromLink(originalUri, maxImageAge, tx)
     // The bytes are already on disk, so there is nothing to download — but the slot
     // still has to be contested. Returning here without claiming is what made the
     // ranking above unreachable in practice: images stay fresh for a week
@@ -1139,7 +1150,7 @@ export const fetchAndInsertHeader = async (
   const db = tx ?? getDrizzle()
   const maxImageAge = header.maxImageAge ?? defaultImageMaxAge
   if (_.isString(header.uri)) {
-    const existing = await getFreshImageFromLink(header.uri, maxImageAge, tx)
+    const existing = await getFreshImageFromLink(header.originalUri, maxImageAge, tx)
     if (existing) return
   }
   const image = await fetchImage(header.uri, header.signal, header.providerKey, header.listTokenId)
@@ -1272,7 +1283,9 @@ export const fetchImageAndStoreForToken = async (
   // half of the work is actually stale. The bytes are still fresh.
   let existing: Awaited<ReturnType<typeof getFreshImageFromLink>> = null
   if (_.isString(uri)) {
-    existing = await getFreshImageFromLink(uri, maxImageAge, tx)
+    // Keyed on the recorded address, not the read address — see `getFreshImageFromLink`.
+    // `originalUri` was defaulted from this same string above, so it is set here.
+    existing = await getFreshImageFromLink(originalUri!, maxImageAge, tx)
     if (existing) {
       const insertedToken = await insertToken(
         {
@@ -1337,8 +1350,8 @@ export const fetchImageAndStoreForToken = async (
     // line above had just confirmed fresh, at up to three seconds of timeout each.
     img = existing
     // `originalUri` is always set here, so this is not guarded. `existing` comes
-    // from getFreshImageFromLink(uri), which only runs when `uri` is a string, and
-    // an absent originalUri defaults to that same uri a few lines above. The only
+    // from getFreshImageFromLink(originalUri), which only runs when `uri` is a string,
+    // and an absent originalUri defaults to that same uri a few lines above. The only
     // way out would be a link row stored under an empty address, and nothing can
     // write one: every insertImage caller passes a guarded originalUri, and
     // prewarmImages filters its addresses on length before it gets there.

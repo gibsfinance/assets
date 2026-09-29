@@ -690,7 +690,7 @@ export const ATTRIBUTION_HEADER_NAMES = [
 ] as const
 
 /** The public licence-terms page every response links back to. */
-const LICENSE_LINK_HEADER = '<https://gib.show/terms>; rel="license"'
+export const LICENSE_LINK_HEADER = '<https://gib.show/terms>; rel="license"'
 
 /**
  * Resolve the source to publish headers for, preferring a precomputed

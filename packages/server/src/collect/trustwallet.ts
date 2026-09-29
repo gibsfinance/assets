@@ -376,11 +376,6 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       return
     }
 
-    const file = await db.fetchImage(logoPath, signal, providerKey, address)
-    if (!file) {
-      row.increment('skipped', chainTokenId)
-      return
-    }
     const tokenData = {
       providedId: address,
       networkId: network.networkId,
@@ -388,15 +383,17 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       symbol: info.symbol,
       decimals: info.decimals,
     }
-    // `file` already holds the bytes read from the local checkout — passing it
-    // as `uri` below stores it without reading anything again. Only the
-    // RECORDED address (`originalUri`) changes, from the local `logoPath` to
-    // its public, commit-pinned equivalent.
+    // `logoPath` goes in as `uri` and is NOT read here: `fetchImageAndStoreForToken`
+    // looks the RECORDED address up first and reads the file only when that row is
+    // missing or stale. Reading it here first (and passing the Buffer) made the
+    // freshness check unreachable, since a Buffer is deliberately never checked,
+    // and cost a file read per token per run before anything asked whether it was
+    // needed. The recorded address is the public equivalent of `logoPath`.
     const publicLogoUri = submoduleSource.requirePublicSourceAddress(logoPath)
     await Promise.all([
       db.fetchImageAndStoreForToken({
         listId: networkList.listId,
-        uri: file,
+        uri: logoPath,
         originalUri: publicLogoUri,
         providerKey,
         listLicense: networkList.license,
@@ -406,7 +403,7 @@ const entriesFromAssets = async ({ blockchainKey, assets, signal, globalCount }:
       }),
       db.fetchImageAndStoreForToken({
         listId: trustwalletList.listId,
-        uri: file,
+        uri: logoPath,
         originalUri: publicLogoUri,
         providerKey,
         listLicense: trustwalletList.license,

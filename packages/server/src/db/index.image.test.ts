@@ -1980,3 +1980,102 @@ describe('link-only hosts', () => {
     expect(result.missing.has(DEBANK)).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// freshness is keyed on the recorded address
+// ---------------------------------------------------------------------------
+
+describe('freshness lookup for a file read from disk but recorded under a public address', () => {
+  // The three vendored-submodule collectors read bytes from a local path and record the
+  // file's public address: `insertImage` writes the `link` row under `originalUri`. The
+  // freshness lookup has to ask for that same address. Asked with the local path it can
+  // never match, and every run re-reads, sanitizes and hashes every file. The database
+  // harness answers whichever address is asked, so these tests read the bound address
+  // out of the query rather than trusting that a row was found.
+  const localPath = '/app/submodules/trustwallet/blockchains/ethereum/assets/0xabc/logo.png'
+  const publicAddress =
+    'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xabc/logo.png'
+  const freshLink = [{ uri: publicAddress, imageHash: 'hash-1' }]
+
+  /** The address bound into the first freshness lookup (the `link` select) of the call. */
+  const addressAskedFor = (): unknown => {
+    const lookup = harness.queries.find((query) => query.root === 'select')
+    const where = lookup?.steps.find((step) => step.method === 'where')
+    return sqlParams(where?.args[0])[0]
+  }
+
+  const expectNothingRead = () => {
+    expect(fsPromises.readFile).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  }
+
+  it('asks for the recorded address, not the local path, when storing a token image', async () => {
+    harness.queueResult(freshLink)
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }])
+    harness.queueResult([
+      { tokenId: 'token-1', listTokenOrderId: 5, listTokenId: 'lt-1', listId: 'list-1', license: null },
+    ])
+    harness.queueResult([{ listTokenId: 'lt-1', listId: 'list-1', imageHash: 'hash-1' }])
+
+    await fetchImageAndStoreForToken({
+      listId: 'list-1',
+      listTokenOrderId: 5,
+      uri: localPath,
+      originalUri: publicAddress,
+      token: { networkId: 'network-1', providedId: '0xabc', name: 'Coin', symbol: 'COIN', decimals: 18 },
+      providerKey: 'trustwallet',
+      listLicense: null,
+    })
+
+    expect(addressAskedFor()).toBe(publicAddress)
+    expectNothingRead()
+  })
+
+  it('asks for the recorded address, not the local path, when storing a list image', async () => {
+    harness.queueResult(freshLink)
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult([{ listId: 'list-1', imageHash: 'hash-1' }])
+
+    await fetchImageAndStoreForList({
+      listId: 'list-1',
+      uri: localPath,
+      originalUri: publicAddress,
+      providerKey: 'smoldapp',
+    })
+
+    expect(addressAskedFor()).toBe(publicAddress)
+    expectNothingRead()
+  })
+
+  it('asks for the recorded address, not the local path, when storing a network image', async () => {
+    harness.queueResult(freshLink)
+    harness.queueResult([{ imageHash: 'hash-1' }])
+    harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-1', imageProviderKey: 'smoldapp' }])
+
+    await fetchImageAndStoreForNetwork({
+      network: { networkId: 'network-1', chainId: 'eip155-1' } as never,
+      uri: localPath,
+      originalUri: publicAddress,
+      providerKey: 'smoldapp',
+    })
+
+    expect(addressAskedFor()).toBe(publicAddress)
+    expectNothingRead()
+  })
+
+  it('asks for the recorded address, not the local path, when storing a header image', async () => {
+    harness.queueResult(freshLink)
+    harness.queueResult([{ imageHash: 'hash-1' }])
+
+    await fetchAndInsertHeader({
+      providerKey: 'trustwallet',
+      listTokenId: 'lt-1',
+      uri: localPath,
+      originalUri: publicAddress,
+    })
+
+    expect(addressAskedFor()).toBe(publicAddress)
+    expectNothingRead()
+  })
+})
