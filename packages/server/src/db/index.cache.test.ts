@@ -109,8 +109,7 @@ describe('pruneVariants', () => {
 
     const deleteQuery = harness.queries.find((query) => query.root === 'delete')
     const projection = deleteQuery?.steps.find((step) => step.method === 'returning')?.args[0] as
-      | Record<string, unknown>
-      | undefined
+      Record<string, unknown> | undefined
     expect(projection, 'the delete must project explicitly, not return whole rows').toBeDefined()
     expect(Object.keys(projection ?? {})).not.toContain('content')
   })

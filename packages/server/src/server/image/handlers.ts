@@ -125,8 +125,7 @@ export const getListTokens = async ({
     return {
       filter: { networkId, providedId: address },
       img: rows[0] as
-        | (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List)
-        | undefined,
+        (Record<string, unknown> & Image & Token & ListOrder & ListOrderItem & ListToken & List) | undefined,
     }
   }
 

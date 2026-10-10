@@ -208,9 +208,7 @@ export const createEtherscanHarness = () => {
   // -- @gibs/utils/viem: erc20Read / createChainClient ------------------------
 
   type Erc20Entry =
-    | readonly [name: string, symbol: string, decimals: number]
-    | Error
-    | (() => readonly [string, string, number])
+    readonly [name: string, symbol: string, decimals: number] | Error | (() => readonly [string, string, number])
 
   const erc20Metadata = new Map<string, Erc20Entry>()
 
