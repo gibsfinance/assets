@@ -217,7 +217,7 @@ const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
       candidates.find(
         (c) =>
           c.name
-            ?.toLowerCase()
+            .toLowerCase()
             .replace(/[\s-_]/g, '')
             .includes(blockchainKey) ||
           c.chainSlug
@@ -227,7 +227,7 @@ const loadChainId = async (blockchainKey: string, signal?: AbortSignal) => {
       ) ||
       // When ambiguous, prefer mainnet over testnet/devnet
       candidates.find((c) => {
-        const n = c.name?.toLowerCase() ?? ''
+        const n = c.name.toLowerCase()
         return !n.includes('testnet') && !n.includes('devnet')
       }) ||
       candidates[0]

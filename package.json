@@ -33,7 +33,7 @@
     "packages/server"
   ],
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.2",
     "concurrently": "^9.2.4",
     "typescript": "^5.9.3"
   },
