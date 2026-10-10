@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { createPublicClient, http, erc20Abi } from 'viem'
 import * as viemChains from 'viem/chains'
 import type { LocalToken } from './useLocalLists'
-import type { Chain } from 'viem'
+import type { Chain, PublicClient } from 'viem'
 
 const RPC_STORAGE_KEY = 'gib-custom-rpcs'
 
@@ -28,7 +28,7 @@ export function getChainById(chainId: number) {
   return match as Chain | undefined
 }
 
-export function getClient(chainId: number) {
+export function getClient(chainId: number): PublicClient | null {
   const customRpcs = getCustomRpcs()
   const customRpc = customRpcs[chainId]
   const chain = getChainById(chainId)

@@ -156,7 +156,7 @@ export const createEtherscanHarness = () => {
 
   // -- @gibs/utils: limitBy / failureLog --------------------------------------
 
-  const failureLog = vi.fn()
+  const failureLog = vi.fn<(...args: unknown[]) => void>()
   // The real `promise-limit` export is a *callable function* that also carries
   // a `.map` method (see `node_modules/promise-limit/index.js`'s `addExtras`) —
   // etherscan.ts uses both forms (`puppeteerLimiter(fn)` and `chainLimiter.map(...)`),
@@ -263,8 +263,8 @@ export const createEtherscanHarness = () => {
   // -- ../utils: a `terminal` that actually implements row.get(key) -----------
 
   const makeTaskRow = () => ({
-    increment: vi.fn(),
-    complete: vi.fn(),
+    increment: vi.fn<(...args: unknown[]) => void>(),
+    complete: vi.fn<(...args: unknown[]) => void>(),
   })
 
   const makeSection = () => {
@@ -287,11 +287,11 @@ export const createEtherscanHarness = () => {
         return section
       }),
       get: vi.fn((key: string) => sections.get(key) ?? null),
-      createCounter: vi.fn(),
-      incrementTotal: vi.fn(),
-      increment: vi.fn(),
-      remove: vi.fn(),
-      complete: vi.fn(),
+      createCounter: vi.fn<(...args: unknown[]) => void>(),
+      incrementTotal: vi.fn<(...args: unknown[]) => void>(),
+      increment: vi.fn<(...args: unknown[]) => void>(),
+      remove: vi.fn<(...args: unknown[]) => void>(),
+      complete: vi.fn<(...args: unknown[]) => void>(),
     }
   }
 

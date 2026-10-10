@@ -3,6 +3,7 @@
   "include": ["src/**/*.ts"],
   "exclude": ["src/db/migrations", "src/db/config.ts", "src/db/utils.ts", "src/db/seeds"],
   "compilerOptions": {
+    "rootDir": ".",
     "outDir": "./dist",
     "jsx": "preserve",
     "paths": {

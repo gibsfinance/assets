@@ -207,7 +207,7 @@ export const createOmnibridgeHarness = () => {
   )
 
   /** Records what `collect()` reports for a bridge it chose to continue past. */
-  const failureLog = vi.fn()
+  const failureLog = vi.fn<(...args: unknown[]) => void>()
 
   const gibsUtilsModule = { erc20Read, failureLog }
 
