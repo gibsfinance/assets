@@ -9,7 +9,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import * as http from 'node:http'
 import express from 'express'
-import bodyParser from 'body-parser'
 import createError from 'http-errors'
 import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middleware'
 
@@ -26,7 +25,7 @@ class FakeDrizzleQueryError extends Error {
 
 function buildApp(): express.Express {
   const app = express()
-  app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }))
+  app.use(express.json({ limit: JSON_BODY_LIMIT }))
   app.get('/throws-drizzle', (_req, _res, next) => next(new FakeDrizzleQueryError()))
   app.get('/throws-plain', (_req, _res, next) => next(new Error('secret internal detail')))
   app.get('/throws-500-http-error', (_req, _res, next) => next(createError.InternalServerError('secret detail')))

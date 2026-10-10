@@ -355,13 +355,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@coingecko/coingecko-typescript@npm:^1.15.0":
-  version: 1.15.0
-  resolution: "@coingecko/coingecko-typescript@npm:1.15.0"
-  checksum: 10c0/2c12497a55c57f6a1b58ca335eb93176c451f84f533e8c858dd8face5b43cb5cdff32a2fad2192bef4c36d5e2093b4c6d91b8446b8d1cada795fdaacc62780bb
-  languageName: node
-  linkType: hard
-
 "@csstools/color-helpers@npm:^6.1.2":
   version: 6.1.2
   resolution: "@csstools/color-helpers@npm:6.1.2"
@@ -2475,27 +2468,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@topcli/spinner@npm:^2.1.2":
-  version: 2.1.2
-  resolution: "@topcli/spinner@npm:2.1.2"
-  dependencies:
-    "@topcli/wcwidth": "npm:^1.0.1"
-    ansi-regex: "npm:^6.0.1"
-    cli-cursor: "npm:^4.0.0"
-    cli-spinners: "npm:^2.9.0"
-    kleur: "npm:^4.1.5"
-    strip-ansi: "npm:^7.1.0"
-  checksum: 10c0/6ccdba1d642c736473b942f05ddf967bc6fd7d23a608bcfa9ddd9c13810545d12b29c27f7a0c2f7723e6ebc27f016ef224217ef04307285d6da0b2031281b806
-  languageName: node
-  linkType: hard
-
-"@topcli/wcwidth@npm:^1.0.1":
-  version: 1.0.1
-  resolution: "@topcli/wcwidth@npm:1.0.1"
-  checksum: 10c0/b7ef1f226811853f38dc97063a5b09150e6e4b1c77b608acdb9befdcc81db2a3d636be68395dfe9c4150bef5628d3ca468f735efc6d17fe672e349fa6c82f4b4
-  languageName: node
-  linkType: hard
-
 "@tybys/wasm-util@npm:^0.10.2":
   version: 0.10.2
   resolution: "@tybys/wasm-util@npm:0.10.2"
@@ -2553,7 +2525,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/body-parser@npm:*, @types/body-parser@npm:^1.19.6":
+"@types/body-parser@npm:*":
   version: 1.19.6
   resolution: "@types/body-parser@npm:1.19.6"
   dependencies:
@@ -2785,15 +2757,6 @@ __metadata:
   version: 15.7.15
   resolution: "@types/prop-types@npm:15.7.15"
   checksum: 10c0/b59aad1ad19bf1733cf524fd4e618196c6c7690f48ee70a327eb450a42aab8e8a063fbe59ca0a5701aebe2d92d582292c0fb845ea57474f6a15f6994b0e260b2
-  languageName: node
-  linkType: hard
-
-"@types/puppeteer@npm:^5.4.7":
-  version: 5.4.7
-  resolution: "@types/puppeteer@npm:5.4.7"
-  dependencies:
-    "@types/node": "npm:*"
-  checksum: 10c0/f15bccf30526151c6e42c797b844f24eb7489f0180b391857c8d6902dfa96c7f48730540229a681505ca70e9197cdac0dfbeaca0c2537526358ad5656bef703d
   languageName: node
   linkType: hard
 
@@ -3452,26 +3415,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"body-parser@npm:^1.20.8":
-  version: 1.20.8
-  resolution: "body-parser@npm:1.20.8"
-  dependencies:
-    bytes: "npm:~3.1.2"
-    content-type: "npm:~1.0.5"
-    debug: "npm:2.6.9"
-    depd: "npm:2.0.0"
-    destroy: "npm:~1.2.0"
-    http-errors: "npm:~2.0.1"
-    iconv-lite: "npm:~0.4.24"
-    on-finished: "npm:~2.4.1"
-    qs: "npm:~6.16.0"
-    raw-body: "npm:~2.5.3"
-    type-is: "npm:~1.6.18"
-    unpipe: "npm:~1.0.0"
-  checksum: 10c0/7edc8c4762d52ff685af081b1d5ccad860edcec662c25893be452b16042fd55b9c9869a194bd282e0ad936c34eb07866b2b33f0cc02ff916597058fd229c13d2
-  languageName: node
-  linkType: hard
-
 "body-parser@npm:^2.2.1":
   version: 2.3.0
   resolution: "body-parser@npm:2.3.0"
@@ -3713,13 +3656,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cli-spinners@npm:^2.9.0":
-  version: 2.9.2
-  resolution: "cli-spinners@npm:2.9.2"
-  checksum: 10c0/907a1c227ddf0d7a101e7ab8b300affc742ead4b4ebe920a5bf1bc6d45dce2958fcd195eb28fa25275062fe6fa9b109b93b63bc8033396ed3bcb50297008b3a3
-  languageName: node
-  linkType: hard
-
 "cli-truncate@npm:^3.1.0":
   version: 3.1.0
   resolution: "cli-truncate@npm:3.1.0"
@@ -3865,7 +3801,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"content-type@npm:^1.0.5, content-type@npm:~1.0.5":
+"content-type@npm:^1.0.5":
   version: 1.0.5
   resolution: "content-type@npm:1.0.5"
   checksum: 10c0/b76ebed15c000aee4678c3707e0860cb6abd4e680a598c0a26e17f0bfae723ec9cc2802f0ff1bc6e4d80603719010431d2231018373d4dde10f9ccff9dadf5af
@@ -4031,7 +3967,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"depd@npm:2.0.0, depd@npm:^2.0.0, depd@npm:~2.0.0":
+"depd@npm:^2.0.0, depd@npm:~2.0.0":
   version: 2.0.0
   resolution: "depd@npm:2.0.0"
   checksum: 10c0/58bd06ec20e19529b06f7ad07ddab60e504d9e0faca4bd23079fac2d279c3594334d736508dc350e06e510aba5e22e4594483b3a6562ce7c17dd797f4cc4ad2c
@@ -4045,7 +3981,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"destroy@npm:1.2.0, destroy@npm:~1.2.0":
+"destroy@npm:1.2.0":
   version: 1.2.0
   resolution: "destroy@npm:1.2.0"
   checksum: 10c0/bd7633942f57418f5a3b80d5cb53898127bcf53e24cdf5d5f4396be471417671f0fee48a4ebe9a1e9defbde2a31280011af58a57e090ff822f589b443ed4e643
@@ -5325,15 +5261,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"iconv-lite@npm:~0.4.24":
-  version: 0.4.24
-  resolution: "iconv-lite@npm:0.4.24"
-  dependencies:
-    safer-buffer: "npm:>= 2.1.2 < 3"
-  checksum: 10c0/c6886a24cc00f2a059767440ec1bc00d334a89f250db8e0f7feb4961c8727118457e27c495ba94d082e51d3baca378726cd110aaf7ded8b9bbfd6a44760cf1d4
-  languageName: node
-  linkType: hard
-
 "idb-keyval@npm:^6.3.0":
   version: 6.3.0
   resolution: "idb-keyval@npm:6.3.0"
@@ -5661,13 +5588,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"kleur@npm:^4.1.5":
-  version: 4.1.5
-  resolution: "kleur@npm:4.1.5"
-  checksum: 10c0/e9de6cb49657b6fa70ba2d1448fd3d691a5c4370d8f7bbf1c2f64c24d461270f2117e1b0afe8cb3114f13bbd8e51de158c2a224953960331904e636a5e4c0f2a
-  languageName: node
-  linkType: hard
-
 "levn@npm:^0.4.1":
   version: 0.4.1
   resolution: "levn@npm:0.4.1"
@@ -5944,13 +5864,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"media-typer@npm:0.3.0":
-  version: 0.3.0
-  resolution: "media-typer@npm:0.3.0"
-  checksum: 10c0/d160f31246907e79fed398470285f21bafb45a62869dc469b1c8877f3f064f5eabc4bcc122f9479b8b605bc5c76187d7871cf84c4ee3ecd3e487da1993279928
-  languageName: node
-  linkType: hard
-
 "media-typer@npm:^1.1.0":
   version: 1.1.0
   resolution: "media-typer@npm:1.1.0"
@@ -6028,7 +5941,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mime-types@npm:^2.1.35, mime-types@npm:~2.1.24":
+"mime-types@npm:^2.1.35":
   version: 2.1.35
   resolution: "mime-types@npm:2.1.35"
   dependencies:
@@ -6287,7 +6200,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"on-finished@npm:^2.4.1, on-finished@npm:~2.4.1":
+"on-finished@npm:^2.4.1":
   version: 2.4.1
   resolution: "on-finished@npm:2.4.1"
   dependencies:
@@ -6878,18 +6791,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"raw-body@npm:~2.5.3":
-  version: 2.5.3
-  resolution: "raw-body@npm:2.5.3"
-  dependencies:
-    bytes: "npm:~3.1.2"
-    http-errors: "npm:~2.0.1"
-    iconv-lite: "npm:~0.4.24"
-    unpipe: "npm:~1.0.0"
-  checksum: 10c0/449844344fc90547fb994383a494b83300e4f22199f146a79f68d78a199a8f2a923ea9fd29c3be979bfd50291a3884733619ffc15ba02a32e703b612f8d3f74a
-  languageName: node
-  linkType: hard
-
 "react-dom@npm:^19.3.0":
   version: 19.3.0
   resolution: "react-dom@npm:19.3.0"
@@ -7209,7 +7110,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"safer-buffer@npm:>= 2.1.2 < 3, safer-buffer@npm:>= 2.1.2 < 3.0.0":
+"safer-buffer@npm:>= 2.1.2 < 3.0.0":
   version: 2.1.2
   resolution: "safer-buffer@npm:2.1.2"
   checksum: 10c0/7e3c8b2e88a1841c9671094bbaeebd94448111dd90a81a1f606f3f67708a6ec57763b3b47f06da09fc6054193e0e6709e77325415dc8422b04497a8070fa02d4
@@ -7294,12 +7195,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "server@workspace:packages/server"
   dependencies:
-    "@coingecko/coingecko-typescript": "npm:^1.15.0"
     "@eslint/js": "npm:^10.0.1"
     "@gibs/dexscreener": "npm:^1.0.0"
     "@gibs/utils": "npm:^1.0.0"
-    "@topcli/spinner": "npm:^2.1.2"
-    "@types/body-parser": "npm:^1.19.6"
     "@types/compression": "npm:^1.8.1"
     "@types/cors": "npm:^2.8.19"
     "@types/debug": "npm:^4.1.13"
@@ -7308,13 +7206,11 @@ __metadata:
     "@types/http-errors": "npm:^2.0.5"
     "@types/lodash": "npm:^4.17.25"
     "@types/pg": "npm:^8.23.1"
-    "@types/puppeteer": "npm:^5.4.7"
     "@types/react": "npm:^18.3.31"
     "@types/response-time": "npm:^2.3.9"
     "@types/supertest": "npm:^6.0.3"
     "@types/yargs": "npm:^17.0.35"
     "@uniswap/token-lists": "npm:^1.0.0-beta.34"
-    body-parser: "npm:^1.20.8"
     cheerio: "npm:^1.2.0"
     coingecko-api-v3: "npm:^0.0.31"
     compression: "npm:^1.8.2"
@@ -8066,16 +7962,6 @@ __metadata:
     media-typer: "npm:^1.1.0"
     mime-types: "npm:^3.0.0"
   checksum: 10c0/a6018f8f509de48f2c7429305e3a920e73b374fa93127dd0877ae1c2df65a5d33907caac8afb0c37a9b9fc7c49f29e3f55d668963dc845d966930b667c07f50e
-  languageName: node
-  linkType: hard
-
-"type-is@npm:~1.6.18":
-  version: 1.6.18
-  resolution: "type-is@npm:1.6.18"
-  dependencies:
-    media-typer: "npm:0.3.0"
-    mime-types: "npm:~2.1.24"
-  checksum: 10c0/a23daeb538591b7efbd61ecf06b6feb2501b683ffdc9a19c74ef5baba362b4347e42f1b4ed81f5882a8c96a3bfff7f93ce3ffaf0cbbc879b532b04c97a55db9d
   languageName: node
   linkType: hard
 
