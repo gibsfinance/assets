@@ -144,7 +144,8 @@ loads the classic JavaScript compiler API, which TypeScript 7 does not ship, and
 stops below 6.1 — so lint and the editor run on 6 while every typecheck and build runs 7
 through `scripts/tsc7.mjs`. Both packages name their binary `tsc`, and the bare `tsc` link
 belongs to 6, so callers go through the runner: the workspace `build` scripts, the CI
-`typecheck` and `publish-sdk` steps, and the Dockerfile copies the runner in before building.
+`typecheck` and `publish-sdk` steps, and both `Dockerfile` and `Dockerfile.worker` copy the runner
+in before building — a new image that runs `yarn run build` must do the same.
 A type error that only 7 reports reaches the typecheck, not the editor.
 
 The usual alias trick (`"typescript": "npm:@typescript/typescript6@…"`) fails under Yarn:
