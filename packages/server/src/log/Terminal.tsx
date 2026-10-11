@@ -51,7 +51,6 @@ export const CompletedSummary: React.FC<{
   rows: types.TerminalRow[]
   padding: Padding
 }> = (props) => {
-  if (!props.rows.length) return <></>
   const totals = aggregateCounters(props.rows)
   const names = props.rows.map((r) => r.id).filter(Boolean)
   const counterKeys = Object.values(types.terminalCounterTypes) as string[]
@@ -70,7 +69,7 @@ export const CompletedSummary: React.FC<{
         </Box>
         {progressTotals.map(([key, count]) => (
           <Text key={key} dimColor>
-            {emoji.counter[key as types.TerminalCounterType] ?? key}={count}
+            {emoji.counter[key as types.TerminalCounterType]}={count}
           </Text>
         ))}
         {counterTotals.map(([key, count]) => (
@@ -80,7 +79,7 @@ export const CompletedSummary: React.FC<{
         ))}
         {logTotals.map(([key, count]) => (
           <Text key={key} dimColor>
-            {emoji.log[key as types.TerminalLogType] ?? key}={count}
+            {emoji.log[key as types.TerminalLogType]}={count}
           </Text>
         ))}
       </Box>
@@ -100,13 +99,12 @@ export const FailedSummary: React.FC<{
   rows: types.TerminalRow[]
   padding: Padding
 }> = (props) => {
-  if (!props.rows.length) return <></>
   const totals = aggregateCounters(props.rows)
   const names = props.rows.map((r) => {
-    const errors = r.counters.get(types.terminalLogTypes.EROR)
+    // Section sends only rows that hasErrors accepted, so the error counter exists and is not empty.
+    const errors = r.counters.get(types.terminalLogTypes.EROR)!
     const warns = r.counters.get(types.terminalLogTypes.WARN)
-    const parts = [r.id]
-    if (errors && errors.current.size > 0) parts.push(`💥${errors.current.size}`)
+    const parts = [r.id, `💥${errors.current.size}`]
     if (warns && warns.current.size > 0) parts.push(`⚠️${warns.current.size}`)
     return parts.join(' ')
   })
@@ -123,7 +121,7 @@ export const FailedSummary: React.FC<{
         </Box>
         {progressTotals.map(([key, count]) => (
           <Text key={key} color="red">
-            {emoji.counter[key as types.TerminalCounterType] ?? key}={count}
+            {emoji.counter[key as types.TerminalCounterType]}={count}
           </Text>
         ))}
       </Box>
@@ -173,21 +171,20 @@ export const Progress: React.FC<
     minWidth?: number
   }
 > = (props) => {
-  const progress = props.minWidth || undefined
+  // Row sends only the counter types, and every one of them has an emoji two cells wide.
   const emojiInput = emoji.counter[props.id as types.TerminalCounterType]
-  const width = emojiInput ? 2 : undefined
   return (
     <Box display="flex" justifyContent="flex-end">
-      <Box minWidth={progress} display="flex" justifyContent="flex-end">
+      <Box minWidth={props.minWidth} display="flex" justifyContent="flex-end">
         <Text dimColor={props.isTask}>{props.current.size}</Text>
       </Box>
       <Text dimColor={props.isTask}>/</Text>
-      <Box minWidth={progress} display="flex" justifyContent="flex-start">
+      <Box minWidth={props.minWidth} display="flex" justifyContent="flex-start">
         <Text dimColor={props.isTask}>{props.total.size}</Text>
       </Box>
       <Text dimColor={props.isTask}>=</Text>
-      <Box minWidth={width} display="flex" justifyContent="flex-start" marginRight={1}>
-        <Text dimColor={props.isTask}>{emojiInput ?? props.id}</Text>
+      <Box minWidth={2} display="flex" justifyContent="flex-start" marginRight={1}>
+        <Text dimColor={props.isTask}>{emojiInput}</Text>
       </Box>
     </Box>
   )
@@ -221,9 +218,7 @@ export const Row: React.FC<types.TerminalRow & { padding: Padding }> = (props) =
   return (
     <Box display="flex" flexDirection="row" gap={1}>
       <Box width={3} display="flex" justifyContent="flex-end">
-        {props.isTask && props.type === types.terminalRowTypes.COMPLETE ? null : (
-          <Text dimColor={props.isTask}>{emoji.row[props.type] ?? '?'}</Text>
-        )}
+        <Text dimColor={props.isTask}>{emoji.row[props.type]}</Text>
       </Box>
       <Box minWidth={props.padding.id || undefined} display="flex" justifyContent="flex-end">
         <Text dimColor={props.isTask}>{props.id}</Text>
@@ -274,7 +269,8 @@ export const RowWithSections: React.FC<types.TerminalRow & { padding: Padding }>
   const sections = [...props.sections.entries()]
   const rows = sections.flatMap(([, section]) => Array.from(section.rows.values()))
   const childPadding = {
-    id: rows.reduce((len, row) => Math.max(row.id === null ? 0 : row.id.length, len), props.padding.id),
+    // Only the root row has a null id, and the root is never a member of a section.
+    id: rows.reduce((len, row) => Math.max(row.id!.length, len), props.padding.id),
     progress: rows.reduce((accum, row) => {
       for (const [key, counter] of row.counters.entries()) {
         const len = `${counter.total?.size ?? counter.current.size}`.length

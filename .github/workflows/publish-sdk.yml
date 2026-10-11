@@ -22,9 +22,9 @@ jobs:
       - run: yarn install --immutable
 
       - name: Typecheck SDK
-        run: npx tsc --noEmit -p packages/sdk/tsconfig.json
+        run: node scripts/tsc7.mjs --noEmit -p packages/sdk/tsconfig.json
       - name: Typecheck React
-        run: npx tsc --noEmit -p packages/react/tsconfig.json
+        run: node scripts/tsc7.mjs --noEmit -p packages/react/tsconfig.json
 
       - name: Test SDK
         run: cd packages/sdk && npx vitest run

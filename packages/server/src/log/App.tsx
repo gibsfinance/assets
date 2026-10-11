@@ -21,7 +21,7 @@ export const setDoesRender = (doesRenderArg: boolean) => {
     try {
       terminal.unmount()
       terminal = null
-    } catch (err) {
+    } catch {
       // Ignore errors when cleaning up terminal
     }
   }
@@ -112,7 +112,7 @@ export const rerender = () => {
   isRunning = !globalInfo.terminated
 }
 
-export const rerenderAfter = <T extends unknown>(fn: () => T) => {
+export const rerenderAfter = <T,>(fn: () => T) => {
   isMunging++
   const res = fn()
   isMunging--
@@ -166,7 +166,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     update(updates: Partial<types.TerminalRow>) {
       rerenderAfter(() => {
         for (const [k, v] of Object.entries(updates)) {
-          // @ts-expect-error
+          // @ts-expect-error Object.entries widens each value, so the keyed write cannot be typed
           row[k] = v
         }
         doLog(() => {
@@ -177,7 +177,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     createCounter(key: types.TerminalCounterType | string, stayLocal?: boolean) {
       rerenderAfter(() => {
         if (!stayLocal) parent?.createCounter(key, stayLocal)
-        const counters = (row.counters = row.counters ?? new Map())
+        const counters = row.counters
         const create = (key: types.TerminalCounterType) => {
           if (counters.has(key)) {
             return
@@ -238,10 +238,8 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
         if (!row.counters.has(key)) {
           this.createCounter(key)
         }
-        const counter = row.counters.get(key)
-        if (!counter) {
-          throw new Error('counter not found')
-        }
+        // The createCounter call above guarantees the counter exists.
+        const counter = row.counters.get(key)!
         const current = counter.current
         parent?.increment(key, ids, decrement)
         const idSet = typeof ids === 'string' ? new Set([ids]) : ids
@@ -304,7 +302,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     },
     issue(id: string, limit: number | null = null) {
       return rerenderAfter(() => {
-        const sections = (row.sections = row.sections ?? new Map())
+        const sections = row.sections
         const section = {
           id,
           limit: limit ?? globalDefaultLimit,

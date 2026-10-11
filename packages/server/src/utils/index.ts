@@ -1,5 +1,5 @@
 import { config as dotenvConfig } from 'dotenv'
-dotenvConfig()
+dotenvConfig({ quiet: true })
 
 Error.stackTraceLimit = Infinity
 

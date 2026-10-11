@@ -5,12 +5,14 @@ export default defineConfig({
     jsx: { runtime: 'automatic', importSource: 'react' },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       // Vitest 4 reports nothing at all unless `include` is set — an unset
       // include yields an empty table rather than an error, which reads as a
-      // clean run. Name the sources explicitly so the report is real.
-      include: ['src/**/*.ts'],
+      // clean run. Name the sources explicitly so the report is real. `.tsx` is
+      // named too: the Ink terminal view in `log/` is product code, and a glob
+      // that stops at `.ts` leaves it unmeasured and untested without a word.
+      include: ['src/**/*.{ts,tsx}'],
       // Providing `exclude` replaces Vitest's defaults, so the standard entries
       // have to be restated: a test file never counts toward the coverage of
       // the code it tests. `bin/` holds executable entry points driven through
@@ -18,7 +20,7 @@ export default defineConfig({
       // `__testing__/` holds shared test harnesses — infrastructure the tests
       // run on, not product code they cover.
       exclude: [
-        'src/**/*.test.ts',
+        'src/**/*.test.{ts,tsx}',
         'src/**/*.d.ts',
         'src/**/__testing__/**',
         'src/bin/**',

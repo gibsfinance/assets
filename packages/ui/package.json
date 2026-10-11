@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev:static": "vite build --watch",
-    "check": "tsc --noEmit",
+    "check": "node ../../scripts/tsc7.mjs --noEmit",
     "gen:networks": "tsx scripts/gen-networks.ts",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",

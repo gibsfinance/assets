@@ -20,7 +20,8 @@ RUN chmod +x /usr/local/bin/update_submodules.sh
 # Update submodules
 RUN /usr/local/bin/update_submodules.sh
 
-# Copy packages
+# Copy packages, and the TypeScript 7 runner the workspace builds call
+COPY scripts/tsc7.mjs scripts/tsc7.mjs
 COPY packages packages
 
 # Install dependencies and build

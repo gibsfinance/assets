@@ -16,7 +16,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/tsc7.mjs",
     "test": "vitest run"
   },
   "keywords": [

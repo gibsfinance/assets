@@ -22,8 +22,10 @@ COPY packages/react/package.json packages/react/package.json
 # Install dependencies (cached unless package.json or lockfile changes)
 RUN yarn install --immutable
 
-# Now copy source and build
+# Now copy source and build. The workspace builds run TypeScript 7 through
+# scripts/tsc7.mjs, so it has to be in the image before `yarn run build`.
 COPY tsconfig.json ./
+COPY scripts/tsc7.mjs scripts/tsc7.mjs
 COPY packages packages
 
 ARG PUBLIC_BASE_URL
