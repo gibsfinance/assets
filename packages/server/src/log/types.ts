@@ -81,7 +81,10 @@ export type TerminalSectionProxy = {
    * @param row the row metadata for the task
    * @returns a proxy for the task
    */
-  task: (id: string, row: Omit<TerminalTask, 'sections' | 'fullId'>) => TerminalRowProxy & { unmount: () => void }
+  task: (
+    id: string,
+    row: Omit<TerminalTask, 'sections' | 'fullId' | 'id'> & { id: string },
+  ) => TerminalRowProxy & { unmount: () => void }
   /**
    * create a row that to be displayed in the terminal
    * @param props the row metadata for the row
