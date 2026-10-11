@@ -23,7 +23,7 @@
     "harvest": "tsx src/bin/harvest",
     "server": "tsx ./src/bin/server.ts",
     "dev": "tsx watch ./src/bin/server.ts",
-    "lint": "prettier --check . && eslint \"./src/**/*.ts\"",
+    "lint": "prettier --check . && eslint \"./src/**/*.{ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,js,json}\" \"*.{json,md}\"",
     "create-orders": "tsx src/bin/create-orders",
     "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts",

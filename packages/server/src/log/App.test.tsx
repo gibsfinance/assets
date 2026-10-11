@@ -63,7 +63,7 @@ const loadApp = async (options: { doesRender?: boolean } = {}) => {
   // registration made during that load, and take the last one: Ink's own
   // dependencies may register theirs first, and later in the run.
   const originalOn = process.on.bind(process)
-  const registeredAtLoad: Array<() => void> = []
+  const registeredAtLoad: (() => void)[] = []
   let isLoading = true
   vi.spyOn(process, 'on').mockImplementation(((event: string, handler: () => void) => {
     if (event !== 'SIGINT' || !isLoading) return originalOn(event, handler)

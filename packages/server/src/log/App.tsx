@@ -21,7 +21,7 @@ export const setDoesRender = (doesRenderArg: boolean) => {
     try {
       terminal.unmount()
       terminal = null
-    } catch (err) {
+    } catch {
       // Ignore errors when cleaning up terminal
     }
   }
@@ -112,7 +112,7 @@ export const rerender = () => {
   isRunning = !globalInfo.terminated
 }
 
-export const rerenderAfter = <T extends unknown>(fn: () => T) => {
+export const rerenderAfter = <T,>(fn: () => T) => {
   isMunging++
   const res = fn()
   isMunging--
@@ -166,7 +166,7 @@ export const readOnlyRow = (parent: types.TerminalSectionProxy | null, row: type
     update(updates: Partial<types.TerminalRow>) {
       rerenderAfter(() => {
         for (const [k, v] of Object.entries(updates)) {
-          // @ts-expect-error
+          // @ts-expect-error Object.entries widens each value, so the keyed write cannot be typed
           row[k] = v
         }
         doLog(() => {
