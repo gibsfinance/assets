@@ -17,7 +17,7 @@
     "db:migrate-push": "drizzle-kit push",
     "db:migrate-pull": "drizzle-kit pull",
     "db:seed": "tsx src/bin/seed",
-    "build": "tsc",
+    "build": "node ../../scripts/tsc7.mjs",
     "collect": "tsx src/bin/collect",
     "collect:dev": "tsx --watch src/bin/collect",
     "harvest": "tsx src/bin/harvest",

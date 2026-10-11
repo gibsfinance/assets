@@ -49,7 +49,7 @@ jobs:
           node-version: 24
           cache: 'yarn'
       - run: yarn install --immutable
-      - run: npx tsc --noEmit -p ${{ matrix.project }}
+      - run: node scripts/tsc7.mjs --noEmit -p ${{ matrix.project }}
 
   build:
     runs-on: ubuntu-latest

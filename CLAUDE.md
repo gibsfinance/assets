@@ -39,8 +39,9 @@ yarn workspace ui run vitest run --coverage
 cd packages/server && yarn lint
 cd packages/ui && yarn lint
 
-# Typecheck (from root)
-npx tsc --noEmit -p tsconfig.json
+# Typecheck (from root) — TypeScript 7, through the runner. A bare `tsc` is
+# TypeScript 6; see "Two TypeScript versions" below.
+node scripts/tsc7.mjs --noEmit -p tsconfig.json
 
 # Build
 yarn run build
@@ -136,6 +137,20 @@ Only `packages/server` and `packages/ui` are type-checked. Nothing type-checks t
 workspaces, and `yarn workspace ui run build` is a bare `vite build`, which strips types without
 reading them — so the `typecheck` job is the only thing standing between a type error and
 master.
+
+### Two TypeScript versions
+`typescript` is 6.x and `@typescript/native` (root only) is TypeScript 7. typescript-eslint
+loads the classic JavaScript compiler API, which TypeScript 7 does not ship, and its peer range
+stops below 6.1 — so lint and the editor run on 6 while every typecheck and build runs 7
+through `scripts/tsc7.mjs`. Both packages name their binary `tsc`, and the bare `tsc` link
+belongs to 6, so callers go through the runner: the workspace `build` scripts, the CI
+`typecheck` and `publish-sdk` steps, and the Dockerfile copies the runner in before building.
+A type error that only 7 reports reaches the typecheck, not the editor.
+
+The usual alias trick (`"typescript": "npm:@typescript/typescript6@…"`) fails under Yarn:
+its built-in compatibility patch attaches to any dependency named `typescript` and breaks on
+that package's different file layout. When typescript-eslint supports TypeScript 7, move
+`typescript` to 7, delete `@typescript/native` and the runner, and point callers back at `tsc`.
 
 - `docker-compose.ci.yml` overrides `shm_size: 16g` → `256m` for CI runners
 - Integration test: docker compose up postgres + migrate + server, then `yarn run test`

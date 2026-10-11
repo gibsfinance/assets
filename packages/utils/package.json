@@ -5,7 +5,7 @@
   "description": "Utility functions for your project",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/tsc7.mjs",
     "test": "vitest run"
   },
   "keywords": [],
