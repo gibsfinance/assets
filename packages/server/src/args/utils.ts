@@ -1,5 +1,5 @@
 import { config as dotenvConfig } from 'dotenv'
-dotenvConfig()
+dotenvConfig({ quiet: true })
 
 import { hideBin } from 'yargs/helpers'
 import yargs, { Options } from 'yargs'
