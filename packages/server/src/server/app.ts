@@ -1,4 +1,3 @@
-import bodyParser from 'body-parser'
 import compression from 'compression'
 import cors from 'cors'
 import express from 'express'
@@ -34,8 +33,8 @@ app.use(responseTime())
 // exposure treatment, which is the only thing the two have in common.
 app.use(cors({ exposedHeaders: [...ATTRIBUTION_HEADER_NAMES, RESOLVED_CHAIN_HEADER] }))
 app.use(compression())
-app.use(bodyParser.urlencoded({ extended: false }))
-app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }))
+app.use(express.urlencoded({ extended: false }))
+app.use(express.json({ limit: JSON_BODY_LIMIT }))
 
 /** Readiness flag — flipped to true after migrations + warm-up complete. */
 let ready = false

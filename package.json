@@ -33,13 +33,14 @@
     "packages/server"
   ],
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.11",
-    "concurrently": "^9.2.4",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.0.3",
+    "concurrently": "^10.0.6",
+    "typescript": "^6.0.3"
   },
   "packageManager": "yarn@4.13.0+sha512.5c20ba010c99815433e5c8453112165e673f1c7948d8d2b267f4b5e52097538658388ebc9f9580656d9b75c5cc996f990f611f99304a2197d4c56d21eea370e7",
   "dependencies": {
-    "viem": "^2.57.1"
+    "viem": "^2.57.4"
   },
   "resolutions": {
     "axios": ">=1.20.0",
@@ -48,7 +49,6 @@
     "follow-redirects": ">=1.16.0",
     "lodash": ">=4.18.1",
     "qs": ">=6.16.0",
-    "vitest/vite": ">=8.0.16",
     "undici@^7.12.0": "^7.28.0",
     "path-to-regexp@^8.0.0": "8.4.2",
     "body-parser@^2.2.0": "2.3.0",
