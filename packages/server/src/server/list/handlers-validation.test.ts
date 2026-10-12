@@ -329,6 +329,116 @@ describe('merged handler', () => {
     // becomes a cache entry that hands the same body to everyone else.
     expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
   })
+
+  /**
+   * A filtered request has its own cache key, and the warmer fills only the canonical
+   * one. Built from the database, the first `decimals=6` request for Ethereum took
+   * thirty-one seconds on production. These tests hold the shortcut to the answer the
+   * database would give, and keep it away from the requests it cannot answer.
+   */
+  describe('a filtered request', () => {
+    const ranked = [
+      { providedId: '0x1111111111111111111111111111111111111111', decimals: 18, symbol: 'EIGHTEEN' },
+      { providedId: '0x2222222222222222222222222222222222222222', decimals: 6, symbol: 'SIX' },
+      { providedId: '0x3333333333333333333333333333333333333333', decimals: 8, symbol: 'EIGHT' },
+      { providedId: '0x4444444444444444444444444444444444444444', decimals: 6, symbol: 'SIXTOO' },
+    ].map((token) => ({
+      ...token,
+      chainId: 'eip155-1',
+      name: token.symbol,
+      imageHash: `hash-${token.symbol}`,
+      ext: '.png',
+      mode: 'save',
+      uri: null,
+      providerKey: 'trustwallet',
+      listKey: 'wallet-ethereum',
+    }))
+
+    /** The canonical body for the chain, built the way the warmer builds it. */
+    const buildCanonicalBody = async () => {
+      await callMerged({ chainId: 'eip155-1' })
+      return vi.mocked(db.insertCacheRequest).mock.calls[0][0].value as string
+    }
+
+    /** Answer the canonical key with a cached body, and every other key with a miss. */
+    const cacheOnlyCanonical = (body: string) => {
+      vi.mocked(db.getCachedRequest).mockImplementation(async (key: string) =>
+        key.endsWith(':eip155-1::')
+          ? ({ value: body, expiresAt: new Date(Date.now() + STALE_TTL_MS) } as never)
+          : (undefined as never),
+      )
+    }
+
+    beforeEach(() => {
+      vi.mocked(db.getTokensByChainRanked).mockResolvedValue(ranked as never)
+    })
+
+    it('answers from the cached canonical body with the tokens the database build would keep', async () => {
+      // The database build is the reference: same rows, same filter. The derived
+      // body must match it entry for entry, or the shortcut changes the answer.
+      const fromDatabase = mergedBody((await callMerged({ chainId: 'eip155-1', decimals: ['6', '8'] })).res)
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.getTokensByChainRanked).mockClear()
+
+      const { res, next } = await callMerged({ chainId: '1', decimals: ['6', '8'] })
+
+      expect(next).not.toHaveBeenCalled()
+      expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+      expect(fromDatabase.tokens.map((token: { symbol: string }) => token.symbol)).toEqual(['SIX', 'EIGHT', 'SIXTOO'])
+      expect(mergedBody(res).tokens).toEqual(fromDatabase.tokens)
+    })
+
+    it('keeps the canonical timestamp, because that is when the data was assembled', async () => {
+      const canonicalBody = await buildCanonicalBody()
+      cacheOnlyCanonical(canonicalBody)
+
+      const { res } = await callMerged({ chainId: 'eip155-1', decimals: '6' })
+
+      expect(mergedBody(res).timestamp).toBe(JSON.parse(canonicalBody).timestamp)
+    })
+
+    it('caches the derived body under its own key, so the next request reads it directly', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.insertCacheRequest).mockClear()
+
+      const { res } = await callMerged({ chainId: 'eip155-1', decimals: '6' })
+
+      const [write] = vi.mocked(db.insertCacheRequest).mock.calls[0]
+      expect(write.key).toMatch(/:eip155-1::6$/)
+      expect(write.value).toBe(res.send.mock.calls[0][0])
+    })
+
+    it('builds from the database when the canonical body is not cached', async () => {
+      const { res } = await callMerged({ chainId: 'eip155-1', decimals: '6' })
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+      expect(mergedBody(res).tokens.map((token: { symbol: string }) => token.symbol)).toEqual(['SIX', 'SIXTOO'])
+    })
+
+    it('builds from the database when extensions are requested, because the canonical body has none', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.getTokensByChainRanked).mockClear()
+
+      await callMerged({ chainId: 'eip155-1', decimals: '6', extensions: 'headerUri' })
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledWith('eip155-1', 'order-1', {
+        bridgeInfo: false,
+        headerUri: true,
+      })
+    })
+
+    it('builds from the database on an authorized refresh, which exists to replace cached copies', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.getTokensByChainRanked).mockClear()
+
+      await callMerged(
+        { chainId: 'eip155-1', decimals: '6', refresh: '1' },
+        { authorization: 'Bearer test-admin-token' },
+      )
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+    })
+  })
 })
 
 describe('tokensByChain handler', () => {

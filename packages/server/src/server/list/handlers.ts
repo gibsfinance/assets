@@ -170,6 +170,58 @@ const buildMergedResponse = async ({
 }
 
 /**
+ * Narrow a cached merged body to the entries that pass the request filters.
+ *
+ * The filters are written against database rows, whose `chainId` is the stored
+ * identifier. A served entry carries that identifier as `chainIdentifier` and a bare
+ * number as `chainId`, so the identifier is put back before the filters run.
+ *
+ * The body keeps its own `timestamp`. That is when the data was assembled, which is
+ * still true of every entry this keeps.
+ */
+const filterMergedBody = (body: string, filters: ReturnType<typeof utils.tokenFilters>): string => {
+  const list = JSON.parse(body) as { tokens: (Record<string, unknown> & { chainIdentifier: string })[] }
+  const tokens = list.tokens.filter((entry) =>
+    filters.every((filter) => filter({ ...entry, chainId: entry.chainIdentifier } as never)),
+  )
+  return JSON.stringify({ ...list, tokens })
+}
+
+/**
+ * Build a filtered merged body from the chain's cached canonical body, or from the
+ * database when no canonical body is cached.
+ *
+ * A filtered request has its own cache key, and the warmer fills only the canonical
+ * one. So the first filtered request for each chain and filter value ran the whole
+ * ranked query and kept a fraction of it: thirty-one seconds on production for
+ * Ethereum at `decimals=6`, against under one second for the warm canonical body.
+ * That key expires daily, so a lightly used filter paid the full cost almost every
+ * time it was requested.
+ *
+ * Filtering the finished list gives the same answer as filtering the rows. That holds
+ * because each group normalizeTokens folds into one entry is one token row: production
+ * on 2026-10-12 had no chain and address with more than one token row. If that ever
+ * changes, rows of one address could disagree on decimals, and the row filter could
+ * then pick a different winner than this filter keeps.
+ *
+ * Only a request without extensions may use this. The canonical body is built without
+ * them, so it has nothing to give a request that asks for them.
+ */
+const buildFilteredMergedResponse = async ({
+  canonicalCacheKey,
+  filters,
+  buildFromDatabase,
+}: {
+  canonicalCacheKey: string
+  filters: ReturnType<typeof utils.tokenFilters>
+  buildFromDatabase: () => Promise<string>
+}): Promise<string> => {
+  const canonical = await db.getCachedRequest(canonicalCacheKey)
+  if (!canonical) return buildFromDatabase()
+  return filterMergedBody(canonical.value, filters)
+}
+
+/**
  * Pre-warm the merged cache for the top N chains by token count.
  *
  * `/list/merged/:order` is the heavier of the two chain-scoped endpoints — it keeps
@@ -260,10 +312,18 @@ export const merged: RequestHandler = async (req, res, next) => {
   // columns normalizeTokens reads for extensions simply absent. Against production
   // that was nothing with extensions on /list/merged against 1290 on a provider list.
   const filters = utils.tokenFilters(req.query)
+  const chainId = resolution.chainId
+  const buildFromDatabase = () => buildMergedResponse({ chainId, orderId, extensions, filters })
+  // An authorized refresh must reach the database. Deriving from the canonical body
+  // would rewrite this row from a copy that the refresh exists to replace.
+  const derivable = req.query.decimals !== undefined && extensions.size === 0 && !refreshAuthorized
+  const canonicalCacheKey = mergedCacheKey({ orderId, chainId, extensions, decimals: undefined })
 
   await serveCachedJson(res, {
-    cacheKey: mergedCacheKey({ orderId, chainId: resolution.chainId, extensions, decimals: req.query.decimals }),
-    build: () => buildMergedResponse({ chainId: resolution.chainId, orderId, extensions, filters }),
+    cacheKey: mergedCacheKey({ orderId, chainId, extensions, decimals: req.query.decimals }),
+    build: derivable
+      ? () => buildFilteredMergedResponse({ canonicalCacheKey, filters, buildFromDatabase })
+      : buildFromDatabase,
     cacheControl: listCacheControl,
     bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
