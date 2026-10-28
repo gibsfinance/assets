@@ -237,6 +237,44 @@ describe('Studio URL hydration', () => {
     await waitFor(() => expect(probe('selected-token')).toBe('USDC'))
   })
 
+  /*
+   * The chain's first screen arrives before its full list, so a linked token
+   * past the first rows is absent at first. It has to resolve when the full
+   * list replaces the slice, not stay unselected because the slice lacked it.
+   */
+  it('resolves a ?token= that lies beyond the first-screen slice once the full list arrives', async () => {
+    let releaseFullList!: () => void
+    const fullListReleased = new Promise<void>((release) => {
+      releaseFullList = release
+    })
+    const apiToken = (address: string, symbol: string) => ({
+      chainId: 501,
+      address,
+      name: symbol,
+      symbol,
+      decimals: 6,
+      sources: ['jupiter/tag-strict'],
+    })
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    const slice = { chainId: 501, total: 2, tokens: [apiToken('FirstRowToken', 'FIRST')] }
+    const full = { chainId: 501, total: 2, tokens: [apiToken('FirstRowToken', 'FIRST'), apiToken(SOLANA_USDC, 'USDC')] }
+    mockFetch.mockImplementation(async (input: string) => {
+      const url = String(input)
+      if (!url.includes('/list/tokens/')) return ok([])
+      if (url.includes('limit=')) return ok(slice)
+      await fullListReleased
+      return ok(full)
+    })
+
+    renderStudio(`/studio?chain=solana-501&token=${SOLANA_USDC}`)
+    await waitFor(() => expect(probe('selected-chain')).toBe('solana-501'))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('limit=')))
+    expect(probe('selected-token')).toBe('none')
+
+    releaseFullList()
+    await waitFor(() => expect(probe('selected-token')).toBe('USDC'))
+  })
+
   // The restored token has to remember which namespace it came from, or every
   // image URL and generated snippet built from it names the wrong chain.
   it('restores it with the namespace it was listed under', async () => {

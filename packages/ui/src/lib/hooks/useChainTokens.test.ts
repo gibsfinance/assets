@@ -11,7 +11,7 @@ vi.mock('../utils', async () => {
   return { ...actual, getApiUrl: (path: string) => `https://api.test${path}` }
 })
 
-import { useChainTokens } from './useChainTokens'
+import { useChainTokens, FIRST_SCREEN_TOKEN_COUNT } from './useChainTokens'
 
 /** One QueryClient per render so tests never share cache — except where asserted. */
 function createWrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })) {
@@ -37,7 +37,10 @@ const SOLANA_RESPONSE = {
   ],
 }
 
-beforeEach(() => mockFetch.mockReset())
+// Braces matter: mockReset returns the mock, and a function returned from a hook is run as its cleanup.
+beforeEach(() => {
+  mockFetch.mockReset()
+})
 
 describe('useChainTokens', () => {
   it('requests the chain by its namespaced identifier', async () => {
@@ -89,7 +92,8 @@ describe('useChainTokens', () => {
     const prefixed = renderHook(() => useChainTokens('eip155-369'), { wrapper })
     await waitFor(() => expect(prefixed.result.current.tokens).toHaveLength(1))
 
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+    // One full request and one first-screen request: two, not four.
+    expect(mockFetch).toHaveBeenCalledTimes(2)
     expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/eip155-369')
   })
 
@@ -138,5 +142,106 @@ describe('useChainTokens', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.tokens).toEqual([])
     expect(result.current.total).toBeNull()
+  })
+})
+
+/** A promise a test settles by hand, so it controls which request answers first. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+const jsonResponse = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+
+const tokenNamed = (symbol: string) => ({
+  chainId: 1,
+  address: `0x${symbol}`,
+  name: symbol,
+  symbol,
+  decimals: 18,
+})
+
+/*
+ * The full Ethereum list takes up to a second to download and a third of a
+ * second to render. These pin the order the rows arrive in: the slice first,
+ * then the whole list in its place.
+ */
+describe('useChainTokens first screen', () => {
+  const SLICE = { chainId: 1, total: 3, tokens: [tokenNamed('AAA')] }
+  const FULL = { chainId: 1, total: 3, tokens: [tokenNamed('AAA'), tokenNamed('BBB'), tokenNamed('CCC')] }
+
+  function serve({ slice, full }: { slice: Promise<unknown>; full: Promise<unknown> }) {
+    mockFetch.mockImplementation((url: string) => {
+      const answer = url.includes(`limit=${FIRST_SCREEN_TOKEN_COUNT}`) ? slice : full
+      return answer.then(jsonResponse)
+    })
+  }
+
+  it('asks for the slice and the full list in parallel', async () => {
+    respondWith(FULL)
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(3))
+
+    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/eip155-1')
+    expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/eip155-1?limit=${FIRST_SCREEN_TOKEN_COUNT}`)
+  })
+
+  it('shows the slice, with the full total, before the full list arrives', async () => {
+    const full = deferred<unknown>()
+    serve({ slice: Promise.resolve(SLICE), full: full.promise })
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.tokens).toHaveLength(1))
+    // The slice carries the server's total, not its own length.
+    expect(result.current.total).toBe(3)
+    expect(result.current.isLoading).toBe(false)
+  })
+
+  it('replaces the slice with the full list once it arrives', async () => {
+    const full = deferred<unknown>()
+    serve({ slice: Promise.resolve(SLICE), full: full.promise })
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(1))
+
+    full.resolve(FULL)
+    await waitFor(() => expect(result.current.tokens.map((token) => token.symbol)).toEqual(['AAA', 'BBB', 'CCC']))
+  })
+
+  it('keeps the full list when the slice answers after it', async () => {
+    const slice = deferred<unknown>()
+    serve({ slice: slice.promise, full: Promise.resolve(FULL) })
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(3))
+
+    slice.resolve(SLICE)
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(result.current.tokens).toHaveLength(3)
+  })
+
+  it('stays loading until one of the two requests has answered', async () => {
+    const slice = deferred<unknown>()
+    const full = deferred<unknown>()
+    serve({ slice: slice.promise, full: full.promise })
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+
+    expect(result.current.isLoading).toBe(true)
+    expect(result.current.tokens).toEqual([])
+    expect(result.current.total).toBeNull()
+
+    slice.resolve(SLICE)
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+  })
+
+  it('shows the slice when the full list fails', async () => {
+    mockFetch.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.includes('limit=') ? jsonResponse(SLICE) : { ok: false, status: 500, json: () => Promise.resolve({}) },
+      ),
+    )
+    const { result } = renderHook(() => useChainTokens('eip155-1'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(1))
   })
 })
