@@ -3,6 +3,7 @@ import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/re
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
+import { usePrefetchChainTokens } from '../hooks/usePrefetchChainTokens'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import { sortNetworks } from '../utils/network-sort'
@@ -124,6 +125,7 @@ function VirtualNetworkList({
   onPick: (network: NetworkInfo) => void
 }) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const intentHandlersFor = usePrefetchChainTokens()
 
   const virtualizer = useVirtualizer({
     count: networks.length,
@@ -154,6 +156,7 @@ function VirtualNetworkList({
                   : 'border-l-2 border-transparent'
               }`}
               style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+              {...intentHandlersFor(network.chainIdentifier)}
               onClick={() => onPick(network)}>
               <span className="mr-2 flex items-center gap-3 truncate">
                 <Image

@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { createElement } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { NetworkInfo } from '../types'
+
+const mockFetch = vi.fn()
+vi.stubGlobal('fetch', mockFetch)
 
 // ---------------------------------------------------------------------------
 // Virtualizer mock — @tanstack/react-virtual measures real layout, which jsdom
@@ -90,14 +94,38 @@ import { SettingsProvider } from '../contexts/SettingsContext'
 
 function renderNetworkSelect(props: Partial<Parameters<typeof NetworkSelect>[0]> = {}) {
   const onSelect = props.onSelect ?? vi.fn()
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    createElement(SettingsProvider, null, createElement(NetworkSelect, { selectedChainId: null, onSelect, ...props })),
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(
+        SettingsProvider,
+        null,
+        createElement(NetworkSelect, { selectedChainId: null, onSelect, ...props }),
+      ),
+    ),
   )
 }
 
 describe('NetworkSelect', () => {
   afterEach(() => {
     cleanup()
+  })
+
+  // The token download is the slow part of choosing a chain. Starting it when
+  // the pointer reaches a row, rather than when the click lands, hides most of
+  // that wait.
+  it('starts the chain token requests when the pointer reaches a row', async () => {
+    mockFetch.mockReset()
+    mockFetch.mockReturnValue(new Promise(() => {}))
+    renderNetworkSelect()
+
+    fireEvent.click(screen.getByText('Choose a network...'))
+    fireEvent.pointerEnter(await screen.findByText('Bitcoin'))
+
+    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0')
+    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0?limit=60')
   })
 
   it('lists a non-Ethereum-Virtual-Machine chain and selects it by identifier', async () => {
@@ -354,7 +382,16 @@ describe('NetworkSelect', () => {
       }))
 
       const { default: FreshNetworkSelect } = await import('./NetworkSelect')
-      render(createElement(FreshNetworkSelect, { selectedChainId: null, onSelect: vi.fn() }))
+      // The reset module registry gave the fresh component its own copy of React Query,
+      // so the provider has to come from the same registry.
+      const freshQuery = await import('@tanstack/react-query')
+      render(
+        createElement(
+          freshQuery.QueryClientProvider,
+          { client: new freshQuery.QueryClient() },
+          createElement(FreshNetworkSelect, { selectedChainId: null, onSelect: vi.fn() }),
+        ),
+      )
       fireEvent.click(screen.getByText('Choose a network...'))
 
       const rows = document.querySelectorAll('div.overflow-y-auto button')

@@ -321,6 +321,27 @@ describe('StudioBrowser', () => {
     expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/eip155-501')
   })
 
+  // The download is the slow part of choosing a chain, so it starts when the
+  // pointer or focus reaches the card, not when the click lands.
+  it('starts the chain token requests before the click, on hover', async () => {
+    renderBrowser()
+
+    const card = (await screen.findByText('Solana')).closest('button')!
+    fireEvent.pointerEnter(card)
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501'))
+    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501?limit=60')
+  })
+
+  it('starts the chain token requests when keyboard focus reaches the card', async () => {
+    renderBrowser()
+
+    const card = (await screen.findByText('Solana')).closest('button')!
+    fireEvent.focus(card)
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501'))
+  })
+
   // The logo-only empty state used to key on the chain being
   // non-Ethereum-Virtual-Machine, which hid every Solana and Tron token.
   it('browses tokens on a non-Ethereum-Virtual-Machine chain that has them', async () => {

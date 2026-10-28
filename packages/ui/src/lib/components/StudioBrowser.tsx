@@ -5,6 +5,7 @@ import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { useChainTokens } from '../hooks/useChainTokens'
+import { usePrefetchChainTokens } from '../hooks/usePrefetchChainTokens'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
@@ -194,6 +195,7 @@ export default function StudioBrowser({
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
   const { metrics } = useMetrics()
+  const intentHandlersFor = usePrefetchChainTokens()
   const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor } = useListEditor()
 
   const popularChains = useMemo(() => {
@@ -430,6 +432,7 @@ export default function StudioBrowser({
                       key={chain.chainId}
                       type="button"
                       className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40"
+                      {...intentHandlersFor(chain.chainId)}
                       onClick={() => handleChainSelect(chain.chainId)}>
                       <Image
                         src={getApiUrl(`/image/${toChainIdentifier(chain.chainId)}`)}
