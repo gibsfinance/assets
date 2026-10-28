@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -116,7 +116,9 @@ describe('NetworkSelect', () => {
   // The token download is the slow part of choosing a chain. Starting it when
   // the pointer reaches a row, rather than when the click lands, hides most of
   // that wait.
-  it('starts the chain token requests when the pointer reaches a row', async () => {
+  // The drawer has 1,900+ rows, and the pointer crosses many of them on its way
+  // down. A hover must fetch only the few-kilobyte first screen, never the full list.
+  it('starts only the first-screen request when the pointer reaches a row', async () => {
     mockFetch.mockReset()
     mockFetch.mockReturnValue(new Promise(() => {}))
     renderNetworkSelect()
@@ -124,7 +126,19 @@ describe('NetworkSelect', () => {
     fireEvent.click(screen.getByText('Choose a network...'))
     fireEvent.pointerEnter(await screen.findByText('Bitcoin'))
 
-    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0')
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0?limit=60'))
+    expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0')
+  })
+
+  it('starts the full list request when the pointer presses a row', async () => {
+    mockFetch.mockReset()
+    mockFetch.mockReturnValue(new Promise(() => {}))
+    renderNetworkSelect()
+
+    fireEvent.click(screen.getByText('Choose a network...'))
+    fireEvent.pointerDown(await screen.findByText('Bitcoin'))
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0'))
     expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0?limit=60')
   })
 

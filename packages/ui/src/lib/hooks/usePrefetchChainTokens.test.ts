@@ -39,25 +39,47 @@ beforeEach(() => {
 })
 
 describe('usePrefetchChainTokens', () => {
-  it.each(['onPointerEnter', 'onFocus', 'onPointerDown'] as const)(
-    'requests the slice and the full list on %s',
-    async (eventName) => {
-      const client = createClient()
-      const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
+  // Hover and focus fire for every control the pointer crosses, including all
+  // 1,900+ rows of the network drawer. Fetching full lists there would start a
+  // multi-megabyte download per chain passed over, so they fetch only the slice.
+  it.each(['onPointerEnter', 'onFocus'] as const)('requests only the first screen on %s', async (eventName) => {
+    const client = createClient()
+    const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
 
-      result.current('eip155-1')[eventName]()
+    result.current('eip155-1')[eventName]()
 
-      await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
-      expect(mockFetch).toHaveBeenCalledWith(FULL_URL)
-      expect(mockFetch).toHaveBeenCalledWith(SLICE_URL)
-    },
-  )
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(SLICE_URL))
+    await waitFor(() => expect(client.getQueryData(['tokensByChainFirstScreen', 'eip155-1'])).toBeDefined())
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch).not.toHaveBeenCalledWith(FULL_URL)
+  })
+
+  it('requests the slice and the full list on onPointerDown', async () => {
+    const client = createClient()
+    const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
+
+    result.current('eip155-1').onPointerDown()
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
+    expect(mockFetch).toHaveBeenCalledWith(FULL_URL)
+    expect(mockFetch).toHaveBeenCalledWith(SLICE_URL)
+  })
+
+  it('downloads no full list while the pointer sweeps across many chains', async () => {
+    const client = createClient()
+    const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
+
+    for (const chainId of [1, 10, 56, 137, 369, 8453]) result.current(chainId).onPointerEnter()
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(6))
+    for (const [url] of mockFetch.mock.calls) expect(url).toContain(`?limit=${FIRST_SCREEN_TOKEN_COUNT}`)
+  })
 
   it('names a bare chain id by its namespaced identifier', async () => {
     const client = createClient()
     const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
 
-    result.current(1).onPointerEnter()
+    result.current(1).onPointerDown()
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(FULL_URL))
   })
@@ -68,7 +90,7 @@ describe('usePrefetchChainTokens', () => {
     const client = createClient()
     const wrapper = wrapperFor(client)
     const prefetch = renderHook(() => usePrefetchChainTokens(), { wrapper })
-    prefetch.result.current('eip155-1').onPointerEnter()
+    prefetch.result.current('eip155-1').onPointerDown()
     await waitFor(() => expect(client.getQueryData(['tokensByChain', 'eip155-1'])).toBeDefined())
     await waitFor(() => expect(client.getQueryData(['tokensByChainFirstScreen', 'eip155-1'])).toBeDefined())
     mockFetch.mockClear()
@@ -83,7 +105,7 @@ describe('usePrefetchChainTokens', () => {
   it('does not refetch on a second hover', async () => {
     const client = createClient()
     const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
-    result.current('eip155-1').onPointerEnter()
+    result.current('eip155-1').onPointerDown()
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(client.getQueryData(['tokensByChain', 'eip155-1'])).toBeDefined())
 
@@ -99,8 +121,8 @@ describe('usePrefetchChainTokens', () => {
     const client = createClient()
     const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
 
+    result.current('eip155-1').onPointerDown()
     result.current('eip155-1').onPointerEnter()
-    result.current('eip155-1').onFocus()
     result.current('eip155-1').onPointerDown()
 
     expect(mockFetch).toHaveBeenCalledTimes(2)
@@ -111,7 +133,7 @@ describe('usePrefetchChainTokens', () => {
     const client = createClient()
     const { result } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(client) })
 
-    expect(() => result.current('eip155-1').onPointerEnter()).not.toThrow()
+    expect(() => result.current('eip155-1').onPointerDown()).not.toThrow()
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2))
   })
 

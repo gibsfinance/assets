@@ -13,6 +13,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import { firstScreenChainTokensQueryOptions, fullChainTokensQueryOptions } from './useChainTokens'
 
+/** A prefetch is a guess; the click makes its own request and reports any failure. */
+const ignoreFailedPrefetch = () => {}
+
 /** The event props that signal intent on a control. Spread them onto the element. */
 export interface ChainIntentHandlers {
   onPointerEnter: () => void
@@ -22,6 +25,13 @@ export interface ChainIntentHandlers {
 
 /**
  * Build intent handlers that warm the token cache for a chain.
+ *
+ * Hover and focus fetch only the first screen. They fire for every control the
+ * pointer crosses, and the network drawer has over 1,900 rows: fetching full
+ * lists there would start a multi-megabyte download, and a main-thread parse,
+ * for each chain the pointer passed on its way down. The first screen is a few
+ * kilobytes, which is cheap to waste. Pressing the pointer is a commitment, so
+ * that also starts the full list, about a hundred milliseconds before the click.
  *
  * React Query de-duplicates requests in flight and skips data that is still
  * fresh, so repeated hovers cost nothing after the first. A failed prefetch is
@@ -36,11 +46,14 @@ export function usePrefetchChainTokens(): (chainId: string | number) => ChainInt
   return useCallback(
     (chainId) => {
       const identifier = toChainIdentifier(chainId)
-      const prefetch = () => {
-        void queryClient.prefetchQuery(firstScreenChainTokensQueryOptions(identifier))
-        void queryClient.prefetchQuery(fullChainTokensQueryOptions(identifier))
+      const prefetchFirstScreen = () => {
+        queryClient.query(firstScreenChainTokensQueryOptions(identifier)).catch(ignoreFailedPrefetch)
       }
-      return { onPointerEnter: prefetch, onPointerDown: prefetch, onFocus: prefetch }
+      const prefetchEverything = () => {
+        prefetchFirstScreen()
+        queryClient.query(fullChainTokensQueryOptions(identifier)).catch(ignoreFailedPrefetch)
+      }
+      return { onPointerEnter: prefetchFirstScreen, onFocus: prefetchFirstScreen, onPointerDown: prefetchEverything }
     },
     [queryClient],
   )
