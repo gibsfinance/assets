@@ -667,6 +667,124 @@ describe('tokensByChain handler', () => {
       await vi.waitFor(() => expect(db.getTokensByChainRanked).toHaveBeenCalled())
     })
   })
+
+  /**
+   * The cache key carries the limit and the warmer fills only the default one, so a
+   * `limit=50` request for Ethereum ran the full ranked query: 19.4 seconds on
+   * production. These tests hold the slice to the answer the database would give, and
+   * keep it away from the requests it cannot answer.
+   */
+  describe('a limited request', () => {
+    const ranked = ['A', 'B', 'C', 'D', 'E'].map((symbol, index) => ({
+      chainId: 'eip155-1',
+      providedId: `0x${String(index + 1).repeat(40)}`,
+      decimals: 18,
+      symbol,
+      name: symbol,
+      imageHash: `hash-${symbol}`,
+      ext: '.png',
+      mode: 'save',
+      uri: null,
+      providerKey: 'trustwallet',
+      listKey: 'wallet-ethereum',
+    }))
+    const CANONICAL_KEY = `${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:50000:`
+    const body = (res: ReturnType<typeof mockResponse>) => JSON.parse(res.send.mock.calls[0][0] as string)
+
+    /** Answer the default-limit key with a cached body, and every other key with a miss. */
+    const cacheOnlyCanonical = (value: string) => {
+      vi.mocked(db.getCachedRequest).mockImplementation(async (key: string) =>
+        key === CANONICAL_KEY
+          ? ({ value, expiresAt: new Date(Date.now() + STALE_TTL_MS) } as never)
+          : (undefined as never),
+      )
+    }
+
+    /** The default-limit body, built the way the warmer builds it. */
+    const buildCanonicalBody = async () => {
+      vi.mocked(db.getCachedRequest).mockResolvedValue(undefined as never)
+      await callTokensByChain('eip155-1')
+      return vi.mocked(db.insertCacheRequest).mock.calls[0][0].value as string
+    }
+
+    beforeEach(() => {
+      vi.mocked(db.getCachedRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+      vi.mocked(db.getTokensByChainRanked)
+        .mockReset()
+        .mockResolvedValue(ranked as never)
+      vi.mocked(db.getTokenSourcesByChain)
+        .mockReset()
+        .mockResolvedValue([] as never)
+      vi.mocked(db.insertCacheRequest)
+        .mockReset()
+        .mockResolvedValue(undefined as never)
+    })
+
+    it('answers from the cached default body with the tokens and total the database build gives', async () => {
+      const canonical = await buildCanonicalBody()
+      const fromDatabase = await callTokensByChain('eip155-1', { limit: '2' })
+      cacheOnlyCanonical(canonical)
+      vi.mocked(db.getTokensByChainRanked).mockClear()
+
+      const { res, next } = await callTokensByChain('1', { limit: '2' })
+
+      expect(next).not.toHaveBeenCalled()
+      expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+      expect(body(fromDatabase.res).total).toBe(5)
+      expect(body(fromDatabase.res).tokens.map((token: { symbol: string }) => token.symbol)).toEqual(['A', 'B'])
+      // Byte for byte, so the cached copy is indistinguishable from a built one.
+      expect(res.send.mock.calls[0][0]).toBe(fromDatabase.res.send.mock.calls[0][0])
+    })
+
+    it('keeps the total of the whole list rather than the length of the slice', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+
+      const { res } = await callTokensByChain('eip155-1', { limit: '3' })
+
+      expect(body(res).total).toBe(5)
+      expect(body(res).tokens).toHaveLength(3)
+    })
+
+    it('caches the slice under its own limit key', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.insertCacheRequest).mockClear()
+
+      const { res } = await callTokensByChain('eip155-1', { limit: '2' })
+
+      const [write] = vi.mocked(db.insertCacheRequest).mock.calls[0]
+      expect(write.key).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:2:`)
+      expect(write.value).toBe(res.send.mock.calls[0][0])
+    })
+
+    it('builds from the database when the default body is not cached', async () => {
+      const { res } = await callTokensByChain('eip155-1', { limit: '2' })
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+      expect(body(res).tokens).toHaveLength(2)
+    })
+
+    it('builds from the database on an authorized refresh, which exists to replace cached copies', async () => {
+      cacheOnlyCanonical(await buildCanonicalBody())
+      vi.mocked(db.getTokensByChainRanked).mockClear()
+
+      await callTokensByChain('eip155-1', { limit: '2', refresh: '1' }, { authorization: 'Bearer test-admin-token' })
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+    })
+
+    it('builds from the database when the limit is the default, because the default body cannot give more', async () => {
+      // A decoy canonical body that would be wrong if served.
+      cacheOnlyCanonical('{"chainId":1,"chainIdentifier":"eip155-1","total":99,"tokens":[]}')
+      vi.mocked(db.getCachedRequest).mockImplementation(async () => undefined as never)
+
+      const { res } = await callTokensByChain('eip155-1', { limit: '50000' })
+
+      expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+      expect(body(res).total).toBe(5)
+    })
+  })
 })
 
 describe('all handler', () => {

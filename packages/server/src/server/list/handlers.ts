@@ -803,6 +803,43 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
   })
 }
 
+/**
+ * Build a limited tokensByChain body from the chain's cached default-limit body, or
+ * from the database when that body is not cached.
+ *
+ * The cache key carries the limit, and the warmer fills only the default one. So the
+ * first request for any other limit ran the whole ranked query and kept a few entries
+ * of it: 19.4 seconds on production for `limit=50` on Ethereum, against 0.23 seconds
+ * once cached.
+ *
+ * Slicing the finished body gives the same bytes as the database build.
+ * buildTokensByChainResponse counts `total` over every entry and then keeps
+ * `entries.slice(0, limit)` in ranking order, so the first `limit` tokens of a larger
+ * body are exactly those tokens, and `total` does not depend on the limit.
+ *
+ * That holds only for a limit below the default. The default body is itself cut at the
+ * default, so it has nothing to give a request that asks for more.
+ */
+const buildLimitedTokensByChainResponse = async ({
+  chainId,
+  limit,
+  buildFromDatabase,
+}: {
+  chainId: string
+  limit: number
+  buildFromDatabase: () => Promise<string>
+}): Promise<string> => {
+  const canonical = await db.getCachedRequest(tokensByChainCacheKey(chainId, DEFAULT_TOKENS_BY_CHAIN_LIMIT))
+  if (!canonical) return buildFromDatabase()
+  const body = JSON.parse(canonical.value)
+  return JSON.stringify({
+    chainId: body.chainId,
+    chainIdentifier: body.chainIdentifier,
+    total: body.total,
+    tokens: body.tokens.slice(0, limit),
+  })
+}
+
 export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> =>
   buildAndCache(tokensByChainCacheKey(chainId, limit), () => buildTokensByChainResponse(chainId, limit))
 
@@ -869,9 +906,15 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
     max: MAX_TOKENS_BY_CHAIN_LIMIT,
   })
+  const buildFromDatabase = () => buildTokensByChainResponse(chainId, limit)
+  // An authorized refresh must reach the database. Deriving from the default body
+  // would rewrite this row from a copy that the refresh exists to replace.
+  const derivable = limit < DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized
   await serveCachedJson(res, {
     cacheKey: tokensByChainCacheKey(chainId, limit),
-    build: () => buildTokensByChainResponse(chainId, limit),
+    build: derivable
+      ? () => buildLimitedTokensByChainResponse({ chainId, limit, buildFromDatabase })
+      : buildFromDatabase,
     cacheControl: listCacheControl,
     bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,
