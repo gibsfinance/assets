@@ -8,6 +8,7 @@ import { router } from './routes'
 import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middleware'
 import { ATTRIBUTION_HEADER_NAMES } from './image/attribution'
 import { RESOLVED_CHAIN_HEADER } from './image/headers'
+import { staticCacheHeaders } from './static-headers'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -57,7 +58,7 @@ app.get('/health', (_req, res) => {
 // the last handler and every miss reached it. Adding notFoundMiddleware put a handler that
 // claims *everything* in front of it, and the whole site began answering JSON 404 for
 // index.html and every asset. Keep this above the catch-all.
-app.use(express.static(STATIC_PATH))
+app.use(express.static(STATIC_PATH, { setHeaders: staticCacheHeaders(STATIC_PATH) }))
 
 app.use(router)
 
