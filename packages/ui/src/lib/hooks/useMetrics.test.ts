@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 
@@ -171,6 +171,51 @@ describe('useMetrics (composite)', () => {
     expect(pulsechain.hasImage).toBe(false)
     expect(pulsechain.tokenCount).toBe(2000)
     expect(result.current.providers).toHaveLength(1)
+  })
+
+  // Consumers key `useMemo` on `metrics`. A new object per render made each of
+  // them recompute 1,900+ networks on every render, so identity is the contract.
+  it('keeps the same metrics object across renders while the query data is unchanged', async () => {
+    const stats = [{ chainId: '1', chainIdentifier: 'eip155-1', count: 5000 }]
+    const networks = [{ type: 'evm', chainId: '1', networkId: '1', chainIdentifier: 'eip155-1', imageHash: 'abc' }]
+    mockFetch.mockImplementation((url: string) => {
+      const body = url.includes('/stats') ? stats : url.includes('/networks') ? networks : []
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+    })
+
+    const { useMetrics } = await import('./useMetrics')
+    const { result, rerender } = renderHook(() => useMetrics(), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.metrics).not.toBeNull())
+    const first = result.current.metrics
+
+    rerender()
+    rerender()
+    expect(result.current.metrics).toBe(first)
+  })
+
+  it('builds a new metrics object when the query data changes', async () => {
+    let count = 5000
+    const networks = [{ type: 'evm', chainId: '1', networkId: '1', chainIdentifier: 'eip155-1', imageHash: 'abc' }]
+    mockFetch.mockImplementation((url: string) => {
+      const body = url.includes('/stats')
+        ? [{ chainId: '1', chainIdentifier: 'eip155-1', count }]
+        : url.includes('/networks')
+          ? networks
+          : []
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+    })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
+    const { useMetrics } = await import('./useMetrics')
+    const { result } = renderHook(() => useMetrics(), { wrapper })
+    await waitFor(() => expect(result.current.metrics).not.toBeNull())
+    const first = result.current.metrics
+
+    count = 6000
+    await act(() => client.invalidateQueries({ queryKey: ['stats'] }))
+    await waitFor(() => expect(result.current.metrics?.tokenList.total).toBe(6000))
+    expect(result.current.metrics).not.toBe(first)
   })
 
   it('keeps non-Ethereum-Virtual-Machine networks with a zero token count', async () => {

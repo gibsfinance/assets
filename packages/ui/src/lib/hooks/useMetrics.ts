@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ListDescription, Network, NetworkInfo, PlatformMetrics } from '../types'
 import { getApiUrl } from '../utils'
@@ -99,43 +100,46 @@ export function useMetrics(): {
   // Both leave `metrics` null, and they call for different words on screen.
   const isError = statsError || networksError || providersError
 
-  if (!stats || !networks) {
-    return { metrics: null, providers: providers ?? [], isLoading, isError }
-  }
+  // Memoized so its identity holds while the query data does. Every `useMemo` that
+  // lists `metrics` as a dependency (the network sort, the popular chains, the
+  // search index) otherwise reran on every render, remapping 1,900+ networks each time.
+  const metrics = useMemo<PlatformMetrics | null>(() => {
+    if (!stats || !networks) return null
 
-  // Token counts keyed on the canonical identifier so a non-Ethereum-Virtual-Machine
-  // bare reference (e.g. monero-128) never inherits an Ethereum-Virtual-Machine
-  // chain's count (e.g. Huobi chain 128). A bare-keyed map used to be published
-  // alongside this one; every consumer that read it collided two namespaces onto
-  // one number, so it is gone rather than deprecated.
-  const byIdentifier: Record<string, number> = {}
-  for (const { chainIdentifier, count } of stats) {
-    byIdentifier[chainIdentifier] = count
-  }
-  const total = Object.values(byIdentifier).reduce((sum, c) => sum + c, 0)
-
-  // Naming is resolved once, here, so a consumer can never re-derive it differently.
-  // isTestnet reads the registry's raw name rather than the curated display one: the
-  // curated maps rename chains for the drawer ("PulseChain Testnet v4" survives, but a
-  // future entry might not), whereas upstream's own naming is what states the fact.
-  const supported: NetworkInfo[] = networks.map((n) => {
-    const name = getNetworkName(n.chainIdentifier, { registryName: n.name })
-    return {
-      chainId: Number(n.chainId),
-      chainIdentifier: n.chainIdentifier,
-      type: n.type,
-      name,
-      isTestnet: isTestnet({ name: n.name ?? name, title: n.title }),
-      tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
-      hasImage: n.imageHash != null,
-      isEvm: n.type === 'evm',
+    // Token counts keyed on the canonical identifier so a non-Ethereum-Virtual-Machine
+    // bare reference (e.g. monero-128) never inherits an Ethereum-Virtual-Machine
+    // chain's count (e.g. Huobi chain 128). A bare-keyed map used to be published
+    // alongside this one; every consumer that read it collided two namespaces onto
+    // one number, so it is gone rather than deprecated.
+    const byIdentifier: Record<string, number> = {}
+    for (const { chainIdentifier, count } of stats) {
+      byIdentifier[chainIdentifier] = count
     }
-  })
+    const total = Object.values(byIdentifier).reduce((sum, c) => sum + c, 0)
 
-  const metrics: PlatformMetrics = {
-    tokenList: { total },
-    networks: { supported },
-  }
+    // Naming is resolved once, here, so a consumer can never re-derive it differently.
+    // isTestnet reads the registry's raw name rather than the curated display one: the
+    // curated maps rename chains for the drawer ("PulseChain Testnet v4" survives, but a
+    // future entry might not), whereas upstream's own naming is what states the fact.
+    const supported: NetworkInfo[] = networks.map((n) => {
+      const name = getNetworkName(n.chainIdentifier, { registryName: n.name })
+      return {
+        chainId: Number(n.chainId),
+        chainIdentifier: n.chainIdentifier,
+        type: n.type,
+        name,
+        isTestnet: isTestnet({ name: n.name ?? name, title: n.title }),
+        tokenCount: byIdentifier[n.chainIdentifier] ?? 0,
+        hasImage: n.imageHash != null,
+        isEvm: n.type === 'evm',
+      }
+    })
+
+    return {
+      tokenList: { total },
+      networks: { supported },
+    }
+  }, [stats, networks])
 
   return { metrics, providers: providers ?? [], isLoading, isError }
 }
