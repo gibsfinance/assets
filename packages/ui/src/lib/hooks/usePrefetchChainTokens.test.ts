@@ -168,6 +168,11 @@ describe('usePrefetchChainTokens icon preloading', () => {
     vi.stubGlobal('fetch', mockFetch)
   })
 
+  // Each test uses its own chain and counts only that chain's icons. A preload an
+  // earlier test started can finish late, after its fetch promise settles, and land
+  // in the next test's list; on a loaded machine it did, and failed an unrelated test.
+  const requestedFor = (chainId: string) => requested.filter((url) => url.includes(`/image/${chainId}/`))
+
   const setup = (chainId: string) => {
     const { result, unmount } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(createClient()) })
     return { handlers: result.current(chainId), unmount }
@@ -183,7 +188,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(requested).toEqual([])
+    expect(requestedFor('eip155-10')).toEqual([])
   })
 
   it('starts the icon requests once the pointer has rested for the dwell', async () => {
@@ -192,7 +197,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onPointerEnter()
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS)
 
-    expect(requested).toHaveLength(1)
+    expect(requestedFor('eip155-11')).toHaveLength(1)
     expect(requested[0]).toContain('/image/eip155-11/0xA?')
   })
 
@@ -204,7 +209,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onBlur()
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
 
-    expect(requested).toEqual([])
+    expect(requestedFor('eip155-12')).toEqual([])
   })
 
   it('restarts the wait when the pointer moves to another control', async () => {
@@ -215,7 +220,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onPointerEnter()
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS - 1)
 
-    expect(requested).toEqual([])
+    expect(requestedFor('eip155-13')).toEqual([])
   })
 
   it('starts the icon requests at once on pointerdown', async () => {
@@ -224,7 +229,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onPointerDown()
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(requested).toHaveLength(1)
+    expect(requestedFor('eip155-14')).toHaveLength(1)
     expect(requested[0]).toContain('/image/eip155-14/0xA?')
   })
 
@@ -235,7 +240,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onPointerDown()
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
 
-    expect(requested).toHaveLength(1)
+    expect(requestedFor('eip155-15')).toHaveLength(1)
   })
 
   it('drops a pending wait when the component unmounts', async () => {
@@ -245,7 +250,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     unmount()
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
 
-    expect(requested).toEqual([])
+    expect(requestedFor('eip155-16')).toEqual([])
   })
 
   it('starts no icons when the slice request fails', async () => {
@@ -255,6 +260,6 @@ describe('usePrefetchChainTokens icon preloading', () => {
     handlers.onPointerDown()
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(requested).toEqual([])
+    expect(requestedFor('eip155-17')).toEqual([])
   })
 })
