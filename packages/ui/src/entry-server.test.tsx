@@ -1,8 +1,21 @@
 // @vitest-environment node
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHome } from './entry-server'
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('renderHome', () => {
+  // The build imports this module and renders once. A timer left behind keeps the
+  // build process alive: React Query's hour-long garbage collection timers held
+  // every build open for an hour after it finished.
+  it('leaves no timer running, so the build process can exit', () => {
+    vi.useFakeTimers()
+    renderHome()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('renders the site header and the home heading with no browser present', () => {
     const markup = renderHome()
     expect(markup.length).toBeGreaterThan(1000)

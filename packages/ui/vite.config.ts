@@ -6,8 +6,8 @@ import child_process from 'child_process'
 import tailwindcss from '@tailwindcss/vite'
 import { pathToFileURL } from 'url'
 import path from 'path'
-import { injectMarkup } from './src/prerender/inject-markup'
-import { themeScript, routeGuardScript } from './src/prerender/pre-paint'
+import { injectMarkup } from './src/prerender/inject-markup.ts'
+import { themeScript, routeHideScript, routeGuardScript } from './src/prerender/pre-paint.ts'
 
 /**
  * Writes the home page into `index.html` at build time. It imports the bundle that
@@ -20,7 +20,7 @@ const prerenderHome = () => ({
   async transformIndexHtml(html: string) {
     const bundle = pathToFileURL(path.resolve(import.meta.dirname, 'dist-ssr/entry-server.js')).href
     const { renderHome } = (await import(bundle)) as { renderHome: () => string }
-    return injectMarkup(html, { markup: renderHome(), themeScript, routeGuardScript })
+    return injectMarkup(html, { markup: renderHome(), themeScript, routeHideScript, routeGuardScript })
   },
 })
 
