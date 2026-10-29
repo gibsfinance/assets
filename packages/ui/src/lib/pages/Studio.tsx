@@ -14,6 +14,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
 import type { Token } from '../types'
+import { faFlask, faPlus } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from '../components/Icon'
 
 /**
  * Studio page — URL hash params drive navigational state:
@@ -147,7 +149,7 @@ export default function Studio() {
                     onClick={openNewEditor}
                     className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500 hover:text-accent-500 hover:bg-accent-500/10"
                     title="New List">
-                    <i className="fas fa-plus text-sm" />
+                    <Icon icon={faPlus} className="text-sm" />
                     <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       New List
                     </span>
@@ -161,7 +163,7 @@ export default function Studio() {
                         : 'bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500'
                     }`}
                     title={showTestnets ? 'Testnets visible' : 'Testnets hidden'}>
-                    <i className="fas fa-flask text-sm" />
+                    <Icon icon={faFlask} className="text-sm" />
                     <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       {showTestnets ? 'Hide testnets' : 'Show testnets'}
                     </span>
@@ -203,7 +205,7 @@ export default function Studio() {
               onClick={openNewEditor}
               className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-gray-100 dark:bg-surface-2 text-gray-400 dark:text-gray-500 hover:text-accent-500 hover:bg-accent-500/10"
               title="New List">
-              <i className="fas fa-plus text-sm" />
+              <Icon icon={faPlus} className="text-sm" />
             </button>
             <ThemeToggle />
           </div>

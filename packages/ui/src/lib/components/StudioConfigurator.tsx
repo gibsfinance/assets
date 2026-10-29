@@ -13,6 +13,19 @@ import CodeOutput from './CodeOutput'
 import Image from './Image'
 import NumberStepper from './NumberStepper'
 import { toChainIdentifier } from '../utils/chain-identifier'
+import {
+  faChevronDown,
+  faCode,
+  faCoins,
+  faCrosshairs,
+  faLayerGroup,
+  faLightbulb,
+  faLink,
+  faLinkSlash,
+  faMinus,
+  faPlus,
+} from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 // ---------------------------------------------------------------------------
 // Shadow + shape helpers
@@ -90,7 +103,7 @@ function SizeControl() {
             : 'bg-gray-100 text-gray-400 hover:text-gray-600 dark:bg-surface-2 dark:text-white/30 dark:hover:text-white/50'
         }`}
         aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}>
-        <i className={`fas ${aspectLinked ? 'fa-link' : 'fa-link-slash'} text-[9px]`} />
+        <Icon icon={aspectLinked ? faLink : faLinkSlash} className="text-[9px]" />
       </button>
       <NumberStepper label="H" value={appearance.height} onChange={handleHeightChange} min={16} max={512} />
     </div>
@@ -129,7 +142,7 @@ function ShapeDropdown() {
       <Menu>
         <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
           {currentLabel}
-          <i className="fas fa-chevron-down text-[8px] text-gray-400 dark:text-white/40" />
+          <Icon icon={faChevronDown} className="text-[8px] text-gray-400 dark:text-white/40" />
         </MenuButton>
         <MenuItems
           anchor="bottom start"
@@ -177,7 +190,7 @@ function ShadowDropdown() {
     <Menu>
       <MenuButton className="flex items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
         {currentLabel}
-        <i className="fas fa-chevron-down text-[8px] text-gray-400 dark:text-white/40" />
+        <Icon icon={faChevronDown} className="text-[8px] text-gray-400 dark:text-white/40" />
       </MenuButton>
       <MenuItems
         anchor="bottom start"
@@ -285,7 +298,7 @@ function BackgroundPopover() {
 
         {appearance.backgroundColor !== 'transparent' && appearance.padding === 0 && (
           <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-            <i className="fas fa-lightbulb mt-0.5 flex-shrink-0 text-[9px]" />
+            <Icon icon={faLightbulb} className="mt-0.5 flex-shrink-0 text-[9px]" />
             <span>
               Background won't be visible without padding.{' '}
               <button type="button" className="font-medium underline" onClick={() => updateAppearance({ padding: 8 })}>
@@ -326,7 +339,7 @@ function BadgePopover() {
             : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
         }`}
         aria-label="Badge settings">
-        <i className="fas fa-link text-[10px]" />
+        <Icon icon={faLink} className="text-[10px]" />
         <span className="hidden sm:inline">Badge</span>
       </PopoverButton>
       <PopoverPanel
@@ -364,7 +377,7 @@ function ResolutionOrderPopover() {
       <PopoverButton
         className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3"
         aria-label="Resolution order">
-        <i className="fas fa-layer-group text-[10px]" />
+        <Icon icon={faLayerGroup} className="text-[10px]" />
         <span className="hidden sm:inline">Order</span>
       </PopoverButton>
       <PopoverPanel
@@ -392,7 +405,7 @@ function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () =>
       }`}
       aria-label={active ? 'Hide code output' : 'Show code output'}
       aria-pressed={active}>
-      <i className="fas fa-code text-[10px]" />
+      <Icon icon={faCode} className="text-[10px]" />
       <span className="hidden sm:inline">Code</span>
     </button>
   )
@@ -542,7 +555,7 @@ function InfiniteCanvas() {
           {!hasToken && (
             <div className="flex flex-col items-center gap-3 pointer-events-none">
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
-                <i className="fas fa-coins text-2xl text-gray-300 dark:text-white/10" />
+                <Icon icon={faCoins} className="text-2xl text-gray-300 dark:text-white/10" />
               </div>
               <p className="text-sm font-medium text-gray-400 dark:text-white/30">Select a token to preview</p>
             </div>
@@ -623,7 +636,7 @@ function InfiniteCanvas() {
           className="flex h-7 w-7 items-center justify-center rounded-t-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Reset view"
           title="Reset view">
-          <i className="fas fa-crosshairs text-[10px]" />
+          <Icon icon={faCrosshairs} className="text-[10px]" />
         </button>
 
         {/* Zoom in */}
@@ -633,7 +646,7 @@ function InfiniteCanvas() {
           className="flex h-6 w-7 items-center justify-center text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Zoom in"
           title="Zoom in">
-          <i className="fas fa-plus text-[9px]" />
+          <Icon icon={faPlus} className="text-[9px]" />
         </button>
 
         {/* Zoom percentage */}
@@ -648,7 +661,7 @@ function InfiniteCanvas() {
           className="flex h-6 w-7 items-center justify-center rounded-b-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
           aria-label="Zoom out"
           title="Zoom out">
-          <i className="fas fa-minus text-[9px]" />
+          <Icon icon={faMinus} className="text-[9px]" />
         </button>
       </div>
     </div>

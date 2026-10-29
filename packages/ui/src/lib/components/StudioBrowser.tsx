@@ -16,6 +16,8 @@ import TokenSearch from './TokenSearch'
 import Image from './Image'
 import TokenSubRows from './TokenSubRows'
 import type { Token, SearchUpdate } from '../types'
+import { faCircleInfo, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
@@ -164,7 +166,7 @@ function VirtualTokenList({
                   }}
                   title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
                   aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}>
-                  <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
+                  <Icon icon={editorOpen && activeList ? faPlus : faCircleInfo} className="text-sm" />
                 </button>
               </div>
 
@@ -475,7 +477,7 @@ export default function StudioBrowser({
 
         {selectedChainId && !logoOnlyNetwork && isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
-            <i className="fas fa-spinner fa-spin mr-2" />
+            <Icon icon={faSpinner} spin className="mr-2" />
             Loading tokens...
           </div>
         )}
@@ -494,7 +496,7 @@ export default function StudioBrowser({
          */}
         {isTruncated && (
           <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500 dark:border-surface-3 dark:bg-surface-2 dark:text-white/40">
-            <i className="fas fa-circle-info mr-1" />
+            <Icon icon={faCircleInfo} className="mr-1" />
             More tokens matched than are shown here. Type more of the name, symbol or address to narrow it down.
           </div>
         )}

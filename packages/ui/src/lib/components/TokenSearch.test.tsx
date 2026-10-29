@@ -247,7 +247,7 @@ describe('TokenSearch — typing and debouncing', () => {
     type('dai')
     await runPendingSearch()
     expect(updates.at(-1)).toMatchObject({ isError: true, isSearching: false })
-    expect(container.querySelector('.fa-spinner')).toBeNull()
+    expect(container.querySelector('[data-icon="spinner"]')).toBeNull()
 
     type('daix')
     expect(searchBox().value).toBe('daix')
@@ -275,17 +275,17 @@ describe('TokenSearch — typing and debouncing', () => {
     })
 
     const { container } = renderSearch()
-    expect(container.querySelector('.fa-spinner')).toBeNull()
+    expect(container.querySelector('[data-icon="spinner"]')).toBeNull()
 
     type('dai')
     await runPendingSearch()
-    expect(container.querySelector('.fa-spinner')).toBeTruthy()
+    expect(container.querySelector('[data-icon="spinner"]')).toBeTruthy()
 
     await act(async () => {
       release()
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(container.querySelector('.fa-spinner')).toBeNull()
+    expect(container.querySelector('[data-icon="spinner"]')).toBeNull()
   })
 
   it('hands the results straight through to the caller', async () => {
@@ -335,7 +335,8 @@ describe('TokenSearch — the chain filter it embeds', () => {
     ['coingecko/all', listC],
   ])
 
-  const filterCount = (container: HTMLElement) => container.querySelector('.fa-filter')!.nextElementSibling!.textContent
+  const filterCount = (container: HTMLElement) =>
+    container.querySelector('[data-icon="filter"]')!.nextElementSibling!.textContent
 
   it('counts only the lists holding a token on the chain being browsed', () => {
     const { container } = renderSearch({ tokensByList, selectedChain: 1 })

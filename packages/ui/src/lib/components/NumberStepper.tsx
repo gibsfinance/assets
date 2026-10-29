@@ -1,4 +1,6 @@
 import { useCallback, useRef, useEffect } from 'react'
+import { faMinus, faPlus } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface NumberStepperProps {
   value: number
@@ -82,7 +84,7 @@ export default function NumberStepper({
           className={btnClass}
           aria-label="Decrease"
           disabled={value <= min}>
-          <i className="fas fa-minus" />
+          <Icon icon={faMinus} />
         </button>
         <input
           type="text"
@@ -101,7 +103,7 @@ export default function NumberStepper({
           className={btnClass}
           aria-label="Increase"
           disabled={value >= max}>
-          <i className="fas fa-plus" />
+          <Icon icon={faPlus} />
         </button>
       </div>
     </div>

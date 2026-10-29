@@ -184,7 +184,7 @@ describe('ImageUpload', () => {
   it('shows an empty affordance when the token has no image yet', () => {
     render(<ImageUpload onUpload={vi.fn()} />)
     expect(control().querySelector('img')).toBeNull()
-    expect(control().querySelector('i')).toBeTruthy()
+    expect(control().querySelector('[data-icon="camera"]')).toBeTruthy()
   })
 
   it('sizes itself to the row it sits in', () => {

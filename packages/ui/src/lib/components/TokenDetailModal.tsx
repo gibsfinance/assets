@@ -8,6 +8,8 @@ import Image from './Image'
 import type { Token } from '../types'
 import { tokenChainIdentifier } from '../utils/chain-identifier'
 import { formatFileSize, formatDimensions } from '../utils/formatting'
+import { faCheck, faCircleCheck, faCopy, faSliders, faSpinner, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface TokenDetailModalProps {
   token: Token | null
@@ -29,7 +31,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={handleCopy}
       className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-400 dark:text-white/40 transition-all hover:bg-accent-500/10 hover:text-accent-500"
       title={copied ? 'Copied!' : 'Copy to clipboard'}>
-      <i className={`fas ${copied ? 'fa-check text-accent-500' : 'fa-copy'} text-xs`} />
+      <Icon icon={copied ? faCheck : faCopy} className={copied ? 'text-xs text-accent-500' : 'text-xs'} />
     </button>
   )
 }
@@ -79,7 +81,7 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
         onClick={onClose}
         className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 dark:text-white/40 transition-all hover:bg-gray-100 dark:hover:bg-surface-2 hover:text-gray-600 dark:hover:text-white/80"
         aria-label="Close">
-        <i className="fas fa-times text-sm" />
+        <Icon icon={faXmark} className="text-sm" />
       </button>
 
       {/* Hero */}
@@ -102,7 +104,7 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
         </p>
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-white/40">
-            <i className="fas fa-spinner fa-spin" />
+            <Icon icon={faSpinner} spin />
             Loading metadata…
           </div>
         ) : metadata ? (
@@ -117,7 +119,7 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
             {metadata.format === 'SVG' && (
               <div className="mt-1 flex items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-500">
-                  <i className="fas fa-check-circle text-[10px]" />
+                  <Icon icon={faCircleCheck} className="text-[10px]" />
                   Resolution Independent
                 </span>
               </div>
@@ -154,11 +156,11 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
       {/* Actions */}
       <div className="flex gap-3">
         <button type="button" onClick={handleConfigureInStudio} className="btn-primary flex-1 text-sm">
-          <i className="fas fa-sliders-h mr-2" />
+          <Icon icon={faSliders} className="mr-2" />
           Configure in Studio
         </button>
         <button type="button" onClick={handleCopyUrl} className="btn-secondary text-sm" title="Copy image URL">
-          <i className="fas fa-copy mr-2" />
+          <Icon icon={faCopy} className="mr-2" />
           Copy URL
         </button>
       </div>

@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react'
 import { useTokenSearch } from '../hooks/useTokenSearch'
 import type { SearchUpdate, Token } from '../types'
 import TokenListFilter from './TokenListFilter'
+import { faMagnifyingGlass, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface TokenSearchProps {
   onSearchUpdate: (state: SearchUpdate) => void
@@ -41,7 +43,7 @@ export default function TokenSearch({
   return (
     <div className="flex flex-col sm:flex-row">
       <div className="flex flex-1 items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 dark:border-surface-3 dark:bg-surface-2">
-        <i className="fas fa-search text-xs text-gray-400 dark:text-white/30" />
+        <Icon icon={faMagnifyingGlass} className="text-xs text-gray-400 dark:text-white/30" />
         <input
           type="search"
           placeholder={`Search ${count} tokens...`}
@@ -49,7 +51,7 @@ export default function TokenSearch({
           value={query}
           onChange={handleChange}
         />
-        {isSearching && <i className="fas fa-spinner fa-spin text-xs text-accent-500" />}
+        {isSearching && <Icon icon={faSpinner} spin className="text-xs text-accent-500" />}
         <TokenListFilter
           selectedChain={selectedChain}
           enabledLists={enabledLists}

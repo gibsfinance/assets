@@ -1231,17 +1231,17 @@ describe('StudioBrowser — the token list filter', () => {
     fireEvent.click(await screen.findByText('Ethereum'))
     await screen.findByText('Wrapped Ether')
 
-    const filterButton = container.querySelector('.fa-filter')!.closest('button') as HTMLElement
+    const filterButton = container.querySelector('[data-icon="filter"]')!.closest('button') as HTMLElement
     fireEvent.click(filterButton)
     await screen.findByText('Toggle All')
 
-    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
-    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('gib/default').querySelector('[data-icon="check"]')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('[data-icon="check"]')).toBeTruthy()
 
     fireEvent.click(checkboxFor('gib/default'))
 
-    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeNull()
-    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('gib/default').querySelector('[data-icon="check"]')).toBeNull()
+    expect(checkboxFor('merged').querySelector('[data-icon="check"]')).toBeTruthy()
   })
 
   it('turns every list on or off together from "Toggle All"', async () => {
@@ -1252,20 +1252,20 @@ describe('StudioBrowser — the token list filter', () => {
     fireEvent.click(await screen.findByText('Ethereum'))
     await screen.findByText('Wrapped Ether')
 
-    const filterButton = container.querySelector('.fa-filter')!.closest('button') as HTMLElement
+    const filterButton = container.querySelector('[data-icon="filter"]')!.closest('button') as HTMLElement
     fireEvent.click(filterButton)
     await screen.findByText('Toggle All')
 
-    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
-    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('gib/default').querySelector('[data-icon="check"]')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('[data-icon="check"]')).toBeTruthy()
 
     fireEvent.click(screen.getByText('Toggle All'))
-    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeNull()
-    expect(checkboxFor('merged').querySelector('.fa-check')).toBeNull()
+    expect(checkboxFor('gib/default').querySelector('[data-icon="check"]')).toBeNull()
+    expect(checkboxFor('merged').querySelector('[data-icon="check"]')).toBeNull()
 
     fireEvent.click(screen.getByText('Toggle All'))
-    expect(checkboxFor('gib/default').querySelector('.fa-check')).toBeTruthy()
-    expect(checkboxFor('merged').querySelector('.fa-check')).toBeTruthy()
+    expect(checkboxFor('gib/default').querySelector('[data-icon="check"]')).toBeTruthy()
+    expect(checkboxFor('merged').querySelector('[data-icon="check"]')).toBeTruthy()
   })
 })
 

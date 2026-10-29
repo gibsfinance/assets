@@ -8,6 +8,8 @@ import {
   buildPublishers,
 } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
+import { faCodeBranch } from '@fortawesome/free-solid-svg-icons'
+import { faGithub, faGitlab } from '@fortawesome/free-brands-svg-icons'
 
 const TOKEN_STORAGE_KEY = 'gib-vcs-tokens'
 const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -112,7 +114,7 @@ describe('createGitHubPublisher', () => {
   it('creates a publisher with correct name and icon', () => {
     const publisher = createGitHubPublisher()
     expect(publisher.name).toBe('GitHub')
-    expect(publisher.icon).toBe('fab fa-github')
+    expect(publisher.icon).toBe(faGithub)
   })
 
   it('starts unauthorized', () => {
@@ -128,7 +130,7 @@ describe('createGitLabPublisher', () => {
       serverBaseUrl: 'https://gib.show',
     })
     expect(publisher.name).toBe('GitLab')
-    expect(publisher.icon).toBe('fab fa-gitlab')
+    expect(publisher.icon).toBe(faGitlab)
   })
 
   it('includes hostname for self-hosted instances', () => {
@@ -155,7 +157,7 @@ describe('createGiteaPublisher', () => {
       serverUrl: 'https://gitea.example.com',
     })
     expect(publisher.name).toBe('Gitea (gitea.example.com)')
-    expect(publisher.icon).toBe('fas fa-code-branch')
+    expect(publisher.icon).toBe(faCodeBranch)
   })
 
   it('starts unauthorized', () => {

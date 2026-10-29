@@ -2,6 +2,8 @@ import { useState, useCallback, useRef } from 'react'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
 import { useStudio } from '../contexts/StudioContext'
 import { isDefaultOrder, reorderArray, DEFAULT_PROVIDERS } from '../utils/list-order'
+import { faChevronDown, faLayerGroup, faRotateLeft } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface ProviderRowProps {
   provider: string
@@ -178,7 +180,7 @@ export default function ListResolutionOrder() {
           {/* Toggle button */}
           <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.02]">
             <div className="flex items-center gap-2">
-              <i className="fas fa-layer-group text-xs text-accent-500" />
+              <Icon icon={faLayerGroup} className="text-xs text-accent-500" />
               <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
                 Resolution Order
               </span>
@@ -188,8 +190,9 @@ export default function ListResolutionOrder() {
                 </span>
               )}
             </div>
-            <i
-              className={`fas fa-chevron-down text-xs text-gray-400 transition-transform duration-200 dark:text-white/40 ${
+            <Icon
+              icon={faChevronDown}
+              className={`text-xs text-gray-400 transition-transform duration-200 dark:text-white/40 ${
                 open ? 'rotate-180' : ''
               }`}
             />
@@ -241,7 +244,7 @@ export default function ListResolutionOrder() {
                     'btn-ghost px-3 py-1.5 text-xs transition-opacity',
                     isDefault ? 'pointer-events-none opacity-30' : '',
                   ].join(' ')}>
-                  <i className="fas fa-rotate-left mr-1.5 text-[10px]" />
+                  <Icon icon={faRotateLeft} className="mr-1.5 text-[10px]" />
                   Reset to default
                 </button>
               </div>

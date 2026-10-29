@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react'
 import type { Token } from '../types'
+import { faCheck, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface TokenListFilterProps {
   selectedChain: number | null
@@ -45,7 +47,7 @@ export default function TokenListFilter({
   return (
     <Popover className="relative flex border-l border-gray-200 pl-2 dark:border-surface-3">
       <PopoverButton className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70">
-        <i className="fas fa-filter text-[10px]" />
+        <Icon icon={faFilter} className="text-[10px]" />
         <span>{count}</span>
       </PopoverButton>
 
@@ -66,7 +68,7 @@ export default function TokenListFilter({
 
           {/* Search */}
           <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-surface-3 dark:bg-surface-2">
-            <i className="fas fa-search text-[10px] text-gray-400 dark:text-white/30" />
+            <Icon icon={faMagnifyingGlass} className="text-[10px] text-gray-400 dark:text-white/30" />
             <input
               type="search"
               placeholder="Search lists..."
@@ -94,7 +96,7 @@ export default function TokenListFilter({
                       e.preventDefault()
                       onToggleList(listKey, !isEnabled)
                     }}>
-                    {isEnabled && <i className="fas fa-check text-[8px]" />}
+                    {isEnabled && <Icon icon={faCheck} className="text-[8px]" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{listKey}</div>

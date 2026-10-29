@@ -8,6 +8,17 @@ import FrameworkSwitcher from '../components/FrameworkSwitcher'
 import { getApiUrl } from '../utils'
 import { specToSections, type OpenApiDocument, type DocsEndpointSection } from '../utils/openapi-docs'
 import { filterEndpoints } from '../utils/endpoint-filter'
+import {
+  faCode,
+  faCoins,
+  faDatabase,
+  faImage,
+  faMagnifyingGlass,
+  faNetworkWired,
+  faSpinner,
+  faWandMagicSparkles,
+} from '@fortawesome/free-solid-svg-icons'
+import { Icon } from '../components/Icon'
 
 // ---------------------------------------------------------------------------
 // Static data — endpoint sections render from the served OpenAPI definition
@@ -24,22 +35,22 @@ const STATIC_SECTIONS: DocsSidebarSection[] = [
 
 const FEATURES = [
   {
-    icon: 'fa-coins',
+    icon: faCoins,
     title: 'Token Management',
     items: ['Token list management', 'Token data aggregation', 'Token statistics tracking'],
   },
   {
-    icon: 'fa-image',
+    icon: faImage,
     title: 'Image Handling',
     items: ['Token image serving and caching', 'Network/chain images', 'Fallback mechanisms'],
   },
   {
-    icon: 'fa-network-wired',
+    icon: faNetworkWired,
     title: 'Network Support',
     items: ['Multiple blockchain networks', 'Chain-specific data', 'Cross-chain compatibility'],
   },
   {
-    icon: 'fa-database',
+    icon: faDatabase,
     title: 'Data Management',
     items: ['Database operations', 'Configuration management', 'Efficient caching'],
   },
@@ -255,7 +266,7 @@ export default function Docs() {
             target="_blank"
             rel="noopener noreferrer"
             className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border-light dark:border-border-dark px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:border-accent-500/40 hover:text-accent-500">
-            <i className="fas fa-code text-xs" />
+            <Icon icon={faCode} className="text-xs" />
             OpenAPI definition
             <span className="font-mono text-xs text-gray-400 dark:text-gray-500">/openapi.json</span>
           </a>
@@ -285,7 +296,10 @@ export default function Docs() {
           <main className="min-w-0 space-y-16 mt-6 lg:mt-0">
             {/* Quick filter */}
             <div className="relative">
-              <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" />
+              <Icon
+                icon={faMagnifyingGlass}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400"
+              />
               <input
                 type="search"
                 placeholder="Filter endpoints…"
@@ -298,7 +312,7 @@ export default function Docs() {
             {/* Endpoint sections — one per OpenAPI tag */}
             {specLoading && (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                <i className="fas fa-spinner fa-spin mr-2" />
+                <Icon icon={faSpinner} spin className="mr-2" />
                 Loading the API definition…
               </p>
             )}
@@ -339,7 +353,7 @@ export default function Docs() {
                   <div key={feature.title} className="glass-card p-5 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/10">
-                        <i className={`fas ${feature.icon} text-accent-500 text-sm`} />
+                        <Icon icon={feature.icon} className="text-accent-500 text-sm" />
                       </div>
                       <h3 className="font-heading font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
                     </div>
@@ -381,7 +395,7 @@ export default function Docs() {
             {/* CTA */}
             <div className="flex justify-center pb-8">
               <Link to="/studio" className="btn-primary inline-flex items-center gap-2">
-                <i className="fas fa-wand-magic-sparkles" />
+                <Icon icon={faWandMagicSparkles} />
                 Open Studio
               </Link>
             </div>

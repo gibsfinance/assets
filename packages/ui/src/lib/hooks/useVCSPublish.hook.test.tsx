@@ -7,6 +7,7 @@ import { renderHook, act } from '@testing-library/react'
 import { useVCSPublish, createGitHubPublisher, createGitLabPublisher, createGiteaPublisher } from './useVCSPublish'
 import type { VCSPublisher, PublishResult } from './useVCSPublish'
 import type { LocalList } from './useLocalLists'
+import { faCodeBranch } from '@fortawesome/free-solid-svg-icons'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +35,7 @@ const makeList = (): LocalList => ({
 function makeMockPublisher(overrides: Partial<VCSPublisher> = {}): VCSPublisher {
   return {
     name: 'MockVCS',
-    icon: 'fas fa-mock',
+    icon: faCodeBranch,
     isAuthorized: vi.fn().mockReturnValue(true),
     authorize: vi.fn().mockResolvedValue('mock-token'),
     publish: vi.fn().mockResolvedValue({

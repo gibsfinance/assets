@@ -3,6 +3,8 @@ import Image from './Image'
 import { getApiUrl } from '../utils'
 import { detectImageFormat, buildImageUrlWithSize } from '../utils/formatting'
 import { toChainIdentifier } from '../utils/chain-identifier'
+import { faUpload, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface TokenImageManagerProps {
   chainId: number
@@ -66,7 +68,7 @@ export default function TokenImageManager({
           type="button"
           onClick={onClose}
           className="text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/80">
-          <i className="fas fa-times text-xs" />
+          <Icon icon={faXmark} className="text-xs" />
         </button>
       </div>
 
@@ -100,7 +102,7 @@ export default function TokenImageManager({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 transition-colors hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:text-white/60 dark:hover:border-accent-500/40">
-          <i className="fas fa-upload text-gray-400 dark:text-white/40" />
+          <Icon icon={faUpload} className="text-gray-400 dark:text-white/40" />
           Upload image
         </button>
         <input

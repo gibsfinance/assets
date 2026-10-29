@@ -10,21 +10,34 @@ import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
 import Image from '../components/Image'
+import {
+  faArrowRight,
+  faBolt,
+  faCloud,
+  faFlask,
+  faImage,
+  faLink,
+  faList,
+  faListUl,
+  faNetworkWired,
+  faShield,
+} from '@fortawesome/free-solid-svg-icons'
+import { Icon } from '../components/Icon'
 
 const features = [
   {
-    icon: 'fa-cloud',
+    icon: faCloud,
     title: 'Always Available',
     description:
       'Decentralized storage ensures your token assets are always accessible. No more missing images or failed requests.',
   },
   {
-    icon: 'fa-bolt',
+    icon: faBolt,
     title: 'Lightning Fast',
     description: 'Optimized delivery with global CDN and efficient caching. Get token data in milliseconds.',
   },
   {
-    icon: 'fa-shield',
+    icon: faShield,
     title: 'Reliable & Secure',
     description: 'Verified token data from trusted sources. No more scam tokens or incorrect metadata.',
   },
@@ -33,7 +46,7 @@ const features = [
 const examples = [
   {
     type: 'token-image',
-    icon: 'fa-image',
+    icon: faImage,
     title: 'Token Images',
     description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
     code: getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
@@ -41,7 +54,7 @@ const examples = [
   },
   {
     type: 'network-image',
-    icon: 'fa-network-wired',
+    icon: faNetworkWired,
     title: 'Network Logos',
     description: 'Get chain/network logos and metadata. Perfect for network selectors.',
     code: getApiUrl('/image/eip155-1'),
@@ -49,7 +62,7 @@ const examples = [
   },
   {
     type: 'token-list',
-    icon: 'fa-list',
+    icon: faList,
     title: 'Token Lists',
     description: 'Get curated token lists with optional network filtering.',
     code: getApiUrl('/list/coingecko'),
@@ -75,7 +88,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             size={48}
             className="rounded-full"
           />
-          <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
+          <Icon icon={faArrowRight} className="hidden md:visible text-accent-500" />
         </div>
         <CodeBlock code={displayUrl} />
       </div>
@@ -95,7 +108,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             shape="circle"
             className="rounded-full"
           />
-          <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
+          <Icon icon={faArrowRight} className="hidden md:visible text-accent-500" />
         </div>
         <CodeBlock code={displayUrl} />
       </div>
@@ -136,7 +149,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             className="rounded-full border-2 border-surface-2"
           />
         </div>
-        <i className="fas fa-arrow-right hidden md:visible text-accent-500"></i>
+        <Icon icon={faArrowRight} className="hidden md:visible text-accent-500" />
       </div>
       <CodeBlock code={displayUrl} />
     </div>
@@ -292,8 +305,10 @@ export default function Home() {
                   key={feature.title}
                   className="glass-card group p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-glow-green-subtle">
                   <div className="flex items-center gap-4">
-                    <i
-                      className={`fas ${feature.icon} mb-4 text-4xl text-accent-500 transition-transform group-hover:scale-110`}></i>
+                    <Icon
+                      icon={feature.icon}
+                      className="mb-4 text-4xl text-accent-500 transition-transform group-hover:scale-110"
+                    />
                     <h3 className="mb-2 font-heading text-lg font-bold text-gray-900 dark:text-white">
                       {feature.title}
                     </h3>
@@ -324,7 +339,7 @@ export default function Home() {
                     <div className="space-y-4">
                       <div className="flex items-center gap-4">
                         <div className="rounded-lg bg-accent-500/10 p-3">
-                          <i className={`fas ${example.icon} text-2xl text-accent-500`}></i>
+                          <Icon icon={example.icon} className="text-2xl text-accent-500" />
                         </div>
                         <h3 className="font-heading text-lg font-bold text-gray-900 dark:text-white">
                           {example.title}
@@ -336,7 +351,7 @@ export default function Home() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                        <i className="fas fa-link text-accent-500"></i>
+                        <Icon icon={faLink} className="text-accent-500" />
                         <code className="break-all font-mono">{example.code}</code>
                       </a>
                     </div>
@@ -466,14 +481,14 @@ export default function Home() {
                 type="button"
                 onClick={() => navigate('/studio')}
                 className="btn-primary inline-flex items-center gap-2">
-                <i className="fas fa-flask"></i>
+                <Icon icon={faFlask} />
                 Open Studio
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/studio?editor=new')}
                 className="btn-secondary inline-flex items-center gap-2">
-                <i className="fas fa-list-ul"></i>
+                <Icon icon={faListUl} />
                 Create a List
               </button>
             </div>
