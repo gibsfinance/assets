@@ -11,8 +11,8 @@ function fill(html: string, placeholder: string, content: string): string {
   return html.replace(placeholder, () => content)
 }
 
-/** The three pieces the build writes into `index.html`. */
-export type InjectedParts = { markup: string; themeScript: string; routeGuardScript: string }
+/** The pieces the build writes into `index.html`. Both head scripts share one tag. */
+export type InjectedParts = { markup: string; themeScript: string; routeHideScript: string; routeGuardScript: string }
 
 /**
  * Fills the three placeholders of `index.html`. A missing placeholder throws,
@@ -20,6 +20,6 @@ export type InjectedParts = { markup: string; themeScript: string; routeGuardScr
  */
 export function injectMarkup(html: string, parts: InjectedParts): string {
   const withMarkup = fill(html, MARKUP_PLACEHOLDER, parts.markup)
-  const withTheme = fill(withMarkup, THEME_PLACEHOLDER, `<script>${parts.themeScript}</script>`)
+  const withTheme = fill(withMarkup, THEME_PLACEHOLDER, `<script>${parts.themeScript};${parts.routeHideScript}</script>`)
   return fill(withTheme, GUARD_PLACEHOLDER, `<script>${parts.routeGuardScript}</script>`)
 }
