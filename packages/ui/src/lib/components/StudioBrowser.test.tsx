@@ -101,6 +101,7 @@ import StudioBrowser from './StudioBrowser'
 import { StudioProvider, useStudio } from '../contexts/StudioContext'
 import { ListEditorProvider, useListEditor } from '../contexts/ListEditorContext'
 import { SettingsProvider } from '../contexts/SettingsContext'
+import { tokenRowIconUrl } from '../utils/token-icon'
 import type { Token } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -558,6 +559,23 @@ describe('StudioBrowser', () => {
 
     fireEvent.click(within(row).getByText('gib/default'))
     expect(screen.queryByText('other/list')).toBeNull()
+  })
+
+  // The preload warms the browser cache under one URL. A row that asked for another
+  // would get no benefit, so the row must hand `Image` exactly the preloaded URL.
+  it('asks for the icon under the URL the preload uses', async () => {
+    renderBrowser()
+
+    fireEvent.click(await screen.findByText('Ethereum'))
+    const row = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
+
+    expect(within(row).getByRole('img').getAttribute('src')).toBe(
+      tokenRowIconUrl({
+        chainId: 1,
+        chainIdentifier: 'eip155-1',
+        address: '0xAAAa0000000000000000000000000000000000aa',
+      }),
+    )
   })
 
   it('falls back to the symbol when a token icon will not load', async () => {

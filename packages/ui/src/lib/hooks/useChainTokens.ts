@@ -8,10 +8,11 @@
  * `Token` objects from the raw response would be two chances to disagree about
  * which chain a token belongs to.
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
+import { preloadFirstScreenIcons } from '../utils/token-icon'
 import type { Token } from '../types'
 
 /** One entry as the server returns it, before it becomes a `Token`. */
@@ -96,7 +97,7 @@ export function firstScreenChainTokensQueryOptions(identifier: string | null) {
  * Ethereum-Virtual-Machine — which asked for Solana's tokens under eip155-501
  * and got a 400 for every icon.
  */
-function shapeTokens(response: ChainTokensResponse, identifier: string): Token[] {
+export function shapeTokens(response: ChainTokensResponse, identifier: string): Token[] {
   return response.tokens.map((token) => {
     const sources = token.sources ?? []
     const listReferences = sources.map((sourceList) => ({
@@ -141,6 +142,15 @@ export function useChainTokens(chainId: string | null): {
 
   const full = useQuery(fullChainTokensQueryOptions(identifier))
   const slice = useQuery(firstScreenChainTokensQueryOptions(identifier))
+
+  // The slice is the earliest list the rows can use, so its icons start now
+  // rather than when each row renders. Reading it here, not in the query
+  // function, keeps a hover prefetch from starting icons for rows only passed.
+  const sliceData = slice.data
+  useEffect(() => {
+    if (!sliceData || !identifier) return
+    preloadFirstScreenIcons(identifier, shapeTokens(sliceData, identifier))
+  }, [sliceData, identifier])
 
   const response = full.data ?? slice.data
   const tokens = useMemo(() => {

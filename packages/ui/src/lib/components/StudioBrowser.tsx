@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
@@ -9,6 +8,7 @@ import { usePrefetchChainTokens } from '../hooks/usePrefetchChainTokens'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
+import { tokenRowIconUrl, TOKEN_ROW_ICON_SIZE } from '../utils/token-icon'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import { searchTokens, getPopularChains } from '../utils/token-search'
 import NetworkSelect from './NetworkSelect'
@@ -106,10 +106,10 @@ function VirtualTokenList({
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                   {hasIcon ? (
                     <Image
-                      src={getApiUrl(`/image/${tokenChainIdentifier(token)}/${token.address}`)}
+                      src={tokenRowIconUrl(token)}
                       alt={token.symbol}
                       className="rounded-full object-contain"
-                      size={28}
+                      size={TOKEN_ROW_ICON_SIZE}
                       skeleton
                       shape="circle"
                       onError={() => onIconError(token)}

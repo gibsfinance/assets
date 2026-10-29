@@ -235,6 +235,35 @@ describe('useChainTokens first screen', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
   })
 
+  // Icons are the slowest part of a cold click, and they cannot start until the
+  // slice names them. They start on the slice, not after the full list.
+  it('starts the slice icons as soon as the slice arrives, once per chain', async () => {
+    const requested: string[] = []
+    vi.stubGlobal(
+      'Image',
+      class {
+        set src(url: string) {
+          requested.push(url)
+        }
+      },
+    )
+    const slice = deferred<unknown>()
+    serve({ slice: slice.promise, full: new Promise(() => {}) })
+    const withIcon = { ...tokenNamed('AAA'), logoURI: 'https://logo/a.png' }
+    const wrapper = createWrapper()
+    const { result, rerender } = renderHook(() => useChainTokens('eip155-42'), { wrapper })
+    expect(requested).toEqual([])
+
+    slice.resolve({ chainId: 42, total: 2, tokens: [withIcon, tokenNamed('BBB')] })
+    await waitFor(() => expect(result.current.tokens).toHaveLength(2))
+    rerender()
+
+    expect(requested).toHaveLength(1)
+    expect(requested[0]).toContain('/image/eip155-42/0xAAA?')
+    vi.unstubAllGlobals()
+    vi.stubGlobal('fetch', mockFetch)
+  })
+
   it('shows the slice when the full list fails', async () => {
     mockFetch.mockImplementation((url: string) =>
       Promise.resolve(

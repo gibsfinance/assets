@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
@@ -12,7 +12,7 @@ vi.mock('../utils', async () => {
 })
 
 import { useChainTokens, FIRST_SCREEN_TOKEN_COUNT } from './useChainTokens'
-import { usePrefetchChainTokens } from './usePrefetchChainTokens'
+import { usePrefetchChainTokens, ICON_DWELL_MILLISECONDS } from './usePrefetchChainTokens'
 
 const RESPONSE = {
   chainId: 1,
@@ -143,5 +143,127 @@ describe('usePrefetchChainTokens', () => {
     const first = result.current
     rerender()
     expect(result.current).toBe(first)
+  })
+})
+
+describe('usePrefetchChainTokens icon preloading', () => {
+  const ICON_RESPONSE = {
+    chainId: 10,
+    total: 2,
+    tokens: [
+      { chainId: 10, address: '0xA', name: 'A', symbol: 'AAA', decimals: 18, logoURI: 'https://logo/a.png' },
+      { chainId: 10, address: '0xB', name: 'B', symbol: 'BBB', decimals: 18 },
+    ],
+  }
+  let requested: string[]
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    requested = []
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(ICON_RESPONSE) })
+    vi.stubGlobal(
+      'Image',
+      class {
+        set src(url: string) {
+          requested.push(url)
+        }
+      },
+    )
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.stubGlobal('fetch', mockFetch)
+  })
+
+  const setup = (chainId: string) => {
+    const { result, unmount } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(createClient()) })
+    return { handlers: result.current(chainId), unmount }
+  }
+
+  // A pointer crossing the 1,900-row drawer must not start icon requests per row.
+  it('starts no icon requests when the pointer crosses a control in less than the dwell', async () => {
+    const { handlers } = setup('eip155-10')
+
+    handlers.onPointerEnter()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS - 1)
+    handlers.onPointerLeave()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(requested).toEqual([])
+  })
+
+  it('starts the icon requests once the pointer has rested for the dwell', async () => {
+    const { handlers } = setup('eip155-11')
+
+    handlers.onPointerEnter()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS)
+
+    expect(requested).toHaveLength(1)
+    expect(requested[0]).toContain('/image/eip155-11/0xA?')
+  })
+
+  it('cancels the wait on blur', async () => {
+    const { handlers } = setup('eip155-12')
+
+    handlers.onFocus()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS - 1)
+    handlers.onBlur()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
+
+    expect(requested).toEqual([])
+  })
+
+  it('restarts the wait when the pointer moves to another control', async () => {
+    const { handlers } = setup('eip155-13')
+
+    handlers.onPointerEnter()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS - 1)
+    handlers.onPointerEnter()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS - 1)
+
+    expect(requested).toEqual([])
+  })
+
+  it('starts the icon requests at once on pointerdown', async () => {
+    const { handlers } = setup('eip155-14')
+
+    handlers.onPointerDown()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(requested).toHaveLength(1)
+    expect(requested[0]).toContain('/image/eip155-14/0xA?')
+  })
+
+  it('drops a pending wait when pointerdown arrives, so the icons start only once', async () => {
+    const { handlers } = setup('eip155-15')
+
+    handlers.onPointerEnter()
+    handlers.onPointerDown()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
+
+    expect(requested).toHaveLength(1)
+  })
+
+  it('drops a pending wait when the component unmounts', async () => {
+    const { handlers, unmount } = setup('eip155-16')
+
+    handlers.onPointerEnter()
+    unmount()
+    await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS * 2)
+
+    expect(requested).toEqual([])
+  })
+
+  it('starts no icons when the slice request fails', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    const { handlers } = setup('eip155-17')
+
+    handlers.onPointerDown()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(requested).toEqual([])
   })
 })
