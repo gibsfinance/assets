@@ -14,8 +14,8 @@
  * what addresses its image.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import _ from 'lodash'
 import { getApiUrl } from '../utils'
+import { debounce } from '../utils/debounce'
 import { tokenChainIdentifier } from '../utils/chain-identifier'
 import type { SearchUpdate, Token } from '../types'
 
@@ -167,7 +167,7 @@ export function useTokenSearch({ onUpdate }: UseTokenSearchOptions): UseTokenSea
   // immediately cancelled it, so the global search never ran once. The query is an
   // argument now and the caller's callback is read through a ref, so nothing a caller
   // does can rebuild this.
-  const debouncedSearch = useMemo(() => _.debounce(runSearch, SEARCH_DEBOUNCE_MILLISECONDS), [runSearch])
+  const debouncedSearch = useMemo(() => debounce(runSearch, SEARCH_DEBOUNCE_MILLISECONDS), [runSearch])
 
   const search = useCallback(
     (raw: string) => {
