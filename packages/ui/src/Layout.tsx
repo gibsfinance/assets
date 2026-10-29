@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router'
 import { ThemeToggle } from './lib/components/ThemeToggle'
+import { prefetchStudio } from './lib/pages/load-studio'
 
 export function Layout() {
   const location = useLocation()
@@ -21,7 +22,12 @@ export function Layout() {
                 className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-accent-500 transition-colors">
                 Docs
               </Link>
-              <Link to="/studio" className="btn-primary text-sm">
+              <Link
+                to="/studio"
+                className="btn-primary text-sm"
+                onPointerEnter={prefetchStudio}
+                onPointerDown={prefetchStudio}
+                onFocus={prefetchStudio}>
                 Studio
               </Link>
               <ThemeToggle />

@@ -10,12 +10,13 @@ import { getApiUrl } from './lib/utils'
 import { queryClient } from './lib/query-client'
 import { Layout } from './Layout'
 import Home from './lib/pages/Home'
+import { loadStudio } from './lib/pages/load-studio'
 import NotFound from './lib/pages/NotFound'
 
 // Home stays eager — it is the landing route and must paint immediately.
 // Studio (virtualized browser + list editor) and Docs (live endpoint cards)
 // are heavy and only needed on navigation, so they load as separate chunks.
-const Studio = lazy(() => import('./lib/pages/Studio'))
+const Studio = lazy(loadStudio)
 const Docs = lazy(() => import('./lib/pages/Docs'))
 
 export function App() {

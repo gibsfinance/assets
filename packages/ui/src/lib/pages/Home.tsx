@@ -1,9 +1,10 @@
-import { useMemo, useCallback, useState, useRef } from 'react'
+import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
+import { prefetchStudioWhenIdle } from './load-studio'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
@@ -146,6 +147,10 @@ export default function Home() {
   const navigate = useNavigate()
   const { metrics: metricsData, isError: metricsFailed } = useMetrics()
   const { showTestnets, setShowTestnets } = useSettings()
+
+  // Most visitors who stay on this page go to the Studio next. Fetch its code while
+  // the browser has nothing better to do, so the click does not wait on it.
+  useEffect(() => prefetchStudioWhenIdle(), [])
 
   const filteredNetworks = useMemo(() => {
     if (!metricsData) return []
