@@ -208,6 +208,8 @@ describe('useRpcMetadata hook', () => {
     expect(results![0].symbol).toBeNull()
     expect(results![0].decimals).toBeNull()
     expect(results![0].error).toBe('No RPC available')
+    // The loading flag rises before the client is built, so the early return must lower it.
+    expect(result.current.isLoading).toBe(false)
   })
 
   it('returns metadata for a batch of tokens using a mocked client', async () => {

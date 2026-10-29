@@ -121,8 +121,13 @@ export function useRpcMetadata() {
   const [progress, setProgress] = useState({ done: 0, total: 0 })
 
   const loadMetadata = useCallback(async (tokens: LocalToken[], chainId: number): Promise<MetadataResult[]> => {
+    // Raised before the client is built: the first call also downloads viem, and the
+    // button should show work in progress for that wait too.
+    setIsLoading(true)
+    setProgress({ done: 0, total: tokens.length })
     const client = await getClient(chainId)
     if (!client) {
+      setIsLoading(false)
       return tokens.map((t) => ({
         address: t.address,
         name: null,
@@ -132,8 +137,6 @@ export function useRpcMetadata() {
       }))
     }
 
-    setIsLoading(true)
-    setProgress({ done: 0, total: tokens.length })
     const results: MetadataResult[] = []
 
     const batchSize = 10
