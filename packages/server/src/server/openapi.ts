@@ -417,6 +417,17 @@ export const openapi = {
               'parses several times faster. It composes with `limit`. Any other value is refused with 400.',
             schema: { type: 'string', enum: ['compact'] },
           },
+          {
+            name: 'fields',
+            in: 'query',
+            description:
+              'Only with `format=compact`: a comma-separated subset of address,name,symbol,decimals,logoURI,sources. ' +
+              '`address` is required. Rows and the echoed `fields` always follow that canonical order, whatever ' +
+              'order was requested. The top-level `sources` array is sent only when `sources` is selected. ' +
+              'Omit for every field. Dropping `logoURI` roughly halves the raw size. Refused with 400 when used ' +
+              'without `format=compact`, when a name is unknown or repeated, or when `address` is missing.',
+            schema: { type: 'string', example: 'address,name,symbol,decimals,sources' },
+          },
           REFRESH_QUERY_PARAM,
         ],
         security: [{}, { adminBearer: [] }],
@@ -437,7 +448,7 @@ export const openapi = {
           '400': {
             description:
               'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0. ' +
-              'Also an unknown `format` value.',
+              'Also an unknown `format` value, or an invalid `fields` selection.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '401': REFRESH_UNAUTHORIZED_RESPONSE,
@@ -1113,6 +1124,7 @@ export const openapi = {
         description:
           'Compact encoding of TokensByChain (`?format=compact`). Decode row r as an object by pairing ' +
           '`fields[i]` with `r[i]`, then replace each integer in the `sources` value with `sources[index]`. ' +
+          'The `fields` array lists only the selected fields (see the `fields` query parameter). ' +
           'Every row shares the response `chainId` and `chainIdentifier`. An empty sources array means the ' +
           'default body has no `sources` property for that token.',
         properties: {
@@ -1132,7 +1144,9 @@ export const openapi = {
           sources: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Each distinct source (provider/list) once. Rows refer to entries by index.',
+            description:
+              'Each distinct source (provider/list) once. Rows refer to entries by index. ' +
+              'Absent when `sources` is not among the requested `fields`.',
           },
           tokens: {
             type: 'array',

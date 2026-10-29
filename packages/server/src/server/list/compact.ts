@@ -31,6 +31,9 @@ export const COMPACT_FIELDS = ['address', 'name', 'symbol', 'decimals', 'logoURI
 
 /** One token as it appears in a default body. */
 export interface DefaultToken {
+  /** Present in the default body; the compact body leaves it to the response. */
+  chainId?: number
+  chainIdentifier?: string
   address: string
   name?: string
   symbol?: string
@@ -60,13 +63,45 @@ export const parseTokensFormat = (raw: unknown): TokensFormat => {
   throw createError.BadRequest('invalid format — expected "compact", or omit the parameter for the default body')
 }
 
+/** Name of one value in a compact token row. */
+export type CompactField = (typeof COMPACT_FIELDS)[number]
+
+/**
+ * Read the `fields` query value: a comma-separated subset of {@link COMPACT_FIELDS}.
+ *
+ * The result follows COMPACT_FIELDS order whatever order was requested, so every
+ * spelling of one selection maps to one cache key and one body.
+ *
+ * @param raw - The raw `req.query.fields`; absent means every field.
+ * @param format - The parsed format; `fields` selects within the compact rows only.
+ * @throws {createError.HttpError} 400 when `format` is not compact, the value is not a
+ *   single string, a name is unknown or repeated, or `address` is missing.
+ */
+export const parseCompactFields = (raw: unknown, format: TokensFormat): readonly CompactField[] => {
+  if (raw === undefined) return COMPACT_FIELDS
+  if (format !== 'compact') throw createError.BadRequest('fields is valid only with format=compact')
+  if (typeof raw !== 'string') throw createError.BadRequest('fields must be one comma-separated list')
+  const requested = raw.split(',')
+  const unknown = requested.filter((name) => !(COMPACT_FIELDS as readonly string[]).includes(name))
+  if (unknown.length > 0) {
+    throw createError.BadRequest(
+      `unknown fields: ${unknown.join(', ')} — expected a subset of ${COMPACT_FIELDS.join(',')}`,
+    )
+  }
+  if (new Set(requested).size !== requested.length) throw createError.BadRequest('fields lists a name more than once')
+  if (!requested.includes('address')) throw createError.BadRequest('fields must include address')
+  return COMPACT_FIELDS.filter((name) => requested.includes(name))
+}
+
 /**
  * Re-encode a parsed default body as a serialized compact body. Token order and
  * `total` carry over unchanged.
  *
  * @param body - A default (or limited default) body.
+ * @param fields - Fields to send, in COMPACT_FIELDS order (see {@link parseCompactFields}).
+ *   When `sources` is not among them the body carries no top-level `sources` array.
  */
-export const toCompactBody = (body: DefaultBody): string => {
+export const toCompactBody = (body: DefaultBody, fields: readonly CompactField[] = COMPACT_FIELDS): string => {
   const sourceIndexes = new Map<string, number>()
   const indexOf = (source: string): number => {
     const known = sourceIndexes.get(source)
@@ -74,21 +109,22 @@ export const toCompactBody = (body: DefaultBody): string => {
     sourceIndexes.set(source, sourceIndexes.size)
     return sourceIndexes.size - 1
   }
-  const tokens = body.tokens.map((token) => [
-    token.address,
-    token.name,
-    token.symbol,
-    token.decimals,
-    token.logoURI,
-    (token.sources ?? []).map(indexOf),
-  ])
+  const valueOf: Record<CompactField, (token: DefaultToken) => unknown> = {
+    address: (token) => token.address,
+    name: (token) => token.name,
+    symbol: (token) => token.symbol,
+    decimals: (token) => token.decimals,
+    logoURI: (token) => token.logoURI,
+    sources: (token) => (token.sources ?? []).map(indexOf),
+  }
+  const tokens = body.tokens.map((token) => fields.map((field) => valueOf[field](token)))
   return JSON.stringify({
     chainId: body.chainId,
     chainIdentifier: body.chainIdentifier,
     total: body.total,
     format: 'compact',
-    fields: COMPACT_FIELDS,
-    sources: [...sourceIndexes.keys()],
+    fields,
+    ...(fields.includes('sources') ? { sources: [...sourceIndexes.keys()] } : {}),
     tokens,
   })
 }

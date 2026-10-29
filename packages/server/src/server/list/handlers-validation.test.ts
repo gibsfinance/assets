@@ -930,6 +930,61 @@ describe('tokensByChain format=compact', () => {
     expect(sent(res).total).toBe(5)
   })
 
+  it.each([
+    ['fields without format=compact', { fields: 'address' }],
+    ['fields without address', { format: 'compact', fields: 'name' }],
+    ['an unknown field', { format: 'compact', fields: 'address,price' }],
+    ['a repeated field', { format: 'compact', fields: 'address,address' }],
+  ])('rejects %s with 400 before touching the cache', async (_label, query) => {
+    const { next, res } = await call(query)
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(400)
+    expect(res.send).not.toHaveBeenCalled()
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+  })
+
+  it('projects the same values as the full compact body for the selected fields', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    const full = await call({ format: 'compact' })
+    const projected = await call({ format: 'compact', fields: 'sources,symbol,address' })
+
+    expect(sent(projected.res).fields).toEqual(['address', 'symbol', 'sources'])
+    const decodedFull = decodeCompactBody(full.res.send.mock.calls[0][0] as string)
+    const decodedProjected = decodeCompactBody(projected.res.send.mock.calls[0][0] as string)
+    expect(decodedProjected.tokens).toEqual(
+      decodedFull.tokens.map(({ address, symbol, sources, chainId, chainIdentifier }) => ({
+        chainId,
+        chainIdentifier,
+        address,
+        symbol,
+        sources,
+      })),
+    )
+  })
+
+  it('shares one cache key between orderings of the same selection', async () => {
+    await call({ format: 'compact', fields: 'symbol,address' })
+    await call({ format: 'compact', fields: 'address,symbol' })
+
+    // A miss also reads the default body, so look only at the compact reads.
+    const keys = vi
+      .mocked(db.getCachedRequest)
+      .mock.calls.map(([key]) => key)
+      .filter((key) => key.includes('compact'))
+    expect(keys).toEqual([`${COMPACT_KEY}address,symbol`, `${COMPACT_KEY}address,symbol`])
+  })
+
+  it('composes a selection with limit and the cached default body', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    vi.mocked(db.getTokensByChainRanked).mockClear()
+
+    const { res } = await call({ format: 'compact', fields: 'address,symbol', limit: '2' })
+
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(sent(res).tokens.map((row: unknown[]) => row[1])).toEqual(['A', 'B'])
+    expect(sent(res).total).toBe(5)
+    expect(sent(res)).not.toHaveProperty('sources')
+  })
+
   it('goes to the database on an authorized refresh', async () => {
     cacheOnlyDefault(await buildDefaultBody())
     vi.mocked(db.getTokensByChainRanked).mockClear()

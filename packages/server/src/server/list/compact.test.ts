@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { COMPACT_FIELDS, parseTokensFormat, toCompactBody } from './compact'
+import { COMPACT_FIELDS, parseCompactFields, parseTokensFormat, toCompactBody } from './compact'
 import { decodeCompactBody } from './__testing__/decode-compact'
 
 const token = (symbol: string, sources?: string[]) => ({
@@ -76,5 +76,59 @@ describe('parseTokensFormat', () => {
 
   it.each(['csv', '', 'COMPACT', ['compact', 'compact'], 1])('rejects %j with 400', (value) => {
     expect(() => parseTokensFormat(value)).toThrow(expect.objectContaining({ status: 400 }))
+  })
+})
+
+describe('toCompactBody with a field selection', () => {
+  const selection = ['address', 'name', 'symbol', 'decimals', 'sources'] as const
+  const withoutLogo = (body: ReturnType<typeof decodeCompactBody>) => ({
+    ...body,
+    tokens: body.tokens.map(({ logoURI: _logoURI, ...rest }) => rest),
+  })
+
+  it('decodes to the full body minus the fields left out', () => {
+    // Dropping logoURI must lose nothing else; a client reads the rest by name.
+    const decoded = decodeCompactBody(toCompactBody(defaultBody, selection))
+    expect(decoded).toEqual(withoutLogo(defaultBody))
+  })
+
+  it('echoes the selected fields and sends rows of exactly that width', () => {
+    const compact = JSON.parse(toCompactBody(defaultBody, selection))
+    expect(compact.fields).toEqual(selection)
+    expect(compact.tokens.every((row: unknown[]) => row.length === selection.length)).toBe(true)
+  })
+
+  it('leaves out the top-level sources array when sources is not selected', () => {
+    const compact = JSON.parse(toCompactBody(defaultBody, ['address', 'symbol']))
+    expect(compact).not.toHaveProperty('sources')
+    expect(compact.tokens[0]).toEqual([defaultBody.tokens[0].address, 'AAA'])
+  })
+
+  it('keeps the full row when no selection is given', () => {
+    expect(toCompactBody(defaultBody)).toBe(toCompactBody(defaultBody, COMPACT_FIELDS))
+  })
+})
+
+describe('parseCompactFields', () => {
+  it('returns every field when the parameter is absent, for either format', () => {
+    expect(parseCompactFields(undefined, 'compact')).toEqual([...COMPACT_FIELDS])
+    expect(parseCompactFields(undefined, 'default')).toEqual([...COMPACT_FIELDS])
+  })
+
+  it('normalizes any requested order to the canonical order', () => {
+    // Two spellings of one selection must share one cache key and one body.
+    expect(parseCompactFields('symbol,address', 'compact')).toEqual(['address', 'symbol'])
+    expect(parseCompactFields('address,symbol', 'compact')).toEqual(['address', 'symbol'])
+  })
+
+  it.each([
+    ['without format=compact', 'address,name', 'default'],
+    ['without address', 'name,symbol', 'compact'],
+    ['with an unknown name', 'address,price', 'compact'],
+    ['with a repeated name', 'address,name,address', 'compact'],
+    ['empty', '', 'compact'],
+    ['given twice', ['address', 'name'], 'compact'],
+  ] as const)('rejects a selection %s with 400', (_label, value, format) => {
+    expect(() => parseCompactFields(value, format)).toThrow(expect.objectContaining({ status: 400 }))
   })
 })

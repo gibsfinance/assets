@@ -11,7 +11,7 @@ export const decodeCompactBody = (text: string): DefaultBody => {
     chainIdentifier: string
     total: number
     fields: string[]
-    sources: string[]
+    sources?: string[]
     tokens: unknown[][]
   }
   return {
@@ -23,9 +23,10 @@ export const decodeCompactBody = (text: string): DefaultBody => {
       compact.fields.forEach((field, position) => {
         token[field] = row[position]
       })
-      const indexes = token.sources as number[]
+      const indexes = token.sources as number[] | undefined
+      if (indexes === undefined) return token as unknown as DefaultToken
       if (indexes.length === 0) delete token.sources
-      else token.sources = indexes.map((index) => compact.sources[index])
+      else token.sources = indexes.map((index) => compact.sources![index])
       return token as unknown as DefaultToken
     }),
   }

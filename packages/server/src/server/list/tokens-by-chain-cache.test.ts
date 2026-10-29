@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 import { RESPONSE_SHAPE_VERSION } from './response-cache'
+import { COMPACT_FIELDS } from './compact'
 
 vi.mock('../../db', async () => {
   // Real normalizeProvidedId (isAddress ? lower : preserve) — buildTokensByChainResponse
@@ -81,6 +82,20 @@ describe('tokensByChainCacheKey', () => {
     expect(compact).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain-compact:eip155-1:50000:`)
     expect(compact).not.toBe(tokensByChainCacheKey('eip155-1', 50_000))
     expect(tokensByChainCacheKey('eip155-1', 50_000, 'default')).toBe(tokensByChainCacheKey('eip155-1', 50_000))
+  })
+
+  it('keeps the full-row compact key when every field is selected, and forks it for a projection', () => {
+    const full = tokensByChainCacheKey('eip155-1', 50_000, 'compact')
+    expect(tokensByChainCacheKey('eip155-1', 50_000, 'compact', COMPACT_FIELDS)).toBe(full)
+    const projected = tokensByChainCacheKey('eip155-1', 50_000, 'compact', ['address', 'symbol'])
+    expect(projected).toBe(`${full}address,symbol`)
+    expect(projected).not.toBe(full)
+  })
+
+  it('ignores fields for the default format', () => {
+    expect(tokensByChainCacheKey('eip155-1', 50_000, 'default', ['address'])).toBe(
+      tokensByChainCacheKey('eip155-1', 50_000),
+    )
   })
 
   it('keys on the limit, so different limits never share a cached body', () => {

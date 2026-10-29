@@ -21,7 +21,15 @@ import * as db from '../../db'
 import type * as viem from 'viem'
 import type { RequestHandler } from 'express'
 import * as utils from './utils'
-import { parseTokensFormat, toCompactBody, type DefaultBody, type TokensFormat } from './compact'
+import {
+  COMPACT_FIELDS,
+  parseCompactFields,
+  parseTokensFormat,
+  toCompactBody,
+  type CompactField,
+  type DefaultBody,
+  type TokensFormat,
+} from './compact'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
@@ -691,7 +699,7 @@ export const all: RequestHandler = async (req, res) => {
  * GET /list/tokens/:chainId
  * Returns all deduplicated tokens for a chain in a single response.
  * Server-side merge eliminates the need for N individual list fetches.
- * Supports ?limit=N (default 50000, max 100000) and ?format=compact.
+ * Supports ?limit=N (default 50000, max 100000) ?format=compact, and ?fields= to select compact columns.
  */
 /**
  * Age at which the periodic warmer rebuilds a row, deliberately equal to the freshness
@@ -729,8 +737,17 @@ const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
  * distinct value needlessly forked the cache. The trailing colon is the legacy
  * empty-extensions slot, kept so already-warmed rows stay readable.
  */
-export const tokensByChainCacheKey = (chainId: string, limit: number, format: TokensFormat = 'default') =>
-  namespacedCacheKey(`${format === 'compact' ? 'tokens-by-chain-compact' : 'tokens-by-chain'}:${chainId}:${limit}:`)
+export const tokensByChainCacheKey = (
+  chainId: string,
+  limit: number,
+  format: TokensFormat = 'default',
+  fields: readonly CompactField[] = COMPACT_FIELDS,
+) => {
+  if (format === 'default') return namespacedCacheKey(`tokens-by-chain:${chainId}:${limit}:`)
+  // The full row keeps the original compact key; a projection appends its field list.
+  const selection = fields.length === COMPACT_FIELDS.length ? '' : fields.join(',')
+  return namespacedCacheKey(`tokens-by-chain-compact:${chainId}:${limit}:${selection}`)
+}
 
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
 export const writeTokensByChainCache = writeCachedResponse
@@ -863,16 +880,18 @@ const buildLimitedTokensByChainResponse = async ({
 const buildCompactTokensByChainResponse = async ({
   chainId,
   limit,
+  fields,
   derivable,
   buildFromDatabase,
 }: {
   chainId: string
   limit: number
+  fields: readonly CompactField[]
   derivable: boolean
   buildFromDatabase: () => Promise<string>
 }): Promise<string> => {
   const cached = derivable ? await readLimitedDefaultBody({ chainId, limit }) : null
-  return toCompactBody(cached ?? (JSON.parse(await buildFromDatabase()) as DefaultBody))
+  return toCompactBody(cached ?? (JSON.parse(await buildFromDatabase()) as DefaultBody), fields)
 }
 
 export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> =>
@@ -938,6 +957,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   const chainId = resolution.chainId
 
   const format = parseTokensFormat(req.query.format)
+  const fields = parseCompactFields(req.query.fields, format)
   const limit = utils.parseTokenLimit(req.query.limit, {
     fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
     max: MAX_TOKENS_BY_CHAIN_LIMIT,
@@ -953,11 +973,12 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
     buildCompactTokensByChainResponse({
       chainId,
       limit,
+      fields,
       derivable: limit <= DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized,
       buildFromDatabase,
     })
   await serveCachedJson(res, {
-    cacheKey: tokensByChainCacheKey(chainId, limit, format),
+    cacheKey: tokensByChainCacheKey(chainId, limit, format, fields),
     build: format === 'compact' ? buildCompact : buildDefault,
     cacheControl: listCacheControl,
     bypassCache: refreshAuthorized,
