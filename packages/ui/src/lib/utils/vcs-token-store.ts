@@ -62,11 +62,14 @@ const isStoredToken = (entry: StoredEntry): entry is StoredToken =>
  *   its own so it can state that thirty-one days passed.
  */
 export const createTokenStore = (options: TokenStoreOptions = {}): TokenStore => {
-  const { storage = localStorage, now = () => Date.now() } = options
+  const { now = () => Date.now() } = options
+  // Looked up on each use, not when the store is built: a module that builds its store
+  // at import time must still load where no storage exists (the build-time render).
+  const resolveStorage = (): TokenStorage => options.storage ?? localStorage
 
   const readAll = (): Record<string, StoredEntry> => {
     try {
-      const parsed = JSON.parse(storage.getItem(TOKEN_STORAGE_KEY) || '{}')
+      const parsed = JSON.parse(resolveStorage().getItem(TOKEN_STORAGE_KEY) || '{}')
       // A value that is not an object cannot be indexed by provider. Anything
       // stored under this key that does not have that shape is not ours.
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
@@ -79,7 +82,7 @@ export const createTokenStore = (options: TokenStoreOptions = {}): TokenStore =>
 
   const writeAll = (entries: Record<string, StoredEntry>): void => {
     try {
-      storage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(entries))
+      resolveStorage().setItem(TOKEN_STORAGE_KEY, JSON.stringify(entries))
     } catch {
       // A full or blocked store costs the user a re-authorization later. It must
       // not throw out of a publish that has otherwise succeeded.

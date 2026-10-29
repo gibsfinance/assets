@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build --ssr src/entry-server.tsx --outDir dist-ssr && vite build",
     "preview": "vite preview",
     "dev:static": "vite build --watch",
     "check": "node ../../scripts/tsc7.mjs --noEmit",

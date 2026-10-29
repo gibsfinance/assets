@@ -97,7 +97,9 @@ export function useNetworkNameTable(): NetworkNameTable | null {
   useEffect(() => {
     void loadNetworkNameTable()
   }, [])
-  return useSyncExternalStore(subscribe, readNameTable)
+  // The third argument is what a render with no browser sees (the build-time render of the
+  // home page): the table has not loaded, exactly as on a first client render.
+  return useSyncExternalStore(subscribe, readNameTable, () => null)
 }
 
 /**

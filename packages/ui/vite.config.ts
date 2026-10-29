@@ -4,6 +4,25 @@ import replace from '@rollup/plugin-replace'
 import pkg from './package.json' with { type: 'json' }
 import child_process from 'child_process'
 import tailwindcss from '@tailwindcss/vite'
+import { pathToFileURL } from 'url'
+import path from 'path'
+import { injectMarkup } from './src/prerender/inject-markup'
+import { themeScript, routeGuardScript } from './src/prerender/pre-paint'
+
+/**
+ * Writes the home page into `index.html` at build time. It imports the bundle that
+ * `vite build --ssr` produced just before the client build (see the `build` script),
+ * so a client build with no server bundle fails here instead of shipping an empty shell.
+ */
+const prerenderHome = () => ({
+  name: 'prerender-home',
+  apply: 'build' as const,
+  async transformIndexHtml(html: string) {
+    const bundle = pathToFileURL(path.resolve(import.meta.dirname, 'dist-ssr/entry-server.js')).href
+    const { renderHome } = (await import(bundle)) as { renderHome: () => string }
+    return injectMarkup(html, { markup: renderHome(), themeScript, routeGuardScript })
+  },
+})
 
 let githash = process.env.RAILWAY_GIT_COMMIT_SHA
 if (!githash) {
@@ -13,7 +32,7 @@ if (!githash) {
     // console.error(err)
   }
 }
-export default defineConfig({
+export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     replace({
       preventAssignment: true,
@@ -25,6 +44,7 @@ export default defineConfig({
       },
     }),
     tailwindcss(),
+    prerenderHome(),
     react(),
   ],
   base: './',
@@ -46,6 +66,8 @@ export default defineConfig({
     allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
   },
   build: {
+    // The server bundle is a build input, not a site: it needs none of the public files.
+    copyPublicDir: !isSsrBuild,
     target: 'esnext',
   },
   resolve: {
@@ -55,4 +77,4 @@ export default defineConfig({
       $lib: './src/lib',
     },
   },
-})
+}))

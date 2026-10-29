@@ -71,6 +71,21 @@ describe('initial state', () => {
     expect(result.current.resolutionOrder).toBeNull()
     expect(result.current.activeTab).toBe('browse')
   })
+
+  it('takes the chain the Home page left behind, and removes it so it applies once', () => {
+    localStorage.setItem('selectedChainId', 'eip155-369')
+    expect(renderStudio().result.current.selectedChainId).toBe('eip155-369')
+    expect(localStorage.getItem('selectedChainId')).toBeNull()
+  })
+
+  it('starts with no chain, and does not throw, where storage does not exist', () => {
+    vi.stubGlobal('localStorage', undefined)
+    try {
+      expect(renderStudio().result.current.selectedChainId).toBeNull()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

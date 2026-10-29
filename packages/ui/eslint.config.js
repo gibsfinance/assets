@@ -7,7 +7,7 @@ export default defineConfig([
   // Generated output is rewritten wholesale on the next run, so nothing in it
   // is worth a finding. `coverage` was missing here, and a stale report in it
   // carried an eslint-disable comment that reported itself as unused.
-  { ignores: ['dist/**', 'coverage/**'] },
+  { ignores: ['dist/**', 'dist-ssr/**', 'coverage/**'] },
   // The extensions have to include tsx, or the recommended rules and the
   // browser globals skip every component in the package - which is most of it.
   { files: ['**/*.{js,mjs,cjs,ts,tsx}'], plugins: { js }, extends: ['js/recommended'] },
