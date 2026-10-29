@@ -21,6 +21,7 @@ import * as db from '../../db'
 import type * as viem from 'viem'
 import type { RequestHandler } from 'express'
 import * as utils from './utils'
+import { parseTokensFormat, toCompactBody, type DefaultBody, type TokensFormat } from './compact'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
@@ -690,7 +691,7 @@ export const all: RequestHandler = async (req, res) => {
  * GET /list/tokens/:chainId
  * Returns all deduplicated tokens for a chain in a single response.
  * Server-side merge eliminates the need for N individual list fetches.
- * Supports ?limit=N (default 500, max 5000)
+ * Supports ?limit=N (default 50000, max 100000) and ?format=compact.
  */
 /**
  * Age at which the periodic warmer rebuilds a row, deliberately equal to the freshness
@@ -728,8 +729,8 @@ const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
  * distinct value needlessly forked the cache. The trailing colon is the legacy
  * empty-extensions slot, kept so already-warmed rows stay readable.
  */
-export const tokensByChainCacheKey = (chainId: string, limit: number) =>
-  namespacedCacheKey(`tokens-by-chain:${chainId}:${limit}:`)
+export const tokensByChainCacheKey = (chainId: string, limit: number, format: TokensFormat = 'default') =>
+  namespacedCacheKey(`${format === 'compact' ? 'tokens-by-chain-compact' : 'tokens-by-chain'}:${chainId}:${limit}:`)
 
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
 export const writeTokensByChainCache = writeCachedResponse
@@ -820,6 +821,24 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
  * That holds only for a limit below the default. The default body is itself cut at the
  * default, so it has nothing to give a request that asks for more.
  */
+const readLimitedDefaultBody = async ({
+  chainId,
+  limit,
+}: {
+  chainId: string
+  limit: number
+}): Promise<DefaultBody | null> => {
+  const canonical = await db.getCachedRequest(tokensByChainCacheKey(chainId, DEFAULT_TOKENS_BY_CHAIN_LIMIT))
+  if (!canonical) return null
+  const body = JSON.parse(canonical.value) as DefaultBody
+  return {
+    chainId: body.chainId,
+    chainIdentifier: body.chainIdentifier,
+    total: body.total,
+    tokens: body.tokens.slice(0, limit),
+  }
+}
+
 const buildLimitedTokensByChainResponse = async ({
   chainId,
   limit,
@@ -829,15 +848,31 @@ const buildLimitedTokensByChainResponse = async ({
   limit: number
   buildFromDatabase: () => Promise<string>
 }): Promise<string> => {
-  const canonical = await db.getCachedRequest(tokensByChainCacheKey(chainId, DEFAULT_TOKENS_BY_CHAIN_LIMIT))
-  if (!canonical) return buildFromDatabase()
-  const body = JSON.parse(canonical.value)
-  return JSON.stringify({
-    chainId: body.chainId,
-    chainIdentifier: body.chainIdentifier,
-    total: body.total,
-    tokens: body.tokens.slice(0, limit),
-  })
+  const body = await readLimitedDefaultBody({ chainId, limit })
+  return body ? JSON.stringify(body) : buildFromDatabase()
+}
+
+/**
+ * Build a compact body for `format=compact`. It composes with `limit` the same way the
+ * default body does: from the cached default-limit body when one exists, so a cached
+ * chain costs no database query, and from the database otherwise.
+ *
+ * Unlike the default format, a limit equal to the default also derives from the cached
+ * default body, because the compact row is a different key and cannot read itself.
+ */
+const buildCompactTokensByChainResponse = async ({
+  chainId,
+  limit,
+  derivable,
+  buildFromDatabase,
+}: {
+  chainId: string
+  limit: number
+  derivable: boolean
+  buildFromDatabase: () => Promise<string>
+}): Promise<string> => {
+  const cached = derivable ? await readLimitedDefaultBody({ chainId, limit }) : null
+  return toCompactBody(cached ?? (JSON.parse(await buildFromDatabase()) as DefaultBody))
 }
 
 export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> =>
@@ -902,6 +937,7 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   }
   const chainId = resolution.chainId
 
+  const format = parseTokensFormat(req.query.format)
   const limit = utils.parseTokenLimit(req.query.limit, {
     fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
     max: MAX_TOKENS_BY_CHAIN_LIMIT,
@@ -910,11 +946,19 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   // An authorized refresh must reach the database. Deriving from the default body
   // would rewrite this row from a copy that the refresh exists to replace.
   const derivable = limit < DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized
+  const buildDefault = derivable
+    ? () => buildLimitedTokensByChainResponse({ chainId, limit, buildFromDatabase })
+    : buildFromDatabase
+  const buildCompact = () =>
+    buildCompactTokensByChainResponse({
+      chainId,
+      limit,
+      derivable: limit <= DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized,
+      buildFromDatabase,
+    })
   await serveCachedJson(res, {
-    cacheKey: tokensByChainCacheKey(chainId, limit),
-    build: derivable
-      ? () => buildLimitedTokensByChainResponse({ chainId, limit, buildFromDatabase })
-      : buildFromDatabase,
+    cacheKey: tokensByChainCacheKey(chainId, limit, format),
+    build: format === 'compact' ? buildCompact : buildDefault,
     cacheControl: listCacheControl,
     bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,

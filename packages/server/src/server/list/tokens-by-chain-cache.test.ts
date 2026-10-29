@@ -76,6 +76,13 @@ describe('tokensByChainCacheKey', () => {
     expect(tokensByChainCacheKey('eip155-1', 100)).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:100:`)
   })
 
+  it('gives the compact format its own key, so the two bodies never collide', () => {
+    const compact = tokensByChainCacheKey('eip155-1', 50_000, 'compact')
+    expect(compact).toBe(`${RESPONSE_SHAPE_VERSION}:tokens-by-chain-compact:eip155-1:50000:`)
+    expect(compact).not.toBe(tokensByChainCacheKey('eip155-1', 50_000))
+    expect(tokensByChainCacheKey('eip155-1', 50_000, 'default')).toBe(tokensByChainCacheKey('eip155-1', 50_000))
+  })
+
   it('keys on the limit, so different limits never share a cached body', () => {
     expect(tokensByChainCacheKey('eip155-1', 100)).not.toBe(tokensByChainCacheKey('eip155-1', 200))
   })

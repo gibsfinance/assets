@@ -77,6 +77,7 @@ import * as db from '../../db'
 import * as listUtils from './utils'
 import { getDrizzle } from '../../db/drizzle'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
+import { decodeCompactBody } from './__testing__/decode-compact'
 import { merged, tokensByChain, all, versioned, providerKeyed, search } from './handlers'
 import { SEARCH_CANDIDATE_CAP } from '../../db/search'
 // The router registers every one of these handlers inside `nextOnError`, so a
@@ -784,6 +785,158 @@ describe('tokensByChain handler', () => {
       expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
       expect(body(res).total).toBe(5)
     })
+  })
+})
+
+describe('tokensByChain format=compact', () => {
+  const ranked = ['A', 'B', 'C', 'D', 'E'].map((symbol, index) => ({
+    chainId: 'eip155-1',
+    providedId: `0x${String(index + 1).repeat(40)}`,
+    decimals: 18,
+    symbol,
+    name: symbol,
+    imageHash: `hash-${symbol}`,
+    ext: '.png',
+    mode: 'save',
+    uri: null,
+    providerKey: 'trustwallet',
+    listKey: 'wallet-ethereum',
+  }))
+  const DEFAULT_KEY = `${RESPONSE_SHAPE_VERSION}:tokens-by-chain:eip155-1:50000:`
+  const COMPACT_KEY = `${RESPONSE_SHAPE_VERSION}:tokens-by-chain-compact:eip155-1:50000:`
+  const sent = (res: { send: { mock: { calls: unknown[][] } } }) => JSON.parse(res.send.mock.calls[0][0] as string)
+  const writtenKeys = () => vi.mocked(db.insertCacheRequest).mock.calls.map(([row]) => row['key'])
+
+  const call = async (query: Record<string, unknown>, headers: Record<string, string> = {}) => {
+    const res = mockResponse()
+    const next = vi.fn()
+    await nextOnError(tokensByChain)(
+      { params: { chainId: 'eip155-1' }, query, headers } as never,
+      res as never,
+      next as never,
+    )
+    return { res, next }
+  }
+
+  /** Answer the default-limit key with a body and every other key with a miss. */
+  const cacheOnlyDefault = (value: string) => {
+    vi.mocked(db.getCachedRequest).mockImplementation(async (key: string) =>
+      key === DEFAULT_KEY ? ({ value, expiresAt: new Date(Date.now() + STALE_TTL_MS) } as never) : (undefined as never),
+    )
+  }
+
+  beforeEach(() => {
+    vi.mocked(db.getCachedRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+    vi.mocked(db.getTokensByChainRanked)
+      .mockReset()
+      .mockResolvedValue(ranked as never)
+    vi.mocked(db.getTokenSourcesByChain)
+      .mockReset()
+      .mockResolvedValue([
+        { providedId: ranked[0].providedId, providerKey: 'trustwallet', listKey: 'wallet-ethereum' },
+        { providedId: ranked[0].providedId, providerKey: 'uniswap', listKey: 'default' },
+        { providedId: ranked[1].providedId, providerKey: 'uniswap', listKey: 'default' },
+      ] as never)
+    vi.mocked(db.insertCacheRequest)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+  })
+
+  /** The default body as the database build writes it. */
+  const buildDefaultBody = async () => {
+    await call({})
+    return vi.mocked(db.insertCacheRequest).mock.calls[0][0].value as string
+  }
+
+  it('rejects an unknown format with 400 before touching the cache', async () => {
+    const { next, res } = await call({ format: 'csv' })
+    expect((next.mock.calls[0][0] as { status: number }).status).toBe(400)
+    expect(res.send).not.toHaveBeenCalled()
+    expect(db.getCachedRequest).not.toHaveBeenCalled()
+  })
+
+  it('decodes to the same tokens, order and total as the default body', async () => {
+    const defaultBody = await buildDefaultBody()
+    cacheOnlyDefault(defaultBody)
+    vi.mocked(db.insertCacheRequest).mockClear()
+
+    const { res } = await call({ format: 'compact' })
+
+    expect(sent(res).format).toBe('compact')
+    expect(decodeCompactBody(res.send.mock.calls[0][0] as string)).toEqual(JSON.parse(defaultBody))
+  })
+
+  it('derives from the cached default body without a database call', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    vi.mocked(db.getTokensByChainRanked).mockClear()
+    vi.mocked(db.getTokenSourcesByChain).mockClear()
+
+    const { res } = await call({ format: 'compact' })
+
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(db.getTokenSourcesByChain).not.toHaveBeenCalled()
+    expect(sent(res).tokens).toHaveLength(5)
+  })
+
+  it('composes with limit, keeping the total of the whole list', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    vi.mocked(db.getTokensByChainRanked).mockClear()
+
+    const { res } = await call({ format: 'compact', limit: '2' })
+
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+    expect(sent(res).tokens.map((row: unknown[]) => row[2])).toEqual(['A', 'B'])
+    expect(sent(res).total).toBe(5)
+  })
+
+  it('caches under the compact key and leaves the default key alone', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    vi.mocked(db.insertCacheRequest).mockClear()
+
+    await call({ format: 'compact' })
+
+    expect(db.getCachedRequest).toHaveBeenCalledWith(COMPACT_KEY)
+    expect(writtenKeys()).toEqual([COMPACT_KEY])
+  })
+
+  it('serves a cached compact row as it is', async () => {
+    vi.mocked(db.getCachedRequest).mockImplementation(async (key: string) =>
+      key === COMPACT_KEY
+        ? ({ value: '{"format":"compact"}', expiresAt: new Date(Date.now() + STALE_TTL_MS) } as never)
+        : (undefined as never),
+    )
+
+    const { res } = await call({ format: 'compact' })
+
+    expect(res.send).toHaveBeenCalledWith('{"format":"compact"}')
+    expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the database when the default body is not cached', async () => {
+    const { res } = await call({ format: 'compact' })
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+    expect(sent(res).tokens).toHaveLength(5)
+  })
+
+  it('goes to the database for a limit above the default, which the default body cannot answer', async () => {
+    cacheOnlyDefault('{"chainId":1,"chainIdentifier":"eip155-1","total":99,"tokens":[]}')
+
+    const { res } = await call({ format: 'compact', limit: '60000' })
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
+    expect(sent(res).total).toBe(5)
+  })
+
+  it('goes to the database on an authorized refresh', async () => {
+    cacheOnlyDefault(await buildDefaultBody())
+    vi.mocked(db.getTokensByChainRanked).mockClear()
+
+    await call({ format: 'compact', refresh: '1' }, { authorization: 'Bearer test-admin-token' })
+
+    expect(db.getTokensByChainRanked).toHaveBeenCalledTimes(1)
   })
 })
 
