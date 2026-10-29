@@ -859,6 +859,27 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fontsource/inter@npm:5.3.0":
+  version: 5.3.0
+  resolution: "@fontsource/inter@npm:5.3.0"
+  checksum: 10c0/568601c10c83601c23005f8cd7434499df6e007eaa22c4dabbb1dcae327cc8e4a148ece8d4a4edaa8bafc5d2371ea97a37d1cc91ffbed77a43e2d8c15a6e831b
+  languageName: node
+  linkType: hard
+
+"@fontsource/jetbrains-mono@npm:5.3.0":
+  version: 5.3.0
+  resolution: "@fontsource/jetbrains-mono@npm:5.3.0"
+  checksum: 10c0/1351b2350e893f5da39559ed90ff0e5e60bcc876b1f40531ad081ad4bf2f3cda3fa9e8940364aef5a7430ae3140685c9cd4819c36d8ad62bcd3fa37e3cc66b1d
+  languageName: node
+  linkType: hard
+
+"@fontsource/space-grotesk@npm:5.3.0":
+  version: 5.3.0
+  resolution: "@fontsource/space-grotesk@npm:5.3.0"
+  checksum: 10c0/6804603d339edb99e50419e951c153d6ab0c175cd1a3c5044341c5efa261dcae63aec2288d5dd4d698d82b44c9a23a34f065881055b08887de08df2769c9791a
+  languageName: node
+  linkType: hard
+
 "@fortawesome/fontawesome-free@npm:^7.3.1":
   version: 7.3.1
   resolution: "@fortawesome/fontawesome-free@npm:7.3.1"
@@ -7596,6 +7617,9 @@ __metadata:
     "@dnd-kit/sortable": "npm:^10.0.0"
     "@dnd-kit/utilities": "npm:^3.2.2"
     "@eslint/js": "npm:^10.0.1"
+    "@fontsource/inter": "npm:5.3.0"
+    "@fontsource/jetbrains-mono": "npm:5.3.0"
+    "@fontsource/space-grotesk": "npm:5.3.0"
     "@fortawesome/fontawesome-free": "npm:^7.3.1"
     "@headlessui/react": "npm:^2.2.10"
     "@iconify/react": "npm:^6.0.2"
