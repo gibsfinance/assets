@@ -88,27 +88,27 @@ describe('setCustomRpc', () => {
 describe('getChainById', () => {
   it('returns the Ethereum mainnet chain for chainId 1', async () => {
     const { getChainById } = await import('./useRpcMetadata')
-    const chain = getChainById(1)
+    const chain = await getChainById(1)
     expect(chain).toBeDefined()
     expect(chain?.id).toBe(1)
   })
 
   it('returns a chain for BSC (56)', async () => {
     const { getChainById } = await import('./useRpcMetadata')
-    const chain = getChainById(56)
+    const chain = await getChainById(56)
     expect(chain).toBeDefined()
     expect(chain?.id).toBe(56)
   })
 
   it('returns undefined for an unknown chain ID', async () => {
     const { getChainById } = await import('./useRpcMetadata')
-    const chain = getChainById(999999)
+    const chain = await getChainById(999999)
     expect(chain).toBeUndefined()
   })
 
   it('returns Optimism for chainId 10', async () => {
     const { getChainById } = await import('./useRpcMetadata')
-    const chain = getChainById(10)
+    const chain = await getChainById(10)
     expect(chain).toBeDefined()
     expect(chain?.id).toBe(10)
   })
@@ -125,13 +125,13 @@ describe('getClient', () => {
 
   it('returns null for an unknown chain with no custom RPC', async () => {
     const { getClient } = await import('./useRpcMetadata')
-    const client = getClient(999999)
+    const client = await getClient(999999)
     expect(client).toBeNull()
   })
 
   it('returns a client for Ethereum mainnet using chain defaults', async () => {
     const { getClient } = await import('./useRpcMetadata')
-    const client = getClient(1)
+    const client = await getClient(1)
     expect(client).not.toBeNull()
     expect(mockCreatePublicClient).toHaveBeenCalledWith(
       expect.objectContaining({ chain: expect.objectContaining({ id: 1 }) }),
@@ -142,7 +142,7 @@ describe('getClient', () => {
     const { setCustomRpc, getClient } = await import('./useRpcMetadata')
     setCustomRpc(999999, 'https://custom-rpc.example.com')
 
-    const client = getClient(999999)
+    const client = await getClient(999999)
     expect(client).not.toBeNull()
     expect(mockCreatePublicClient).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -155,7 +155,7 @@ describe('getClient', () => {
     const { setCustomRpc, getClient } = await import('./useRpcMetadata')
     setCustomRpc(1, 'https://my-eth-node.example.com')
 
-    const client = getClient(1)
+    const client = await getClient(1)
     expect(client).not.toBeNull()
     // createPublicClient is called with the custom chain config containing the URL
     const callArg = mockCreatePublicClient.mock.calls[0][0]

@@ -1,10 +1,25 @@
 import { useState, useCallback } from 'react'
-import { createPublicClient, http, erc20Abi } from 'viem'
-import * as viemChains from 'viem/chains'
 import type { LocalToken } from './useLocalLists'
 import type { Chain, PublicClient } from 'viem'
 
 const RPC_STORAGE_KEY = 'gib-custom-rpcs'
+
+/**
+ * Load the viem library on demand.
+ *
+ * viem and its dependencies weigh about 800 kB minified, and only the token
+ * metadata read needs them. A dynamic import keeps them out of the Studio chunk.
+ * The browser fetches them the first time someone asks to read a chain.
+ */
+const loadViem = () => import('viem')
+
+/**
+ * Load every chain definition viem ships, on demand.
+ *
+ * Kept apart from `loadViem` because the chain table is large and is searched
+ * only when a client is built.
+ */
+const loadViemChains = () => import('viem/chains')
 
 function getCustomRpcs(): Record<number, string> {
   try {
@@ -21,17 +36,30 @@ export function setCustomRpc(chainId: number, rpcUrl: string): void {
   localStorage.setItem(RPC_STORAGE_KEY, JSON.stringify(rpcs))
 }
 
-export function getChainById(chainId: number) {
+/**
+ * Find viem's definition of a chain by numeric identifier.
+ *
+ * @param chainId - The chain's numeric identifier.
+ * @returns The chain definition, or undefined when viem does not know the chain.
+ */
+export async function getChainById(chainId: number): Promise<Chain | undefined> {
+  const viemChains = await loadViemChains()
   const match = Object.values(viemChains).find(
     (c) => typeof c === 'object' && c !== null && 'id' in c && (c as Chain).id === chainId,
   )
   return match as Chain | undefined
 }
 
-export function getClient(chainId: number): PublicClient | null {
+/**
+ * Build a read-only client for a chain, preferring the custom RPC the user saved.
+ *
+ * @param chainId - The chain's numeric identifier.
+ * @returns A client, or null when viem does not know the chain and no custom RPC is saved.
+ */
+export async function getClient(chainId: number): Promise<PublicClient | null> {
   const customRpcs = getCustomRpcs()
   const customRpc = customRpcs[chainId]
-  const chain = getChainById(chainId)
+  const [{ createPublicClient, http }, chain] = await Promise.all([loadViem(), getChainById(chainId)])
 
   if (customRpc) {
     return createPublicClient({
@@ -67,6 +95,7 @@ export async function fetchTokenMetadata(
   address: string,
 ): Promise<MetadataResult> {
   try {
+    const { erc20Abi } = await loadViem()
     const [name, symbol, decimals] = await Promise.all([
       client.readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName: 'name' }).catch(() => null),
       client
@@ -92,7 +121,7 @@ export function useRpcMetadata() {
   const [progress, setProgress] = useState({ done: 0, total: 0 })
 
   const loadMetadata = useCallback(async (tokens: LocalToken[], chainId: number): Promise<MetadataResult[]> => {
-    const client = getClient(chainId)
+    const client = await getClient(chainId)
     if (!client) {
       return tokens.map((t) => ({
         address: t.address,
