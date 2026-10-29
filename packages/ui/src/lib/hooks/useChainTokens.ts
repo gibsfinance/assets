@@ -13,24 +13,13 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import { preloadFirstScreenIcons } from '../utils/token-icon'
+import {
+  COMPACT_TOKEN_QUERY,
+  assertCompactTokens,
+  decodeCompactTokens,
+  type CompactTokensResponse,
+} from '../utils/compact-tokens'
 import type { Token } from '../types'
-
-/** One entry as the server returns it, before it becomes a `Token`. */
-interface ApiToken {
-  chainId: number
-  address: string
-  name: string
-  symbol: string
-  decimals: number
-  logoURI?: string
-  sources?: string[]
-}
-
-interface ChainTokensResponse {
-  chainId: number
-  total: number
-  tokens: ApiToken[]
-}
 
 /**
  * How many tokens the first-screen request asks for.
@@ -44,11 +33,27 @@ export const FIRST_SCREEN_TOKEN_COUNT = 60
 const FIVE_MINUTES = 5 * 60 * 1000
 const ONE_HOUR = 60 * 60 * 1000
 
-/** Fetch one `/list/tokens` response; a non-2xx status throws. */
-async function fetchChainTokens(path: string): Promise<ChainTokensResponse> {
+/**
+ * The one place a `/list/tokens` request path is built, so the slice and the
+ * full list always ask for the same compact body.
+ */
+function chainTokensPath(identifier: string, options: { limit?: number } = {}): string {
+  const limit = options.limit === undefined ? '' : `limit=${options.limit}&`
+  return `/list/tokens/${identifier}?${limit}${COMPACT_TOKEN_QUERY}`
+}
+
+/**
+ * Fetch one compact `/list/tokens` response.
+ *
+ * A non-2xx status throws, and so does a body that is not a compact list. The
+ * check runs here so the failure reaches the query, not a component's render.
+ */
+async function fetchChainTokens(path: string): Promise<CompactTokensResponse> {
   const response = await fetch(getApiUrl(path))
   if (!response.ok) throw new Error(`${response.status}`)
-  return response.json() as Promise<ChainTokensResponse>
+  const body = (await response.json()) as CompactTokensResponse
+  assertCompactTokens(body)
+  return body
 }
 
 /**
@@ -63,7 +68,7 @@ export function fullChainTokensQueryOptions(identifier: string | null) {
   return queryOptions({
     queryKey: ['tokensByChain', identifier],
     // `enabled` guarantees an identifier is resolved when this runs.
-    queryFn: () => fetchChainTokens(`/list/tokens/${identifier!}`),
+    queryFn: () => fetchChainTokens(chainTokensPath(identifier!)),
     enabled: !!identifier,
     staleTime: FIVE_MINUTES,
     gcTime: ONE_HOUR,
@@ -81,7 +86,7 @@ export function fullChainTokensQueryOptions(identifier: string | null) {
 export function firstScreenChainTokensQueryOptions(identifier: string | null) {
   return queryOptions({
     queryKey: ['tokensByChainFirstScreen', identifier],
-    queryFn: () => fetchChainTokens(`/list/tokens/${identifier!}?limit=${FIRST_SCREEN_TOKEN_COUNT}`),
+    queryFn: () => fetchChainTokens(chainTokensPath(identifier!, { limit: FIRST_SCREEN_TOKEN_COUNT })),
     enabled: !!identifier,
     staleTime: FIVE_MINUTES,
     gcTime: ONE_HOUR,
@@ -97,23 +102,25 @@ export function firstScreenChainTokensQueryOptions(identifier: string | null) {
  * Ethereum-Virtual-Machine — which asked for Solana's tokens under eip155-501
  * and got a 400 for every icon.
  */
-export function shapeTokens(response: ChainTokensResponse, identifier: string): Token[] {
-  return response.tokens.map((token) => {
-    const sources = token.sources ?? []
-    const listReferences = sources.map((sourceList) => ({
+export function shapeTokens(response: CompactTokensResponse, identifier: string): Token[] {
+  return decodeCompactTokens(response).map((token) => {
+    const listReferences = token.sources.map((sourceList) => ({
       sourceList,
       imageUri: getApiUrl(`/image/${identifier}/${token.address}`),
       imageFormat: '',
     }))
     return {
-      chainId: token.chainId,
+      chainId: response.chainId,
       chainIdentifier: identifier,
       address: token.address,
       name: token.name,
       symbol: token.symbol,
       decimals: token.decimals,
-      hasIcon: !!token.logoURI,
-      sourceList: sources[0] ?? 'merged',
+      // `logoURI` is not requested because every row has one: the endpoint drops
+      // tokens without a logo (see `buildTokensByChainResponse` in
+      // packages/server/src/server/list/handlers.ts).
+      hasIcon: true,
+      sourceList: token.sources[0] ?? 'merged',
       listReferences: listReferences.length > 0 ? listReferences : undefined,
     }
   })

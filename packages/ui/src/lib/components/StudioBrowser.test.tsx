@@ -3,6 +3,8 @@ import { render, screen, waitFor, within, cleanup, fireEvent } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, useEffect, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { compactBody, type DefaultFormatToken } from '../../../tests/compact-body'
+import { COMPACT_TOKEN_QUERY } from '../utils/compact-tokens'
 
 // ---------------------------------------------------------------------------
 // Virtualizer mock — @tanstack/react-virtual measures real layout, which jsdom
@@ -140,59 +142,43 @@ const PROVIDERS = [
   },
 ]
 
-interface ApiToken {
-  chainId: number
-  address: string
-  name: string
-  symbol: string
-  decimals: number
-  logoURI?: string
-  sources?: string[]
-}
+type ApiToken = DefaultFormatToken
 
-/** Build the /list/tokens response shape the component expects. */
+/** Build the compact /list/tokens response the component requests. */
 function tokensResponse(chainId: number, tokens: ApiToken[]) {
-  return { chainId, total: tokens.length, tokens }
+  return compactBody(chainId, tokens)
 }
 
 const ETHEREUM_TOKENS: ApiToken[] = [
   {
-    chainId: 1,
     address: '0xAAAa0000000000000000000000000000000000aa',
     name: 'Wrapped Ether',
     symbol: 'WETH',
     decimals: 18,
-    logoURI: 'https://logo/weth.png',
     sources: ['gib/default'],
   },
   {
-    chainId: 1,
     address: '0xBBBb0000000000000000000000000000000000bb',
     name: 'USD Coin',
     symbol: 'USDC',
     decimals: 6,
-    logoURI: 'https://logo/usdc.png',
     sources: ['gib/default'],
   },
   {
-    chainId: 1,
     address: '0xCCCc0000000000000000000000000000000000cc',
     name: 'Dai Stablecoin',
     symbol: 'DAI',
     decimals: 18,
-    logoURI: 'https://logo/dai.png',
     sources: ['gib/default'],
   },
 ]
 
 const PULSECHAIN_TOKENS: ApiToken[] = [
   {
-    chainId: 369,
     address: '0xDDDd0000000000000000000000000000000000dd',
     name: 'Pulse Token',
     symbol: 'PLS',
     decimals: 18,
-    logoURI: 'https://logo/pls.png',
     sources: ['gib/default'],
   },
 ]
@@ -200,12 +186,10 @@ const PULSECHAIN_TOKENS: ApiToken[] = [
 /** Base58, not hex — the address shape the browser used to be unable to reach. */
 const SOLANA_TOKENS: ApiToken[] = [
   {
-    chainId: 501,
     address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     name: 'USD Coin',
     symbol: 'USDC',
     decimals: 6,
-    logoURI: 'https://logo/usdc.png',
     sources: ['gib/default'],
   },
 ]
@@ -318,8 +302,10 @@ describe('StudioBrowser', () => {
 
     fireEvent.click(await screen.findByText('Solana'))
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501'))
-    expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/eip155-501')
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/solana-501?${COMPACT_TOKEN_QUERY}`),
+    )
+    expect(mockFetch).not.toHaveBeenCalledWith(`https://api.test/list/tokens/eip155-501?${COMPACT_TOKEN_QUERY}`)
   })
 
   // The download is the slow part of choosing a chain, so it starts when the
@@ -330,8 +316,10 @@ describe('StudioBrowser', () => {
     const card = (await screen.findByText('Solana')).closest('button')!
     fireEvent.pointerEnter(card)
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501?limit=60'))
-    expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/solana-501')
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/solana-501?limit=60&${COMPACT_TOKEN_QUERY}`),
+    )
+    expect(mockFetch).not.toHaveBeenCalledWith(`https://api.test/list/tokens/solana-501?${COMPACT_TOKEN_QUERY}`)
   })
 
   it('starts the first-screen request when keyboard focus reaches the card', async () => {
@@ -340,7 +328,9 @@ describe('StudioBrowser', () => {
     const card = (await screen.findByText('Solana')).closest('button')!
     fireEvent.focus(card)
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501?limit=60'))
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/solana-501?limit=60&${COMPACT_TOKEN_QUERY}`),
+    )
   })
 
   it('starts the full list request when the pointer presses the card', async () => {
@@ -349,7 +339,9 @@ describe('StudioBrowser', () => {
     const card = (await screen.findByText('Solana')).closest('button')!
     fireEvent.pointerDown(card)
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/solana-501'))
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/solana-501?${COMPACT_TOKEN_QUERY}`),
+    )
   })
 
   // The logo-only empty state used to key on the chain being
@@ -382,7 +374,9 @@ describe('StudioBrowser', () => {
 
     fireEvent.click(await screen.findByText('PulseChain'))
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/eip155-369'))
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/eip155-369?${COMPACT_TOKEN_QUERY}`),
+    )
     expect(await screen.findByText('Pulse Token')).toBeTruthy()
   })
 
@@ -511,12 +505,10 @@ describe('StudioBrowser', () => {
     // maps each source into listReferences and renders a single row carrying a
     // "+N" badge for the extra lists.
     const dupToken: ApiToken = {
-      chainId: 1,
       address: '0xEEEe0000000000000000000000000000000000ee',
       name: 'Shared Token',
       symbol: 'SHARE',
       decimals: 18,
-      logoURI: 'https://logo/share.png',
       sources: ['gib/default', 'other/list', 'third/list'],
     }
     installDefaultFetch({ 'eip155-1': tokensResponse(1, [dupToken]) })
@@ -536,12 +528,10 @@ describe('StudioBrowser', () => {
     // The badge is the only sign that a row stands for several lists. If the toggle
     // stops working, the extra lists are unreachable and the merge looks like a loss.
     const dupToken: ApiToken = {
-      chainId: 1,
       address: '0xEEEe0000000000000000000000000000000000ee',
       name: 'Shared Token',
       symbol: 'SHARE',
       decimals: 18,
-      logoURI: 'https://logo/share.png',
       sources: ['gib/default', 'other/list'],
     }
     installDefaultFetch({ 'eip155-1': tokensResponse(1, [dupToken]) })
@@ -1181,12 +1171,10 @@ describe('StudioBrowser — a token with no source list at all', () => {
     // ("merged") for the button, and clicking that name must navigate rather than try
     // to expand a set of alternates that was never there.
     const orphanToken: ApiToken = {
-      chainId: 1,
       address: '0xFFFf0000000000000000000000000000000000ff',
       name: 'Orphan Token',
       symbol: 'ORPH',
       decimals: 18,
-      logoURI: 'https://logo/orph.png',
       sources: [],
     }
     installDefaultFetch({ 'eip155-1': tokensResponse(1, [orphanToken]) })
@@ -1300,21 +1288,24 @@ describe('StudioBrowser — normalizing a token on its way into a list', () => {
   })
 
   it('stores a numeric chain id, a default decimal count and no icon when the hit is missing them', async () => {
-    // The chain id has been seen as a numeric string, decimals has been seen absent, and
-    // a token can simply have no icon. A list entry saved with the wrong types or a
-    // dangling icon reference is a broken row the next time that list opens.
-    const oddShapedToken = {
+    // A search hit has been seen with a numeric-string chain id and with decimals absent,
+    // and unlike a chain list entry it can have no icon. A list entry saved with the
+    // wrong types or a dangling icon reference is a broken row the next time that list opens.
+    const oddShapedHit = {
       chainId: '1',
+      chainIdentifier: 'eip155-1',
       address: '0x1234000000000000000000000000000000005678',
       name: 'Odd Shaped Token',
       symbol: 'ODD',
       sources: ['gib/default'],
-    } as unknown as ApiToken
-    installDefaultFetch({ 'eip155-1': tokensResponse(1, [oddShapedToken]) })
+    }
+    installDefaultFetch(undefined, { query: 'odd', truncated: false, tokens: [oddShapedHit] })
     renderBrowser({}, createElement(OpenEditorWithList, null))
 
     fireEvent.click(await screen.findByText('Ethereum'))
-    await screen.findByText('Odd Shaped Token')
+    await screen.findByText('Wrapped Ether')
+    typeSearch('odd')
+    await screen.findByText('Odd Shaped Token', {}, { timeout: 5000 })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add to list' })).toBeTruthy())
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to list' }))

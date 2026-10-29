@@ -91,6 +91,7 @@ vi.mock('../hooks/useMetrics', () => ({
 
 import NetworkSelect from './NetworkSelect'
 import { SettingsProvider } from '../contexts/SettingsContext'
+import { COMPACT_TOKEN_QUERY } from '../utils/compact-tokens'
 
 function renderNetworkSelect(props: Partial<Parameters<typeof NetworkSelect>[0]> = {}) {
   const onSelect = props.onSelect ?? vi.fn()
@@ -126,8 +127,10 @@ describe('NetworkSelect', () => {
     fireEvent.click(screen.getByText('Choose a network...'))
     fireEvent.pointerEnter(await screen.findByText('Bitcoin'))
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0?limit=60'))
-    expect(mockFetch).not.toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0')
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/bip122-0?limit=60&${COMPACT_TOKEN_QUERY}`),
+    )
+    expect(mockFetch).not.toHaveBeenCalledWith(`https://api.test/list/tokens/bip122-0?${COMPACT_TOKEN_QUERY}`)
   })
 
   it('starts the full list request when the pointer presses a row', async () => {
@@ -138,8 +141,10 @@ describe('NetworkSelect', () => {
     fireEvent.click(screen.getByText('Choose a network...'))
     fireEvent.pointerDown(await screen.findByText('Bitcoin'))
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0'))
-    expect(mockFetch).toHaveBeenCalledWith('https://api.test/list/tokens/bip122-0?limit=60')
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/bip122-0?${COMPACT_TOKEN_QUERY}`),
+    )
+    expect(mockFetch).toHaveBeenCalledWith(`https://api.test/list/tokens/bip122-0?limit=60&${COMPACT_TOKEN_QUERY}`)
   })
 
   it('lists a non-Ethereum-Virtual-Machine chain and selects it by identifier', async () => {

@@ -12,16 +12,14 @@ vi.mock('../utils', async () => {
 })
 
 import { useChainTokens, FIRST_SCREEN_TOKEN_COUNT } from './useChainTokens'
+import { compactBody } from '../../../tests/compact-body'
+import { COMPACT_TOKEN_QUERY } from '../utils/compact-tokens'
 import { usePrefetchChainTokens, ICON_DWELL_MILLISECONDS } from './usePrefetchChainTokens'
 
-const RESPONSE = {
-  chainId: 1,
-  total: 1,
-  tokens: [{ chainId: 1, address: '0xA', name: 'A', symbol: 'AAA', decimals: 18 }],
-}
+const RESPONSE = compactBody(1, [{ address: '0xA', name: 'A', symbol: 'AAA', decimals: 18 }])
 
-const FULL_URL = 'https://api.test/list/tokens/eip155-1'
-const SLICE_URL = `https://api.test/list/tokens/eip155-1?limit=${FIRST_SCREEN_TOKEN_COUNT}`
+const FULL_URL = `https://api.test/list/tokens/eip155-1?${COMPACT_TOKEN_QUERY}`
+const SLICE_URL = `https://api.test/list/tokens/eip155-1?limit=${FIRST_SCREEN_TOKEN_COUNT}&${COMPACT_TOKEN_QUERY}`
 
 /** A client that keeps data between renders, as the application's does. */
 function createClient() {
@@ -147,14 +145,7 @@ describe('usePrefetchChainTokens', () => {
 })
 
 describe('usePrefetchChainTokens icon preloading', () => {
-  const ICON_RESPONSE = {
-    chainId: 10,
-    total: 2,
-    tokens: [
-      { chainId: 10, address: '0xA', name: 'A', symbol: 'AAA', decimals: 18, logoURI: 'https://logo/a.png' },
-      { chainId: 10, address: '0xB', name: 'B', symbol: 'BBB', decimals: 18 },
-    ],
-  }
+  const ICON_RESPONSE = compactBody(10, [{ address: '0xA', name: 'A', symbol: 'AAA', decimals: 18 }])
   let requested: string[]
 
   beforeEach(() => {
