@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ListDescription, Network, NetworkInfo, PlatformMetrics } from '../types'
 import { getApiUrl } from '../utils'
-import { getNetworkName } from '../utils/network-name'
+import { getNetworkName, useNetworkNameTable } from '../utils/network-name'
 import { isTestnet } from '../utils/is-testnet'
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,10 @@ export function useMetrics(): {
   const { data: networks, isLoading: networksLoading, isError: networksError } = useNetworks()
   const { data: providers, isLoading: providersLoading, isError: providersError } = useProviders()
 
+  // A network the server sent without a name falls to the vendored table. The table
+  // landing is the one extra reason for `metrics` to change identity.
+  const nameTable = useNetworkNameTable()
+
   const isLoading = statsLoading || networksLoading || providersLoading
   // Published so a consumer can tell "still arriving" from "asked and failed".
   // Both leave `metrics` null, and they call for different words on screen.
@@ -139,7 +143,7 @@ export function useMetrics(): {
       tokenList: { total },
       networks: { supported },
     }
-  }, [stats, networks])
+  }, [stats, networks, nameTable])
 
   return { metrics, providers: providers ?? [], isLoading, isError }
 }

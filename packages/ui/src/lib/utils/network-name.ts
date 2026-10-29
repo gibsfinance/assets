@@ -1,4 +1,7 @@
-import networks from '../networks.json'
+import { useEffect, useSyncExternalStore } from 'react'
+
+/** Chain id -> display name, as vendored in networks.json. */
+export type NetworkNameTable = Record<string, string>
 
 const priorityNames: Record<number, string> = {
   1: 'Ethereum',
@@ -49,6 +52,54 @@ const NON_EVM_NAMES: Record<string, string> = {
   'fil-461': 'Filecoin',
 }
 
+let nameTable: NetworkNameTable | null = null
+let pendingLoad: Promise<NetworkNameTable | null> | null = null
+const listeners = new Set<() => void>()
+
+/**
+ * Start loading the vendored chain-name table, once. The table is 84 kB raw, so it is a
+ * separate chunk rather than part of the entry bundle every visitor downloads. Repeat
+ * calls share one promise. A failed fetch resolves to null and clears the cache so a
+ * later call can retry; names fall back to "Chain <id>" meanwhile.
+ */
+export function loadNetworkNameTable(): Promise<NetworkNameTable | null> {
+  if (nameTable) return Promise.resolve(nameTable)
+  if (pendingLoad) return pendingLoad
+  pendingLoad = import('../networks.json')
+    .then((module) => {
+      nameTable = module.default as NetworkNameTable
+      listeners.forEach((notify) => notify())
+      return nameTable
+    })
+    .catch(() => {
+      pendingLoad = null
+      return null
+    })
+  return pendingLoad
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function readNameTable(): NetworkNameTable | null {
+  return nameTable
+}
+
+/**
+ * Start the table load after the component mounts (off the first-paint path) and
+ * re-render exactly once when it lands. Returns the table, or null until then.
+ * Use it only where a name can depend on the table: a caller that always passes a
+ * non-empty `registryName`, or a curated id, never needs it.
+ */
+export function useNetworkNameTable(): NetworkNameTable | null {
+  useEffect(() => {
+    void loadNetworkNameTable()
+  }, [])
+  return useSyncExternalStore(subscribe, readNameTable)
+}
+
 /**
  * Resolve a chain's display name, best source first:
  *
@@ -58,6 +109,7 @@ const NON_EVM_NAMES: Record<string, string> = {
  *  2. registryName — the name the server stored alongside the chain's icon. Always
  *     current, because it is written by the same collection run that adds the network.
  *  3. networks.json — the vendored registry snapshot, refreshed by `yarn gen:networks`.
+ *     Loaded on demand; until it lands this tier is skipped.
  *     Covers chains no collector named (a network known only to a token list) and any
  *     caller without a server response to hand in.
  *  4. "Chain <id>" — recognisable, and better than a blank label.
@@ -73,7 +125,7 @@ export function getNetworkName(chainId: string | number, options: { registryName
   if (priorityNames[id]) return priorityNames[id]
   const registryName = options.registryName?.trim()
   if (registryName) return registryName
-  const entry = (networks as Record<string, string>)[String(id)]
+  const entry = nameTable?.[String(id)]
   if (entry) return entry
   return `Chain ${id}`
 }

@@ -3,7 +3,7 @@ import { Menu, MenuButton, MenuItems, MenuItem, Popover, PopoverButton, PopoverP
 import { useStudio } from '../contexts/StudioContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { getApiUrl } from '../utils'
-import { getNetworkName } from '../utils/network-name'
+import { getNetworkName, useNetworkNameTable } from '../utils/network-name'
 import { badgePositionToCSS } from '../utils/badge-position'
 import { shapeToCSS } from '../utils/code-output'
 import { IDENTITY_TRANSFORM, panBy, zoomAtPointer, clampZoom, type CanvasTransform } from '../utils/canvas-transform'
@@ -461,7 +461,9 @@ function InfiniteCanvas() {
     [selectedChainId],
   )
 
-  const networkName = useMemo(() => getNetworkName(selectedChainId ?? '1'), [selectedChainId])
+  const nameTable = useNetworkNameTable()
+  // nameTable is a dependency so the name is looked up again once the table lands.
+  const networkName = useMemo(() => getNetworkName(selectedChainId ?? '1'), [selectedChainId, nameTable])
 
   // Appearance computations
   const { width, height, shape, borderRadius, padding, shadow, backgroundColor } = appearance

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { getNetworkName } from './network-name'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { getNetworkName, loadNetworkNameTable } from './network-name'
 import networksJson from '../networks.json'
 
 /**
@@ -12,6 +12,12 @@ import networksJson from '../networks.json'
 const generated = networksJson as Record<string, string>
 
 describe('getNetworkName', () => {
+  // The table is a lazy chunk. These tests cover the settled state; the loading
+  // states are in network-name-loading.test.tsx.
+  beforeAll(async () => {
+    await loadNetworkNameTable()
+  })
+
   describe('priority names', () => {
     it('returns Ethereum for chain 1', () => {
       expect(getNetworkName(1)).toBe('Ethereum')

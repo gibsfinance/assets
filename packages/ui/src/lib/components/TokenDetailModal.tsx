@@ -3,7 +3,7 @@ import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react'
 import { useStudio } from '../contexts/StudioContext'
 import { useImageMetadata } from '../hooks/useImageMetadata'
 import { getApiUrl } from '../utils'
-import { getNetworkName } from '../utils/network-name'
+import { getNetworkName, useNetworkNameTable } from '../utils/network-name'
 import Image from './Image'
 import type { Token } from '../types'
 import { tokenChainIdentifier } from '../utils/chain-identifier'
@@ -55,6 +55,8 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
  * one place that can enforce it.
  */
 function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) {
+  // Re-renders the chain name once the vendored name table arrives.
+  useNetworkNameTable()
   const { selectToken } = useStudio()
 
   const imageUrl = getApiUrl(`/image/${tokenChainIdentifier(token)}/${token.address}`)
