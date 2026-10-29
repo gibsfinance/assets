@@ -49,7 +49,7 @@ import {
   resolveChainIdAgainstStored,
   chainIdFilterMatch,
 } from '../../chain-id'
-import { timerLog } from '../../logger'
+import { log, timerLog } from '../../logger'
 import { authorizedRefresh, REFRESH_CACHE_CONTROL } from '../cache-refresh'
 import {
   buildAndCache,
@@ -838,6 +838,13 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
  * That holds only for a limit below the default. The default body is itself cut at the
  * default, so it has nothing to give a request that asks for more.
  */
+const takeLeadingTokens = (body: DefaultBody, limit: number): DefaultBody => ({
+  chainId: body.chainId,
+  chainIdentifier: body.chainIdentifier,
+  total: body.total,
+  tokens: body.tokens.slice(0, limit),
+})
+
 const readLimitedDefaultBody = async ({
   chainId,
   limit,
@@ -847,13 +854,7 @@ const readLimitedDefaultBody = async ({
 }): Promise<DefaultBody | null> => {
   const canonical = await db.getCachedRequest(tokensByChainCacheKey(chainId, DEFAULT_TOKENS_BY_CHAIN_LIMIT))
   if (!canonical) return null
-  const body = JSON.parse(canonical.value) as DefaultBody
-  return {
-    chainId: body.chainId,
-    chainIdentifier: body.chainIdentifier,
-    total: body.total,
-    tokens: body.tokens.slice(0, limit),
-  }
+  return takeLeadingTokens(JSON.parse(canonical.value) as DefaultBody, limit)
 }
 
 const buildLimitedTokensByChainResponse = async ({
@@ -898,11 +899,57 @@ export const buildAndCacheTokensByChain = (chainId: string, limit: number): Prom
   buildAndCache(tokensByChainCacheKey(chainId, limit), () => buildTokensByChainResponse(chainId, limit))
 
 /**
+ * The compact variants the interface requests for every chain, and so the ones worth
+ * warming. Keep this list in step with `useChainTokens.ts` and `compact-tokens.ts` in
+ * `packages/ui/src/lib`: the first-screen slice asks for `limit=60`, the full list asks
+ * for no limit, which the handler reads as the default limit. Both select the same
+ * fields. A variant listed here that the interface never requests is wasted warm-up time;
+ * a variant the interface requests but this list omits pays a parse of the whole default
+ * body on its first request.
+ */
+export const WARMED_COMPACT_VARIANTS: readonly { limit: number; fields: readonly CompactField[] }[] = [
+  { limit: 60, fields: ['address', 'name', 'symbol', 'decimals', 'sources'] },
+  { limit: DEFAULT_TOKENS_BY_CHAIN_LIMIT, fields: ['address', 'name', 'symbol', 'decimals', 'sources'] },
+]
+
+/** True when a cache row exists and is younger than the warmer's staleness threshold. */
+const isWarmRow = (row: { expiresAt: Date | string | null } | undefined | null): boolean =>
+  !!row && cacheRowAge(row) < WARM_STALE_MS
+
+/**
+ * Build and cache the interface's compact variants of one chain from its default body.
+ *
+ * Fresh variant rows are skipped without reading the body. The default body is parsed
+ * at most once, however many variants are stale. A failure in one variant is logged
+ * and does not stop the others, so one bad row never costs the rest of the chain.
+ *
+ * @param chainId - Namespaced chain identifier.
+ * @param defaultBodyJson - Serialized default-limit default-format body for the chain.
+ */
+const warmCompactVariants = async (chainId: string, defaultBodyJson: string): Promise<void> => {
+  let parsedBody: DefaultBody | undefined
+  for (const { limit, fields } of WARMED_COMPACT_VARIANTS) {
+    try {
+      const cacheKey = tokensByChainCacheKey(chainId, limit, 'compact', fields)
+      if (isWarmRow(await db.getCachedRequest(cacheKey))) continue
+      parsedBody ??= JSON.parse(defaultBodyJson) as DefaultBody
+      const source = parsedBody
+      await buildAndCache(cacheKey, async () => toCompactBody(takeLeadingTokens(source, limit), fields))
+    } catch (err) {
+      // best-effort — one failed variant must not stop the next
+      log('compact warm failed for %s limit %d: %o', chainId, limit, err)
+    }
+  }
+}
+
+/**
  * Pre-warm the tokensByChain cache for the top N chains by token count.
  *
  * Called at startup (before /health flips to 200) and then periodically. Rebuilds
  * any top-N chain whose cache row is missing or older than WARM_STALE_MS, so the
- * cache row never ages past the stale threshold even without user traffic.
+ * cache row never ages past the stale threshold even without user traffic. It then
+ * warms the compact variants the interface requests, from the default body it just
+ * built or read, so the body is parsed once per chain.
  */
 export const warmTokensByChainCache = async (
   stats: { chainId: string; count: number }[],
@@ -913,10 +960,10 @@ export const warmTokensByChainCache = async (
     try {
       const chainId = toCAIP2(rawChainId)
       const limit = DEFAULT_TOKENS_BY_CHAIN_LIMIT
-      const cacheKey = tokensByChainCacheKey(chainId, limit)
-      const existing = await db.getCachedRequest(cacheKey)
-      if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
-      await buildAndCacheTokensByChain(chainId, limit)
+      const existing = await db.getCachedRequest(tokensByChainCacheKey(chainId, limit))
+      const defaultBodyJson =
+        existing && isWarmRow(existing) ? existing.value : await buildAndCacheTokensByChain(chainId, limit)
+      await warmCompactVariants(chainId, defaultBodyJson)
     } catch {
       // best-effort — startup must not fail if a chain is unavailable
     }

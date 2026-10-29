@@ -372,6 +372,214 @@ describe('warmTokensByChainCache', () => {
 })
 
 /**
+ * The interface requests two compact variants per chain. Without warming, the first
+ * request for each parses the whole default body (6 MB for Ethereum) before it answers.
+ */
+describe('warmTokensByChainCache compact variants', () => {
+  const CHAIN = 'eip155-1'
+  const INTERFACE_FIELDS = ['address', 'name', 'symbol', 'decimals', 'sources'] as const
+  const SLICE_KEY = tokensByChainCacheKey(CHAIN, 60, 'compact', INTERFACE_FIELDS)
+  const FULL_KEY = tokensByChainCacheKey(CHAIN, 50_000, 'compact', INTERFACE_FIELDS)
+  const DEFAULT_KEY = tokensByChainCacheKey(CHAIN, 50_000)
+  const WARM_STALE_MS = 6 * 60 * 60 * 1000
+
+  const tokens = Array.from({ length: 100 }, (_, index) => ({
+    address: `0x${index.toString(16).padStart(40, '0')}`,
+    name: `Token ${index}`,
+    symbol: `T${index}`,
+    decimals: 18,
+    logoURI: `https://gib.show/image/${index}`,
+    sources: [`provider/list${index % 3}`],
+  }))
+  const defaultBodyJson = JSON.stringify({ chainId: 1, chainIdentifier: CHAIN, total: 100, tokens })
+
+  const freshRow = (value: string) => ({ value, expiresAt: new Date(Date.now() + STALE_TTL_MS) })
+  const staleRow = (value: string) => ({
+    value,
+    expiresAt: new Date(Date.now() + STALE_TTL_MS - WARM_STALE_MS - 1000),
+  })
+
+  /** Serve cache rows by key; any key absent from the map is a miss. */
+  const serveRows = (rows: Record<string, ReturnType<typeof freshRow> | undefined>) =>
+    vi.mocked(db.getCachedRequest).mockImplementation((async (key: string) => rows[key]) as never)
+
+  const writtenRows = (): Record<string, string> =>
+    Object.fromEntries(vi.mocked(db.insertCacheRequest).mock.calls.map(([{ key, value }]) => [key, value]))
+
+  const defaultBodyParses = (parse: { mock: { calls: unknown[][] } }) =>
+    parse.mock.calls.filter(([text]) => text === defaultBodyJson).length
+
+  beforeEach(() => {
+    resetDbMocks()
+    vi.mocked(db.getCachedRequest).mockReset()
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('writes the first-screen slice and the full list under the keys the interface will read', async () => {
+    serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+
+    const written = writtenRows()
+    expect(Object.keys(written).sort()).toEqual([FULL_KEY, SLICE_KEY].sort())
+    const slice = JSON.parse(written[SLICE_KEY])
+    const full = JSON.parse(written[FULL_KEY])
+    expect(slice).toMatchObject({ format: 'compact', fields: INTERFACE_FIELDS, total: 100 })
+    expect(slice.tokens).toHaveLength(60)
+    expect(full.tokens).toHaveLength(100)
+    expect(slice.tokens[0][0]).toBe(tokens[0].address)
+    expect(slice.tokens[0][1]).toBe('Token 0')
+    expect(full.sources).toEqual(['provider/list0', 'provider/list1', 'provider/list2'])
+  })
+
+  it('builds the variants from the default body it just built when that row was stale', async () => {
+    serveRows({ [DEFAULT_KEY]: staleRow('{}') })
+    vi.mocked(db.getTokensByChainRanked).mockResolvedValue([] as never)
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+
+    // The stale row held `{}`; deriving from it would have thrown on `tokens.slice`.
+    expect(Object.keys(writtenRows()).sort()).toEqual([DEFAULT_KEY, FULL_KEY, SLICE_KEY].sort())
+    expect(JSON.parse(writtenRows()[FULL_KEY])).toMatchObject({ total: 0, tokens: [] })
+  })
+
+  it('parses the default body once per chain, not once per variant', async () => {
+    serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+    const parse = vi.spyOn(JSON, 'parse')
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+
+    expect(db.insertCacheRequest).toHaveBeenCalledTimes(2)
+    expect(defaultBodyParses(parse)).toBe(1)
+  })
+
+  it('skips fresh variant rows and does not parse the default body for them', async () => {
+    serveRows({
+      [DEFAULT_KEY]: freshRow(defaultBodyJson),
+      [SLICE_KEY]: freshRow('slice'),
+      [FULL_KEY]: freshRow('full'),
+    })
+    const parse = vi.spyOn(JSON, 'parse')
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+
+    expect(db.insertCacheRequest).not.toHaveBeenCalled()
+    expect(defaultBodyParses(parse)).toBe(0)
+  })
+
+  it('rebuilds a stale variant row and leaves the fresh one alone', async () => {
+    serveRows({
+      [DEFAULT_KEY]: freshRow(defaultBodyJson),
+      [SLICE_KEY]: staleRow('old slice'),
+      [FULL_KEY]: freshRow('full'),
+    })
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+
+    expect(Object.keys(writtenRows())).toEqual([SLICE_KEY])
+    expect(JSON.parse(writtenRows()[SLICE_KEY]).tokens).toHaveLength(60)
+  })
+
+  it('keeps warming the other variant and the next chain when one variant fails', async () => {
+    const otherDefaultKey = tokensByChainCacheKey('eip155-369', 50_000)
+    const otherSliceKey = tokensByChainCacheKey('eip155-369', 60, 'compact', INTERFACE_FIELDS)
+    vi.mocked(db.getCachedRequest).mockImplementation((async (key: string) => {
+      if (key === SLICE_KEY) throw new Error('cache read failed')
+      if (key === DEFAULT_KEY || key === otherDefaultKey) return freshRow(defaultBodyJson)
+      return undefined
+    }) as never)
+    const { warmTokensByChainCache } = await import('./handlers')
+
+    await expect(
+      warmTokensByChainCache(
+        [
+          { chainId: CHAIN, count: 100 },
+          { chainId: 'eip155-369', count: 50 },
+        ],
+        2,
+      ),
+    ).resolves.toBeUndefined()
+
+    const keys = Object.keys(writtenRows())
+    expect(keys).toContain(FULL_KEY)
+    expect(keys).not.toContain(SLICE_KEY)
+    expect(keys).toContain(otherSliceKey)
+  })
+
+  describe('the request handler', () => {
+    const invoke = async (query: Record<string, string>) => {
+      const { tokensByChain } = await import('./handlers')
+      let sent: string | undefined
+      const res = {
+        set: () => {},
+        send: (body: string) => void (sent = body),
+      }
+      const next = vi.fn()
+      await tokensByChain({ params: { chainId: CHAIN }, query, headers: {} } as never, res as never, next)
+      expect(next).not.toHaveBeenCalled()
+      return sent
+    }
+    const sliceQuery = { limit: '60', format: 'compact', fields: 'address,name,symbol,decimals,sources' }
+    const fullQuery = { format: 'compact', fields: 'address,name,symbol,decimals,sources' }
+
+    it('reads the exact keys the warmer wrote, for both variants', async () => {
+      serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+      const { warmTokensByChainCache } = await import('./handlers')
+      await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+      const written = writtenRows()
+
+      vi.mocked(db.getCachedRequest)
+        .mockReset()
+        .mockResolvedValue(freshRow('x') as never)
+      await invoke(sliceQuery)
+      await invoke(fullQuery)
+
+      const readKeys = vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)
+      expect(readKeys).toEqual([SLICE_KEY, FULL_KEY])
+      expect(Object.keys(written).sort()).toEqual([...readKeys].sort())
+    })
+
+    it('answers from the warmed row without touching the default body or the database', async () => {
+      serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+      const { warmTokensByChainCache } = await import('./handlers')
+      await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+      const written = writtenRows()
+      serveRows({ [SLICE_KEY]: freshRow(written[SLICE_KEY]), [FULL_KEY]: freshRow(written[FULL_KEY]) })
+      vi.mocked(db.insertCacheRequest).mockClear()
+      vi.mocked(db.getCachedRequest).mockClear()
+      const parse = vi.spyOn(JSON, 'parse')
+
+      expect(await invoke(sliceQuery)).toBe(written[SLICE_KEY])
+      expect(await invoke(fullQuery)).toBe(written[FULL_KEY])
+
+      expect(vi.mocked(db.getCachedRequest).mock.calls.map(([key]) => key)).not.toContain(DEFAULT_KEY)
+      expect(defaultBodyParses(parse)).toBe(0)
+      expect(db.getTokensByChainRanked).not.toHaveBeenCalled()
+      expect(db.insertCacheRequest).not.toHaveBeenCalled()
+    })
+
+    it('derives the same bytes the warmer wrote, so a warmed row is the row a cold request would build', async () => {
+      serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+      const { warmTokensByChainCache } = await import('./handlers')
+      await warmTokensByChainCache([{ chainId: CHAIN, count: 100 }], 1)
+      const written = writtenRows()
+
+      serveRows({ [DEFAULT_KEY]: freshRow(defaultBodyJson) })
+
+      expect(await invoke(sliceQuery)).toBe(written[SLICE_KEY])
+      expect(await invoke(fullQuery)).toBe(written[FULL_KEY])
+    })
+  })
+})
+
+/**
  * The merged endpoint is the heavier of the two chain-scoped ones and was the only
  * one left unwarmed, so a real user could still land on its multi-second cold build
  * — most reliably right after a deploy, since startup clears the whole cache.
