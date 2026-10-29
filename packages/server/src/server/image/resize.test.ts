@@ -378,8 +378,19 @@ describe('cacheControlFor', () => {
     expect(cacheControlFor('content-addressed')).toBe('public, max-age=31536000, immutable')
   })
 
+  it('lets a cache serve a mutable image for a week past expiry while it refreshes, and through origin errors', () => {
+    // Without the stale window every icon is a cache miss once a day.
+    expect(cacheControlFor('mutable')).toMatch(/stale-while-revalidate=604800, stale-if-error=604800$/)
+  })
+
+  it('never lets a content-addressed image go stale, because its bytes cannot change', () => {
+    expect(cacheControlFor('content-addressed')).not.toContain('stale')
+  })
+
   it('serves the configured, shorter lifetime for a mutable address', () => {
-    expect(cacheControlFor('mutable')).toBe('public, max-age=86400')
+    expect(cacheControlFor('mutable')).toBe(
+      'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+    )
   })
 })
 
@@ -923,7 +934,10 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
-    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+    expect(res.set).toHaveBeenCalledWith(
+      'cache-control',
+      'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+    )
   })
 
   // ---------------------------------------------------------------------
@@ -967,7 +981,10 @@ describe('sendVariant (via maybeResize)', () => {
     const req = mockReq({ w: '72', h: '72', as: 'webp' })
     const res = mockRes()
     await maybeResize({ res, img: makeImage(), params: parseResizeParams({ query: req.query }) })
-    expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+    expect(res.set).toHaveBeenCalledWith(
+      'cache-control',
+      'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+    )
   })
 
   it('sets x-resize header with WxH dimensions', async () => {

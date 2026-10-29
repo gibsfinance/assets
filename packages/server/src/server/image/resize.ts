@@ -62,10 +62,22 @@ export type CachePolicy = 'content-addressed' | 'mutable'
 /** One year in seconds — the lifetime a content-addressed response is cached for. */
 const CONTENT_ADDRESSED_MAX_AGE_SECONDS = 60 * 60 * 24 * 365
 
+/**
+ * How long a cache may keep serving a mutable image after it expires, in seconds.
+ *
+ * The image at a token address rarely changes, and a stale icon for a few days is
+ * acceptable. Without this window every icon became a cache miss once a day, and a
+ * miss costs 280 to 370 ms against 90 to 150 ms for a hit. With it, the first request
+ * after expiry still gets the cached copy at hit speed while the cache refreshes in the
+ * background. The same window covers `stale-if-error`, so an origin outage does not
+ * blank icons the cache already holds.
+ */
+const MUTABLE_STALE_SECONDS = 60 * 60 * 24 * 7
+
 /** Build the `cache-control` header value for one of the two cache lifetimes this service serves. */
 export function cacheControlFor(policy: CachePolicy): string {
   if (policy === 'content-addressed') return `public, max-age=${CONTENT_ADDRESSED_MAX_AGE_SECONDS}, immutable`
-  return `public, max-age=${config.cacheSeconds}`
+  return `public, max-age=${config.cacheSeconds}, stale-while-revalidate=${MUTABLE_STALE_SECONDS}, stale-if-error=${MUTABLE_STALE_SECONDS}`
 }
 
 export interface ResizeParams {

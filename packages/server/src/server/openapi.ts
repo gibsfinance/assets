@@ -170,7 +170,7 @@ const REFRESH_UNAUTHORIZED_RESPONSE = {
 const IMAGE_RESPONSE = {
   '200': {
     description:
-      'Image content. Headers: cache-control (public, max-age), x-resize (original or variant), x-uri (source when known).',
+      'Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known).',
     content: {
       'image/*': { schema: { type: 'string' as const, format: 'binary' } },
     },
