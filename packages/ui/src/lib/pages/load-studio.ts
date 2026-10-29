@@ -9,6 +9,7 @@
  * then answers every call after the first from one promise.
  */
 import type { ComponentType } from 'react'
+import { scheduleIdle } from '../utils/idle'
 
 /** How long the home page waits for an idle moment before it fetches the Studio anyway. */
 export const STUDIO_IDLE_TIMEOUT_MILLISECONDS = 2000
@@ -39,11 +40,5 @@ export const prefetchStudio = (): void => {
  *
  * @returns A function that cancels the fetch if it has not started.
  */
-export const prefetchStudioWhenIdle = (): (() => void) => {
-  if (typeof window.requestIdleCallback === 'function') {
-    const handle = window.requestIdleCallback(prefetchStudio, { timeout: STUDIO_IDLE_TIMEOUT_MILLISECONDS })
-    return () => window.cancelIdleCallback(handle)
-  }
-  const handle = setTimeout(prefetchStudio, STUDIO_IDLE_TIMEOUT_MILLISECONDS)
-  return () => clearTimeout(handle)
-}
+export const prefetchStudioWhenIdle = (): (() => void) =>
+  scheduleIdle(prefetchStudio, { timeoutMilliseconds: STUDIO_IDLE_TIMEOUT_MILLISECONDS })
