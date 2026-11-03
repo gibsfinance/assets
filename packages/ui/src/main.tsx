@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './fonts.css'
 import './app.css'
 import { App } from './App'
-import { removeRouteLoader } from './prerender/pre-paint'
+import { removeRouteLoader } from './prerender/route-loader'
 
 /**
  * Takes the build-time loader down once React has committed its first render, so a

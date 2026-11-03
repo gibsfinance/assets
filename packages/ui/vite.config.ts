@@ -7,7 +7,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { pathToFileURL } from 'url'
 import path from 'path'
 import { injectMarkup } from './src/prerender/inject-markup.ts'
-import { themeScript, routeHideScript, routeGuardScript, routeLoaderMarkup } from './src/prerender/pre-paint.ts'
+import { themeScript, routeHideScript, routeGuardScript } from './src/prerender/pre-paint.ts'
+import { routeLoaderMarkup } from './src/prerender/route-loader.ts'
 
 /**
  * Writes the home page into `index.html` at build time. It imports the bundle that
