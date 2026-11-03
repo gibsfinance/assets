@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["src/db/migrations", "src/db/config.ts", "src/db/utils.ts", "src/db/seeds"],
   "compilerOptions": {
     "rootDir": ".",
