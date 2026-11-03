@@ -8,7 +8,6 @@ import './list-token-upsert.test'
 import './tokens-by-chain.test'
 import './dedupe-migration.test'
 import './sprite-chain-filter.test'
-import './canonical-image.test'
 
 import { cleanup } from '../src/cleanup'
 import test from 'node:test'

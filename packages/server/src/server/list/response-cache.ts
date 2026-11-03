@@ -56,11 +56,8 @@ export const STALE_TTL_MS = 24 * 60 * 60 * 1000
  * edge and aiming full traffic at an origin that is already failing. Nor is a zone-wide
  * purge credential something an internet-facing process should be holding for one call
  * it makes once at boot.
- *
- * v3: list entries rank by the image route's preference (listEntryPreferenceSql), so
- * a token's logoURI can name a different image for unchanged data.
  */
-export const RESPONSE_SHAPE_VERSION = 'v3'
+export const RESPONSE_SHAPE_VERSION = 'v2'
 
 /** Prefix a key with the shape namespace. Every cache key builder goes through this. */
 export const namespacedCacheKey = (key: string) => `${RESPONSE_SHAPE_VERSION}:${key}`
