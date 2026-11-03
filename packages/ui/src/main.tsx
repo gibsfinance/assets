@@ -4,6 +4,7 @@ import './fonts.css'
 import './app.css'
 import { App } from './App'
 import { removeRouteLoader } from './prerender/route-loader'
+import { registerServiceWorker } from './sw/register'
 
 /**
  * Takes the build-time loader down once React has committed its first render, so a
@@ -20,3 +21,11 @@ createRoot(document.getElementById('app')!).render(
     <App />
   </StrictMode>,
 )
+
+// Production builds only, and not when the build was made with the kill switch
+// (`VITE_SERVICE_WORKER=off`). Development and tests never register a worker.
+registerServiceWorker({
+  enabled: import.meta.env.PROD && import.meta.env.VITE_SERVICE_WORKER !== 'off',
+  navigator,
+  window,
+})

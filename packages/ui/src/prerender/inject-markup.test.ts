@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { injectMarkup, MARKUP_PLACEHOLDER, THEME_PLACEHOLDER, GUARD_PLACEHOLDER, LOADER_PLACEHOLDER } from './inject-markup'
+import {
+  injectMarkup,
+  MARKUP_PLACEHOLDER,
+  THEME_PLACEHOLDER,
+  GUARD_PLACEHOLDER,
+  LOADER_PLACEHOLDER,
+} from './inject-markup'
 
-const parts = { markup: '<h1>$&Home</h1>', themeScript: 'T()', routeHideScript: 'H()', routeGuardScript: 'G()', routeLoader: '<i id="l"></i>' }
+const parts = {
+  markup: '<h1>$&Home</h1>',
+  themeScript: 'T()',
+  routeHideScript: 'H()',
+  routeGuardScript: 'G()',
+  routeLoader: '<i id="l"></i>',
+}
 const shell = `<head>${THEME_PLACEHOLDER}</head><body><div id="app">${MARKUP_PLACEHOLDER}</div>${LOADER_PLACEHOLDER}${GUARD_PLACEHOLDER}</body>`
 
 describe('injectMarkup', () => {
@@ -12,7 +24,10 @@ describe('injectMarkup', () => {
     expect(html).toContain('</div><i id="l"></i><script>G()</script></body>')
   })
 
-  it.each([MARKUP_PLACEHOLDER, THEME_PLACEHOLDER, GUARD_PLACEHOLDER, LOADER_PLACEHOLDER])('throws when %s is missing', (placeholder) => {
-    expect(() => injectMarkup(shell.replace(placeholder, ''), parts)).toThrow(placeholder)
-  })
+  it.each([MARKUP_PLACEHOLDER, THEME_PLACEHOLDER, GUARD_PLACEHOLDER, LOADER_PLACEHOLDER])(
+    'throws when %s is missing',
+    (placeholder) => {
+      expect(() => injectMarkup(shell.replace(placeholder, ''), parts)).toThrow(placeholder)
+    },
+  )
 })

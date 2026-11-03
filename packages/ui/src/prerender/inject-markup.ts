@@ -15,7 +15,13 @@ function fill(html: string, placeholder: string, content: string): string {
 }
 
 /** The pieces the build writes into `index.html`. Both head scripts share one tag. */
-export type InjectedParts = { markup: string; themeScript: string; routeHideScript: string; routeGuardScript: string; routeLoader: string }
+export type InjectedParts = {
+  markup: string
+  themeScript: string
+  routeHideScript: string
+  routeGuardScript: string
+  routeLoader: string
+}
 
 /**
  * Fills the four placeholders of `index.html`. A missing placeholder throws,

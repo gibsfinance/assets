@@ -81,6 +81,25 @@ yarn smoke:production              # gib.show
   migration's number and delete the generated `.sql`. That is what keeps the two aligned.
 - Old Knex files: moved to `_backup/knex/` (gitignored)
 
+### First Paint and the Service Worker
+Return visitors paint from cache; the build removes the two blocking requests.
+- The built `index.html` carries its stylesheet inline (`src/prerender/inline-stylesheet.ts`, run by
+  the `inline-stylesheet` plugin in `vite.config.ts`). Font urls are rewritten to `./assets/...`. The
+  build fails if the stylesheet link is missing. The hashed `.css` file is still emitted, unused.
+- `/sw.js` is the service worker (`src/sw/`). Decisions are pure functions in `worker-logic.ts`; the
+  event wiring in `worker.ts` takes fakes in tests; `sw.ts` only attaches it to the scope. It answers
+  navigations to `/` from cache and refreshes in the background, serves `/assets/*` cache first, and
+  never touches the API, other origins, or non-GET requests. A returning visitor can see the previous
+  version once after a deploy. Bump `CACHE_VERSION` in `worker-logic.ts` to discard every cache.
+- The server sends `sw.js` with `no-cache` (`static-headers.ts`). Never hash its name or cache it.
+- Registration happens after `load`, in production builds only (`src/sw/register.ts`, called by `main.tsx`).
+- **Kill switch:** build with `VITE_SERVICE_WORKER=off` (set it as an environment variable in the
+  deploy and redeploy). The build then ships a `/sw.js` that deletes every cache and unregisters
+  itself, and the page stops registering a worker. Browsers pick it up on their next update check,
+  which they make on each navigation and at least daily. Remove the variable to turn the worker back on.
+- The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
+  swapping the artwork is a one-file change. A test holds its byte size under a budget.
+
 ### Image Serving Pipeline
 - `?as=webp` — output format conversion (sharp resize pipeline)
 - `?only=vector` — source type filter (filter by extension before selection)

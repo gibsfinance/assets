@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import {
-  themeScript,
-  routeHideScript,
-  routeGuardScript,
-  HIDE_STYLE_ID,
-} from './pre-paint'
+import { themeScript, routeHideScript, routeGuardScript, HIDE_STYLE_ID } from './pre-paint'
 import { LOADER_ID, LOADER_ATTRIBUTE, LOADER_BUDGET_BYTES, routeLoaderMarkup, removeRouteLoader } from './route-loader'
 
 /** Runs a shipped script string the way the browser runs the inline tag. */
