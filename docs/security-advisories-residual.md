@@ -1,6 +1,8 @@
 # Residual dependency advisories — triage
 
-_Last updated: 2026-06-16, after upgrading the server to eslint 9._
+_Last updated: 2026-11-03, after the November dependency patches. The sections after
+"Residual (2026-11-03)" are history: they record what each earlier sweep fixed and
+what was left at the time._
 
 ## How to reproduce the audit
 
@@ -18,12 +20,29 @@ yarn npm audit --all --recursive --environment all
 | After Tier 1+2 (commit `2b7c45c1`) | 3 | 35 | 37 | 7 | 82 |
 | After Tier 3 (commit `3ba6dc0b`) | 0 | 15 | 29 | 6 | 50 |
 | After removing unused hardhat | 0 | 9 | 23 | 2 | 34 |
-| **After server eslint 9 upgrade** | **0** | **9** | **17** | **2** | **28** |
+| After server eslint 9 upgrade | 0 | 9 | 17 | 2 | 28 |
+| **After 2026-11-03 patches** | **0** | **0** | **5** | **0** | **5** |
 
 The full inbound request path of the server (everything that processes an
 untrusted HTTP request) is clean. Every advisory listed below sits in
 build / test / lint / contract-compilation tooling, or is not exploitable in
 the way this project uses the package.
+
+## Residual (2026-11-03)
+
+Five moderate rows remain. None of them is in the server's request path.
+
+| Package | Kind | Reaches us through | Why it stays |
+|---------|------|--------------------|--------------|
+| `@esbuild-kit/core-utils` 3.3.2 | Deprecation notice | `drizzle-kit` 0.31.11 | Needs a `drizzle-kit` release that drops the loader. Migration tooling only. |
+| `@esbuild-kit/esm-loader` 2.6.5 | Deprecation notice | `drizzle-kit` 0.31.11 | Same as above. |
+| `whatwg-encoding` 3.1.1 | Deprecation notice | `encoding-sniffer` 0.2.1 | Needs an upstream release. Not a vulnerability. |
+| `glob` 13.0.6 | [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4), an AbortSignal cancellation bypass | `cacache`, under `make-fetch-happen` (package-install tooling) | The fix is in glob 14.0.2 or later, a new major version that `cacache` 20 does not accept. We never pass glob an abort signal or untrusted patterns. |
+| `minimatch` 10.2.6 | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), denial of service through pattern amplification | `eslint` 10.12.0 | The fix is in minimatch 11, a new major version that eslint 10 does not accept. The only patterns eslint expands are the ones in our own config files. |
+
+Re-check `glob` and `minimatch` when `cacache` or `eslint` releases a version that
+accepts the patched major. Forcing it through `resolutions` would put an unsupported
+major under both packages, for no gain in the shipped server.
 
 ## What Tier 3 fixed
 
@@ -117,7 +136,7 @@ prediction — eslint was only one of several consumers of each, and the others
 Verified after the upgrade: typecheck clean, server lint clean, full build
 clean, server suite 427/427, user-interface suite 889/889.
 
-## Residual — and why each is left in place
+## Residual as of 2026-06-16 (history) — and why each was left in place
 
 ### 1. Not exploitable as this project uses it (no action)
 
