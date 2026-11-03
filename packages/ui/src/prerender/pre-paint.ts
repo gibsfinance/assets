@@ -1,3 +1,5 @@
+import { LOADER_ID, LOADER_ATTRIBUTE } from './route-loader'
+
 /**
  * Inline scripts that run before the first paint. Each is plain source held as a
  * string, because the build writes it into `index.html` verbatim. The tests
@@ -24,11 +26,11 @@ const NAMES_ANOTHER_PAGE = `!(location.hash===''||location.hash==='#'||location.
  * browser may paint the markup before reaching it. Hiding first means a visitor who
  * opens `/#/studio` never sees the static home page, whatever the browser paints when.
  */
-export const routeHideScript = `(function(){if(${NAMES_ANOTHER_PAGE}){var s=document.createElement('style');s.id='${HIDE_STYLE_ID}';s.textContent='#app{visibility:hidden}';document.head.appendChild(s)}})()`
+export const routeHideScript = `(function(){if(${NAMES_ANOTHER_PAGE}){document.documentElement.setAttribute('${LOADER_ATTRIBUTE}','');var s=document.createElement('style');s.id='${HIDE_STYLE_ID}';s.textContent='#app{visibility:hidden}';document.head.appendChild(s)}})()`
 
 /**
  * Empties `#app` when the address names a page other than home, then removes the
  * hiding style so the page React renders there is visible. It must sit after the
  * `#app` element so the element exists when it runs.
  */
-export const routeGuardScript = `(function(){if(!(${NAMES_ANOTHER_PAGE}))return;var r=document.getElementById('app');if(r)r.textContent='';var s=document.getElementById('${HIDE_STYLE_ID}');if(s)s.remove()})()`
+export const routeGuardScript = `(function(){if(!(${NAMES_ANOTHER_PAGE}))return;var r=document.getElementById('app');if(r)r.textContent='';var s=document.getElementById('${HIDE_STYLE_ID}');if(s)s.remove();window.addEventListener('hashchange',function(){if(!(${NAMES_ANOTHER_PAGE})){var l=document.getElementById('${LOADER_ID}');if(l)l.remove();document.documentElement.removeAttribute('${LOADER_ATTRIBUTE}')}})})()`

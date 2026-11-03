@@ -91,6 +91,7 @@ describe('static cache policy', () => {
     mkdirSync(path.join(root, 'assets'))
     writeFileSync(path.join(root, 'index.html'), '<html></html>')
     writeFileSync(path.join(root, 'favicon.png'), 'png')
+    writeFileSync(path.join(root, 'sw.js'), 'self.skipWaiting()')
     writeFileSync(path.join(root, 'assets', 'index-4f9a1c.js'), 'export {}')
     const app = express()
     app.use(express.static(root, { setHeaders: staticCacheHeaders(root) }))
@@ -127,6 +128,10 @@ describe('static cache policy', () => {
 
   it('applies the same no-cache to index.html when it answers the root path', async () => {
     expect(await cacheControl('/')).toBe('no-cache')
+  })
+
+  it('revalidates the service worker on every check, so a kill switch reaches every browser', async () => {
+    expect(await cacheControl('/sw.js')).toBe('no-cache')
   })
 
   it('leaves a file outside assets/ on the default policy', async () => {
