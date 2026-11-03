@@ -1986,8 +1986,76 @@ const buildFormatOrderSql = (formatPreference?: string[][]): SQL => {
 }
 
 /**
+ * Where a ranked query finds the list a candidate entry belongs to. Each query
+ * reads these from a different place — `applyOrder` from the `list` table and
+ * `list_order_item` directly, the list endpoints from their pre-aggregated
+ * `list_ranks` rows — so the columns are passed in rather than assumed.
+ */
+type ListEntryRankColumns = {
+  /** Provider ranking from the list order, already defaulted to the bottom when unranked. */
+  ranking: SQL
+  major: SQL | AnyColumn
+  minor: SQL | AnyColumn
+  patch: SQL | AnyColumn
+  isDefault: SQL | AnyColumn
+  listKey: SQL | AnyColumn
+}
+
+/**
+ * The one rule for which list entry represents a token, as `ORDER BY` terms, best first.
+ *
+ * Every route that names a token's image ranks its candidates through this: the
+ * by-address image route (`applyOrder`), the chain token list and merged list
+ * (`getTokensByChainRanked`), and search (`searchTokens`). They used to carry their
+ * own copies, and the copies had drifted: the image route preferred vector artwork
+ * and the lists did not, so the same token could show an svg at
+ * `/image/1/<address>` and a png in the `logoURI` of `/list/tokens/1`. A list's
+ * `logoURI` and the by-address image are promised to be the same picture; that only
+ * holds while both are ordered by the same terms.
+ *
+ * In order: an entry whose image resolves (see usableImageSql), then provider
+ * ranking (`ranking / 1000` groups a provider's sub-lists), then format (svg first
+ * by default), then newest list version, then default lists, then list key and
+ * position for a stable answer.
+ *
+ * Expects `image` and `list_token` to be in scope under their table names.
+ *
+ * @param columns - Where this query reads each list-level term from.
+ * @param options.formatPreference - Ordered groups of extensions; omitted means svg first.
+ * @param options.currentVersion - For a query whose candidates include superseded list
+ *   versions: the predicate naming a current one, ranked right after a usable image.
+ *   The list queries leave it out because they read current versions only.
+ */
+const listEntryPreferenceSql = (
+  columns: ListEntryRankColumns,
+  { formatPreference, currentVersion }: { formatPreference?: string[][]; currentVersion?: SQL } = {},
+): SQL =>
+  dsql`
+    CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
+    ${currentVersion ? dsql`CASE WHEN ${currentVersion} THEN 0 ELSE 1 END ASC,` : dsql``}
+    (${columns.ranking} / 1000) ASC,
+    ${buildFormatOrderSql(formatPreference)} ASC,
+    ${columns.major} DESC, ${columns.minor} DESC, ${columns.patch} DESC,
+    ${columns.isDefault} ASC,
+    ${columns.listKey} ASC,
+    ${s.listToken.listTokenOrderId} ASC`
+
+/** List-level terms read from a `list_ranks` row aliased `lr` (see getTokensByChainRanked). */
+const listRanksColumns: ListEntryRankColumns = {
+  ranking: dsql.raw('lr.ranking'),
+  major: dsql.raw('lr.major'),
+  minor: dsql.raw('lr.minor'),
+  patch: dsql.raw('lr.patch'),
+  isDefault: dsql.raw('lr.default'),
+  listKey: dsql.raw('lr.key'),
+}
+
+/**
  * Apply dense-rank ordering to select the top image per token.
- * When no format preference is given, SVGs are preferred over raster images.
+ * Ranks by listEntryPreferenceSql — the rule the token lists use too — with one
+ * extra term: candidates here include superseded list versions, and a current
+ * version outranks them. When no format preference is given, SVGs are preferred
+ * over raster images.
  *
  * Uses raw SQL because Drizzle's $dynamic() cannot add SELECT columns
  * (dense_rank window function) after initial query creation.
@@ -2011,7 +2079,24 @@ export const applyOrder = async (
   }: { dedupe?: boolean; sorted?: boolean; includeContent?: boolean } = {},
 ) => {
   const db = getDrizzle()
-  const formatOrder = buildFormatOrderSql(formatPreference)
+  const ranking = dsql`COALESCE(${s.listOrderItem.ranking}, 9223372036854775807)`
+  const preference = listEntryPreferenceSql(
+    {
+      ranking,
+      major: s.list.major,
+      minor: s.list.minor,
+      patch: s.list.patch,
+      isDefault: s.list.default,
+      listKey: s.list.key,
+    },
+    // A current list version outranks a superseded one before any other preference
+    // applies. The token lists read current versions only (latestListVersionSql), so
+    // without this a higher-ranked provider's superseded entry won here while the list
+    // named a current one, and the two routes served different images for one token.
+    // A ranking term, not a filter: a token that only a superseded version still
+    // carries keeps its image here, as before — it is in no list to disagree with.
+    { formatPreference, currentVersion: latestListVersionSql },
+  )
   const fromClause =
     baseFrom === 'provider'
       ? dsql`
@@ -2055,17 +2140,10 @@ export const applyOrder = async (
         ${s.list.minor} AS "listMinor",
         ${s.list.patch} AS "listPatch",
         ${s.list.default} AS "listDefault",
-        COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) AS "listRanking",
+        ${ranking} AS "listRanking",
         dense_rank() OVER (
           PARTITION BY ${s.token.tokenId}, ${s.token.networkId}
-          ORDER BY
-            CASE WHEN ${s.image.imageHash} IS NOT NULL THEN 0 ELSE 1 END ASC,
-            (COALESCE(${s.listOrderItem.ranking}, 9223372036854775807) / 1000) ASC,
-            ${formatOrder} ASC,
-            ${s.list.major} DESC, ${s.list.minor} DESC, ${s.list.patch} DESC,
-            ${s.list.default} ASC,
-            ${s.list.key} ASC,
-            ${s.listToken.listTokenOrderId} ASC
+          ORDER BY ${preference}
         ) AS rank
       FROM ${fromClause}
       LEFT JOIN ${s.listOrderItem} ON (
@@ -2247,13 +2325,9 @@ export const getTokensByChainRanked = async (
       INNER JOIN list_ranks lr ON lr.list_id = ${s.listToken.listId}
       LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
       WHERE ${eq(s.network.chainId, chainId)}
-      ORDER BY
-        ${s.token.tokenId},
-        -- Prefer list_tokens whose image resolves via directUri() (see usableImageSql).
-        CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
-        (lr.ranking / 1000) ASC,
-        lr.major DESC, lr.minor DESC, lr.patch DESC,
-        lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
+      -- The same preference the by-address image route ranks by, so a logoURI names
+      -- the image /image/:chainId/:address serves (see listEntryPreferenceSql).
+      ORDER BY ${s.token.tokenId}, ${listEntryPreferenceSql(listRanksColumns)}
     ) sub
     INNER JOIN ${s.provider} ON ${eq(s.provider.providerId, dsql.raw('sub."providerId"'))}
     ${
@@ -2346,8 +2420,9 @@ export const getTokenSourcesByChain = async (
  * candidate at all.
  *
  * The second stage resolves the winning list entry for the surviving candidates only,
- * using the same DISTINCT ON preference getTokensByChainRanked uses: a list entry whose
- * image actually resolves wins, then provider ranking, then version. Provider ranking
+ * using the preference every image-naming route shares (listEntryPreferenceSql): a list
+ * entry whose image actually resolves wins, then provider ranking, then format, then
+ * version. Provider ranking
  * enters the final ordering only as a tie-break, after tier and popularity — it orders
  * providers, and a search is asking about tokens. Deciding which list entry a token is
  * served from is the job it can actually do here, and that is the DISTINCT ON.
@@ -2446,12 +2521,7 @@ export const searchTokens = async (
       INNER JOIN ${s.listToken} ON ${eq(s.listToken.tokenId, dsql.raw('m."tokenId"'))}
       INNER JOIN list_ranks lr ON lr.list_id = ${s.listToken.listId}
       LEFT JOIN ${s.image} ON ${eq(s.image.imageHash, s.listToken.imageHash)}
-      ORDER BY
-        m."tokenId",
-        CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
-        (lr.ranking / 1000) ASC,
-        lr.major DESC, lr.minor DESC, lr.patch DESC,
-        lr.default ASC, lr.key ASC, ${s.listToken.listTokenOrderId} ASC
+      ORDER BY m."tokenId", ${listEntryPreferenceSql(listRanksColumns)}
     )
     SELECT
       b."chainId", b."providedId", b.decimals, b.symbol, b.name,
