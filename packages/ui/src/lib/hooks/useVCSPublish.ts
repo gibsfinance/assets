@@ -2,11 +2,13 @@ import { useState, useCallback } from 'react'
 import type { LocalList } from './useLocalLists'
 import { generateRepoName, generateCommitMessage } from '../utils/formatting'
 import { createTokenStore } from '../utils/vcs-token-store'
+import { faCodeBranch, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import { faGithub, faGitlab } from '@fortawesome/free-brands-svg-icons'
 
 /** Pluggable interface for version control system publishing */
 export interface VCSPublisher {
   name: string
-  icon: string
+  icon: IconDefinition
   /** Initiate auth flow, return access token */
   authorize(): Promise<string>
   /** Check if already authorized */
@@ -70,7 +72,7 @@ export function createGitHubPublisher(): VCSPublisher {
 
   return {
     name: 'GitHub',
-    icon: 'fab fa-github',
+    icon: faGithub,
 
     async authorize(): Promise<string> {
       // Standard OAuth web flow — redirect to GitHub, server proxy exchanges code
@@ -184,7 +186,7 @@ export function createGitLabPublisher(options: GitLabPublisherOptions): VCSPubli
 
   return {
     name: serverUrl === 'https://gitlab.com' ? 'GitLab' : `GitLab (${new URL(serverUrl).hostname})`,
-    icon: 'fab fa-gitlab',
+    icon: faGitlab,
 
     async authorize(): Promise<string> {
       const state = crypto.randomUUID()
@@ -295,7 +297,7 @@ export function createGiteaPublisher(options: GiteaPublisherOptions): VCSPublish
 
   return {
     name: `Gitea (${new URL(serverUrl).hostname})`,
-    icon: 'fas fa-code-branch',
+    icon: faCodeBranch,
 
     async authorize(): Promise<string> {
       if (options.clientId) {

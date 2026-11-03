@@ -3,6 +3,8 @@ import { CSS } from '@dnd-kit/utilities'
 import Image from './Image'
 import ImageUpload from './ImageUpload'
 import type { LocalToken } from '../hooks/useLocalLists'
+import { faGripVertical, faTrashCan } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface ListTokenRowProps {
   token: LocalToken
@@ -36,7 +38,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
         className="flex-shrink-0 cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-white/20 dark:hover:text-white/50"
         {...attributes}
         {...listeners}>
-        <i className="fas fa-grip-vertical text-xs" />
+        <Icon icon={faGripVertical} className="text-xs" />
       </button>
 
       {/* Icon: inline upload when no imageUri, otherwise click-to-edit */}
@@ -92,7 +94,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
         onClick={() => onRemove(token.address)}
         className="flex-shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
         title="Remove token">
-        <i className="fas fa-trash-alt text-xs" />
+        <Icon icon={faTrashCan} className="text-xs" />
       </button>
     </div>
   )

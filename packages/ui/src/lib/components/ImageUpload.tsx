@@ -1,4 +1,6 @@
 import { useRef, useCallback } from 'react'
+import { faCamera } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 import { validateImageFile, readFileAsDataUri } from '../utils/image-upload'
 
 interface ImageUploadProps {
@@ -84,8 +86,9 @@ export default function ImageUpload({ onUpload, currentImage, size = 32 }: Image
         {currentImage ? (
           <img src={currentImage} alt="" className="h-full w-full rounded-full object-cover" />
         ) : (
-          <i
-            className="fas fa-camera text-gray-400 dark:text-white/30"
+          <Icon
+            icon={faCamera}
+            className="text-gray-400 dark:text-white/30"
             style={{ fontSize: Math.max(10, size * 0.4) }}
           />
         )}

@@ -1,5 +1,7 @@
 import Image from './Image'
 import type { TokenListReference } from '../types'
+import { faArrowRight, faUpRightFromSquare } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface TokenSubRowsProps {
   references: TokenListReference[]
@@ -45,7 +47,7 @@ export default function TokenSubRows({ references, onNavigateToList }: TokenSubR
               className="rounded p-1 text-[10px] text-gray-400 transition-colors hover:bg-gray-100 hover:text-accent-500 dark:text-white/30 dark:hover:bg-white/5"
               title="Open image"
               onClick={(e) => e.stopPropagation()}>
-              <i className="fas fa-external-link-alt" />
+              <Icon icon={faUpRightFromSquare} />
             </a>
             {onNavigateToList && (
               <button
@@ -56,7 +58,7 @@ export default function TokenSubRows({ references, onNavigateToList }: TokenSubR
                   e.stopPropagation()
                   onNavigateToList(ref.sourceList)
                 }}>
-                <i className="fas fa-arrow-right" />
+                <Icon icon={faArrowRight} />
               </button>
             )}
           </div>

@@ -26,6 +26,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Home from './Home'
 import { SettingsProvider } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
+import { prefetchStudioWhenIdle } from './load-studio'
+
+// The idle fetch would pull the whole Studio page into every render below. The module is
+// replaced so the tests can say when the page asked for it and when it took the request back.
+vi.mock('./load-studio', () => ({ prefetchStudioWhenIdle: vi.fn(() => vi.fn()) }))
 
 // ---------------------------------------------------------------------------
 // Fixtures — the two payloads useMetrics combines into the page's metrics
@@ -519,5 +524,23 @@ describe('Home — the integration examples', () => {
     expect(screen.getByAltText('Token 1')).toBeTruthy()
     expect(screen.getByAltText('Token 2')).toBeTruthy()
     expect(screen.getByAltText('Token 3')).toBeTruthy()
+  })
+})
+
+describe('Home — fetching the Studio before it is asked for', () => {
+  it('schedules the fetch once, when the page mounts', () => {
+    stubFetch()
+    renderHome()
+    expect(prefetchStudioWhenIdle).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes the request back when the visitor leaves before the browser went idle', () => {
+    const cancel = vi.fn()
+    vi.mocked(prefetchStudioWhenIdle).mockReturnValueOnce(cancel)
+    stubFetch()
+    const { unmount } = renderHome()
+    expect(cancel).not.toHaveBeenCalled()
+    unmount()
+    expect(cancel).toHaveBeenCalledTimes(1)
   })
 })

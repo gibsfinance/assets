@@ -1174,7 +1174,7 @@ describe('ListEditor token images', () => {
     expect(screen.getByText('Token Image')).toBeTruthy()
 
     await act(async () => {
-      fireEvent.click(document.querySelector('.fa-times.text-xs')!.closest('button')!)
+      fireEvent.click(document.querySelector('[data-icon="xmark"].text-xs')!.closest('button')!)
     })
 
     expect(screen.queryByText('Token Image')).toBeNull()
@@ -1293,7 +1293,7 @@ describe('ListEditor token images', () => {
     expect(store.size).toBe(0)
 
     await act(async () => {
-      fireEvent.click(document.querySelector('.fa-times.text-xs')!.closest('button')!)
+      fireEvent.click(document.querySelector('[data-icon="xmark"].text-xs')!.closest('button')!)
     })
     // The row still shows the image it had before the reset was attempted.
     const previews = screen.getAllByRole('img') as HTMLImageElement[]
@@ -1863,7 +1863,7 @@ describe('ListEditor closing', () => {
     expect(editor!.isOpen).toBe(true)
 
     await act(async () => {
-      fireEvent.click(document.querySelector('.fa-times')!.closest('button')!)
+      fireEvent.click(document.querySelector('[data-icon="xmark"]')!.closest('button')!)
     })
     expect(editor!.isOpen).toBe(false)
   })
@@ -1875,7 +1875,7 @@ describe('ListEditor closing', () => {
     expect(editor!.activeList).toBeTruthy()
 
     await act(async () => {
-      fireEvent.click(document.querySelector('.fa-times')!.closest('button')!)
+      fireEvent.click(document.querySelector('[data-icon="xmark"]')!.closest('button')!)
     })
 
     expect(editor!.activeList).toBeNull()

@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { faCircleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface ErrorMessageProps {
   urlType?: 'token' | 'network'
@@ -35,7 +37,7 @@ export default function ErrorMessage({
   return (
     <div className="elevated-card border-red-500/40 p-4">
       <div className="flex items-center gap-3">
-        <i className="fas fa-exclamation-circle text-red-500"></i>
+        <Icon icon={faCircleExclamation} className="text-red-500" />
         <div className="flex-1">
           <p className="font-medium text-red-500">No icon found</p>
           <p className="text-sm text-gray-500 dark:text-gray-400">

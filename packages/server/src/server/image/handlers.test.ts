@@ -219,7 +219,10 @@ describe('image handlers', () => {
       const img = makeImage()
       sendImage(res, img, 'save')
 
-      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+      expect(res.set).toHaveBeenCalledWith(
+        'cache-control',
+        'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+      )
       expect(res.set).toHaveBeenCalledWith('x-resize', 'original')
       expect(res.set).toHaveBeenCalledWith('x-uri', 'https://example.com/token.png')
       expect(res.contentType).toHaveBeenCalledWith('.png')
@@ -273,7 +276,10 @@ describe('image handlers', () => {
     it('defaults to the ordinary max-age when cachePolicy is omitted', () => {
       const res = mockResponse()
       sendImage(res, makeImage(), 'save')
-      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+      expect(res.set).toHaveBeenCalledWith(
+        'cache-control',
+        'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+      )
     })
 
     it('serves the year-long, immutable cache-control when cachePolicy is content-addressed', () => {
@@ -822,7 +828,10 @@ describe('image handlers', () => {
 
       await handler(req, res, next)
 
-      expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+      expect(res.set).toHaveBeenCalledWith(
+        'cache-control',
+        'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+      )
       expect(res.set).not.toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
     })
 
@@ -1200,7 +1209,10 @@ describe('image handlers', () => {
       await getImageByHash(req, res, next)
 
       expect(res.set).toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
-      expect(res.set).not.toHaveBeenCalledWith('cache-control', 'public, max-age=86400')
+      expect(res.set).not.toHaveBeenCalledWith(
+        'cache-control',
+        'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
+      )
     })
 
     it('asks maybeResize for the content-addressed cache policy, so a resized variant is equally immutable', async () => {

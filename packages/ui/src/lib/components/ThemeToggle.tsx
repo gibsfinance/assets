@@ -1,4 +1,6 @@
 import { useTheme } from '../contexts/ThemeContext'
+import { faDesktop, faMoon, faSun } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 export function ThemeToggle() {
   const { isDark, mode, setMode } = useTheme()
@@ -33,7 +35,7 @@ export function ThemeToggle() {
         }`}
         onClick={handleThemeClick}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-        {isDark ? <i className="fas fa-sun text-base" /> : <i className="fas fa-moon text-base" />}
+        {isDark ? <Icon icon={faSun} className="text-base" /> : <Icon icon={faMoon} className="text-base" />}
       </button>
       <button
         type="button"
@@ -44,7 +46,7 @@ export function ThemeToggle() {
         }`}
         onClick={handleSystemClick}
         title={isSystem ? 'Using system theme' : 'Use system theme'}>
-        <i className="fas fa-desktop text-base" />
+        <Icon icon={faDesktop} className="text-base" />
       </button>
     </div>
   )

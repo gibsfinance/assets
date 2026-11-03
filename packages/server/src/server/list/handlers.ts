@@ -21,6 +21,15 @@ import * as db from '../../db'
 import type * as viem from 'viem'
 import type { RequestHandler } from 'express'
 import * as utils from './utils'
+import {
+  COMPACT_FIELDS,
+  parseCompactFields,
+  parseTokensFormat,
+  toCompactBody,
+  type CompactField,
+  type DefaultBody,
+  type TokensFormat,
+} from './compact'
 import _ from 'lodash'
 import config from '../../../config'
 import { bumpSubscriberCount } from '../../collect/user-submissions'
@@ -40,7 +49,7 @@ import {
   resolveChainIdAgainstStored,
   chainIdFilterMatch,
 } from '../../chain-id'
-import { timerLog } from '../../logger'
+import { log, timerLog } from '../../logger'
 import { authorizedRefresh, REFRESH_CACHE_CONTROL } from '../cache-refresh'
 import {
   buildAndCache,
@@ -690,7 +699,7 @@ export const all: RequestHandler = async (req, res) => {
  * GET /list/tokens/:chainId
  * Returns all deduplicated tokens for a chain in a single response.
  * Server-side merge eliminates the need for N individual list fetches.
- * Supports ?limit=N (default 500, max 5000)
+ * Supports ?limit=N (default 50000, max 100000) ?format=compact, and ?fields= to select compact columns.
  */
 /**
  * Age at which the periodic warmer rebuilds a row, deliberately equal to the freshness
@@ -728,8 +737,17 @@ const MAX_TOKENS_BY_CHAIN_LIMIT = 100_000
  * distinct value needlessly forked the cache. The trailing colon is the legacy
  * empty-extensions slot, kept so already-warmed rows stay readable.
  */
-export const tokensByChainCacheKey = (chainId: string, limit: number) =>
-  namespacedCacheKey(`tokens-by-chain:${chainId}:${limit}:`)
+export const tokensByChainCacheKey = (
+  chainId: string,
+  limit: number,
+  format: TokensFormat = 'default',
+  fields: readonly CompactField[] = COMPACT_FIELDS,
+) => {
+  if (format === 'default') return namespacedCacheKey(`tokens-by-chain:${chainId}:${limit}:`)
+  // The full row keeps the original compact key; a projection appends its field list.
+  const selection = fields.length === COMPACT_FIELDS.length ? '' : fields.join(',')
+  return namespacedCacheKey(`tokens-by-chain-compact:${chainId}:${limit}:${selection}`)
+}
 
 /** Persist a built tokensByChain body with the standard stale-TTL expiry. */
 export const writeTokensByChainCache = writeCachedResponse
@@ -803,15 +821,135 @@ const buildTokensByChainResponse = async (chainId: string, limit: number) => {
   })
 }
 
+/**
+ * Build a limited tokensByChain body from the chain's cached default-limit body, or
+ * from the database when that body is not cached.
+ *
+ * The cache key carries the limit, and the warmer fills only the default one. So the
+ * first request for any other limit ran the whole ranked query and kept a few entries
+ * of it: 19.4 seconds on production for `limit=50` on Ethereum, against 0.23 seconds
+ * once cached.
+ *
+ * Slicing the finished body gives the same bytes as the database build.
+ * buildTokensByChainResponse counts `total` over every entry and then keeps
+ * `entries.slice(0, limit)` in ranking order, so the first `limit` tokens of a larger
+ * body are exactly those tokens, and `total` does not depend on the limit.
+ *
+ * That holds only for a limit below the default. The default body is itself cut at the
+ * default, so it has nothing to give a request that asks for more.
+ */
+const takeLeadingTokens = (body: DefaultBody, limit: number): DefaultBody => ({
+  chainId: body.chainId,
+  chainIdentifier: body.chainIdentifier,
+  total: body.total,
+  tokens: body.tokens.slice(0, limit),
+})
+
+const readLimitedDefaultBody = async ({
+  chainId,
+  limit,
+}: {
+  chainId: string
+  limit: number
+}): Promise<DefaultBody | null> => {
+  const canonical = await db.getCachedRequest(tokensByChainCacheKey(chainId, DEFAULT_TOKENS_BY_CHAIN_LIMIT))
+  if (!canonical) return null
+  return takeLeadingTokens(JSON.parse(canonical.value) as DefaultBody, limit)
+}
+
+const buildLimitedTokensByChainResponse = async ({
+  chainId,
+  limit,
+  buildFromDatabase,
+}: {
+  chainId: string
+  limit: number
+  buildFromDatabase: () => Promise<string>
+}): Promise<string> => {
+  const body = await readLimitedDefaultBody({ chainId, limit })
+  return body ? JSON.stringify(body) : buildFromDatabase()
+}
+
+/**
+ * Build a compact body for `format=compact`. It composes with `limit` the same way the
+ * default body does: from the cached default-limit body when one exists, so a cached
+ * chain costs no database query, and from the database otherwise.
+ *
+ * Unlike the default format, a limit equal to the default also derives from the cached
+ * default body, because the compact row is a different key and cannot read itself.
+ */
+const buildCompactTokensByChainResponse = async ({
+  chainId,
+  limit,
+  fields,
+  derivable,
+  buildFromDatabase,
+}: {
+  chainId: string
+  limit: number
+  fields: readonly CompactField[]
+  derivable: boolean
+  buildFromDatabase: () => Promise<string>
+}): Promise<string> => {
+  const cached = derivable ? await readLimitedDefaultBody({ chainId, limit }) : null
+  return toCompactBody(cached ?? (JSON.parse(await buildFromDatabase()) as DefaultBody), fields)
+}
+
 export const buildAndCacheTokensByChain = (chainId: string, limit: number): Promise<string> =>
   buildAndCache(tokensByChainCacheKey(chainId, limit), () => buildTokensByChainResponse(chainId, limit))
+
+/**
+ * The compact variants the interface requests for every chain, and so the ones worth
+ * warming. Keep this list in step with `useChainTokens.ts` and `compact-tokens.ts` in
+ * `packages/ui/src/lib`: the first-screen slice asks for `limit=60`, the full list asks
+ * for no limit, which the handler reads as the default limit. Both select the same
+ * fields. A variant listed here that the interface never requests is wasted warm-up time;
+ * a variant the interface requests but this list omits pays a parse of the whole default
+ * body on its first request.
+ */
+export const WARMED_COMPACT_VARIANTS: readonly { limit: number; fields: readonly CompactField[] }[] = [
+  { limit: 60, fields: ['address', 'name', 'symbol', 'decimals', 'sources'] },
+  { limit: DEFAULT_TOKENS_BY_CHAIN_LIMIT, fields: ['address', 'name', 'symbol', 'decimals', 'sources'] },
+]
+
+/** True when a cache row exists and is younger than the warmer's staleness threshold. */
+const isWarmRow = (row: { expiresAt: Date | string | null } | undefined | null): boolean =>
+  !!row && cacheRowAge(row) < WARM_STALE_MS
+
+/**
+ * Build and cache the interface's compact variants of one chain from its default body.
+ *
+ * Fresh variant rows are skipped without reading the body. The default body is parsed
+ * at most once, however many variants are stale. A failure in one variant is logged
+ * and does not stop the others, so one bad row never costs the rest of the chain.
+ *
+ * @param chainId - Namespaced chain identifier.
+ * @param defaultBodyJson - Serialized default-limit default-format body for the chain.
+ */
+const warmCompactVariants = async (chainId: string, defaultBodyJson: string): Promise<void> => {
+  let parsedBody: DefaultBody | undefined
+  for (const { limit, fields } of WARMED_COMPACT_VARIANTS) {
+    try {
+      const cacheKey = tokensByChainCacheKey(chainId, limit, 'compact', fields)
+      if (isWarmRow(await db.getCachedRequest(cacheKey))) continue
+      parsedBody ??= JSON.parse(defaultBodyJson) as DefaultBody
+      const source = parsedBody
+      await buildAndCache(cacheKey, async () => toCompactBody(takeLeadingTokens(source, limit), fields))
+    } catch (err) {
+      // best-effort — one failed variant must not stop the next
+      log('compact warm failed for %s limit %d: %o', chainId, limit, err)
+    }
+  }
+}
 
 /**
  * Pre-warm the tokensByChain cache for the top N chains by token count.
  *
  * Called at startup (before /health flips to 200) and then periodically. Rebuilds
  * any top-N chain whose cache row is missing or older than WARM_STALE_MS, so the
- * cache row never ages past the stale threshold even without user traffic.
+ * cache row never ages past the stale threshold even without user traffic. It then
+ * warms the compact variants the interface requests, from the default body it just
+ * built or read, so the body is parsed once per chain.
  */
 export const warmTokensByChainCache = async (
   stats: { chainId: string; count: number }[],
@@ -822,10 +960,10 @@ export const warmTokensByChainCache = async (
     try {
       const chainId = toCAIP2(rawChainId)
       const limit = DEFAULT_TOKENS_BY_CHAIN_LIMIT
-      const cacheKey = tokensByChainCacheKey(chainId, limit)
-      const existing = await db.getCachedRequest(cacheKey)
-      if (existing && cacheRowAge(existing) < WARM_STALE_MS) continue
-      await buildAndCacheTokensByChain(chainId, limit)
+      const existing = await db.getCachedRequest(tokensByChainCacheKey(chainId, limit))
+      const defaultBodyJson =
+        existing && isWarmRow(existing) ? existing.value : await buildAndCacheTokensByChain(chainId, limit)
+      await warmCompactVariants(chainId, defaultBodyJson)
     } catch {
       // best-effort — startup must not fail if a chain is unavailable
     }
@@ -865,13 +1003,30 @@ export const tokensByChain: RequestHandler = async (req, res, next) => {
   }
   const chainId = resolution.chainId
 
+  const format = parseTokensFormat(req.query.format)
+  const fields = parseCompactFields(req.query.fields, format)
   const limit = utils.parseTokenLimit(req.query.limit, {
     fallback: DEFAULT_TOKENS_BY_CHAIN_LIMIT,
     max: MAX_TOKENS_BY_CHAIN_LIMIT,
   })
+  const buildFromDatabase = () => buildTokensByChainResponse(chainId, limit)
+  // An authorized refresh must reach the database. Deriving from the default body
+  // would rewrite this row from a copy that the refresh exists to replace.
+  const derivable = limit < DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized
+  const buildDefault = derivable
+    ? () => buildLimitedTokensByChainResponse({ chainId, limit, buildFromDatabase })
+    : buildFromDatabase
+  const buildCompact = () =>
+    buildCompactTokensByChainResponse({
+      chainId,
+      limit,
+      fields,
+      derivable: limit <= DEFAULT_TOKENS_BY_CHAIN_LIMIT && !refreshAuthorized,
+      buildFromDatabase,
+    })
   await serveCachedJson(res, {
-    cacheKey: tokensByChainCacheKey(chainId, limit),
-    build: () => buildTokensByChainResponse(chainId, limit),
+    cacheKey: tokensByChainCacheKey(chainId, limit, format, fields),
+    build: format === 'compact' ? buildCompact : buildDefault,
     cacheControl: listCacheControl,
     bypassCache: refreshAuthorized,
     bypassCacheControl: REFRESH_CACHE_CONTROL,

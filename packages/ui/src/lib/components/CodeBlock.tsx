@@ -1,12 +1,15 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { HighlighterCore } from 'shiki/core'
 import type { CodeBlockProps } from '../types'
 import { useTheme } from '../contexts/ThemeContext'
+import { useNearView } from '../hooks/useNearView'
+import { scheduleIdle } from '../utils/idle'
 
 // Shiki (engine + grammars + themes) is several hundred kilobytes — far too
-// heavy for the landing chunk. Load it once in the background and let every
-// CodeBlock subscribe; until it arrives, render the same text in a plain
-// <pre> with matching padding so nothing shifts when highlighting lands.
+// heavy for the landing chunk. A block starts the load only when it is near
+// the viewport, in idle time. All blocks share one load and subscribe to its
+// result; until it arrives, each renders the same text in a plain <pre> with
+// matching padding so nothing shifts when highlighting lands.
 let highlighter: HighlighterCore | null = null
 let loadPromise: Promise<void> | null = null
 const subscribers = new Set<() => void>()
@@ -34,7 +37,6 @@ function loadHighlighter(): Promise<void> {
 
 function subscribe(notify: () => void): () => void {
   subscribers.add(notify)
-  loadHighlighter()
   return () => subscribers.delete(notify)
 }
 
@@ -54,7 +56,14 @@ export default function CodeBlock({
   preClasses = '',
 }: CodeBlockProps) {
   const { isDark } = useTheme()
+  const wrapperReference = useRef<HTMLDivElement>(null)
+  const isNear = useNearView(wrapperReference)
   const shiki = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+
+  useEffect(() => {
+    if (!isNear) return
+    return scheduleIdle(() => void loadHighlighter())
+  }, [isNear])
 
   const theme = useMemo(() => (themeInput || isDark ? 'dark-plus' : 'light-plus'), [themeInput, isDark])
 
@@ -69,7 +78,7 @@ export default function CodeBlock({
 
   if (!generatedHtml) {
     return (
-      <div className={wrapperClass}>
+      <div ref={wrapperReference} className={wrapperClass}>
         <pre>
           <code>{code}</code>
         </pre>
@@ -77,5 +86,5 @@ export default function CodeBlock({
     )
   }
 
-  return <div className={wrapperClass} dangerouslySetInnerHTML={{ __html: generatedHtml }} />
+  return <div ref={wrapperReference} className={wrapperClass} dangerouslySetInnerHTML={{ __html: generatedHtml }} />
 }

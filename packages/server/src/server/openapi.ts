@@ -170,7 +170,7 @@ const REFRESH_UNAUTHORIZED_RESPONSE = {
 const IMAGE_RESPONSE = {
   '200': {
     description:
-      'Image content. Headers: cache-control (public, max-age), x-resize (original or variant), x-uri (source when known).',
+      'Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known).',
     content: {
       'image/*': { schema: { type: 'string' as const, format: 'binary' } },
     },
@@ -408,17 +408,47 @@ export const openapi = {
               'Maximum tokens returned, clamped to [1, 100000]. Non-numeric, zero, and negative values fall back to the default.',
             schema: { type: 'integer', minimum: 1, maximum: 100000, default: 50000 },
           },
+          {
+            name: 'format',
+            in: 'query',
+            description:
+              'Body encoding. Omit for the default body, an array of token objects. `compact` sends each ' +
+              'source name once and each token as an array of values, which is about half the size and ' +
+              'parses several times faster. It composes with `limit`. Any other value is refused with 400.',
+            schema: { type: 'string', enum: ['compact'] },
+          },
+          {
+            name: 'fields',
+            in: 'query',
+            description:
+              'Only with `format=compact`: a comma-separated subset of address,name,symbol,decimals,logoURI,sources. ' +
+              '`address` is required. Rows and the echoed `fields` always follow that canonical order, whatever ' +
+              'order was requested. The top-level `sources` array is sent only when `sources` is selected. ' +
+              'Omit for every field. Dropping `logoURI` roughly halves the raw size. Refused with 400 when used ' +
+              'without `format=compact`, when a name is unknown or repeated, or when `address` is missing.',
+            schema: { type: 'string', example: 'address,name,symbol,decimals,sources' },
+          },
           REFRESH_QUERY_PARAM,
         ],
         security: [{}, { adminBearer: [] }],
         responses: {
           '200': {
-            description: 'Ranked tokens with totals.',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/TokensByChain' } } },
+            description: 'Ranked tokens with totals. With `format=compact`, the compact encoding instead.',
+            content: {
+              'application/json': {
+                schema: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/TokensByChain' },
+                    { $ref: '#/components/schemas/TokensByChainCompact' },
+                  ],
+                },
+              },
+            },
           },
           '400': {
             description:
-              'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0.',
+              'Missing or syntactically invalid chainId — eip155 references must be numeric; chain 0 is asset-0. ' +
+              'Also an unknown `format` value, or an invalid `fields` selection.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '401': REFRESH_UNAUTHORIZED_RESPONSE,
@@ -1087,6 +1117,41 @@ export const openapi = {
           chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-369).' },
           total: { type: 'integer' },
           tokens: { type: 'array', items: { $ref: '#/components/schemas/Token' } },
+        },
+      },
+      TokensByChainCompact: {
+        type: 'object',
+        description:
+          'Compact encoding of TokensByChain (`?format=compact`). Decode row r as an object by pairing ' +
+          '`fields[i]` with `r[i]`, then replace each integer in the `sources` value with `sources[index]`. ' +
+          'The `fields` array lists only the selected fields (see the `fields` query parameter). ' +
+          'Every row shares the response `chainId` and `chainIdentifier`. An empty sources array means the ' +
+          'default body has no `sources` property for that token.',
+        properties: {
+          chainId: { type: 'integer', description: 'Bare numeric chain id, shared by every row.' },
+          chainIdentifier: { type: 'string', description: 'Prefixed identifier (eip155-369), shared by every row.' },
+          total: { type: 'integer' },
+          format: { type: 'string', enum: ['compact'] },
+          fields: {
+            type: 'array',
+            items: { type: 'string' },
+            example: ['address', 'name', 'symbol', 'decimals', 'logoURI', 'sources'],
+            description:
+              'Name of each position in a token row: address (lowercase string), name (string), symbol ' +
+              '(string), decimals (integer), logoURI (complete URL, as in the default body), sources ' +
+              '(integer indexes into the `sources` array below).',
+          },
+          sources: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Each distinct source (provider/list) once. Rows refer to entries by index. ' +
+              'Absent when `sources` is not among the requested `fields`.',
+          },
+          tokens: {
+            type: 'array',
+            items: { type: 'array', items: {}, description: 'Values in the order given by `fields`.' },
+          },
         },
       },
       TokenSearch: {

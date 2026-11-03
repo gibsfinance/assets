@@ -119,3 +119,33 @@ body {
     animation: none;
   }
 }
+
+/*
+ * Inline icons (components/Icon.tsx). These use Font Awesome's own metrics so a glyph
+ * sits on the text baseline exactly as the icon font did. They live in the components
+ * layer so any utility class on the element, such as `hidden`, still wins.
+ */
+@layer components {
+  .icon {
+    display: inline-block;
+    vertical-align: -0.125em;
+    overflow: visible;
+  }
+}
+
+/* Font Awesome's `fa-spin`: one turn every two seconds. */
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon-spin {
+  animation: icon-spin 2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-spin {
+    animation: none;
+  }
+}

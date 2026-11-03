@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import _ from 'lodash'
 import { useStudio } from '../contexts/StudioContext'
 import { useListEditor } from '../contexts/ListEditorContext'
 import { useMetrics } from '../hooks/useMetrics'
 import { useChainTokens } from '../hooks/useChainTokens'
+import { usePrefetchChainTokens } from '../hooks/usePrefetchChainTokens'
 import { useTokenBrowser } from '../hooks/useTokenBrowser'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier, fromChainIdentifier, tokenChainIdentifier } from '../utils/chain-identifier'
+import { tokenRowIconUrl, TOKEN_ROW_ICON_SIZE } from '../utils/token-icon'
 import { deduplicateTokens } from '../utils/dedup-tokens'
 import { searchTokens, getPopularChains } from '../utils/token-search'
 import NetworkSelect from './NetworkSelect'
@@ -15,6 +16,8 @@ import TokenSearch from './TokenSearch'
 import Image from './Image'
 import TokenSubRows from './TokenSubRows'
 import type { Token, SearchUpdate } from '../types'
+import { faCircleInfo, faPlus, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface StudioBrowserProps {
   onInspectToken: (token: Token) => void
@@ -105,10 +108,10 @@ function VirtualTokenList({
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
                   {hasIcon ? (
                     <Image
-                      src={getApiUrl(`/image/${tokenChainIdentifier(token)}/${token.address}`)}
+                      src={tokenRowIconUrl(token)}
                       alt={token.symbol}
                       className="rounded-full object-contain"
-                      size={28}
+                      size={TOKEN_ROW_ICON_SIZE}
                       skeleton
                       shape="circle"
                       onError={() => onIconError(token)}
@@ -163,7 +166,7 @@ function VirtualTokenList({
                   }}
                   title={editorOpen && activeList ? 'Add to list' : 'Inspect token'}
                   aria-label={editorOpen && activeList ? 'Add to list' : 'Inspect token'}>
-                  <i className={`fas ${editorOpen && activeList ? 'fa-plus' : 'fa-info-circle'} text-sm`} />
+                  <Icon icon={editorOpen && activeList ? faPlus : faCircleInfo} className="text-sm" />
                 </button>
               </div>
 
@@ -194,6 +197,7 @@ export default function StudioBrowser({
   const selectToken = selectTokenProp ?? studio.selectToken
   const selectChain = selectChainProp ?? studio.selectChain
   const { metrics } = useMetrics()
+  const intentHandlersFor = usePrefetchChainTokens()
   const { isOpen: editorOpen, activeList, addToken, createList, setActiveList, openEditor } = useListEditor()
 
   const popularChains = useMemo(() => {
@@ -430,6 +434,7 @@ export default function StudioBrowser({
                       key={chain.chainId}
                       type="button"
                       className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40"
+                      {...intentHandlersFor(chain.chainId)}
                       onClick={() => handleChainSelect(chain.chainId)}>
                       <Image
                         src={getApiUrl(`/image/${toChainIdentifier(chain.chainId)}`)}
@@ -472,7 +477,7 @@ export default function StudioBrowser({
 
         {selectedChainId && !logoOnlyNetwork && isLoadingLists && filteredTokens.length === 0 && (
           <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/40">
-            <i className="fas fa-spinner fa-spin mr-2" />
+            <Icon icon={faSpinner} spin className="mr-2" />
             Loading tokens...
           </div>
         )}
@@ -491,7 +496,7 @@ export default function StudioBrowser({
          */}
         {isTruncated && (
           <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500 dark:border-surface-3 dark:bg-surface-2 dark:text-white/40">
-            <i className="fas fa-circle-info mr-1" />
+            <Icon icon={faCircleInfo} className="mr-1" />
             More tokens matched than are shown here. Type more of the name, symbol or address to narrow it down.
           </div>
         )}

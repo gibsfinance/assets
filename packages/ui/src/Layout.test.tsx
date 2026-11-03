@@ -9,10 +9,15 @@
  * jsdom, so both are stubbed at the host boundary. No application source is mocked.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { Layout } from './Layout'
 import { ThemeProvider } from './lib/contexts/ThemeContext'
+import { prefetchStudio } from './lib/pages/load-studio'
+
+// The real prefetch would import the whole Studio page. Replaced so each test can say
+// which gesture asked for it.
+vi.mock('./lib/pages/load-studio', () => ({ prefetchStudio: vi.fn() }))
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -32,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.mocked(prefetchStudio).mockClear()
   vi.unstubAllGlobals()
 })
 
@@ -75,5 +81,34 @@ describe('Layout', () => {
     renderAt('/docs')
     expect(screen.getByRole('link', { name: 'Gib.Show' })).toBeTruthy()
     expect(screen.getByText('docs content')).toBeTruthy()
+  })
+
+  describe('fetching the Studio ahead of the click', () => {
+    const studioLink = () => screen.getByRole('link', { name: 'Studio' })
+
+    it('starts when the pointer reaches the link', () => {
+      renderAt('/')
+      fireEvent.pointerEnter(studioLink())
+      expect(prefetchStudio).toHaveBeenCalledTimes(1)
+    })
+
+    it('starts when the link takes keyboard focus', () => {
+      renderAt('/')
+      fireEvent.focus(studioLink())
+      expect(prefetchStudio).toHaveBeenCalledTimes(1)
+    })
+
+    it('starts on pointer down, for touch screens that never hover', () => {
+      renderAt('/')
+      fireEvent.pointerDown(studioLink())
+      expect(prefetchStudio).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not start for the other links, which lead nowhere near the Studio', () => {
+      renderAt('/')
+      fireEvent.pointerEnter(screen.getByRole('link', { name: 'Docs' }))
+      fireEvent.focus(screen.getByRole('link', { name: 'Gib.Show' }))
+      expect(prefetchStudio).not.toHaveBeenCalled()
+    })
   })
 })

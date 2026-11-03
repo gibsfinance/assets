@@ -8,3 +8,4 @@ yarn.lock
 # sixteen build files used to be more than half of everything `lint` reported.
 coverage
 dist
+dist-ssr

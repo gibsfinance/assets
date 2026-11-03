@@ -73,6 +73,21 @@ function loadPersistedPrefs(): Partial<PersistedPrefs> {
   }
 }
 
+/**
+ * Reads, and removes, the chain the Home page left for the Studio to pre-select.
+ * Returns null when nothing was left, and also when storage does not exist, as in
+ * the build-time render that has no browser.
+ */
+function takeCrossPageChainId(): string | null {
+  try {
+    const chainId = localStorage.getItem('selectedChainId')
+    if (chainId) localStorage.removeItem('selectedChainId')
+    return chainId
+  } catch {
+    return null
+  }
+}
+
 function savePersistedPrefs(state: StudioState): void {
   const persisted: PersistedPrefs = {
     appearance: state.appearance,
@@ -98,8 +113,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StudioState>(() => {
     const prefs = loadPersistedPrefs()
     // Cross-page chain pre-selection: Home page writes selectedChainId to localStorage
-    const crossPageChainId = localStorage.getItem('selectedChainId')
-    if (crossPageChainId) localStorage.removeItem('selectedChainId')
+    const crossPageChainId = takeCrossPageChainId()
     return {
       selectedToken: null,
       selectedChainId: crossPageChainId,

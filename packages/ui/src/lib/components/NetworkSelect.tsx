@@ -3,12 +3,15 @@ import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/re
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSettings } from '../contexts/SettingsContext'
 import { useMetrics } from '../hooks/useMetrics'
+import { usePrefetchChainTokens } from '../hooks/usePrefetchChainTokens'
 import { getApiUrl } from '../utils'
 import { toChainIdentifier } from '../utils/chain-identifier'
 import { sortNetworks } from '../utils/network-sort'
 import { searchNetworks } from '../utils/network-metrics'
 import Image from './Image'
 import type { NetworkInfo } from '../types'
+import { faChevronDown, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface NetworkSelectProps {
   selectedChainId: string | null
@@ -63,7 +66,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
             Same box, same gap, so the arrow sits where it always has.
           */}
           {selectedNetwork && <span className="h-5 w-5" aria-hidden="true" />}
-          <i className={`fas fa-chevron-down text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Icon
+            icon={faChevronDown}
+            className={`text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
         </span>
       </button>
 
@@ -81,7 +87,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
           className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
           onClick={() => onSelect(null)}
           aria-label="Clear network selection">
-          <i className="fas fa-times text-[10px]" />
+          <Icon icon={faXmark} className="text-[10px]" />
         </button>
       )}
 
@@ -124,6 +130,7 @@ function VirtualNetworkList({
   onPick: (network: NetworkInfo) => void
 }) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const intentHandlersFor = usePrefetchChainTokens()
 
   const virtualizer = useVirtualizer({
     count: networks.length,
@@ -154,6 +161,7 @@ function VirtualNetworkList({
                   : 'border-l-2 border-transparent'
               }`}
               style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+              {...intentHandlersFor(network.chainIdentifier)}
               onClick={() => onPick(network)}>
               <span className="mr-2 flex items-center gap-3 truncate">
                 <Image
@@ -226,7 +234,10 @@ function NetworkDialog({
             <div className="flex-shrink-0 border-b border-border-light dark:border-border-dark bg-white/90 dark:bg-surface-base/90 px-4 py-3 backdrop-blur-sm">
               <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">Select Network</h2>
               <div className="relative mt-2">
-                <i className="fas fa-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-white/30" />
+                <Icon
+                  icon={faMagnifyingGlass}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-white/30"
+                />
                 <input
                   type="text"
                   value={query}

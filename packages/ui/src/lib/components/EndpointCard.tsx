@@ -5,6 +5,8 @@ import Image from './Image'
 import { formatBytes } from '../utils/formatting'
 import { isImageEndpoint } from '../utils/endpoint-filter'
 import { countResults, isCacheHit, parsePathParams } from '../utils/token-search'
+import { faChevronDown, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 interface EndpointCardProps {
   method: string
@@ -53,7 +55,7 @@ function StatsPanel({
   if (loading) {
     return (
       <div className="text-xs text-gray-400 dark:text-white/30">
-        <i className="fas fa-spinner fa-spin mr-1" /> Fetching...
+        <Icon icon={faSpinner} spin className="mr-1" /> Fetching...
       </div>
     )
   }
@@ -173,7 +175,7 @@ function ResponsePanel({ url }: { url: string }) {
           </div>
         ) : loading ? (
           <div className="text-xs text-gray-400 dark:text-white/30">
-            <i className="fas fa-spinner fa-spin mr-1" /> Loading response...
+            <Icon icon={faSpinner} spin className="mr-1" /> Loading response...
           </div>
         ) : error ? (
           <div className="text-xs text-red-400">{error}</div>
@@ -222,8 +224,9 @@ export default function EndpointCard({ method, path, description, example }: End
               <PathDisplay path={path} />
               <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
             </div>
-            <i
-              className={`fas fa-chevron-down mt-1 text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            <Icon
+              icon={faChevronDown}
+              className={`mt-1text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             />
           </DisclosureButton>
           <DisclosurePanel className="border-t border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 p-4 space-y-3">

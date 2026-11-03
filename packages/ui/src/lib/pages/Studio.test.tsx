@@ -122,6 +122,7 @@ import Studio from './Studio'
 import { StudioProvider } from '../contexts/StudioContext'
 import { ListEditorProvider } from '../contexts/ListEditorContext'
 import { SettingsProvider } from '../contexts/SettingsContext'
+import { compactBody } from '../../../tests/compact-body'
 
 const SOLANA_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
 
@@ -139,37 +140,19 @@ const BASE_TOKEN: Token = {
 }
 
 const TOKENS: Record<string, unknown> = {
-  'solana-501': {
-    chainId: 501,
-    total: 1,
-    tokens: [
-      {
-        chainId: 501,
-        address: SOLANA_USDC,
-        name: 'USD Coin',
-        symbol: 'USDC',
-        decimals: 6,
-        logoURI: 'https://logo/usdc.png',
-        sources: ['jupiter/tag-strict'],
-      },
-    ],
-  },
-  'eip155-1': {
-    chainId: 1,
-    total: 1,
-    tokens: [
-      {
-        chainId: 1,
-        // Checksummed here; the URL below carries it lowercased.
-        address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-        name: 'USD Coin',
-        symbol: 'USDC-ETH',
-        decimals: 6,
-        logoURI: 'https://logo/usdc.png',
-        sources: ['gib/default'],
-      },
-    ],
-  },
+  'solana-501': compactBody(501, [
+    { address: SOLANA_USDC, name: 'USD Coin', symbol: 'USDC', decimals: 6, sources: ['jupiter/tag-strict'] },
+  ]),
+  'eip155-1': compactBody(1, [
+    {
+      // Checksummed here; the URL below carries it lowercased.
+      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      name: 'USD Coin',
+      symbol: 'USDC-ETH',
+      decimals: 6,
+      sources: ['gib/default'],
+    },
+  ]),
 }
 
 function installFetch() {
@@ -177,7 +160,7 @@ function installFetch() {
     const url = String(input)
     const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
     const match = url.match(/\/list\/tokens\/([^/?]+)/)
-    if (match) return ok(TOKENS[match[1]] ?? { chainId: 0, total: 0, tokens: [] })
+    if (match) return ok(TOKENS[match[1]] ?? compactBody(0, []))
     if (url.endsWith('/stats')) return ok([])
     if (url.endsWith('/networks')) return ok([])
     return ok([])
@@ -234,6 +217,43 @@ describe('Studio URL hydration', () => {
 
   it('restores the selected token from ?token=', async () => {
     renderStudio(`/studio?chain=solana-501&token=${SOLANA_USDC}`)
+    await waitFor(() => expect(probe('selected-token')).toBe('USDC'))
+  })
+
+  /*
+   * The chain's first screen arrives before its full list, so a linked token
+   * past the first rows is absent at first. It has to resolve when the full
+   * list replaces the slice, not stay unselected because the slice lacked it.
+   */
+  it('resolves a ?token= that lies beyond the first-screen slice once the full list arrives', async () => {
+    let releaseFullList!: () => void
+    const fullListReleased = new Promise<void>((release) => {
+      releaseFullList = release
+    })
+    const apiToken = (address: string, symbol: string) => ({
+      address,
+      name: symbol,
+      symbol,
+      decimals: 6,
+      sources: ['jupiter/tag-strict'],
+    })
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    const slice = compactBody(501, [apiToken('FirstRowToken', 'FIRST')], { total: 2 })
+    const full = compactBody(501, [apiToken('FirstRowToken', 'FIRST'), apiToken(SOLANA_USDC, 'USDC')])
+    mockFetch.mockImplementation(async (input: string) => {
+      const url = String(input)
+      if (!url.includes('/list/tokens/')) return ok([])
+      if (url.includes('limit=')) return ok(slice)
+      await fullListReleased
+      return ok(full)
+    })
+
+    renderStudio(`/studio?chain=solana-501&token=${SOLANA_USDC}`)
+    await waitFor(() => expect(probe('selected-chain')).toBe('solana-501'))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('limit=')))
+    expect(probe('selected-token')).toBe('none')
+
+    releaseFullList()
     await waitFor(() => expect(probe('selected-token')).toBe('USDC'))
   })
 

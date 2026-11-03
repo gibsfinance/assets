@@ -19,6 +19,18 @@ import { useRpcMetadata } from '../hooks/useRpcMetadata'
 import { useVCSPublish, buildPublishers, type PublishResult } from '../hooks/useVCSPublish'
 import type { LocalList, LocalToken } from '../hooks/useLocalLists'
 import { readTokenList, type RejectedToken } from '../utils/token-list-import'
+import {
+  faChevronDown,
+  faCircleCheck,
+  faCloudArrowUp,
+  faCodeBranch,
+  faLink,
+  faPaste,
+  faPlus,
+  faTrashCan,
+  faXmark,
+} from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 /**
  * Wording for entries an import could not read.
@@ -280,9 +292,9 @@ function ActiveListEditor({
             <MenuButton
               disabled={isPublishing || activeList.tokens.length === 0}
               className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200">
-              <i className="fas fa-cloud-arrow-up text-sm" />
+              <Icon icon={faCloudArrowUp} className="text-sm" />
               {isPublishing ? 'Publishing...' : 'Publish'}
-              <i className="fas fa-chevron-down text-[8px] opacity-60" />
+              <Icon icon={faChevronDown} className="text-[8px] opacity-60" />
             </MenuButton>
             <MenuItems
               anchor="bottom end"
@@ -298,8 +310,9 @@ function ActiveListEditor({
                       type="button"
                       onClick={() => publish(pub, activeList)}
                       className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3">
-                      <i
-                        className={`${pub.icon} text-sm w-4 text-center ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`}
+                      <Icon
+                        icon={pub.icon}
+                        className={`text-sm w-4 ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`}
                       />
                       <span className="flex-1 font-medium text-gray-700 dark:text-white/80">{pub.name}</span>
                       {pub.isAuthorized() ? (
@@ -321,7 +334,7 @@ function ActiveListEditor({
             type="button"
             onClick={closeEditor}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
-            <i className="fas fa-times" />
+            <Icon icon={faXmark} />
           </button>
         </div>
       </div>
@@ -330,7 +343,7 @@ function ActiveListEditor({
       {publishResult && (
         <div className="border-b border-border-light bg-green-50 px-4 py-2 dark:border-border-dark dark:bg-green-900/20">
           <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
-            <i className="fas fa-check-circle" />
+            <Icon icon={faCircleCheck} />
             <span>Published!</span>
             <a
               href={publishResult.repoUrl}
@@ -583,7 +596,7 @@ export default function ListEditor() {
             type="button"
             onClick={closeEditor}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
-            <i className="fas fa-times" />
+            <Icon icon={faXmark} />
           </button>
         </div>
 
@@ -601,7 +614,7 @@ export default function ListEditor() {
               onClick={handleCreateNew}
               className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
-                <i className="fas fa-plus" />
+                <Icon icon={faPlus} />
               </div>
               <div>
                 <div className="font-medium text-gray-900 dark:text-white">New List</div>
@@ -617,7 +630,7 @@ export default function ListEditor() {
                 disabled={isImporting}
                 className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-500">
-                  <i className="fas fa-code-branch" />
+                  <Icon icon={faCodeBranch} />
                 </div>
                 <div>
                   <div className="font-medium text-gray-900 dark:text-white">Fork {editingSourceKey}</div>
@@ -629,7 +642,7 @@ export default function ListEditor() {
             {/* Import URL */}
             <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-link text-xs text-gray-400 dark:text-white/40" />
+                <Icon icon={faLink} className="text-xs text-gray-400 dark:text-white/40" />
                 Import from URL
               </div>
               <div className="flex gap-2">
@@ -653,7 +666,7 @@ export default function ListEditor() {
             {/* Paste JSON */}
             <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <i className="fas fa-paste text-xs text-gray-400 dark:text-white/40" />
+                <Icon icon={faPaste} className="text-xs text-gray-400 dark:text-white/40" />
                 Paste JSON
               </div>
               <textarea
@@ -702,7 +715,7 @@ export default function ListEditor() {
                           e.stopPropagation()
                           deleteList(list.id)
                         }}>
-                        <i className="fas fa-trash-alt text-[10px]" />
+                        <Icon icon={faTrashCan} className="text-[10px]" />
                       </button>
                     </div>
                   ))}

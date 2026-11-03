@@ -69,10 +69,11 @@ function renderFilter(overrides: Overrides = {}) {
 }
 
 /** The button that opens the panel — found by its icon, since it carries no label. */
-const filterButton = (container: HTMLElement) => container.querySelector('.fa-filter')!.closest('button')!
+const filterButton = (container: HTMLElement) => container.querySelector('[data-icon="filter"]')!.closest('button')!
 
 /** The number shown on the button itself. */
-const badgeCount = (container: HTMLElement) => container.querySelector('.fa-filter')!.nextElementSibling!.textContent
+const badgeCount = (container: HTMLElement) =>
+  container.querySelector('[data-icon="filter"]')!.nextElementSibling!.textContent
 
 const openPanel = (container: HTMLElement) => fireEvent.click(filterButton(container))
 

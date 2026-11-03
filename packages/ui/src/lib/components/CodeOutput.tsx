@@ -11,6 +11,8 @@ import {
   generateHtmlSnippet,
   generateImgTag,
 } from '../utils/snippet-generators'
+import { faCheck, faCopy, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { Icon } from './Icon'
 
 // ---------------------------------------------------------------------------
 // Tab + mode controls
@@ -105,12 +107,12 @@ function CopyButton({ text, label, variant = 'primary' }: CopyButtonProps) {
     <button type="button" onClick={handleCopy} className={baseClass}>
       {copied ? (
         <>
-          <i className="fas fa-check mr-2 text-xs" />
+          <Icon icon={faCheck} className="mr-2 text-xs" />
           Copied!
         </>
       ) : (
         <>
-          <i className="fas fa-copy mr-2 text-xs" />
+          <Icon icon={faCopy} className="mr-2 text-xs" />
           {label}
         </>
       )}
@@ -193,7 +195,7 @@ export default function CodeOutput() {
       {/* Badge + img warning */}
       {showBadgeWarning && (
         <div className="flex items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-50 px-4 py-3 text-sm text-yellow-700 dark:bg-yellow-500/5 dark:text-yellow-400">
-          <i className="fas fa-triangle-exclamation mt-0.5 flex-shrink-0" />
+          <Icon icon={faTriangleExclamation} className="mt-0.5 flex-shrink-0" />
           <span>
             Badge requires a wrapper element — switch to <strong>React</strong> or <strong>HTML</strong> for badge
             support.
