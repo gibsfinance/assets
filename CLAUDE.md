@@ -85,7 +85,10 @@ yarn smoke:production              # gib.show
 - `?as=webp` — output format conversion (sharp resize pipeline)
 - `?only=vector` — source type filter (filter by extension before selection)
 - Path extension `.webp` on address — same as `?as=webp`
-- Priority: `dense_rank() OVER (PARTITION BY token ORDER BY ranking/1000, version DESC, format, key)`
+- Priority: `listEntryPreferenceSql()` in `db/index.ts` — usable image, ranking/1000, format, version DESC,
+  default, key. One rule for the by-address image (`applyOrder`), the chain lists and search, so a
+  `logoURI` names the image `/image/:chainId/:address` serves. `applyOrder` adds one term after
+  usable image: a current list version beats a superseded one (the lists read current versions only).
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
 ### Token List Ordering
