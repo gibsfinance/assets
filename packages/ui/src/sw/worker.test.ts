@@ -41,6 +41,8 @@ class FakeCacheStorage {
 const SHELL_V1 = '<script src="./assets/index-1.js"></script><style>a{src:url(./assets/f-1.woff2)}</style>'
 const SHELL_V2 = '<script src="./assets/index-2.js"></script><style>a{src:url(./assets/f-1.woff2)}</style>'
 
+const SHELL_V3 = '<script src="./assets/index-3.js"></script><style>a{src:url(./assets/f-1.woff2)}</style>'
+
 let storage: FakeCacheStorage
 let network: Map<string, () => Response>
 let requested: string[]
@@ -234,21 +236,45 @@ describe('navigation', () => {
 })
 
 describe('deploy', () => {
-  it('fetches the new files and prunes the ones the new page no longer names', async () => {
+  const visitAfter = async (worker: ReturnType<typeof createWorker>) => {
+    const visit = fetchEvent('https://gib.show/', { mode: 'navigate' })
+    worker.onFetch(visit.event)
+    await visit.settle()
+  }
+
+  it('fetches the new files and keeps the previous page files for a tab still running it', async () => {
     const worker = createWorker(dependencies())
     const first: Promise<unknown>[] = []
     worker.onInstall({ waitUntil: (work) => first.push(work) })
     await Promise.all(first)
-    expect(await cachedUrls()).toContain('https://gib.show/assets/index-1.js')
 
     network.set('https://gib.show/index.html', html(SHELL_V2))
-    const visit = fetchEvent('https://gib.show/', { mode: 'navigate' })
-    worker.onFetch(visit.event)
-    await visit.settle()
+    await visitAfter(worker)
+
+    expect(await cachedUrls()).toEqual([
+      'https://gib.show/assets/f-1.woff2',
+      'https://gib.show/assets/index-1.js',
+      'https://gib.show/assets/index-2.js',
+      'https://gib.show/index.html',
+    ])
+  })
+
+  it('prunes files that neither the new page nor the one before it names', async () => {
+    const worker = createWorker(dependencies())
+    const first: Promise<unknown>[] = []
+    worker.onInstall({ waitUntil: (work) => first.push(work) })
+    await Promise.all(first)
+    network.set('https://gib.show/index.html', html(SHELL_V2))
+    await visitAfter(worker)
+
+    network.set('https://gib.show/assets/index-3.js', () => new Response('three'))
+    network.set('https://gib.show/index.html', html(SHELL_V3))
+    await visitAfter(worker)
 
     expect(await cachedUrls()).toEqual([
       'https://gib.show/assets/f-1.woff2',
       'https://gib.show/assets/index-2.js',
+      'https://gib.show/assets/index-3.js',
       'https://gib.show/index.html',
     ])
   })

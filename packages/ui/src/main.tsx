@@ -5,6 +5,7 @@ import './app.css'
 import { App } from './App'
 import { removeRouteLoader } from './prerender/route-loader'
 import { registerServiceWorker } from './sw/register'
+import { installPreloadRecovery } from './sw/preload-recovery'
 
 /**
  * Takes the build-time loader down once React has committed its first render, so a
@@ -14,6 +15,9 @@ function RouteLoaderRemover() {
   useEffect(removeRouteLoader, [])
   return null
 }
+
+// Before the first render, so no lazy import can fail ahead of it.
+installPreloadRecovery({ window, now: Date.now })
 
 createRoot(document.getElementById('app')!).render(
   <StrictMode>

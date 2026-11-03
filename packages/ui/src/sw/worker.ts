@@ -63,18 +63,22 @@ export function createWorker(dependencies: WorkerDependencies): WorkerHandlers {
 
   /**
    * Stores a page as the shell. When the page changed, also fetches the files it names
-   * and drops the ones it no longer names, so the cache follows the deploy and stays small.
+   * and drops the ones neither it nor the page it replaces names. Keeping the previous
+   * page's files for one more deploy lets a tab still running that page load its lazy
+   * chunks from the cache, after the server has stopped serving them.
    */
   const storeShell = async (response: Response): Promise<void> => {
     if (!isStorableShell(response)) return
     const cache = await openCache()
     const html = await response.clone().text()
     const previous = await cache.match(SHELL_URL, { ignoreVary: true })
-    if (previous && (await previous.text()) === html) return
+    const previousHtml = previous ? await previous.text() : ''
+    if (previous && previousHtml === html) return
     await cache.put(SHELL_URL, response)
     const referenced = extractAssetPaths(html)
     await precache(cache, referenced)
-    const stale = selectStalePaths(await cachedAssetPaths(cache), referenced)
+    const kept = [...referenced, ...extractAssetPaths(previousHtml)]
+    const stale = selectStalePaths(await cachedAssetPaths(cache), kept)
     await Promise.all(stale.map((path) => cache.delete(path)))
   }
 
