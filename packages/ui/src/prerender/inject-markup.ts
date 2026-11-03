@@ -20,6 +20,10 @@ export type InjectedParts = { markup: string; themeScript: string; routeHideScri
  */
 export function injectMarkup(html: string, parts: InjectedParts): string {
   const withMarkup = fill(html, MARKUP_PLACEHOLDER, parts.markup)
-  const withTheme = fill(withMarkup, THEME_PLACEHOLDER, `<script>${parts.themeScript};${parts.routeHideScript}</script>`)
+  const withTheme = fill(
+    withMarkup,
+    THEME_PLACEHOLDER,
+    `<script>${parts.themeScript};${parts.routeHideScript}</script>`,
+  )
   return fill(withTheme, GUARD_PLACEHOLDER, `<script>${parts.routeGuardScript}</script>`)
 }
