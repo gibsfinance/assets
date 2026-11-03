@@ -5,6 +5,9 @@ export const THEME_PLACEHOLDER = '<!--theme-script-->'
 /** The comment in `index.html` that marks where the route guard goes. */
 export const GUARD_PLACEHOLDER = '<!--route-guard-script-->'
 
+/** The comment in `index.html` that marks where the route loader goes. */
+export const LOADER_PLACEHOLDER = '<!--route-loader-->'
+
 /** Replaces one placeholder, and fails loudly when it is missing. */
 function fill(html: string, placeholder: string, content: string): string {
   if (!html.includes(placeholder)) throw new Error(`index.html is missing ${placeholder}`)
@@ -12,10 +15,10 @@ function fill(html: string, placeholder: string, content: string): string {
 }
 
 /** The pieces the build writes into `index.html`. Both head scripts share one tag. */
-export type InjectedParts = { markup: string; themeScript: string; routeHideScript: string; routeGuardScript: string }
+export type InjectedParts = { markup: string; themeScript: string; routeHideScript: string; routeGuardScript: string; routeLoader: string }
 
 /**
- * Fills the three placeholders of `index.html`. A missing placeholder throws,
+ * Fills the four placeholders of `index.html`. A missing placeholder throws,
  * because a build that quietly ships an empty shell loses the speed this exists for.
  */
 export function injectMarkup(html: string, parts: InjectedParts): string {
@@ -25,5 +28,6 @@ export function injectMarkup(html: string, parts: InjectedParts): string {
     THEME_PLACEHOLDER,
     `<script>${parts.themeScript};${parts.routeHideScript}</script>`,
   )
-  return fill(withTheme, GUARD_PLACEHOLDER, `<script>${parts.routeGuardScript}</script>`)
+  const withLoader = fill(withTheme, LOADER_PLACEHOLDER, parts.routeLoader)
+  return fill(withLoader, GUARD_PLACEHOLDER, `<script>${parts.routeGuardScript}</script>`)
 }

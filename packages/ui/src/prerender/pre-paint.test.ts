@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { themeScript, routeHideScript, routeGuardScript, HIDE_STYLE_ID } from './pre-paint'
+import {
+  themeScript,
+  routeHideScript,
+  routeGuardScript,
+  HIDE_STYLE_ID,
+  LOADER_ID,
+  LOADER_ATTRIBUTE,
+  routeLoaderMarkup,
+  removeRouteLoader,
+} from './pre-paint'
 
 /** Runs a shipped script string the way the browser runs the inline tag. */
 const run = (source: string) => new Function(source)()
@@ -120,5 +129,85 @@ describe('routeHideScript with routeGuardScript', () => {
     window.location.hash = '#/studio'
     run(routeGuardScript)
     expect(document.getElementById('app')!.innerHTML).toBe('')
+  })
+})
+
+// The loader must show on another page before React mounts, never on home, and be
+// gone once the page mounts or the address returns to home.
+describe('route loader', () => {
+  const shown = () => document.documentElement.hasAttribute(LOADER_ATTRIBUTE)
+  const loader = () => document.getElementById(LOADER_ID)
+
+  beforeEach(() => {
+    document.documentElement.removeAttribute(LOADER_ATTRIBUTE)
+    document.head.innerHTML = ''
+    document.body.innerHTML = `<div id="app"><h1>Home</h1></div>${routeLoaderMarkup}`
+  })
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  it('is hidden by its own rule unless the head script marks the page', () => {
+    expect(routeLoaderMarkup).toContain(`#${LOADER_ID}{display:none}`)
+    expect(routeLoaderMarkup).toContain(`html[${LOADER_ATTRIBUTE}] #${LOADER_ID}{display:flex`)
+    expect(routeLoaderMarkup).toContain('prefers-reduced-motion:reduce')
+  })
+
+  it('is marked visible on /#/studio before React mounts, and sits outside the root', () => {
+    window.location.hash = '#/studio'
+    run(routeHideScript)
+    expect(shown()).toBe(true)
+    expect(loader()).not.toBeNull()
+    expect(document.getElementById('app')!.contains(loader())).toBe(false)
+  })
+
+  it.each(['', '#', '#/'])('is never marked visible on home %j', (hash) => {
+    window.location.hash = hash
+    run(routeHideScript)
+    expect(shown()).toBe(false)
+  })
+
+  it('survives the guard emptying the root', () => {
+    window.location.hash = '#/studio'
+    run(routeHideScript)
+    run(routeGuardScript)
+    expect(loader()).not.toBeNull()
+    expect(document.getElementById('app')!.innerHTML).toBe('')
+  })
+
+  it('is gone after mount', () => {
+    window.location.hash = '#/studio'
+    run(routeHideScript)
+    removeRouteLoader()
+    expect(loader()).toBeNull()
+    expect(() => removeRouteLoader()).not.toThrow()
+  })
+
+  it('is removed when the address returns to home before mount', () => {
+    window.location.hash = '#/studio'
+    run(routeHideScript)
+    run(routeGuardScript)
+    window.location.hash = '#/'
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    expect(loader()).toBeNull()
+    expect(shown()).toBe(false)
+  })
+
+  it('stays when the address moves between other pages', () => {
+    window.location.hash = '#/studio'
+    run(routeHideScript)
+    run(routeGuardScript)
+    window.location.hash = '#/docs'
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    expect(loader()).not.toBeNull()
+    expect(shown()).toBe(true)
+  })
+
+  it('tolerates a hashchange to home when the loader is already gone', () => {
+    window.location.hash = '#/studio'
+    run(routeGuardScript)
+    removeRouteLoader()
+    window.location.hash = ''
+    expect(() => window.dispatchEvent(new HashChangeEvent('hashchange'))).not.toThrow()
   })
 })

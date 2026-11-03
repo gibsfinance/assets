@@ -67,4 +67,13 @@ describe('entry script over the static home markup', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1)
     expect(errors).not.toHaveBeenCalled()
   })
+
+  it('removes the loader that sits beside the root once the page has mounted', async () => {
+    document.body.innerHTML = '<div id="app"></div><div id="route-loader">Loading</div>'
+
+    await import('./main')
+
+    await waitFor(() => expect(document.getElementById('route-loader')).toBeNull())
+    expect(document.querySelector('#app header')).not.toBeNull()
+  })
 })
