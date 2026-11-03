@@ -5,25 +5,19 @@
 -- coin-type ids (solana-501, tvm-195), so these rows are stale duplicates. See
 -- preview-nonevm-faked-networks.sql for the full background.
 --
--- SCOPE: an explicit allow-list of the four reviewed faked Solana/Tron networks:
+-- SCOPE: an explicit allow-list of the five reviewed faked non-Ethereum-Virtual-Machine networks:
 --   eip155-900        Solana (base58 mints)       -> re-homed to solana-501
 --   eip155-501000101  Solana (base58 mints)       -> re-homed to solana-501
 --   eip155-1000       Tron (numeric TRC-10 ids)   -> re-homed to tvm-195
 --   eip155-728126428  Tron (duplicate of 1000)    -> re-homed to tvm-195
+--   eip155-4160       Algorand                    -> re-homed to algorand-283
 -- The earlier broad "any eip155 network with no 0x-hex token" predicate ALSO
--- matched three chains that are NOT faked Solana/Tron duplicates, each excluded
--- here for a different reason:
+-- matched two chains that are NOT faked duplicates, each excluded here for a
+-- different reason:
 --   * Ontology (eip155-58)      -- NOT fabricated. 58 is Ontology's genuine
 --                                  Ethereum-Virtual-Machine mainnet chain id; it
 --                                  is correctly served as an eip155 chain and
 --                                  must never be deleted.
---   * Algorand (eip155-4160)    -- a fabricated id (Algorand is not EVM). It now
---                                  has a proper home: the algorand-283 namespace
---                                  was added to the curated roster. Once a
---                                  collection cycle re-homes its tokens under
---                                  algorand-283 it becomes a stale duplicate
---                                  eligible for this cleanup -- add it to the
---                                  allow-list then, not before.
 --   * BRC-20/Runes (eip155-2203) -- token standards ON Bitcoin, not a Layer-1
 --                                  chain, so there is no coin type to re-home to.
 --                                  Left as-is pending a separate decision.
@@ -64,7 +58,7 @@ CREATE TABLE IF NOT EXISTS _data_migrations (
 CREATE TEMPORARY TABLE _faked_networks ON COMMIT DROP AS
 SELECT n.network_id, n.chain_id, n.type
 FROM network n
-WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428')
+WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-728126428', 'eip155-4160')
   AND NOT EXISTS (
     SELECT 1 FROM token t
     WHERE t.network_id = n.network_id
