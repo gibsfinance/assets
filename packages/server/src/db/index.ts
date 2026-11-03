@@ -406,12 +406,12 @@ export const insertNetworkFromChainId = async (chainId: ChainId, type = 'evm', t
   // eip155-1651794797/btc, which the UI then renders as a bogus network.
   const canonicalChainId = toCAIP2(chainId.toString())
   // Refuse a non-EVM chain that an upstream list echoed as a bare eip155 number
-  // (Solana 900/501000101, Tron 1000/728126428). The dedicated collectors file
+  // (Solana 501000101, Tron 728126428, Algorand 4160). The dedicated collectors file
   // these under solana-501 / tvm-195, so creating the eip155 form only resurrects
   // the husks the cleanup migrations removed. Collectors isolate this per token.
   if (isFakedEvmReference(canonicalChainId)) {
     throw new Error(
-      `chain id "${canonicalChainId}" is a non-Ethereum-Virtual-Machine chain mis-numbered as eip155; collect it under its coin-type id (Solana -> solana-501, Tron -> tvm-195) instead.`,
+      `chain id "${canonicalChainId}" is a non-Ethereum-Virtual-Machine chain mis-numbered as eip155; collect it under its coin-type id (Solana -> solana-501, Tron -> tvm-195, Algorand -> algorand-283) instead.`,
     )
   }
   const expectedType = expectedNetworkType(canonicalChainId)

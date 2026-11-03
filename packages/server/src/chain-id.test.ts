@@ -202,6 +202,9 @@ describe('isFakedEvmReference', () => {
     expect(isFakedEvmReference('501000101')).toBe(true) // Solana (bridged list)
     expect(isFakedEvmReference('728126428')).toBe(true) // Tron (native eip155 id)
     expect(isFakedEvmReference('eip155-728126428')).toBe(true)
+    expect(isFakedEvmReference('4160')).toBe(true) // Algorand (chain registry listing)
+    expect(isFakedEvmReference('eip155-4160')).toBe(true)
+    expect(isFakedEvmReference('algorand-283')).toBe(false) // its real home
   })
 
   // Regression: 900/1000 are DexScreener/TrustWallet internal handles for Solana and

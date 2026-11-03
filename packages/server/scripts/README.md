@@ -48,9 +48,15 @@ reason:
   decision.
 
 So the scope is narrowed to the reviewed duplicates only. Algorand (`eip155-4160`) was
-excluded at first because `algorand-283` was not populated yet. It is populated now, so
-`eip155-4160` is on the list. Migration `0018_cleanup_algorand_faked_network` applies the
-same cleanup automatically; the manual scripts cover databases where you prefer to review first.
+excluded at first because `algorand-283` was not populated yet, and it stayed that way:
+the Trust Wallet collector filed Algorand's assets under `eip155-4160` (the number the chain
+registry lists it under) because it had no redirect, so `algorand-283` held no tokens.
+The collector now redirects the `algorand` folder to `algorand-283`, and the database refuses
+`eip155-4160` outright. The old row is therefore deleted **only once `algorand-283` already
+holds every one of its tokens**; until the fixed collector has run, both scripts leave it
+alone. Migration `0018_cleanup_algorand_faked_network` applies the same guard once at deploy,
+so it does nothing on a database that has not collected yet. Run the preview after the first
+collection with the fix and, when `eip155-4160` appears, run the cleanup.
 
 Within the allow-list the `no-hex-token` guard is kept as a second layer: a row is deleted
 only if it has **no** token that looks like an Ethereum-Virtual-Machine address (`0x` + 40

@@ -20,7 +20,8 @@
 -- Candidate predicate (identical to the cleanup script):
 --   * chain_id in an explicit allow-list of the five reviewed faked networks
 --     (eip155-900, eip155-501000101, eip155-1000, eip155-728126428, and Algorand's
---     eip155-4160, re-homed to algorand-283). A broader "any eip155 network with no
+--     eip155-4160, re-homed to algorand-283 and listed here only once algorand-283 holds
+--     all of its tokens). A broader "any eip155 network with no
 --     hex token" predicate also matched two chains that are NOT faked duplicates:
 --     Ontology (eip155-58, a REAL Ethereum-Virtual-Machine chain, never delete) and
 --     BRC-20/Runes (eip155-2203, a Bitcoin token standard, no coin type). So the
@@ -43,6 +44,22 @@ WITH faked AS (
       SELECT 1 FROM token t
       WHERE t.network_id = n.network_id
         AND t.provided_id::text ~* '^0x[0-9a-f]{40}$'
+    )
+    -- eip155-4160 qualifies only once every one of its tokens already exists under
+    -- algorand-283; identical to the cleanup script.
+    AND (
+      n.chain_id <> 'eip155-4160'
+      OR NOT EXISTS (
+        SELECT 1 FROM token t
+        WHERE t.network_id = n.network_id
+          AND NOT EXISTS (
+            SELECT 1
+            FROM token home
+            JOIN network hn ON hn.network_id = home.network_id
+            WHERE hn.chain_id = 'algorand-283'
+              AND home.provided_id = t.provided_id
+          )
+      )
     )
 )
 SELECT

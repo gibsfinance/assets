@@ -380,6 +380,22 @@ describe('TrustWalletCollector discover — non-Ethereum-Virtual-Machine folders
     expect(harness.state.networks.get('solana-501')).toBeDefined()
     expect(harness.state.networks.get('tvm-195')).toBeDefined()
   })
+
+  it('files algorand under algorand-283 even though the chain registry numbers it 4160', async () => {
+    // chainlist.org lists Algorand as chain 4160, so the name matcher resolves the
+    // algorand folder to that number. Without the override its assets landed under
+    // eip155-4160, a namespace that has nothing to do with Algorand.
+    chainListEntries = [{ name: 'Algorand', chain: 'ALGO', chainSlug: 'algorand', chainId: 4160 }]
+    setInfoJson('algorand')
+    fakeFilesystem.setDirectory(blockchainsRoot, ['algorand'])
+
+    const { default: TrustWalletCollector } = await importTrustWallet()
+    const manifest = await new TrustWalletCollector().discover(new AbortController().signal)
+
+    expect(manifest[0]?.lists.map((list) => list.listKey).sort()).toEqual(['wallet', 'wallet-algorand'])
+    expect(harness.state.networks.get('algorand-283')).toBeDefined()
+    expect(harness.state.networks.get('eip155-4160')).toBeUndefined()
+  })
 })
 
 describe('TrustWalletCollector collect', () => {

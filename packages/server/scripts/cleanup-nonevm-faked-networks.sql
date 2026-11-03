@@ -10,7 +10,8 @@
 --   eip155-501000101  Solana (base58 mints)       -> re-homed to solana-501
 --   eip155-1000       Tron (numeric TRC-10 ids)   -> re-homed to tvm-195
 --   eip155-728126428  Tron (duplicate of 1000)    -> re-homed to tvm-195
---   eip155-4160       Algorand                    -> re-homed to algorand-283
+--   eip155-4160       Algorand                    -> re-homed to algorand-283, but ONLY
+--                     once algorand-283 holds every one of its tokens (see the guard below)
 -- The earlier broad "any eip155 network with no 0x-hex token" predicate ALSO
 -- matched two chains that are NOT faked duplicates, each excluded here for a
 -- different reason:
@@ -63,6 +64,23 @@ WHERE n.chain_id IN ('eip155-900', 'eip155-501000101', 'eip155-1000', 'eip155-72
     SELECT 1 FROM token t
     WHERE t.network_id = n.network_id
       AND t.provided_id::text ~* '^0x[0-9a-f]{40}$'
+  )
+  -- eip155-4160 is deleted only once every one of its tokens already exists under
+  -- algorand-283 (the Trust Wallet collector fills it after the redirect fix). The other
+  -- four ids were already re-homed, so this clause does not apply to them.
+  AND (
+    n.chain_id <> 'eip155-4160'
+    OR NOT EXISTS (
+      SELECT 1 FROM token t
+      WHERE t.network_id = n.network_id
+        AND NOT EXISTS (
+          SELECT 1
+          FROM token home
+          JOIN network hn ON hn.network_id = home.network_id
+          WHERE hn.chain_id = 'algorand-283'
+            AND home.provided_id = t.provided_id
+        )
+    )
   );
 
 -- 1. Clear the only foreign key into the affected rows that is NOT ON DELETE CASCADE:
