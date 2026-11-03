@@ -21,6 +21,8 @@ describe('Trust Wallet non-Ethereum-Virtual-Machine network overrides', () => {
   it('redirects solana and tron to their coin-type identifiers', () => {
     expect(NON_EVM_NETWORK_ARGS.solana).toEqual({ chainId: 'solana-501', type: 'solana' })
     expect(NON_EVM_NETWORK_ARGS.tron).toEqual({ chainId: 'tvm-195', type: 'tvm' })
+    // The chain registry numbers Algorand 4160; filing it there left real assets under eip155-4160.
+    expect(NON_EVM_NETWORK_ARGS.algorand).toEqual({ chainId: 'algorand-283', type: 'algorand' })
   })
 
   it('every override is a servable identifier that hashes consistently', () => {

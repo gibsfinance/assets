@@ -93,6 +93,7 @@ export const TEST_NETWORK_TYPE = 'test'
  * coin-type id instead:
  *   501000101  Solana (bridged list reference)  -> solana-501
  *   728126428  Tron (native eip155-style id)    -> tvm-195
+ *   4160       Algorand (chain registry listing) -> algorand-283
  * The dedicated collectors already file these chains under the correct id, so the
  * eip155 forms are duplicates. isFakedEvmReference lets insertNetworkFromChainId
  * refuse them, so a generic list collector that echoes the raw number cannot
@@ -106,7 +107,7 @@ export const TEST_NETWORK_TYPE = 'test'
  * that own those ids in the ethereum-lists registry: 900 is Garizon Testnet Stage0
  * and 1000 is GTON Mainnet.
  */
-export const FAKED_EVM_REFERENCES: ReadonlySet<string> = new Set(['501000101', '728126428'])
+export const FAKED_EVM_REFERENCES: ReadonlySet<string> = new Set(['501000101', '728126428', '4160'])
 
 /** True when a chain id normalizes to one of the faked non-EVM eip155 references. */
 export const isFakedEvmReference = (chainId: string): boolean => {

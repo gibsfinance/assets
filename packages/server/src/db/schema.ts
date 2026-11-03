@@ -226,6 +226,22 @@ export const list = pgTable(
     index().using('btree', table.key.asc().nullsLast().op('text_ops')),
     index('list_networkid_index').using('btree', table.networkId.asc().nullsLast().op('text_ops')),
     index('list_providerid_index').using('btree', table.providerId.asc().nullsLast().op('text_ops')),
+    /**
+     * Serves latestListVersionSql: "is there a finished, newer version of this
+     * (provider, key)?" With only list_providerid_index, each probe read every list the
+     * provider has on every network, and the by-address image route runs one probe per
+     * candidate row — about three seconds for popular tokens on staging.
+     */
+    index('list_provider_key_version_index')
+      .using(
+        'btree',
+        table.providerId.asc().nullsLast().op('text_ops'),
+        table.key.asc().nullsLast().op('text_ops'),
+        table.major.asc().nullsLast().op('int2_ops'),
+        table.minor.asc().nullsLast().op('int2_ops'),
+        table.patch.asc().nullsLast().op('int2_ops'),
+      )
+      .where(sql`${table.tokensCollectedAt} IS NOT NULL`),
     foreignKey({
       columns: [table.providerId],
       foreignColumns: [provider.providerId],

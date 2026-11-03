@@ -35,6 +35,11 @@ describe('insertNetworkFromChainId', () => {
     expect(harness.queries).toHaveLength(0)
   })
 
+  it('refuses Algorand echoed as eip155-4160, which belongs at algorand-283', async () => {
+    await expect(insertNetworkFromChainId('eip155-4160' as never, 'evm')).rejects.toThrow(/algorand-283/)
+    expect(harness.queries).toHaveLength(0)
+  })
+
   it("refuses a type that disagrees with the chain id's namespace", async () => {
     // A bare numeric id normalizes to eip155-<n>, which only ever carries type
     // 'evm' — filing it under a mismatched type would corrupt the row.

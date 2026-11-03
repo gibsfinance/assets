@@ -53,21 +53,23 @@ const networkNameToChainId = new Map<string, number>([
 ])
 
 /**
- * Trust Wallet's two non-Ethereum-Virtual-Machine folders carry case-sensitive
- * base58 token ids but its numeric chain-id map files them under EVM-looking
- * references (solana=900, tron=1000). gib.show stores networks as CAIP-2
+ * Trust Wallet's three non-Ethereum-Virtual-Machine folders carry case-sensitive
+ * token ids (base58, or numeric asset ids for Algorand) but its numeric chain-id map
+ * files them under EVM-looking references (solana=900, tron=1000, algorand=4160, the
+ * number the chain registry lists Algorand under). gib.show stores networks as CAIP-2
  * `{namespace}-{reference}` keyed on the Satoshi-Labs-Improvement-Proposal-44 coin
  * type, so these must persist under their real identifiers — solana-501 (type
- * solana) and tvm-195 (type tvm, Tron) — for the non-EVM serving path to reach them.
+ * solana), tvm-195 (type tvm, Tron) and algorand-283 (type algorand) — for the non-EVM serving path to reach them.
  */
 export const NON_EVM_NETWORK_ARGS: Record<string, { chainId: string; type: string }> = {
   solana: { chainId: 'solana-501', type: 'solana' },
   tron: { chainId: 'tvm-195', type: 'tvm' },
+  algorand: { chainId: 'algorand-283', type: 'algorand' },
 }
 
 /**
  * Insert the network for a Trust Wallet blockchain folder, choosing the correct
- * CAIP-2 identifier and type. Non-EVM folders (solana, tron) use their namespaced
+ * CAIP-2 identifier and type. Non-EVM folders (solana, tron, algorand) use their namespaced
  * identifier; every other folder is an EVM chain keyed by its numeric id.
  */
 const insertNetworkForFolder = (folder: string, chainId: number) => {
