@@ -134,6 +134,13 @@
       "when": 1790200000000,
       "tag": "0018_cleanup_algorand_faked_network",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793733689227,
+      "tag": "0019_list_provider_key_version_index",
+      "breakpoints": true
     }
   ]
 }

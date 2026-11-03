@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "list_provider_key_version_index" ON "list" USING btree ("provider_id" text_ops,"key" text_ops,"major" int2_ops,"minor" int2_ops,"patch" int2_ops) WHERE "list"."tokens_collected_at" IS NOT NULL;
