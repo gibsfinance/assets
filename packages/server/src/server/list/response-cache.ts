@@ -59,8 +59,10 @@ export const STALE_TTL_MS = 24 * 60 * 60 * 1000
  *
  * v3: list entries rank by the image route's preference (listEntryPreferenceSql), so
  * a token's logoURI can name a different image for unchanged data.
+ * v4: that preference ranks an image on a link-only host (DeBank) below any stored
+ * image, so a token's logoURI changes again for unchanged data.
  */
-export const RESPONSE_SHAPE_VERSION = 'v3'
+export const RESPONSE_SHAPE_VERSION = 'v4'
 
 /** Prefix a key with the shape namespace. Every cache key builder goes through this. */
 export const namespacedCacheKey = (key: string) => `${RESPONSE_SHAPE_VERSION}:${key}`

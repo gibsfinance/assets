@@ -97,6 +97,13 @@ Return visitors paint from cache; the build removes the two blocking requests.
   deploy and redeploy). The build then ships a `/sw.js` that deletes every cache and unregisters
   itself, and the page stops registering a worker. Browsers pick it up on their next update check,
   which they make on each navigation and at least daily. Remove the variable to turn the worker back on.
+- **Edge cache for the page:** a Cloudflare cache rule (zone `gib.show`, phase
+  `http_request_cache_settings`, description "page: cache index.html at the edge for 60s") caches
+  `/` and `/index.html` on `gib.show` and `staging.gib.show` for 60 seconds, edge only. Browsers still
+  get the origin's `no-cache` (browser TTL: respect origin). A deploy reaches first-time visitors
+  within a minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of
+  about 120 ms. The other rule in that phase ("content") caches `/image`, `/list`, `/token`, `/stats`,
+  `/networks`. Edit both through the Cloudflare API, not by hand, so this note stays true.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
 
@@ -104,7 +111,8 @@ Return visitors paint from cache; the build removes the two blocking requests.
 - `?as=webp` — output format conversion (sharp resize pipeline)
 - `?only=vector` — source type filter (filter by extension before selection)
 - Path extension `.webp` on address — same as `?as=webp`
-- Priority: `listEntryPreferenceSql()` in `db/index.ts` — usable image, ranking/1000, format, version DESC,
+- Priority: `listEntryPreferenceSql()` in `db/index.ts` — image tier (stored usable image, then a usable image on a
+  link-only host such as DeBank, then none; the host set is `LINK_ONLY_HOSTS`), ranking/1000, format, version DESC,
   default, key. One rule for the by-address image (`applyOrder`), the chain lists and search, so a
   `logoURI` names the image `/image/:chainId/:address` serves. `applyOrder` adds one term after
   usable image: a current list version beats a superseded one (the lists read current versions only).

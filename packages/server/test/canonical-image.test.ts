@@ -160,7 +160,48 @@ test(
     const rasterList = await insertCollectedList(formatProvider.providerId, 'a-raster', { major: 0 })
     const vectorList = await insertCollectedList(formatProvider.providerId, 'b-vector', { major: 0 })
 
+    // Cases 3 and 4 — a link-only host. `linked` ranks above `stored` and carries a DeBank
+    // image for the token both carry: DeBank cannot be resized, converted or cached here,
+    // so the stored image must win. `linkedOnly` has nothing but the DeBank image, which
+    // must still win over no image at all.
+    const bothSources = await insertToken(3)
+    const linkedOnly = await insertToken(4)
+    const linkedProvider = await insertProvider('linked')
+    const storedProvider = await insertProvider('stored')
+    const debankAddress = (label: string) => `https://static.debank.com/image/token/logo_url/canonical-${label}/x.png`
+    const linkImage = async (label: string) => {
+      const row = {
+        ...imageRow(`link-${label}`, Buffer.alloc(0), '.png'),
+        uri: debankAddress(label),
+        mode: 'link',
+      }
+      return insertImage(row)
+    }
+    const debankImage = await linkImage('both')
+    const debankOnlyImage = await linkImage('only')
+    const storedImage = await insertImage(imageRow('stored', await noisePng(4), '.png'))
+    const linkedList = await insertCollectedList(linkedProvider.providerId, 'linked', { major: 0 })
+    const storedList = await insertCollectedList(storedProvider.providerId, 'stored', { major: 0 })
+
     await db.insertListToken([
+      {
+        tokenId: bothSources.tokenId,
+        listId: linkedList.listId,
+        imageHash: debankImage.imageHash,
+        listTokenOrderId: 0,
+      },
+      {
+        tokenId: bothSources.tokenId,
+        listId: storedList.listId,
+        imageHash: storedImage.imageHash,
+        listTokenOrderId: 0,
+      },
+      {
+        tokenId: linkedOnly.tokenId,
+        listId: linkedList.listId,
+        imageHash: debankOnlyImage.imageHash,
+        listTokenOrderId: 1,
+      },
       { tokenId: superseded.tokenId, listId: retiredV1.listId, imageHash: retiredImage.imageHash, listTokenOrderId: 0 },
       {
         tokenId: superseded.tokenId,
@@ -176,7 +217,7 @@ test(
     // order both routes skip ranking entirely, and the comparison would prove nothing.
     // `retired` ranks above `current` — the production shape, where a higher-ranked
     // provider's superseded list beat a lower-ranked provider's current one.
-    const keys = [retiredProvider.key, currentProvider.key, formatProvider.key]
+    const keys = [linkedProvider.key, storedProvider.key, retiredProvider.key, currentProvider.key, formatProvider.key]
     await syncDefaultOrder(keys, await buildManifestsFromDB(keys))
     assert.ok(getDefaultListOrderId(), 'a default order must exist for the ranked paths to run')
 
@@ -199,6 +240,21 @@ test(
       const fromImage = await fetchByAddress(twoFormats.providedId)
       assert.ok(fromImage.equals(vectorImage.content), 'the image route keeps preferring vector artwork')
       assert.ok(fromList.equals(fromImage), 'the list and the image route must agree')
+    })
+    await t.test('a stored image outranks a link-only host image from a higher-ranked provider', async () => {
+      const fromImage = await fetchByAddress(bothSources.providedId)
+      assert.ok(fromImage.equals(storedImage.content), 'the image route must serve the stored image')
+      const fromList = await fetchLogo(logoFor(bothSources.providedId))
+      assert.ok(fromList.equals(fromImage), 'the list and the image route must agree')
+      const search = await supertest(app).get(`/list/search?q=CANON3&chainId=${CHAIN_ID}`).expect(200)
+      const hit = search.body.tokens.find((token: { address: string }) => token.address === bothSources.providedId)
+      assert.ok(hit, 'search must find the token')
+      assert.ok((await fetchLogo(hit.logoURI)).equals(storedImage.content), 'search must name the stored image')
+    })
+
+    await t.test('a link-only host image still wins when it is the only image', async () => {
+      const response = await supertest(app).get(`/image/${CHAIN_ID}/${linkedOnly.providedId}`).expect(302)
+      assert.equal(response.headers.location, debankAddress('only'))
     })
   },
 )

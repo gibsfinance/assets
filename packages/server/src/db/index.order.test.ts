@@ -22,6 +22,7 @@ import {
 import { SEARCH_CANDIDATE_CAP } from './search'
 import { eq, and, inArray, sql as dsql } from 'drizzle-orm'
 import * as s from './schema'
+import { linkOnlyUriPrefixes } from '../link-only-hosts'
 
 beforeEach(() => {
   harness.reset()
@@ -131,13 +132,14 @@ describe('applyOrder', () => {
     // Group 0 (.png) must outrank group 1 (.jpg), and anything with an
     // extension outside both groups ranks worst-but-one, ahead only of null —
     // a caller-supplied preference has to fully replace the svg-first default.
-    expect(rendered).toContain('CASE WHEN "image"."ext" in ($1) THEN $2 WHEN "image"."ext" in ($3) THEN $4')
-    expect(rendered).toContain('WHEN "image"."ext" IS NOT NULL THEN $5 ELSE $6 END')
+    expect(rendered).toContain('CASE WHEN "image"."ext" in ($3) THEN $4 WHEN "image"."ext" in ($5) THEN $6')
+    expect(rendered).toContain('WHEN "image"."ext" IS NOT NULL THEN $7 ELSE $8 END')
     // The bound values carry the actual ranks: group 0 -> rank 0, group 1 ->
     // rank 1, any other real extension -> 2 (formatPreference.length), and a
     // null (no image) extension falls through to the final ELSE, rank 3.
-    // The trailing two params are the CTE's own listOrderId/chainId bindings.
-    expect(params).toEqual(['.png', 0, '.jpg', 1, 2, 3, '0xorder', 'eip155-1'])
+    // The leading two params are the link-only host prefixes of the image tier; the
+    // trailing two are the CTE's own listOrderId/chainId bindings.
+    expect(params).toEqual([...linkOnlyUriPrefixes(), '.png', 0, '.jpg', 1, 2, 3, '0xorder', 'eip155-1'])
   })
 
   // The opt-in `?license=` filter (packages/server/src/server/image/handlers.ts's
@@ -164,7 +166,7 @@ describe('applyOrder', () => {
     const cteStart = rendered.indexOf('WITH ls AS')
     const denseRankStart = rendered.indexOf('dense_rank()')
     const cteWhereStart = rendered.indexOf('WHERE', denseRankStart)
-    const licenseFilterStart = rendered.indexOf('lower(')
+    const licenseFilterStart = rendered.indexOf('lower("list_token"."license")')
     const outerRankFilter = rendered.indexOf('WHERE ls.rank = 1')
 
     // Ordering that only holds if the licence filter sits in the CTE's own
@@ -615,7 +617,11 @@ describe('searchTokens', () => {
 describe('list entry preference shared by the image route, the token lists and search', () => {
   /** The ranking terms of one query, between two markers, with comments and whitespace collapsed. */
   const clauseBetween = (rawSql: string, start: string, end: string) => {
-    const sql = rawSql.replace(/--[^\n]*\n/g, ' ').replace(/\s+/g, ' ')
+    const sql = rawSql
+      .replace(/--[^\n]*\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      // Placeholder numbers depend on how many parameters precede the clause, not on the rule.
+      .replace(/\$\d+/g, '$?')
     const from = sql.indexOf(start)
     expect(from, `marker ${start}`).toBeGreaterThan(-1)
     const to = sql.indexOf(end, from + start.length)
@@ -692,5 +698,31 @@ describe('list entry preference shared by the image route, the token lists and s
     // Read off the newer row, and only once that row has finished collecting — the
     // same predicate the list queries filter on, not a look-alike.
     expect(ranking).toMatch(/newer\.tokens_collected_at IS NOT NULL/)
+  })
+
+  it('ranks a stored image, then a link-only host image, then none, ahead of provider ranking on every route', async () => {
+    // DeBank images cannot be resized, converted or cached here and send every visitor to
+    // DeBank, so a token that has any stored image must show that one. The tier comes
+    // before provider ranking, or a higher-ranked provider's DeBank link still wins.
+    const tierTerm =
+      /WHEN NOT \(\(.*?\)\) THEN 2 WHEN \(starts_with\(lower\(COALESCE\("image"\."uri", ''\)\), \$\?\) OR starts_with.*?\) THEN 1 ELSE 0 END ASC/
+    const imageRoute = await imageRouteRanking()
+    harness.reset()
+    const tokenList = await tokenListRanking()
+    harness.reset()
+    const search = await searchRanking()
+    for (const ranking of [imageRoute, tokenList, search]) {
+      const tier = ranking.search(tierTerm)
+      expect(tier).toBeGreaterThan(-1)
+      expect(ranking.indexOf('/ 1000')).toBeGreaterThan(tier)
+    }
+  })
+
+  it('binds each link-only host prefix as a parameter, so no host character is a wildcard', async () => {
+    harness.queueResult({ rows: [] })
+    await getTokensByChainRanked('eip155-1', '0xorder' as never)
+    const query = (harness.queries[0].steps[0].args as unknown[])[0]
+    for (const prefix of linkOnlyUriPrefixes()) expect(sqlParams(query)).toContain(prefix)
+    expect(renderSql(query)).not.toContain('static.debank.com')
   })
 })

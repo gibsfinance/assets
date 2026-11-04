@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isLinkOnlyHost } from './link-only-hosts'
+import { isLinkOnlyHost, linkOnlyUriPrefixes } from './link-only-hosts'
 
 describe('isLinkOnlyHost', () => {
   it('recognizes a DeBank-hosted address', () => {
@@ -54,5 +54,15 @@ describe('isLinkOnlyHost', () => {
 
   it('swallows a malformed http(s) address rather than throwing', () => {
     expect(isLinkOnlyHost('https://')).toBe(false)
+  })
+})
+
+describe('linkOnlyUriPrefixes', () => {
+  it('names every link-only host over both schemes, ending at the host boundary', () => {
+    expect(linkOnlyUriPrefixes()).toEqual(['https://static.debank.com/', 'http://static.debank.com/'])
+  })
+
+  it('agrees with isLinkOnlyHost on an address under each prefix', () => {
+    for (const prefix of linkOnlyUriPrefixes()) expect(isLinkOnlyHost(`${prefix}image/x.png`)).toBe(true)
   })
 })
