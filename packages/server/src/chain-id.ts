@@ -109,6 +109,42 @@ export const TEST_NETWORK_TYPE = 'test'
  */
 export const FAKED_EVM_REFERENCES: ReadonlySet<string> = new Set(['501000101', '728126428', '4160'])
 
+/**
+ * Chain ids that name a stored non-EVM network under a number it does not own.
+ *
+ * Algorand's ARC-25 (https://github.com/algorandfoundation/ARCs/blob/main/ARCs/arc-0025.md)
+ * defines numeric chain ids for wallets and dapps: MainNet 416001 and "All Algorand
+ * Chains (Legacy)" 4160. Neither is a real EVM chain, so both name the one Algorand
+ * network gib.show stores, `algorand-283` (SLIP-44 coin type 283). TestNet 416002 and
+ * BetaNet 416003 are deliberately absent: no data is stored for them, so they behave as
+ * any unknown chain does.
+ *
+ * Keyed by the bare reference. {@link resolveChainIdAlias} applies the map to the bare
+ * form and to the explicit `eip155-<reference>` form alike.
+ */
+export const CHAIN_ID_ALIASES: Readonly<Record<string, string>> = {
+  '4160': 'algorand-283',
+  '416001': 'algorand-283',
+}
+
+/**
+ * Replace an aliased chain id with the stored network it names; any other id comes back
+ * unchanged. Matches a bare number (`4160`) and the explicit eip155 form (`eip155-4160`),
+ * because neither names a real EVM chain. A different namespace (`solana-4160`) is an
+ * assertion about that namespace and is left alone. See {@link CHAIN_ID_ALIASES}.
+ *
+ * This is the single place aliases are applied. `resolveChainIdAgainstStored`,
+ * `chainIdFilterMatch` and the token-image lookup all call it.
+ *
+ * @param input Requested chain id, bare or prefixed. A number is accepted for convenience.
+ */
+export const resolveChainIdAlias = (input: string | number | bigint): string => {
+  const text = String(input)
+  const canonical = toCAIP2(text)
+  if (namespaceOf(canonical) !== EVM_PREFIX) return text
+  return CHAIN_ID_ALIASES[fromCAIP2(canonical)] ?? text
+}
+
 /** True when a chain id normalizes to one of the faked non-EVM eip155 references. */
 export const isFakedEvmReference = (chainId: string): boolean => {
   const canonical = toCAIP2(chainId)
@@ -144,7 +180,8 @@ export type ChainIdFilterMatch = { kind: 'reference'; reference: string } | { ki
  * Kept here, pure and free of SQL, so the rule can be tested without a database and
  * the query builder stays a thin translation of it.
  */
-export function chainIdFilterMatch(value: string): ChainIdFilterMatch {
+export function chainIdFilterMatch(rawValue: string): ChainIdFilterMatch {
+  const value = resolveChainIdAlias(rawValue)
   if (isBareNumeric(value)) return { kind: 'reference', reference: value }
   return { kind: 'exact', chainId: toCAIP2(value) }
 }
@@ -173,6 +210,9 @@ export type StoredChainCandidate = { chainId: string; hasTokens: boolean }
  * very bug it fixes.
  *
  * Rules, in order:
+ *   - An ARC-25 alias (`4160`, `416001`, `eip155-4160`; see {@link CHAIN_ID_ALIASES})
+ *     resolves to `algorand-283` whatever is stored, so the duplicate `eip155-4160`
+ *     network can be deleted without breaking any caller.
  *   - An explicit namespace is an assertion; it passes through unchanged, even when
  *     it matches nothing. Redirecting it would answer a question nobody asked.
  *   - Among candidates holding tokens, eip155 wins, so `/list/tokens/1` keeps meaning
@@ -191,6 +231,8 @@ export function resolveChainIdAgainstStored(
   input: string,
   storedCandidates: readonly StoredChainCandidate[],
 ): ChainIdResolution {
+  const aliased = resolveChainIdAlias(input)
+  if (aliased !== input) return { status: 'resolved', chainId: aliased }
   const canonical = toCAIP2(input)
   if (!isBareNumeric(input)) return { status: 'resolved', chainId: canonical }
   if (canonical === `${ASSET_PREFIX}-${ASSET_CHAIN}`) return { status: 'resolved', chainId: canonical }

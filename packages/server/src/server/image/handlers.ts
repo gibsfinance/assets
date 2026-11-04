@@ -32,7 +32,7 @@ import { attributionHeaders, resolveAttribution } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
-import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored } from '../../chain-id'
+import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored, resolveChainIdAlias } from '../../chain-id'
 import { RESOLVED_CHAIN_HEADER } from './headers'
 
 export { RESOLVED_CHAIN_HEADER }
@@ -284,7 +284,7 @@ export const validateOutputFormat = (sourceExt: string, outputExt: string): stri
 const getListImage =
   (parseOrder: boolean) =>
   async ({
-    chainId,
+    chainId: requestedChainId,
     address: addressParam,
     order: orderParam,
     typeFilter,
@@ -300,9 +300,12 @@ const getListImage =
     listKey?: string[]
     license?: string[]
   }): Promise<{ img: Image & Record<string, unknown>; outputExt: string | null }> => {
-    if (!chainId) {
+    if (!requestedChainId) {
       throw httpErrors.BadRequest('chainId')
     }
+    // ARC-25 aliases (4160, 416001) name algorand-283; apply before the address check,
+    // which depends on the namespace, and before the network hash is derived.
+    const chainId = resolveChainIdAlias(requestedChainId)
     const { filename: address, ext: requestedExt } = splitExt(addressParam)
     if (!isValidTokenAddress(chainId, address)) {
       throw httpErrors.BadRequest('address')
@@ -449,6 +452,8 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
  * handler; see resolveChainIdAgainstStored.
  */
 const resolveNetworkChainId = async (chainId: string): Promise<string> => {
+  const aliased = resolveChainIdAlias(chainId)
+  if (aliased !== chainId) return aliased
   if (!isBareNumeric(chainId)) return chainId
   const storedCandidates = await db.getChainIdsByReference(chainId)
   const resolution = resolveChainIdAgainstStored(chainId, storedCandidates)

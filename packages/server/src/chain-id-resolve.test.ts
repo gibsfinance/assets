@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chainIdFilterMatch, resolveChainIdAgainstStored } from './chain-id'
+import { CHAIN_ID_ALIASES, chainIdFilterMatch, resolveChainIdAgainstStored, resolveChainIdAlias } from './chain-id'
 
 describe('chainIdFilterMatch', () => {
   // ?chain_id=501 used to be prefixed to eip155-501 and matched with equality, so
@@ -147,6 +147,71 @@ describe('resolveChainIdAgainstStored', () => {
         status: 'resolved',
         chainId: 'asset-0',
       })
+    })
+  })
+})
+
+// Algorand ARC-25 numbers: 4160 is the legacy "all Algorand chains" id, 416001 is
+// MainNet. Neither is an EVM chain, and gib.show stores Algorand once, as algorand-283.
+describe('ARC-25 chain id aliases', () => {
+  it('lists exactly the legacy and MainNet ids, not TestNet or BetaNet', () => {
+    expect(CHAIN_ID_ALIASES).toEqual({ '4160': 'algorand-283', '416001': 'algorand-283' })
+  })
+
+  describe('resolveChainIdAlias', () => {
+    it.each(['4160', '416001', 'eip155-4160', 'eip155-416001', 4160, 416001, 4160n])(
+      'maps %s to algorand-283',
+      (input) => {
+        expect(resolveChainIdAlias(input)).toBe('algorand-283')
+      },
+    )
+
+    it.each(['416002', '416003', '283', '1', 'algorand-283', 'solana-4160', 'eip155-1', 'asset-0', '0'])(
+      'leaves %s unchanged',
+      (input) => {
+        expect(resolveChainIdAlias(input)).toBe(input)
+      },
+    )
+  })
+
+  describe('resolveChainIdAgainstStored', () => {
+    const stored = [populated('algorand-283')]
+    const withDuplicate = [populated('algorand-283'), populated('eip155-4160')]
+
+    it.each(['4160', '416001', 'eip155-4160', 'eip155-416001'])(
+      'resolves %s to algorand-283 whether or not an eip155-4160 row is stored',
+      (input) => {
+        const expected = { status: 'resolved', chainId: 'algorand-283' }
+        expect(resolveChainIdAgainstStored(input, [])).toEqual(expected)
+        expect(resolveChainIdAgainstStored(input, stored)).toEqual(expected)
+        expect(resolveChainIdAgainstStored(input, withDuplicate)).toEqual(expected)
+      },
+    )
+
+    it('leaves 416002 and 416003 as unknown chains, resolving to eip155', () => {
+      expect(resolveChainIdAgainstStored('416002', [])).toEqual({ status: 'resolved', chainId: 'eip155-416002' })
+      expect(resolveChainIdAgainstStored('416003', stored)).toEqual({ status: 'resolved', chainId: 'eip155-416003' })
+    })
+
+    it('leaves bare 283 resolving to the stored Algorand network', () => {
+      expect(resolveChainIdAgainstStored('283', stored)).toEqual({ status: 'resolved', chainId: 'algorand-283' })
+    })
+
+    it('leaves an EVM chain id such as 1 unchanged', () => {
+      expect(resolveChainIdAgainstStored('1', [populated('eip155-1')])).toEqual({
+        status: 'resolved',
+        chainId: 'eip155-1',
+      })
+    })
+  })
+
+  describe('chainIdFilterMatch', () => {
+    it.each(['4160', '416001', 'eip155-4160'])('matches %s exactly on algorand-283', (input) => {
+      expect(chainIdFilterMatch(input)).toEqual({ kind: 'exact', chainId: 'algorand-283' })
+    })
+
+    it('still matches 416002 on its reference', () => {
+      expect(chainIdFilterMatch('416002')).toEqual({ kind: 'reference', reference: '416002' })
     })
   })
 })
