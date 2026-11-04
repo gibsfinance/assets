@@ -15,6 +15,7 @@ export const LLMS_TXT = `# Gib.Show
 - [Network image](https://gib.show/image/{chainId}): A chain's own icon. Query parameters: \`as\` (convert output format — webp, png, jpg, jpeg, avif), \`w\` and \`h\` (resize in pixels, 1-2048), \`only\` (filter source images by type), \`mode\` (\`mode=link\` redirects to the source URI instead of serving content).
 - [Token image](https://gib.show/image/{chainId}/{address}): A token's image, priority-ordered by list ranking. Accepts the same \`as\`, \`w\`, \`h\`, \`only\`, \`mode\` query parameters.
 - [Image by content hash](https://gib.show/image/direct/{imageHash}): Content-addressed image access. Accepts \`as\`, \`w\`, \`h\`.
+- Chain ids: prefixed (\`eip155-369\`) or bare (\`369\`). Algorand's ARC-25 ids \`4160\` and \`416001\` are aliases of \`algorand-283\`.
 - [Networks](https://gib.show/networks): Every supported network, with its chain id and icon hash.
 - [Token lists](https://gib.show/list): Every available token list, with its provider, chain, and version.
 - [Token search](https://gib.show/list/search): Search tokens by name, symbol, or address across every chain.

@@ -21,7 +21,7 @@ const CHAIN_ID_PARAM = {
   in: 'path' as const,
   required: true,
   description:
-    'Chain identifier — prefixed form (eip155-369) or bare numeric (369). Chain 0 uses the asset namespace (asset-0).',
+    'Chain identifier — prefixed form (eip155-369) or bare numeric (369). Chain 0 uses the asset namespace (asset-0). Algorand ARC-25 ids 4160 and 416001 (bare or eip155-) are aliases of algorand-283.',
   schema: { type: 'string' as const, examples: ['eip155-369', '1'] },
 }
 
@@ -137,7 +137,8 @@ const EXTENSIONS_PARAM = {
 const CHAIN_ID_QUERY_PARAM = {
   name: 'chainId',
   in: 'query' as const,
-  description: 'Filter tokens to one chain — prefixed form (eip155-369) or bare numeric (369).',
+  description:
+    'Filter tokens to one chain — prefixed form (eip155-369) or bare numeric (369). Algorand ARC-25 ids 4160 and 416001 are aliases of algorand-283.',
   schema: { type: 'string' as const },
 }
 
@@ -200,6 +201,7 @@ export const openapi = {
     description:
       'Token metadata, token lists, and token/network images across many blockchains. ' +
       'All chain-id inputs accept both the prefixed identifier form (eip155-369) and the bare numeric form (369). ' +
+      'Algorand ARC-25 chain ids 4160 (legacy) and 416001 (MainNet), bare or as eip155-4160 / eip155-416001, are aliases of algorand-283. ' +
       'Responses are aggressively cacheable; image and list bodies carry cache-control headers.',
     license: { name: 'MIT' },
   },
@@ -586,7 +588,7 @@ export const openapi = {
           'against the chain identifiers this service actually stores, so a number one namespace shares ' +
           'with another can still resolve to the populated one. Every success response carries ' +
           'x-resolved-chain, naming the identifier it resolved to in prefixed form (eip155-369), so a ' +
-          'caller can tell an exact match from a best guess.',
+          'caller can tell an exact match from a best guess. Algorand ARC-25 ids (4160, 416001) report algorand-283.',
         'x-example': '/image/eip155-369',
         parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
         responses: {

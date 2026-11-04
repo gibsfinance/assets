@@ -13,7 +13,7 @@ GET /image/{chainId}/{address}
 Returns the highest-priority image for a token. Supports optional resize and format conversion.
 
 **Path params:**
-- `chainId` — chain identifier, prefixed (`eip155-1`) or bare numeric (`1` for Ethereum, `369` for PulseChain). Bare numerics work for EVM chains; non-EVM chains (Solana, Tron) need the prefixed form.
+- `chainId` — chain identifier, prefixed (`eip155-1`) or bare numeric (`1` for Ethereum, `369` for PulseChain). Bare numerics work for EVM chains; non-EVM chains (Solana, Tron) need the prefixed form. Algorand answers to its ARC-25 chain ids `4160` (legacy, all Algorand chains) and `416001` (MainNet), bare or as `eip155-4160` / `eip155-416001`; all of them resolve to `algorand-283`. ARC-25 TestNet and BetaNet ids (`416002`, `416003`) are not served.
 - `address` — Token contract address (0x... for EVM chains; base58 or another chain-native identifier for non-EVM chains)
 
 **Query params:**
