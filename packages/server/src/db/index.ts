@@ -15,7 +15,7 @@ import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
 import { isPlaceholderImage, isPlaceholderUri, placeholderByteLengths } from '../image-placeholders'
-import { isLinkOnlyHost } from '../link-only-hosts'
+import { isLinkOnlyHost, linkOnlyUriPrefixes } from '../link-only-hosts'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
 import config from '../../config'
@@ -2013,8 +2013,8 @@ type ListEntryRankColumns = {
  * `logoURI` and the by-address image are promised to be the same picture; that only
  * holds while both are ordered by the same terms.
  *
- * In order: an entry whose image resolves (see usableImageSql), then provider
- * ranking (`ranking / 1000` groups a provider's sub-lists), then format (svg first
+ * In order: image tier (see imageTierSql: a usable image beats a link-only host's
+ * image, which beats none), then provider ranking (`ranking / 1000` groups a provider's sub-lists), then format (svg first
  * by default), then newest list version, then default lists, then list key and
  * position for a stable answer.
  *
@@ -2031,7 +2031,7 @@ const listEntryPreferenceSql = (
   { formatPreference, currentVersion }: { formatPreference?: string[][]; currentVersion?: SQL } = {},
 ): SQL =>
   dsql`
-    CASE WHEN ${usableImageSql(s.image.mode, s.image.uri, s.image.ext)} THEN 0 ELSE 1 END ASC,
+    ${imageTierSql(s.image.mode, s.image.uri, s.image.ext)} ASC,
     ${currentVersion ? dsql`CASE WHEN ${currentVersion} THEN 0 ELSE 1 END ASC,` : dsql``}
     (${columns.ranking} / 1000) ASC,
     ${buildFormatOrderSql(formatPreference)} ASC,
@@ -2168,6 +2168,33 @@ export const applyOrder = async (
  */
 const usableImageSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | AnyColumn): SQL =>
   dsql`((${mode} = 'link' AND COALESCE(${uri}, '') <> '') OR (${mode} <> 'link' AND COALESCE(${ext}, '') <> ''))`
+
+/**
+ * SQL twin of `isLinkOnlyHost()`: whether an address is served by a host this service
+ * may only link to. The prefixes come from LINK_ONLY_HOSTS (see `linkOnlyUriPrefixes`),
+ * so the set stays the single source of truth. Each prefix is a bound parameter
+ * compared with `starts_with`, not `LIKE`, so no host character acts as a wildcard.
+ * The address is lower-cased because `isLinkOnlyHost` reads a host case-insensitively.
+ */
+const linkOnlyUriSql = (uri: SQL | AnyColumn): SQL =>
+  dsql`(${dsql.join(
+    linkOnlyUriPrefixes().map((prefix) => dsql`starts_with(lower(COALESCE(${uri}, '')), ${prefix})`),
+    dsql` OR `,
+  )})`
+
+/**
+ * The first ranking term of a list entry: 0 for a usable image stored here, 1 for a
+ * usable image on a link-only host, 2 for no usable image. A link-only image
+ * (DeBank) cannot be resized, converted or cached by this service and sends every
+ * visitor to the source, so any stored image outranks it; it still beats nothing.
+ * It is one more CASE over columns the row already carries.
+ */
+const imageTierSql = (mode: SQL | AnyColumn, uri: SQL | AnyColumn, ext: SQL | AnyColumn): SQL =>
+  dsql`CASE
+      WHEN NOT ${usableImageSql(mode, uri, ext)} THEN 2
+      WHEN ${linkOnlyUriSql(uri)} THEN 1
+      ELSE 0
+    END`
 
 /**
  * Restricts `list` to the newest version of each list, where a list is identified by

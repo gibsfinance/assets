@@ -38,3 +38,16 @@ export const isLinkOnlyHost = (uri: string | null | undefined): boolean => {
     return false
   }
 }
+
+/**
+ * Address prefixes that name a link-only host, for a database that cannot run
+ * `isLinkOnlyHost`. One per host and scheme, lower case, ending in the slash that
+ * ends the host — so `static.debank.com.evil.example` cannot match.
+ *
+ * The list is derived from the same set `isLinkOnlyHost` reads, so a host added
+ * there reaches every SQL predicate built from this list with no second edit.
+ * Callers compare with `starts_with`, never `LIKE`, so a host that contains `_`
+ * or `%` is matched literally rather than as a wildcard.
+ */
+export const linkOnlyUriPrefixes = (): string[] =>
+  [...LINK_ONLY_HOSTS].flatMap((host) => [`https://${host}/`, `http://${host}/`])
