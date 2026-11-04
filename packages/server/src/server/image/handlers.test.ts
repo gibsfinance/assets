@@ -705,6 +705,27 @@ describe('image handlers', () => {
     })
   })
 
+  describe('getImage with an ARC-25 alias', () => {
+    it.each(['4160', '416001', 'eip155-4160'])(
+      'looks %s up under algorand-283 and accepts an Algorand asset id as the address',
+      async (alias) => {
+        vi.mocked(getDefaultListOrderId).mockReturnValue(null)
+        vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([]) as any)
+
+        // The asset id is not a 0x address, so a request still read as eip155 would be
+        // refused with 400 before any lookup. Reaching the not-found proves the alias won.
+        await expect(
+          getImage(false)(
+            mockRequest({ params: { chainId: alias, address: '312769' }, query: {} }),
+            mockResponse(),
+            vi.fn(),
+          ),
+        ).rejects.toThrow(/list image missing/)
+        expect(vi.mocked(utils.chainIdToNetworkId)).toHaveBeenCalledWith('algorand-283')
+      },
+    )
+  })
+
   // -----------------------------------------------------------------------
   // getNetworkIcon
   // -----------------------------------------------------------------------
@@ -1479,6 +1500,26 @@ describe('image handlers', () => {
 
       await expect(bestGuessNetworkImageFromOnOnChainInfo(req, mockResponse(), vi.fn())).rejects.toThrow(/ambiguous/)
     })
+
+    it.each(['4160', '416001', 'eip155-4160'])(
+      'resolves the ARC-25 alias %s to algorand-283 with no reference lookup',
+      async (alias) => {
+        const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'algorand:283' } }])
+        vi.mocked(getDrizzle).mockReturnValue(chain as any)
+        vi.mocked(maybeResize).mockResolvedValue(false as any)
+        const res = mockResponse()
+
+        await bestGuessNetworkImageFromOnOnChainInfo(
+          mockRequest({ params: { chainId: alias }, query: {} }),
+          res,
+          vi.fn(),
+        )
+
+        expect(vi.mocked(utils.chainIdToNetworkId)).toHaveBeenCalledWith('algorand-283')
+        expect(db.getChainIdsByReference).not.toHaveBeenCalled()
+        expect(res.set).toHaveBeenCalledWith(RESOLVED_CHAIN_HEADER, 'algorand-283')
+      },
+    )
 
     it('passes an explicitly namespaced request through without a reference lookup', async () => {
       // polkadot-354 is already an assertion about namespace, so no resolution is needed
