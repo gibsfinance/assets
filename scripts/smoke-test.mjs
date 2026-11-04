@@ -36,7 +36,7 @@ const PROVENANCE = ['link', 'x-license', 'x-source-uri', 'x-provider']
 const results = []
 
 async function probe(label, path, options = {}) {
-  const { expect = [200], type, follow = false, headers = [] } = options
+  const { expect = [200], type, follow = false, headers = [], bodyIncludes, headerEquals = {} } = options
   const separator = path.includes('?') ? '&' : '?'
   const url = `${BASE_URL}${path}${separator}smoke=${Math.random().toString(36).slice(2)}`
   const started = Date.now()
@@ -74,6 +74,17 @@ async function probe(label, path, options = {}) {
     notes.push(`missing ${name}`)
   }
 
+  if (ok && bodyIncludes && !Buffer.from(body).toString('utf8').includes(bodyIncludes)) {
+    ok = false
+    notes.push(`body lacks ${bodyIncludes}`)
+  }
+  for (const [name, wanted] of Object.entries(headerEquals)) {
+    const actual = response.headers.get(name)
+    if (actual === wanted) continue
+    ok = false
+    notes.push(`${name} is ${actual}, expected ${wanted}`)
+  }
+
   results.push({
     ok,
     label,
@@ -104,6 +115,15 @@ await probe('one provider', '/list/piteas', { type: 'json' })
 await probe('one list', '/list/piteas/exchange', { type: 'json' })
 await probe('tokens by chain', '/list/tokens/eip155-1', { type: 'json' })
 await probe('tokens, non-EVM', '/list/tokens/solana-501', { type: 'json' })
+// Algorand ARC-25 chain ids are aliases of the stored network algorand-283.
+await probe('tokens, Algorand legacy id', '/list/tokens/4160', {
+  type: 'json',
+  bodyIncludes: 'algorand-283',
+})
+await probe('tokens, Algorand MainNet id', '/list/tokens/416001', {
+  type: 'json',
+  bodyIncludes: 'algorand-283',
+})
 await probe('merged', '/list/merged/default?chainId=eip155-369', {
   type: 'json',
 })
@@ -134,6 +154,16 @@ await probe('ordered image', `/image/coingecko/eip155-1/${USDC}`, {
 })
 await probe('fallback route', `/image/fallback/coingecko/eip155-1/${USDC}`, {
   type: 'image/',
+})
+
+// Algorand Standard Asset 312769 (Tether USD) under the ARC-25 legacy id.
+await probe('token image, Algorand alias', '/image/4160/312769', {
+  type: 'image/',
+  headers: PROVENANCE,
+})
+await probe('network image, Algorand alias', '/image/4160', {
+  type: 'image/',
+  headerEquals: { 'x-resolved-chain': 'algorand-283' },
 })
 
 // Refusals. The claim under test is that a bad input fails cleanly, never at 500.
