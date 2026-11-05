@@ -22,5 +22,9 @@ restic_run() {
     -v "$BACKUP/backup_key:/root/.ssh/id_ed25519:ro" \
     -v "$BACKUP/known_hosts:/root/.ssh/known_hosts:ro" \
     -v gib_restic-cache:/cache \
-    "$RESTIC_IMAGE" "$@"
+    "$RESTIC_IMAGE" \
+    -o "sftp.args=-o UpdateHostKeys=no -o BatchMode=yes" \
+    "$@"
 }
+# UpdateHostKeys=no: known_hosts is mounted read-only (it holds the one verified key),
+# so OpenSSH's attempt to add the server's other key types would only log a warning.

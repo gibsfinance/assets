@@ -62,7 +62,7 @@ remote 'mkdir -p ~/app && cat > ~/app/compose.yml.new && mv ~/app/compose.yml.ne
 
 echo "==> backups (scripts, restic settings, key, user timers)"
 # Scripts, units and Nocix's host key: plain files, shipped as one archive.
-tar -C "$HERE/backup" -cf - backup.sh restore-test.sh restic-run.sh known_hosts \
+tar -C "$HERE/backup" -cf - backup.sh restore-test.sh restic-run.sh check-confinement.sh known_hosts \
   gib-backup.service gib-backup.timer gib-restore-test.service gib-restore-test.timer |
   remote 'set -e; umask 077; mkdir -p ~/app/backup ~/.config/systemd/user
     tar -C ~/app/backup -xf -
