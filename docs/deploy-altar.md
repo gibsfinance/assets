@@ -57,7 +57,9 @@ All secrets live in the 1Password item "gib-show app" (vault `valve`). To add on
 1. Add a field with `env -u OP_SERVICE_ACCOUNT_TOKEN op item edit`, from the owner's
    session.
 2. Add a reference line to `gib.env.tpl`.
-3. Use it in `compose.yml`, either through `env_file` or as `${NAME}`.
+3. Name it as `${NAME}` under the `environment:` of each service that reads it in
+   `compose.yml`, and only those services. There is no `env_file`, so a staging
+   container never receives a production secret.
 4. Deploy.
 
 Never run `docker compose config` without `--no-interpolate`, because it prints the

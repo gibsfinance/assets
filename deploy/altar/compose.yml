@@ -4,9 +4,10 @@
 # volumes, which rootless Docker keeps under its data root, /srv/gib/docker.
 #
 # Secrets: none in this file. `deploy.sh` writes ~/app/.env from gib.env.tpl with
-# `op inject`. Compose reads that file twice: `env_file` hands the shared keys to the
-# app containers, and `${...}` interpolation builds the per-environment values below.
-# Never run `docker compose config` without `--no-interpolate`; it prints them.
+# `op inject`, and Compose interpolates `${...}` from it. There is deliberately no
+# `env_file`: that would hand every secret to every container, so the staging server
+# would hold production's database password. Each service names only what it reads.
+# Never run `docker compose config` without `--no-interpolate`; it prints the values.
 #
 # Memory budget (the tenant's whole slice is capped at 20 GiB, no swap). The limits
 # add up to 18 GiB, so one runaway container is killed at its own limit before the
@@ -68,7 +69,6 @@ x-server: &server
   restart: unless-stopped
   mem_limit: 1536m
   cpus: 1.5
-  env_file: .env
   healthcheck:
     test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
     interval: 15s
@@ -80,7 +80,6 @@ x-collector: &collector
   restart: unless-stopped
   mem_limit: 3g
   cpus: 1.5
-  env_file: .env
   # `yarn run collect` makes one pass and exits. The loop repeats it after a pause, and
   # COLLECT_FIRST_DELAY staggers the two environments so their heavy passes rarely
   # overlap. A failed pass is logged and the loop carries on, as Railway's cron did.
@@ -143,6 +142,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://gibassets:${PRODUCTION_POSTGRES_PASSWORD}@postgres-production:5432/gibassets
       PGDATABASE: gibassets
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
       ROOT_URI: https://gib.show
       PUBLIC_BASE_URL: https://gib.show
       CACHE_SECONDS: '86400'
@@ -165,6 +165,8 @@ services:
       DATABASE_URL: postgres://gibassets:${PRODUCTION_POSTGRES_PASSWORD}@postgres-production:5432/gibassets
       PGDATABASE: gibassets
       BROWSER_WS_ENDPOINT: ws://browser-production:3000?token=${PRODUCTION_BROWSER_TOKEN}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
       RPC_56: ${PRODUCTION_RPC_56}
       DEBUG: '📷'
       FAKE_SPINNER: 'true'
@@ -218,6 +220,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://gibassets:${STAGING_POSTGRES_PASSWORD}@postgres-staging:5432/gibassets
       PGDATABASE: gibassets
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
       ROOT_URI: https://staging.gib.show
       PUBLIC_BASE_URL: https://staging.gib.show
       CACHE_SECONDS: '86400'
@@ -243,6 +246,8 @@ services:
       DATABASE_URL: postgres://gibassets:${STAGING_POSTGRES_PASSWORD}@postgres-staging:5432/gibassets
       PGDATABASE: gibassets
       BROWSER_WS_ENDPOINT: ws://browser-staging:3000?token=${STAGING_BROWSER_TOKEN}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
       RPC_56: ${STAGING_RPC_56}
       DEBUG: '📷*'
       FAKE_SPINNER: 'true'
