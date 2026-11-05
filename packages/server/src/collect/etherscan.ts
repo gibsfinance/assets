@@ -36,6 +36,7 @@ import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTy
 import * as path from 'path'
 import * as paths from '../paths'
 import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { describeBrowserEndpoint } from './browser-endpoint'
 
 const providerKey = 'etherscan'
 
@@ -65,7 +66,7 @@ async function getSharedBrowser(): Promise<Browser> {
     const launchTimeout = 15_000
 
     if (browserWSEndpoint) {
-      failureLog('Connecting to external browser service: %o', browserWSEndpoint)
+      failureLog('Connecting to external browser service: %s', describeBrowserEndpoint(browserWSEndpoint))
       sharedBrowser = await puppeteerCore.connect({
         browserWSEndpoint,
       })
