@@ -430,6 +430,39 @@ describe('fetch (iterativeIpfsCompatableFetch)', () => {
     expect(response).toBe(mockResponse)
   })
 
+  it('tries the next IPFS domain when the first answers 429, as ipfs.io does for servers', async () => {
+    const served = makeOkResponse('served by the second gateway')
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(new Response('switching to a service worker gateway', { status: 429 }))
+      .mockResolvedValue(served)
+
+    const response = await iterativeFetch('ipfs://QmGateway429', undefined, ['https://a.example/ipfs/', 'https://b.example/ipfs/'])
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(global.fetch).mock.calls[1]?.[0].toString()).toBe('https://b.example/ipfs/QmGateway429')
+    expect(response).toBe(served)
+  })
+
+  it('hands back the last refusal when no gateway serves the content, so the caller sees a status', async () => {
+    const last = new Response('forbidden', { status: 403 })
+    vi.mocked(global.fetch)
+      .mockRejectedValueOnce(new Error('first failed'))
+      .mockResolvedValueOnce(new Response('busy', { status: 429 }))
+      .mockResolvedValueOnce(last)
+
+    const response = await iterativeFetch('ipfs://QmAllRefuse', undefined, ['https://a.example/ipfs/', 'https://b.example/ipfs/', 'https://c.example/ipfs/'])
+
+    expect(response).toBe(last)
+  })
+
+  it('returns a refusal from a plain HTTP address unchanged', async () => {
+    const missing = new Response('nope', { status: 404 })
+    vi.mocked(global.fetch).mockResolvedValue(missing)
+
+    expect(await iterativeFetch('https://example.com/missing')).toBe(missing)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('throws the last error when all URL candidates fail', async () => {
     vi.mocked(global.fetch)
       .mockRejectedValueOnce(new Error('first failed'))

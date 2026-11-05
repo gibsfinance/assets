@@ -16,7 +16,7 @@ export const ipfs = _.memoize(() => {
       type: 'array',
       describe: 'the ipfs gateway to when none is provided',
       required: false,
-      default: ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/'],
+      default: ['https://ipfs.filebase.io/ipfs/', 'https://gateway.pinata.cloud/ipfs/'],
       coerce: (vals: string[]) => vals.flatMap((v) => v.split(',')),
     },
   })

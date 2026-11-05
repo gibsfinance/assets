@@ -201,15 +201,23 @@ const iterativeIpfsCompatableFetch = async (
   ipfsDomains: string[] = [],
 ) => {
   let lastErr: Error | null = null
+  let lastRefusal: Response | null = null
   const urls = urlToPossibleLocations(url, ipfsDomains)
   for (const url of urls) {
     try {
-      return await ipfsCompatableFetch(url, options)
+      const response = await ipfsCompatableFetch(url, options)
+      if (response.ok) return response
+      // A gateway that answers 429, 403 or 5xx has not served the content, so the
+      // next gateway gets the request. The last refusal is kept to hand back if
+      // none of them can serve it.
+      lastRefusal = response
+      failureLog('%o answered %o', url.toString(), response.status)
     } catch (err) {
       lastErr = err as Error
       failureLog(lastErr.message)
     }
   }
+  if (lastRefusal) return lastRefusal
   throw lastErr
 }
 
