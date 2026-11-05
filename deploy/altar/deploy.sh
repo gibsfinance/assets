@@ -24,7 +24,9 @@ readonly HOST="${GIB_SSH:-gib-altar}"
 readonly REPOSITORY="https://github.com/gibsfinance/assets.git"
 read -r -a SSH_OPTIONS <<<"${GIB_SSH_OPTIONS:-}"
 
-remote() { ssh "${SSH_OPTIONS[@]}" "$HOST" "$@"; }
+# The `+` form expands to nothing for an empty array: macOS's Bash 3.2 otherwise
+# treats "${SSH_OPTIONS[@]}" as unbound under `set -u` when GIB_SSH_OPTIONS is unset.
+remote() { ssh ${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"} "$HOST" "$@"; }
 
 branch_for() {
   case "$1" in

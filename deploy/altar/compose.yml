@@ -51,8 +51,9 @@ x-postgres: &postgres
     start_period: 30s
 
 x-browser: &browser
-  # Pinned by digest in deploy.sh's pull step; the tag documents the line.
-  image: ghcr.io/browserless/chromium:latest
+  # Pinned by digest: what ran on the box on 2026-11-05. Upgrade on purpose, by
+  # replacing the digest after testing a new release on staging.
+  image: ghcr.io/browserless/chromium@sha256:d8cf08fdc92dfce976675026dfe52f0af0920ff3d5996fde3511840b896fb6db
   restart: unless-stopped
   mem_limit: 1536m
   cpus: 1
@@ -152,7 +153,7 @@ services:
     depends_on:
       postgres-production:
         condition: service_healthy
-    networks: [production]
+    networks: [production, ingress-production]
 
   collector-production:
     <<: *collector
@@ -236,7 +237,7 @@ services:
     depends_on:
       postgres-staging:
         condition: service_healthy
-    networks: [staging]
+    networks: [staging, ingress-staging]
 
   collector-staging:
     <<: *collector
@@ -275,7 +276,9 @@ services:
   # server-staging:3000, anything else 404. A hostname serves through the tunnel only
   # once its DNS record points at <tunnel id>.cfargotunnel.com.
   tunnel:
-    image: cloudflare/cloudflared:latest
+    # Pinned by version and digest: this container holds the tunnel credential, so it
+    # never changes underneath us. Upgrade on purpose.
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     restart: unless-stopped
     mem_limit: 256m
     cpus: 0.5
@@ -288,7 +291,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    networks: [production, staging]
+    # Only the two ingress networks: the tunnel can reach the two servers and nothing
+    # else, never a database or a browser.
+    networks: [ingress-production, ingress-staging]
 
 volumes:
   postgres-production:
@@ -300,3 +305,7 @@ networks:
   # The environments cannot reach each other's database or browser.
   production:
   staging:
+  # Each holds the tunnel and one server only, so the tunnel reaches no database or
+  # browser, and the two servers cannot reach each other.
+  ingress-production:
+  ingress-staging:
