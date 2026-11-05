@@ -88,6 +88,32 @@ later than production, so their heavy passes rarely overlap.
 **Restart test:** `loginctl terminate-user gib` stops the user manager. Lingering
 starts it again, and Docker's `restart: unless-stopped` brings every container back.
 
+## Measured on 2026-11-05
+
+- **Restart:** `loginctl terminate-user gib` at 05:16:52 UTC. Two minutes later all eight
+  services were healthy and both servers answered `/health`. The data survived.
+- **Collection:** 30 minutes, with both collectors running. Real (anonymous) memory
+  peaked at 3.75 GiB. The slice peaked at 16.21 GiB, counting reclaimable page cache
+  from the image builds, against the 20 GiB cap. There were no out-of-memory kills.
+  CPU averaged about 1.3 threads, with no throttling after the builds.
+- **HTTP load:** run from a container on the production network while the collectors
+  were working. There were no failed requests.
+
+  | Traffic | Throughput | Median | Tail |
+  |---|---|---|---|
+  | `/networks`, 20 at a time | 99 per second | 194 ms | 327 ms (99th percentile) |
+  | Compact chain list, 10 at a time | 20 per second | 453 ms | 1.8 s (99th percentile) |
+  | `/`, 20 at a time | 57 per second | 396 ms | 752 ms (99th percentile) |
+  | 600 cold 64-pixel WebP resizes, 16 at a time | 600 in 35 s | 446 ms | 2.0 s (95th percentile) |
+
+  Real memory peaked at 2.72 GiB. CPU averaged 3.7 of the 6 threads. The server's own
+  1.5-CPU limit is the bottleneck, as intended. Cloudflare's edge cache absorbs most of
+  this traffic in front of it.
+- **Startup race (fixed):** on an empty database, the server and the collector
+  migrated at once, and the collector failed on `CREATE EXTENSION citext`. Migrations
+  now take a Postgres advisory lock, and each collector starts after its server is
+  healthy.
+
 ## Decisions waiting for the owner
 
 ### 1. Public ingress

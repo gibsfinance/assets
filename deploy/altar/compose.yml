@@ -142,7 +142,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://gibassets:${PRODUCTION_POSTGRES_PASSWORD}@postgres-production:5432/gibassets
       PGDATABASE: gibassets
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      ADMIN_TOKEN: ${PRODUCTION_ADMIN_TOKEN}
       ROOT_URI: https://gib.show
       PUBLIC_BASE_URL: https://gib.show
       CACHE_SECONDS: '86400'
@@ -177,6 +177,9 @@ services:
       postgres-production:
         condition: service_healthy
       browser-production:
+        condition: service_healthy
+      # The server migrates the database at start; the collector starts after it.
+      server-production:
         condition: service_healthy
     networks: [production]
 
@@ -220,7 +223,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=1024
       DATABASE_URL: postgres://gibassets:${STAGING_POSTGRES_PASSWORD}@postgres-staging:5432/gibassets
       PGDATABASE: gibassets
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      ADMIN_TOKEN: ${STAGING_ADMIN_TOKEN}
       ROOT_URI: https://staging.gib.show
       PUBLIC_BASE_URL: https://staging.gib.show
       CACHE_SECONDS: '86400'
@@ -259,6 +262,9 @@ services:
       postgres-staging:
         condition: service_healthy
       browser-staging:
+        condition: service_healthy
+      # The server migrates the database at start; the collector starts after it.
+      server-staging:
         condition: service_healthy
     networks: [staging]
 
