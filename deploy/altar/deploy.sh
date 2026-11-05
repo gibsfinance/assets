@@ -60,6 +60,24 @@ echo "==> compose file"
 remote 'mkdir -p ~/app && cat > ~/app/compose.yml.new && mv ~/app/compose.yml.new ~/app/compose.yml' \
   <"$HERE/compose.yml"
 
+echo "==> backups (scripts, restic settings, key, user timers)"
+# Scripts, units and Nocix's host key: plain files, shipped as one archive.
+tar -C "$HERE/backup" -cf - backup.sh restore-test.sh restic-run.sh known_hosts \
+  gib-backup.service gib-backup.timer gib-restore-test.service gib-restore-test.timer |
+  remote 'set -e; umask 077; mkdir -p ~/app/backup ~/.config/systemd/user
+    tar -C ~/app/backup -xf -
+    chmod 700 ~/app/backup/*.sh
+    mv ~/app/backup/*.service ~/app/backup/*.timer ~/.config/systemd/user/'
+# Secrets: rendered or read here, streamed straight into mode-600 files there.
+op inject -i "$HERE/backup/restic-environment.tpl" |
+  remote 'umask 077; cat > ~/app/backup/restic-environment.new && mv ~/app/backup/restic-environment.new ~/app/backup/restic-environment'
+op read "op://valve/gib-show app/backup_ssh_private_key" |
+  remote 'umask 077; cat > ~/app/backup/backup_key.new && mv ~/app/backup/backup_key.new ~/app/backup/backup_key'
+remote 'systemctl --user daemon-reload
+  systemctl --user enable --now gib-backup.timer gib-restore-test.timer >/dev/null
+  stat -c "%a %U %s bytes %n" ~/app/backup/restic-environment ~/app/backup/backup_key
+  systemctl --user list-timers gib-backup.timer gib-restore-test.timer --no-pager | head -3'
+
 # The tunnel serves both environments, so every deploy (re)starts it.
 services=(tunnel)
 for environment in "${environments[@]}"; do

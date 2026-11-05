@@ -1,32 +1,16 @@
 #!/usr/bin/env bash
-# Nightly off-box backup of both gib.show databases. Runs on the box as `gib`, from
-# the user-level timer gib-backup.timer. Installed by deploy.sh; never edited by hand.
+# Off-box backup of both gib.show databases, every 72 hours. Runs on the box as `gib`,
+# from the user-level timer gib-backup.timer. Installed by deploy.sh; never edited by hand.
 #
 # For each environment: pg_dump (custom format) runs inside that environment's own
 # Postgres container and streams straight into restic, which runs in a throwaway
-# container and writes to the Hetzner Storage Box over SFTP. Nothing is staged on
-# /srv/gib, so a full disk cannot fail a backup and the dump never touches this disk.
-# Restic deduplicates, so image bytes that did not change are stored once.
-#
-# Secrets come from ~/app/backup/restic.env (mode 600, written by deploy.sh from
-# 1Password) and the SSH key ~/app/backup/storagebox_key. Neither is printed.
+# container and writes to the Nocix machine over SFTP (see restic-run.sh). Nothing is
+# staged on /srv/gib, so a full disk cannot fail a backup. Restic deduplicates, so
+# image bytes that did not change are stored once.
 set -euo pipefail
 export DOCKER_CONTEXT=rootless
-
-readonly APP="$HOME/app"
-readonly BACKUP="$APP/backup"
-readonly RESTIC_IMAGE="restic/restic:0.18.1"
-
-restic_run() {
-  docker run --rm -i \
-    --memory 1g --cpus 1 \
-    --env-file "$BACKUP/restic.env" \
-    -e RESTIC_CACHE_DIR=/cache \
-    -v "$BACKUP/storagebox_key:/root/.ssh/id_ed25519:ro" \
-    -v "$BACKUP/known_hosts:/root/.ssh/known_hosts:ro" \
-    -v gib_restic-cache:/cache \
-    "$RESTIC_IMAGE" "$@"
-}
+# shellcheck source=restic-run.sh
+. "$(dirname "$0")/restic-run.sh"
 
 cd "$APP"
 for environment in production staging; do

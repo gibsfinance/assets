@@ -1,5 +1,5 @@
 [Unit]
-Description=gib.show: back up both databases to the Storage Box
+Description=gib.show: back up both databases to the Nocix machine
 # Fails the unit on any error, so `systemctl --user --failed` shows a missed backup.
 
 [Service]

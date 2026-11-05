@@ -5,34 +5,24 @@
 # For each environment: restore the newest snapshot into a throwaway Postgres
 # container (same image as production, its own memory limit, no ports, removed
 # afterwards), then compare the row count of every table with the live database.
-# Tables written since the snapshot can only have grown, so the restored count
-# must be at least 95% of the live one and never zero where live is not.
+# A snapshot is up to 72 hours older than the live database, and collection only
+# adds rows in that time, so the restored count must be at least 80% of the live one
+# and never zero where live is not. cache_request and image_variant are skipped:
+# they are caches whose size swings with traffic, not data.
 # Any mismatch exits non-zero, which marks the systemd unit failed.
 set -euo pipefail
 export DOCKER_CONTEXT=rootless
+# shellcheck source=restic-run.sh
+. "$(dirname "$0")/restic-run.sh"
 
-readonly APP="$HOME/app"
-readonly BACKUP="$APP/backup"
-readonly RESTIC_IMAGE="restic/restic:0.18.1"
 readonly SCRATCH="gib-restore-test"
-
-restic_run() {
-  docker run --rm -i \
-    --memory 1g --cpus 1 \
-    --env-file "$BACKUP/restic.env" \
-    -e RESTIC_CACHE_DIR=/cache \
-    -v "$BACKUP/storagebox_key:/root/.ssh/id_ed25519:ro" \
-    -v "$BACKUP/known_hosts:/root/.ssh/known_hosts:ro" \
-    -v gib_restic-cache:/cache \
-    "$RESTIC_IMAGE" "$@"
-}
 
 # Row counts as "table count" lines, one per table in the public schema.
 count_rows() {
   "$@" psql --username gibassets --dbname gibassets -At -F ' ' -c "
     select format('%s %s', table_name,
       (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I', table_name), false, true, '')))[1]::text)
-    from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1"
+    from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' and table_name not in ('cache_request', 'image_variant') order by 1"
 }
 
 cleanup() { docker rm -f "$SCRATCH" >/dev/null 2>&1 || true; }
@@ -54,7 +44,7 @@ for environment in production staging; do
   restored="$(count_rows docker exec "$SCRATCH")"
   if ! join <(echo "$live") <(echo "$restored") | awk -v env="$environment" '
       { live = $2; restored = $3
-        if (live > 0 && (restored == 0 || restored < live * 0.95)) { printf "restore-test: %s %s live=%s restored=%s\n", env, $1, live, restored; bad = 1 } }
+        if (live > 0 && (restored == 0 || restored < live * 0.80)) { printf "restore-test: %s %s live=%s restored=%s\n", env, $1, live, restored; bad = 1 } }
       END { exit bad }'; then
     status=1
   fi

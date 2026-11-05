@@ -176,7 +176,8 @@ services:
       FAKE_SPINNER: 'true'
       PREVENT_WRITE_MISSING: 'true'
       COLLECT_FIRST_DELAY: '0'
-      COLLECT_INTERVAL_SECONDS: '3600'
+      # Every 6 hours after a pass ends (owner's choice, 2026-11-05).
+      COLLECT_INTERVAL_SECONDS: '21600'
     depends_on:
       postgres-production:
         condition: service_healthy
@@ -260,9 +261,10 @@ services:
       DEBUG: '📷*'
       FAKE_SPINNER: 'true'
       PREVENT_WRITE_MISSING: 'true'
-      # Half an interval behind production, so the two heavy passes do not overlap.
+      # Starts half an hour after production, so the first heavy passes do not overlap.
       COLLECT_FIRST_DELAY: '1800'
-      COLLECT_INTERVAL_SECONDS: '3600'
+      # Every 24 hours after a pass ends (owner's choice, 2026-11-05).
+      COLLECT_INTERVAL_SECONDS: '86400'
     depends_on:
       postgres-staging:
         condition: service_healthy
