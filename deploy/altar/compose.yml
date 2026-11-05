@@ -169,6 +169,9 @@ services:
       COINGECKO_API_KEY: ${COINGECKO_API_KEY}
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
       RPC_56: ${PRODUCTION_RPC_56}
+      # Ethereum. The built-in public endpoints fail from this box (cloudflare-eth is dead,
+      # llamarpc challenges datacentre addresses), so the bridge history scan never finished.
+      RPC_1: ${RPC_1}
       DEBUG: '📷'
       FAKE_SPINNER: 'true'
       PREVENT_WRITE_MISSING: 'true'
@@ -253,6 +256,7 @@ services:
       COINGECKO_API_KEY: ${COINGECKO_API_KEY}
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
       RPC_56: ${STAGING_RPC_56}
+      RPC_1: ${RPC_1}
       DEBUG: '📷*'
       FAKE_SPINNER: 'true'
       PREVENT_WRITE_MISSING: 'true'
