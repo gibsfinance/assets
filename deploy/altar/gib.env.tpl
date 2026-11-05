@@ -7,6 +7,9 @@
 COINGECKO_API_KEY={{ op://valve/gib-show app/coingecko_api_key }}
 ETHERSCAN_API_KEY={{ op://valve/gib-show app/etherscan_api_key }}
 
+# Ingress (Cloudflare Tunnel "gib-show", shared by both environments)
+CLOUDFLARE_TUNNEL_TOKEN={{ op://valve/gib-show app/cloudflare_tunnel_token }}
+
 # Production
 PRODUCTION_ADMIN_TOKEN={{ op://valve/gib-show app/production_admin_token }}
 PRODUCTION_POSTGRES_PASSWORD={{ op://valve/gib-show app/production_postgres_password }}

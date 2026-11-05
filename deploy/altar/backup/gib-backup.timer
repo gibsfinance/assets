@@ -1,0 +1,11 @@
+[Unit]
+Description=gib.show: nightly database backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15m
+# Run a missed backup at the next start, e.g. after the user manager restarted.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
