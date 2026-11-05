@@ -46,6 +46,7 @@ import { noteListTokensWritten } from './publication'
 import { normalizeProvidedId, canonicalBridgeAddress } from './provided-id'
 import { escapeLikePattern, SEARCH_CANDIDATE_CAP } from './search'
 import { collectablePriority } from '../collect/collectable-order'
+import { fetchJSON } from './fetch-json'
 import { effectiveEntryLicense, sourceLicenseForProviderKey } from '../server/image/attribution'
 
 // Re-exported so collectors can use db.normalizeProvidedId without importing the leaf module.
@@ -2810,7 +2811,7 @@ export const cachedJSONRequest = async <T extends object>(
   ...args: Parameters<typeof fetch>
 ) => {
   return cachedJSON(key, signal, async (signal) => {
-    return fetch(args[0], { signal, ...(args[1] ?? {}) }).then((res) => res.json() as Promise<T>)
+    return fetchJSON<T>(args[0], { signal, ...(args[1] ?? {}) })
   })
 }
 export const cachedJSON = async <T extends object>(

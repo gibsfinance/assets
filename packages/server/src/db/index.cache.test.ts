@@ -232,7 +232,7 @@ describe('cachedJSONRequest', () => {
   it('fetches, parses the JSON body, and forwards the request init through to fetch on a cache miss', async () => {
     harness.queueResult([]) // no cached row
     harness.queueResult(undefined) // insertCacheRequest for the fresh result
-    fetchMock.mockResolvedValue({ json: () => Promise.resolve({ fresh: 'data' }) })
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ fresh: 'data' })))
 
     const result = await cachedJSONRequest('k3', new AbortController().signal, 'https://example.com/data.json', {
       headers: { Accept: 'application/json' },
@@ -251,7 +251,7 @@ describe('cachedJSONRequest', () => {
   it('defaults to an empty request init when the caller passes no fetch options at all', async () => {
     harness.queueResult([])
     harness.queueResult(undefined)
-    fetchMock.mockResolvedValue({ json: () => Promise.resolve({ fresh: 'data' }) })
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ fresh: 'data' })))
 
     await cachedJSONRequest('k4', new AbortController().signal, 'https://example.com/data.json')
 
@@ -259,6 +259,19 @@ describe('cachedJSONRequest', () => {
     // No options argument was passed at all — `args[1]` is undefined, and the
     // `?? {}` fallback is what keeps the spread from throwing.
     expect(init).toEqual({ signal: expect.any(AbortSignal) })
+  })
+
+  it('names the address, status and content type when the host answers with something that is not JSON', async () => {
+    harness.queueResult([])
+    fetchMock.mockResolvedValue(
+      new Response('404: Not Found', { status: 404, headers: { 'content-type': 'text/plain' } }),
+    )
+
+    await expect(
+      cachedJSONRequest('k5', new AbortController().signal, 'https://example.com/gone.json?apikey=s3cret'),
+    ).rejects.toThrow('https://example.com/gone.json?apikey=redacted answered 404 (content-type: text/plain)')
+    // A failed answer is never cached.
+    expect(harness.queries).toHaveLength(1)
   })
 })
 
