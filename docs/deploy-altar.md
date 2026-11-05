@@ -133,6 +133,13 @@ Before the move, the targets were:
 - `www.gib.show`: `b9m3nkma.up.railway.app`
 - `staging.gib.show`: `3k49iy9d.up.railway.app`
 
+**Practice round (2026-11-05):** `next.gib.show` (production) and
+`next-staging.gib.show` (staging) are live through the tunnel, as CNAMEs to the tunnel
+and proxied. Both passed the full smoke test, 36 of 36. The servers' `ROOT_URI` is
+still `https://gib.show`, so links the server writes into responses (for example
+`logoURI`) point at the real name. The page edge-cache rule covers only `gib.show` and
+`staging.gib.show`.
+
 Use only hostnames that belong to gib.show itself. The box co-hosts other projects,
 and no gib.show name may suggest that gib.show lives under them.
 
