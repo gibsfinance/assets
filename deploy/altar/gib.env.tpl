@@ -6,6 +6,11 @@
 # costs quota, not access to production.
 COINGECKO_API_KEY={{ op://valve/gib-show app/coingecko_api_key }}
 ETHERSCAN_API_KEY={{ op://valve/gib-show app/etherscan_api_key }}
+# Ethereum JSON-RPC: the keyed valve.city proxy, then publicnode as a fallback.
+RPC_1={{ op://valve/gib-show app/rpc_1 }}
+
+# Ingress (Cloudflare Tunnel "gib-show", shared by both environments)
+CLOUDFLARE_TUNNEL_TOKEN={{ op://valve/gib-show app/cloudflare_tunnel_token }}
 
 # Production
 PRODUCTION_ADMIN_TOKEN={{ op://valve/gib-show app/production_admin_token }}

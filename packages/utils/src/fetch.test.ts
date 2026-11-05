@@ -41,6 +41,55 @@ describe('urlToPossibleLocations', () => {
     expect(() => urlToPossibleLocations('ftp://example.com/file', [])).toThrow('unrecognized protocol')
   })
 
+  describe('a url on a retired public gateway', () => {
+    const working = ['https://ipfs.filebase.io/ipfs/', 'https://gateway.pinata.cloud/ipfs/']
+
+    it('is fetched through the working gateways first, keeping the named one last', () => {
+      const urls = urlToPossibleLocations('https://ipfs.io/ipfs/QmUmN7Be3LLHiEwcVZDm6WsPjcTddWsc6C7hrLCmPzsanv?filename=list.json', working)
+      expect(urls.map(String)).toEqual([
+        'https://ipfs.filebase.io/ipfs/QmUmN7Be3LLHiEwcVZDm6WsPjcTddWsc6C7hrLCmPzsanv',
+        'https://gateway.pinata.cloud/ipfs/QmUmN7Be3LLHiEwcVZDm6WsPjcTddWsc6C7hrLCmPzsanv',
+        'https://ipfs.io/ipfs/QmUmN7Be3LLHiEwcVZDm6WsPjcTddWsc6C7hrLCmPzsanv?filename=list.json',
+      ])
+    })
+
+    it('keeps the path inside the content and the case of a version 0 identifier', () => {
+      const urls = urlToPossibleLocations('https://cloudflare-ipfs.com/ipfs/QmAbCdEf/logos/token.png', working)
+      expect(urls[0].toString()).toBe('https://ipfs.filebase.io/ipfs/QmAbCdEf/logos/token.png')
+    })
+
+    it('understands the subdomain form', () => {
+      const urls = urlToPossibleLocations(
+        'https://bafybeic7plpklz22npnw2jejsoxdm2ssrn3mdxtg2ltdhmxgecq74vqpvm.ipfs.inbrowser.link/?filename=x.json',
+        working,
+      )
+      expect(urls[0].toString()).toBe(
+        'https://ipfs.filebase.io/ipfs/bafybeic7plpklz22npnw2jejsoxdm2ssrn3mdxtg2ltdhmxgecq74vqpvm',
+      )
+      expect(urls).toHaveLength(3)
+    })
+
+    it('keeps the path inside the content in the subdomain form', () => {
+      const urls = urlToPossibleLocations('https://bafyabc.ipfs.dweb.link/images/logo.svg', working)
+      expect(urls[0].toString()).toBe('https://ipfs.filebase.io/ipfs/bafyabc/images/logo.svg')
+    })
+
+    it('leaves the subdomain form on a working gateway alone', () => {
+      const url = 'https://bafyabc.ipfs.example.org/logo.png'
+      expect(urlToPossibleLocations(url, working).map(String)).toEqual([url])
+    })
+
+    it('leaves working gateways and ordinary hosts alone', () => {
+      for (const url of ['https://gateway.pinata.cloud/ipfs/QmX', 'https://example.com/ipfs/QmX', 'https://ipfs.io/not-ipfs/QmX']) {
+        expect(urlToPossibleLocations(url, working).map(String)).toEqual([url])
+      }
+    })
+
+    it('is fetched as named when no gateways are configured', () => {
+      expect(urlToPossibleLocations('https://ipfs.io/ipfs/QmX', []).map(String)).toEqual(['https://ipfs.io/ipfs/QmX'])
+    })
+  })
+
   it('handles URL objects as input', () => {
     const url = new URL('https://example.com/path')
     const urls = urlToPossibleLocations(url, [])
@@ -428,6 +477,39 @@ describe('fetch (iterativeIpfsCompatableFetch)', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(2)
     expect(response).toBe(mockResponse)
+  })
+
+  it('tries the next IPFS domain when the first answers 429, as ipfs.io does for servers', async () => {
+    const served = makeOkResponse('served by the second gateway')
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(new Response('switching to a service worker gateway', { status: 429 }))
+      .mockResolvedValue(served)
+
+    const response = await iterativeFetch('ipfs://QmGateway429', undefined, ['https://a.example/ipfs/', 'https://b.example/ipfs/'])
+
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(global.fetch).mock.calls[1]?.[0].toString()).toBe('https://b.example/ipfs/QmGateway429')
+    expect(response).toBe(served)
+  })
+
+  it('hands back the last refusal when no gateway serves the content, so the caller sees a status', async () => {
+    const last = new Response('forbidden', { status: 403 })
+    vi.mocked(global.fetch)
+      .mockRejectedValueOnce(new Error('first failed'))
+      .mockResolvedValueOnce(new Response('busy', { status: 429 }))
+      .mockResolvedValueOnce(last)
+
+    const response = await iterativeFetch('ipfs://QmAllRefuse', undefined, ['https://a.example/ipfs/', 'https://b.example/ipfs/', 'https://c.example/ipfs/'])
+
+    expect(response).toBe(last)
+  })
+
+  it('returns a refusal from a plain HTTP address unchanged', async () => {
+    const missing = new Response('nope', { status: 404 })
+    vi.mocked(global.fetch).mockResolvedValue(missing)
+
+    expect(await iterativeFetch('https://example.com/missing')).toBe(missing)
+    expect(global.fetch).toHaveBeenCalledTimes(1)
   })
 
   it('throws the last error when all URL candidates fail', async () => {

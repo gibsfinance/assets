@@ -24,7 +24,9 @@ readonly HOST="${GIB_SSH:-gib-altar}"
 readonly REPOSITORY="https://github.com/gibsfinance/assets.git"
 read -r -a SSH_OPTIONS <<<"${GIB_SSH_OPTIONS:-}"
 
-remote() { ssh "${SSH_OPTIONS[@]}" "$HOST" "$@"; }
+# The `+` form expands to nothing for an empty array: macOS's Bash 3.2 otherwise
+# treats "${SSH_OPTIONS[@]}" as unbound under `set -u` when GIB_SSH_OPTIONS is unset.
+remote() { ssh ${SSH_OPTIONS[@]+"${SSH_OPTIONS[@]}"} "$HOST" "$@"; }
 
 branch_for() {
   case "$1" in
@@ -58,7 +60,8 @@ echo "==> compose file"
 remote 'mkdir -p ~/app && cat > ~/app/compose.yml.new && mv ~/app/compose.yml.new ~/app/compose.yml' \
   <"$HERE/compose.yml"
 
-services=()
+# The tunnel serves both environments, so every deploy (re)starts it.
+services=(tunnel)
 for environment in "${environments[@]}"; do
   services+=("postgres-$environment" "browser-$environment" "server-$environment" "collector-$environment")
 done
@@ -72,7 +75,7 @@ remote "set -e
   # under /srv/gib/src, so the check adds nothing here.
   export BUILDX_BAKE_ENTITLEMENTS_FS=0
   for service in ${services[*]}; do
-    case \"\$service\" in browser-*) docker compose pull --quiet \"\$service\" ;; *) docker compose build --quiet \"\$service\" ;; esac
+    case \"\$service\" in browser-*|tunnel) docker compose pull --quiet \"\$service\" ;; *) docker compose build --quiet \"\$service\" ;; esac
   done
   docker compose up -d --remove-orphans ${services[*]}"
 

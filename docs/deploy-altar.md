@@ -5,7 +5,7 @@ user `gib` on altar-prod. The deploy lives in `deploy/altar/`:
 
 | File | What it is |
 |---|---|
-| `compose.yml` | Eight services: `postgres-`, `browser-`, `server-`, `collector-` for each environment |
+| `compose.yml` | Nine services: `postgres-`, `browser-`, `server-`, `collector-` for each environment, and `tunnel` |
 | `gib.env.tpl` | 1Password references for every secret; no values |
 | `deploy.sh` | Checks out the branches on the box, writes the secrets, builds, starts, waits for health |
 
@@ -15,8 +15,9 @@ Nothing on the box is edited by hand. Change these files and run the deploy.
 
 - **Login:** `ssh gib-altar`, port 2222, user `gib`. The 1Password item
   "gib-show tenant ssh" (vault `valve`) holds the key; the 1Password SSH agent signs.
-  If the workstation has no `gib-altar` alias, export the public half and pass a config
-  file. The private half never leaves 1Password.
+  The workstation's SSH config carries the alias (port 2222, `IdentitiesOnly`, and the
+  public half saved as `gib_altar.pub` beside it). Without the alias, export the public
+  half and pass a config file. The private half never leaves 1Password.
   ```
   op read "op://valve/gib-show tenant ssh/public key" > /tmp/gib_altar.pub
   cat > /tmp/gib_ssh_config <<EOF
@@ -116,11 +117,33 @@ starts it again, and Docker's `restart: unless-stopped` brings every container b
 
 ## Decisions waiting for the owner
 
-### 1. Public ingress
+### 1. Public ingress: decided, option A (2026-11-05)
 
-Nothing is reachable from outside yet. The DNS records for gib.show and
-staging.gib.show still point at Railway. The flip happens once the new databases have
-caught up. These are the options:
+The owner chose a Cloudflare Tunnel. The tunnel `gib-show`
+(`d3b7d8f3-9876-47a9-8b31-5e69f8829818`) is remotely managed. It routes `gib.show` and
+`www.gib.show` to production and `staging.gib.show` to staging. Its token is the
+`cloudflare_tunnel_token` field of "gib-show app". The `tunnel` service in `compose.yml`
+runs it.
+
+**The flip:** point a hostname's DNS record at
+`d3b7d8f3-9876-47a9-8b31-5e69f8829818.cfargotunnel.com` (CNAME, proxied), staging first.
+Railway keeps running, so to roll back, point the record back at its Railway target.
+Before the move, the targets were:
+- `gib.show`: `g51of26j.up.railway.app`
+- `www.gib.show`: `b9m3nkma.up.railway.app`
+- `staging.gib.show`: `3k49iy9d.up.railway.app`
+
+**Practice round (2026-11-05):** `next.gib.show` (production) and
+`next-staging.gib.show` (staging) are live through the tunnel, as CNAMEs to the tunnel
+and proxied. Both passed the full smoke test, 36 of 36. The servers' `ROOT_URI` is
+still `https://gib.show`, so links the server writes into responses (for example
+`logoURI`) point at the real name. The page edge-cache rule covers only `gib.show` and
+`staging.gib.show`.
+
+Use only hostnames that belong to gib.show itself. The box co-hosts other projects,
+and no gib.show name may suggest that gib.show lives under them.
+
+The options as they were proposed:
 
 | Option | What it takes | Root or firewall change | Notes |
 |---|---|---|---|
