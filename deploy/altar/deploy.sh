@@ -66,7 +66,11 @@ done
 echo "==> build and start: ${services[*]}"
 remote "set -e
   cd ~/app
-  export DOCKER_CONTEXT=rootless COMPOSE_BAKE=false
+  export DOCKER_CONTEXT=rootless
+  # Compose builds through buildx bake, which refuses to read a build context outside
+  # the project directory (~/app) unless told to. The contexts are our own checkouts
+  # under /srv/gib/src, so the check adds nothing here.
+  export BUILDX_BAKE_ENTITLEMENTS_FS=0
   for service in ${services[*]}; do
     case \"\$service\" in browser-*) docker compose pull --quiet \"\$service\" ;; *) docker compose build --quiet \"\$service\" ;; esac
   done

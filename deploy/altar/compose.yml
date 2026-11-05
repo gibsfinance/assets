@@ -21,10 +21,6 @@
 name: gib
 
 x-postgres: &postgres
-  build:
-    context: ${GIB_SOURCE_PRODUCTION:-/srv/gib/src/production}
-    dockerfile: Dockerfile.postgres
-  image: gib/postgres:16
   restart: unless-stopped
   shm_size: 1g
   mem_limit: 3g
@@ -110,6 +106,10 @@ services:
   # ── production ────────────────────────────────────────────────────────────────
   postgres-production:
     <<: *postgres
+    build:
+      context: ${GIB_SOURCE_PRODUCTION:-/srv/gib/src/production}
+      dockerfile: Dockerfile.postgres
+    image: gib/postgres:production
     environment:
       POSTGRES_DB: gibassets
       POSTGRES_USER: gibassets
@@ -181,6 +181,10 @@ services:
   # ── staging ───────────────────────────────────────────────────────────────────
   postgres-staging:
     <<: *postgres
+    build:
+      context: ${GIB_SOURCE_STAGING:-/srv/gib/src/staging}
+      dockerfile: Dockerfile.postgres
+    image: gib/postgres:staging
     environment:
       POSTGRES_DB: gibassets
       POSTGRES_USER: gibassets
