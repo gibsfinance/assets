@@ -75,8 +75,58 @@ describe('db/drizzle', () => {
     expect(end).toHaveBeenCalledTimes(1)
   })
 
+  /** A pool whose one client records every call, in order, into `calls`. */
+  const fakeLockingDb = (options: { unlockFails?: boolean } = {}) => {
+    const calls: string[] = []
+    const lockClient = {
+      query: vi.fn(async (text: string) => {
+        calls.push(text.includes('unlock') ? 'unlock' : 'lock')
+        if (text.includes('unlock') && options.unlockFails) throw new Error('connection lost')
+      }),
+      release: vi.fn((destroy?: boolean) => calls.push(destroy ? 'release:destroy' : 'release')),
+    }
+    const fakeDb = { $client: { end: vi.fn(), connect: vi.fn(async () => lockClient) } }
+    drizzleMigrate.mockImplementation(async () => {
+      calls.push('migrate')
+    })
+    return { fakeDb, lockClient, calls }
+  }
+
+  it('migrate holds an advisory lock for the whole run, so two processes cannot race', async () => {
+    const { fakeDb, lockClient, calls } = fakeLockingDb()
+    drizzle.mockReturnValue(fakeDb)
+
+    const { migrate, MIGRATION_LOCK_KEY } = await import('./drizzle')
+    await migrate()
+
+    expect(calls).toEqual(['lock', 'migrate', 'unlock', 'release'])
+    expect(lockClient.query).toHaveBeenNthCalledWith(1, 'SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
+    expect(lockClient.query).toHaveBeenNthCalledWith(2, 'SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY])
+  })
+
+  it('migrate unlocks and returns the connection when a migration fails', async () => {
+    const { fakeDb, calls } = fakeLockingDb()
+    drizzle.mockReturnValue(fakeDb)
+    drizzleMigrate.mockRejectedValueOnce(new Error('bad migration'))
+
+    const { migrate } = await import('./drizzle')
+    await expect(migrate()).rejects.toThrow('bad migration')
+
+    expect(calls).toEqual(['lock', 'unlock', 'release'])
+  })
+
+  it('migrate destroys the connection when the unlock fails, so the lock cannot stay held', async () => {
+    const { fakeDb, calls } = fakeLockingDb({ unlockFails: true })
+    drizzle.mockReturnValue(fakeDb)
+
+    const { migrate } = await import('./drizzle')
+    await migrate()
+
+    expect(calls).toEqual(['lock', 'migrate', 'unlock', 'release:destroy'])
+  })
+
   it('migrate runs pending migrations from the package-root drizzle/ directory', async () => {
-    const fakeDb = { $client: { end: vi.fn() } }
+    const { fakeDb } = fakeLockingDb()
     drizzle.mockReturnValue(fakeDb)
 
     const { migrate } = await import('./drizzle')
