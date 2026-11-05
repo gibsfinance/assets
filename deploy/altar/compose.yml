@@ -178,6 +178,9 @@ services:
         condition: service_healthy
       browser-production:
         condition: service_healthy
+      # The server migrates the database at start; the collector starts after it.
+      server-production:
+        condition: service_healthy
     networks: [production]
 
   # ── staging ───────────────────────────────────────────────────────────────────
@@ -259,6 +262,9 @@ services:
       postgres-staging:
         condition: service_healthy
       browser-staging:
+        condition: service_healthy
+      # The server migrates the database at start; the collector starts after it.
+      server-staging:
         condition: service_healthy
     networks: [staging]
 
