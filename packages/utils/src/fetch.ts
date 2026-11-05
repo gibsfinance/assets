@@ -172,10 +172,55 @@ const ipfsCompatableFetch = async (url: URL, options: Parameters<typeof fetch>[1
   ])
 }
 
+/**
+ * Public IPFS gateways that no longer serve servers. ipfs.io, dweb.link, w3s.link and
+ * nftstorage.link answer every server-side request with 429 ("switching to a service
+ * worker gateway only"); cloudflare-ipfs.com is shut down; inbrowser.link verifies in a
+ * browser and answers servers with 403. Token lists still name them in logo urls.
+ */
+export const RETIRED_PUBLIC_GATEWAYS: ReadonlySet<string> = new Set([
+  'ipfs.io',
+  'gateway.ipfs.io',
+  'dweb.link',
+  'w3s.link',
+  'nftstorage.link',
+  'cloudflare-ipfs.com',
+  'cf-ipfs.com',
+  'inbrowser.link',
+])
+
+/**
+ * The `ipfs://` form of a url on a retired public gateway, or null for any other url.
+ *
+ * Handles the path form (`https://ipfs.io/ipfs/<cid>/<path>`) and the subdomain form
+ * (`https://<cid>.ipfs.dweb.link/<path>`). Query strings are dropped: they only carry
+ * hints like `?filename=` that the gateways we use do not need.
+ */
+export const retiredGatewayToIpfs = (url: URL): URL | null => {
+  if (!url.protocol.startsWith('http')) return null
+  if (RETIRED_PUBLIC_GATEWAYS.has(url.hostname)) {
+    const match = url.pathname.match(/^\/ipfs\/([^/]+)(\/.*)?$/)
+    if (!match) return null
+    return new URL(`ipfs://${match[1]}${match[2] ?? ''}`)
+  }
+  const subdomain = url.hostname.match(/^([a-z0-9]+)\.ipfs\.(.+)$/i)
+  if (!subdomain || !RETIRED_PUBLIC_GATEWAYS.has(subdomain[2])) return null
+  const rest = url.pathname === '/' ? '' : url.pathname
+  return new URL(`ipfs://${subdomain[1]}${rest}`)
+}
+
 export const urlToPossibleLocations = (url: string | URL, ipfsDomains: string[]) => {
   const urls: URL[] = []
   url = new URL(url as string | URL)
-  if (url.protocol === 'ipfs:') {
+  const retired = ipfsDomains.length ? retiredGatewayToIpfs(url) : null
+  if (retired) {
+    // Try the gateways that still serve servers first, and the named gateway last, in
+    // case it ever answers again.
+    for (const domain of ipfsDomains) {
+      urls.push(new URL(`${domain}${retired.host}${retired.pathname}`))
+    }
+    urls.push(url)
+  } else if (url.protocol === 'ipfs:') {
     // Non-standard protocols (ipfs:) always have opaque origin ('null' per URL spec)
     const cid = `${url.host}${url.pathname}`
     // load balance across ipfs domains
