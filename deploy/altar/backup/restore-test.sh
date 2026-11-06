@@ -34,11 +34,17 @@ for environment in production staging; do
   cleanup
   docker run -d --name "$SCRATCH" --memory 2g --cpus 1 \
     -e POSTGRES_USER=gibassets -e POSTGRES_DB=gibassets -e POSTGRES_HOST_AUTH_METHOD=trust \
-    "gib/postgres:$environment" >/dev/null
-  until docker exec "$SCRATCH" pg_isready -U gibassets -d gibassets >/dev/null 2>&1; do sleep 2; done
+    "gib/postgres:$environment" postgres >/dev/null
+  # The image's default command starts no server; `postgres` above does. Give up after
+  # two minutes rather than wait forever on a container that never answers.
+  for attempt in $(seq 1 60); do
+    docker exec "$SCRATCH" pg_isready -U gibassets -d gibassets >/dev/null 2>&1 && break
+    [ "$attempt" -eq 60 ] && { echo "restore-test: $environment scratch database never became ready"; exit 1; }
+    sleep 2
+  done
 
   restic_run dump --tag "$environment" latest "/$environment.dump" |
-    docker exec -i "$SCRATCH" pg_restore --username gibassets --dbname gibassets --no-owner --exit-on-error
+    docker exec -i "$SCRATCH" sh -c '"/usr/lib/postgresql/$PG_MAJOR/bin/pg_restore" --username gibassets --dbname gibassets --no-owner --exit-on-error'
 
   live="$(count_rows docker compose exec -T "postgres-$environment")"
   restored="$(count_rows docker exec "$SCRATCH")"

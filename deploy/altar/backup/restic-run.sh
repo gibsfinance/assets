@@ -24,7 +24,11 @@ restic_run() {
     -v gib_restic-cache:/cache \
     "$RESTIC_IMAGE" \
     -o "sftp.args=-o UpdateHostKeys=no -o BatchMode=yes" \
+    --retry-lock 10m \
     "$@"
 }
+# --retry-lock: the backup and the restore test share one repository. Without it, a
+# lock held by the other (or left by a run that was killed mid-read) fails the job
+# at once instead of waiting for the lock to go.
 # UpdateHostKeys=no: known_hosts is mounted read-only (it holds the one verified key),
 # so OpenSSH's attempt to add the server's other key types would only log a warning.
