@@ -303,6 +303,22 @@ describe('getLists', () => {
     expect(projection.updatedAt).not.toBe(s.listToken.updatedAt)
   })
 
+  it('serves an emptied newest published version, and never an unpublished one beside a published sibling', async () => {
+    harness.queueResult([{ listId: 'l1' }])
+
+    await getLists('jupiter', 'tag-yield')
+
+    const whereStep = harness.queries[0].steps.find((step) => step.method === 'where')
+    const text = renderSql(whereStep?.args[0]).replace(/\s+/g, ' ')
+    // Published: members, or nothing newer is published (an emptied list is the newest).
+    expect(text).toMatch(/"list"\."tokens_collected_at" IS NOT NULL AND \(EXISTS \(SELECT 1 FROM "list_token"/)
+    expect(text).toMatch(/OR NOT EXISTS \( SELECT 1 FROM "list" newer .* newer\.tokens_collected_at IS NOT NULL/)
+    // Unpublished: only while the list has never published anything.
+    expect(text).toMatch(
+      /"list"\."tokens_collected_at" IS NULL AND EXISTS .* NOT EXISTS \( SELECT 1 FROM "list" sibling .* sibling\.tokens_collected_at IS NOT NULL/,
+    )
+  })
+
   it('proves the list has tokens without joining every list_token row', async () => {
     harness.queueResult([{ listId: 'l1' }])
 

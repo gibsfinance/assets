@@ -259,3 +259,196 @@ describe('jupiter collector', () => {
     expect(harness.state.tokenImages).toHaveLength(5)
   })
 })
+
+/**
+ * Membership over time. Each `runOnce` is one full collect cycle against the harness's
+ * in-memory model of the `list` and `list_token` tables, so these tests read what a reader
+ * would be served after the run rather than what the collector asked the database to do.
+ */
+describe('jupiter list membership across runs', () => {
+  type Feeds = { verified?: unknown[]; recent?: unknown[] | Error }
+  type Raw = { id: string }
+
+  const listsFor = (listKey: string) => harness.state.lists.filter((list) => list.key === listKey)
+
+  /** One collect cycle. Category feeds other than `recent` answer empty (unreliable, left alone). */
+  const runOnce = async ({ verified = rawTokens(5, ['verified']), recent = [] }: Feeds) => {
+    harness.queueTokenListResponse(VERIFIED_URL, verified as never)
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url !== RECENT_URL) return jsonResponse([])
+      if (recent instanceof Error) throw recent
+      return jsonResponse(recent)
+    })
+    await collect(new AbortController().signal)
+  }
+
+  /** The members a reader is served for a list key: the newest published version's token ids. */
+  const servedMembers = async (listKey: string): Promise<string[]> => {
+    const { providerId } = harness.state.providers[0]
+    const { published } = await harness.dbModule.getListVersionSnapshot({ providerId, listKey })
+    return published ? [...published.providedIds].sort() : []
+  }
+
+  const versionOf = (list: { major: number; minor: number; patch: number }) =>
+    `${list.major}.${list.minor}.${list.patch}`
+
+  const tokensOf = (count: number) => Array.from({ length: count }, () => rawToken({ tags: ['verified'] }))
+
+  it('drops a token that left the feed: present in run 1, absent from the served list after run 2', async () => {
+    const [leaving, staying, ...rest] = tokensOf(7)
+    const arriving = rawToken({ tags: ['verified'] })
+    await runOnce({ recent: [leaving, staying, ...rest] })
+    expect(await servedMembers('recent')).toContain(leaving.id)
+
+    await runOnce({ recent: [staying, ...rest, arriving] })
+
+    const served = await servedMembers('recent')
+    expect(served).not.toContain(leaving.id)
+    expect(served).toContain(arriving.id)
+    expect(served).toHaveLength(7)
+  })
+
+  it('keeps the dropped token filed under the superseded version, so its icon is still found', async () => {
+    const [leaving, ...rest] = tokensOf(6)
+    await runOnce({ recent: [leaving, ...rest] })
+    await runOnce({ recent: [...rest, rawToken({ tags: ['verified'] })] })
+
+    const [oldVersion, newVersion] = listsFor('recent').sort((a, b) => a.patch - b.patch)
+    expect(versionOf(oldVersion)).toBe('0.0.0')
+    expect(versionOf(newVersion)).toBe('0.0.1')
+    const oldRow = harness.state.tokenImages.find(
+      (image) => image.listId === oldVersion.listId && image.token.providedId === leaving.id,
+    )
+    expect(oldRow?.uri).toBe('https://example.com/icon.png')
+  })
+
+  it('files no new version when the feed returns the same members, even in a different order', async () => {
+    const feed = tokensOf(6)
+    const verified = tokensOf(6)
+    await runOnce({ verified, recent: feed })
+    await runOnce({ verified, recent: [...feed].reverse() })
+    await runOnce({ verified, recent: feed })
+
+    expect(listsFor('recent')).toHaveLength(1)
+    expect(listsFor('tag-verified')).toHaveLength(1)
+  })
+
+  it('files a new version of a tag list when that tag membership changed', async () => {
+    const verified = tokensOf(6)
+    await runOnce({ verified })
+    await runOnce({ verified: [...verified.slice(1), rawToken({ tags: ['verified'] })] })
+
+    expect(listsFor('tag-verified').map(versionOf).sort()).toEqual(['0.0.0', '0.0.1'])
+  })
+
+  it('numbers the next version above an unpublished one left by an interrupted run', async () => {
+    const feed = tokensOf(6)
+    await runOnce({ recent: feed })
+    // An interrupted run left 0.0.1 filed but never published.
+    const { providerId } = harness.state.providers[0]
+    await harness.dbModule.insertList({ providerId, key: 'recent', name: 'x', major: 0, minor: 0, patch: 1 })
+
+    await runOnce({ recent: [...feed.slice(1), rawToken({ tags: ['verified'] })] })
+
+    expect(listsFor('recent').map(versionOf).sort()).toEqual(['0.0.0', '0.0.1', '0.0.2'])
+    expect(await servedMembers('recent')).toHaveLength(6)
+  })
+
+  it('retires a tag list that no longer reaches the minimum size, and does so once', async () => {
+    const yieldTokens = Array.from({ length: 6 }, () => rawToken({ tags: ['verified', 'yield'] }))
+    await runOnce({ verified: yieldTokens })
+    expect(await servedMembers('tag-yield')).toHaveLength(6)
+
+    // Jupiter retired the tag: no verified token carries it any more.
+    await runOnce({ verified: tokensOf(6) })
+    expect(await servedMembers('tag-yield')).toEqual([])
+    expect(listsFor('tag-yield').map(versionOf).sort()).toEqual(['0.0.0', '0.0.1'])
+
+    await runOnce({ verified: tokensOf(6) })
+    expect(listsFor('tag-yield')).toHaveLength(2)
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      'provider=%o list=%o retired: no longer produced by the feed',
+      'jupiter',
+      'tag-yield',
+    )
+  })
+
+  it('retires a category list whose feed answers with fewer tokens than the minimum', async () => {
+    await runOnce({ recent: tokensOf(6) })
+    await runOnce({ recent: tokensOf(2) })
+
+    expect(await servedMembers('recent')).toEqual([])
+  })
+
+  it('leaves a category list alone when its feed fails or answers empty', async () => {
+    await runOnce({ recent: tokensOf(6) })
+
+    await runOnce({ recent: new Error('feed unreachable') })
+    await runOnce({ recent: [] })
+
+    expect(await servedMembers('recent')).toHaveLength(6)
+    expect(listsFor('recent')).toHaveLength(1)
+  })
+
+  it('retires nothing when the run was aborted before it saw every feed', async () => {
+    const yieldTokens = Array.from({ length: 6 }, () => rawToken({ tags: ['verified', 'yield'] }))
+    await runOnce({ verified: yieldTokens })
+
+    harness.queueTokenListResponse(VERIFIED_URL, tokensOf(6) as never)
+    const controller = new AbortController()
+    fetchMock.mockImplementation(async () => {
+      controller.abort()
+      return jsonResponse([])
+    })
+    await jupiter.discover(controller.signal)
+
+    expect(await servedMembers('tag-yield')).toHaveLength(6)
+  })
+
+  it('does not publish a version in which no token could be stored, so the old one keeps serving', async () => {
+    const feed = tokensOf(6) as Raw[]
+    await runOnce({ recent: feed })
+    const original = harness.dbModule.fetchImageAndStoreForToken.getMockImplementation()!
+    harness.dbModule.fetchImageAndStoreForToken.mockRejectedValue(new Error('storage down'))
+    try {
+      await runOnce({ recent: [...feed.slice(1), rawToken({ tags: ['verified'] })] })
+    } finally {
+      harness.dbModule.fetchImageAndStoreForToken.mockImplementation(original)
+    }
+
+    expect(await servedMembers('recent')).toContain(feed[0].id)
+  })
+
+  it('trims old versions after a normal run, and not after an abort', async () => {
+    await runOnce({ recent: tokensOf(6) })
+    expect(harness.dbModule.pruneSupersededListVersions).toHaveBeenCalledWith({
+      providerId: harness.state.providers[0].providerId,
+      listKey: 'recent',
+      keep: 3,
+    })
+
+    harness.dbModule.pruneSupersededListVersions.mockClear()
+    harness.queueTokenListResponse(VERIFIED_URL, rawTokens(5, ['verified']) as never)
+    fetchMock.mockImplementation(async () => jsonResponse(tokensOf(6)))
+    await jupiter.discover(new AbortController().signal)
+    const controller = new AbortController()
+    controller.abort()
+    await jupiter.collect(controller.signal)
+
+    expect(harness.dbModule.pruneSupersededListVersions).not.toHaveBeenCalled()
+  })
+
+  it('logs and carries on when trimming old versions fails', async () => {
+    harness.dbModule.pruneSupersededListVersions.mockRejectedValueOnce(new Error('lock timeout'))
+
+    await runOnce({ recent: tokensOf(6) })
+
+    expect(harness.gibsUtilsModule.failureLog).toHaveBeenCalledWith(
+      'provider=%o list=%o prune failed: %o',
+      'jupiter',
+      expect.any(String),
+      'lock timeout',
+    )
+    expect(await servedMembers('recent')).toHaveLength(6)
+  })
+})

@@ -118,6 +118,18 @@ Return visitors paint from cache; the build removes the two blocking requests.
   usable image: a current list version beats a superseded one (the lists read current versions only).
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
+### Lists That Change Membership (jupiter)
+- `list_token` rows are only ever added, so a token leaves a list only when the list moves to a new
+  version. `collect/jupiter.ts` files a new version (patch + 1, `list-membership.ts`) when a feed's
+  members differ from the published version, and none when they match. Superseded versions stay for
+  the by-address image route.
+- A list the run no longer produces (tag below `MIN_LIST_SIZE`, retired tag) gets one empty published
+  version. `getLists` serves the newest published version even when empty, and never an unpublished
+  one beside a published sibling.
+- `pruneSupersededListVersions` (`db/list-versions.ts`) trims versions older than the newest three,
+  but never a row that is the only imaged row for its token.
+- A feed that fails or answers empty leaves its list alone.
+
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function
 - `dedupe` flag: true = WHERE rank=1 (image endpoints), false = all rows (token lists)
