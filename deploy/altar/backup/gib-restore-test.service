@@ -1,7 +1,0 @@
-[Unit]
-Description=gib.show: restore the newest backups and compare row counts
-
-[Service]
-Type=oneshot
-ExecStart=%h/app/backup/restore-test.sh
-TimeoutStartSec=6h

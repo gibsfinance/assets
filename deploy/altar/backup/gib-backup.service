@@ -1,8 +1,0 @@
-[Unit]
-Description=gib.show: back up both databases to the Nocix machine
-# Fails the unit on any error, so `systemctl --user --failed` shows a missed backup.
-
-[Service]
-Type=oneshot
-ExecStart=%h/app/backup/backup.sh
-TimeoutStartSec=4h
