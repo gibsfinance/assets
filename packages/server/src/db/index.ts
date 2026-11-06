@@ -82,6 +82,9 @@ export const ids = {
 /** Run pending database migrations. */
 export { migrate } from './drizzle'
 
+/** Version-aware list queries for collectors whose membership changes between runs. */
+export { getListVersionSnapshot, getProviderListKeys, pruneSupersededListVersions } from './list-versions'
+
 /** Run a Drizzle transaction. */
 export const transaction = async <T>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => {
   return getDrizzle().transaction(fn)
@@ -1758,6 +1761,30 @@ export const getTokensUnderListId = () => {
 export const getLists = async (providerKey: string, listKey: string) => {
   const db = getDrizzle()
   const hasTokens = dsql`EXISTS (SELECT 1 FROM ${s.listToken} WHERE ${eq(s.listToken.listId, s.list.listId)})`
+  // Which versions may be served. Three rules, in the order they matter:
+  //   1. A published version with members is served, as before.
+  //   2. A published version with NO members is served when nothing newer is published.
+  //      That is how a collector retires a list: it publishes an empty version, and
+  //      without this rule the older version that still has members would answer in its
+  //      place, so the retirement would change nothing readers see.
+  //   3. An unpublished version is served only for a list that has never published. Once
+  //      a list has a published version, an unpublished newer one is still filling, and
+  //      serving it would answer with half a list (and cache that answer).
+  const servable = dsql`(
+    (${s.list.tokensCollectedAt} IS NOT NULL AND (${hasTokens} OR NOT EXISTS (
+      SELECT 1 FROM ${s.list} newer
+      WHERE newer.provider_id = ${s.list.providerId}
+        AND newer.key = ${s.list.key}
+        AND (newer.major, newer.minor, newer.patch) > (${s.list.major}, ${s.list.minor}, ${s.list.patch})
+        AND newer.tokens_collected_at IS NOT NULL
+    )))
+    OR (${s.list.tokensCollectedAt} IS NULL AND ${hasTokens} AND NOT EXISTS (
+      SELECT 1 FROM ${s.list} sibling
+      WHERE sibling.provider_id = ${s.list.providerId}
+        AND sibling.key = ${s.list.key}
+        AND sibling.tokens_collected_at IS NOT NULL
+    ))
+  )`
   const query = (whereClause: SQL | undefined) =>
     db
       .select({
@@ -1778,7 +1805,7 @@ export const getLists = async (providerKey: string, listKey: string) => {
       // `and` drops an undefined condition, so this reads as `hasTokens` alone when the
       // caller has none to add. The ternary this replaces was answering a type, not a
       // case: every call site below passes a clause, so its second arm never ran.
-      .where(and(whereClause, hasTokens))
+      .where(and(whereClause, servable))
       .orderBy(desc(s.list.major), desc(s.list.minor), desc(s.list.patch))
   const whereClause = listKey
     ? and(eq(s.provider.key, providerKey), eq(s.list.key, listKey))

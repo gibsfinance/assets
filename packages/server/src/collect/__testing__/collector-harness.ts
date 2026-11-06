@@ -474,6 +474,15 @@ export type CollectorHarnessDbModule = {
   insertList: Mock
   /** Stamps the publish marker set by `markListTokensCollected` onto the recorded list row. */
   markListTokensCollected: Mock
+  /**
+   * Reads the recorded list rows and, for the newest published one, the token ids the
+   * collector filed under it (taken from `fetchImageAndStoreForToken` calls).
+   */
+  getListVersionSnapshot: Mock
+  /** Every list key recorded for a provider. */
+  getProviderListKeys: Mock
+  /** Records the call and reports nothing deleted; the real trim is SQL, tested in `db/list-versions.test.ts`. */
+  pruneSupersededListVersions: Mock
   insertNetworkFromChainId: Mock
   /** Read-only listing of every recorded network — see `getNetworks`'s doc comment. */
   getNetworks: Mock
@@ -759,6 +768,30 @@ export const createCollectorHarness = (): CollectorHarness => {
     existing.tokensCollectedAt = new Date(0).toISOString()
     return [existing]
   })
+
+  const versionOrder = (a: RecordedList, b: RecordedList): number =>
+    b.major - a.major || b.minor - a.minor || b.patch - a.patch
+
+  /** Mirrors the real `getListVersionSnapshot` over the recorded rows. */
+  const getListVersionSnapshot = vi.fn(async ({ providerId, listKey }: { providerId: string; listKey: string }) => {
+    const versions = state.lists
+      .filter((list) => list.providerId === providerId && list.key === listKey)
+      .sort(versionOrder)
+    const [highest] = versions
+    if (!highest) return { highest: null, published: null }
+    const newestPublished = versions.find((version) => version.tokensCollectedAt !== null)
+    if (!newestPublished) return { highest, published: null }
+    const providedIds = state.tokenImages
+      .filter((image) => image.listId === newestPublished.listId)
+      .map((image) => image.token.providedId)
+    return { highest, published: { ...newestPublished, providedIds } }
+  })
+
+  const getProviderListKeys = vi.fn(async (providerId: string) => [
+    ...new Set(state.lists.filter((list) => list.providerId === providerId).map((list) => list.key)),
+  ])
+
+  const pruneSupersededListVersions = vi.fn(async (_input: { providerId: string; listKey: string; keep: number }) => 0)
 
   const insertNetworkFromChainId = vi.fn(async (chainId: number | string, type = 'evm', _tx?: DrizzleTx) => {
     const canonicalChainId = toCAIP2(chainId.toString())
@@ -1131,6 +1164,9 @@ export const createCollectorHarness = (): CollectorHarness => {
     insertProvider,
     insertList,
     markListTokensCollected,
+    getListVersionSnapshot,
+    getProviderListKeys,
+    pruneSupersededListVersions,
     insertNetworkFromChainId,
     getNetworks,
     fetchImage,
