@@ -49,9 +49,6 @@ describe('db/drizzle', () => {
     await import('./drizzle')
 
     const [options] = drizzle.mock.calls[0] as [{ connection: { ssl: unknown } }]
-    // Managed Postgres providers (Railway, RDS) commonly present a cert the
-    // Node trust store cannot validate; rejectUnauthorized:false is what makes
-    // `ssl: true` actually usable against them rather than failing every query.
     expect(options.connection.ssl).toEqual({ rejectUnauthorized: false })
   })
 
