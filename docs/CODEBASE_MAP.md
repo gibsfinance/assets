@@ -62,7 +62,7 @@ graph TB
 | SDK | TypeScript, zero runtime dependencies |
 | React Components | @gibs/react wraps @gibs/sdk |
 | Testing | Vitest (685 tests), Testing Library, Playwright |
-| CI/CD | GitHub Actions (5 jobs), Docker multi-stage, Railway |
+| CI/CD | GitHub Actions (5 jobs), Docker multi-stage |
 
 ## Package Dependency Graph
 

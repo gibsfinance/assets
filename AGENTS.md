@@ -43,6 +43,6 @@ Full root build (incl. UI) is available via `yarn run build` but is too slow for
 ## Deployment
 
 - Merge to `staging` for pre-production
-- User handles `staging` → `main` merge and Railway deployment
+- User handles the `staging` → `master` merge and the deployment
 
 Last updated: 2026-04-15

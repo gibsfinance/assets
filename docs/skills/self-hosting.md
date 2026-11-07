@@ -127,13 +127,11 @@ docker run -p 3000:3000 \
   gib-show
 ```
 
-## Railway Deployment
+## Deployment Notes
 
-The project is configured for Railway:
-- Auto-deploys from `staging` branch
-- Migrations run on startup
-- sharp compiles natively on Railway's Linux containers
-- Set env vars in Railway dashboard
+- Migrations run when the server starts; a separate migrate step is not needed.
+- The images build with the `Dockerfile` (server and interface) and `Dockerfile.worker`
+  (collector). Any host that runs containers works; set the environment variables there.
 
 ## Monitoring
 

@@ -71,7 +71,7 @@ const serviceWorker = () => ({
   },
 })
 
-let githash = process.env.RAILWAY_GIT_COMMIT_SHA
+let githash = process.env.GIT_COMMIT_SHA
 if (!githash) {
   try {
     githash = child_process.execSync('git rev-parse HEAD').toString().trim()
@@ -112,7 +112,7 @@ export default defineConfig(({ isSsrBuild }) => ({
         },
   },
   preview: {
-    allowedHosts: ['gib.show', 'staging.gib.show', 'healthcheck.railway.app'],
+    allowedHosts: ['gib.show', 'staging.gib.show'],
   },
   build: {
     // The server bundle is a build input, not a site: it needs none of the public files.
