@@ -103,7 +103,10 @@ Return visitors paint from cache; the build removes the two blocking requests.
   get the origin's `no-cache` (browser TTL: respect origin). A deploy reaches first-time visitors
   within a minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of
   about 120 ms. The other rule in that phase ("content") caches `/image`, `/list`, `/token`, `/stats`,
-  `/networks`. Edit both through the Cloudflare API, not by hand, so this note stays true.
+  `/networks`. It respects the origin's lifetimes, except that it keeps 404 answers for one hour:
+  without that, Cloudflare kept them about 3 minutes despite the origin's `max-age=86400`, and one
+  client polling a few imageless addresses sent about 3,000 requests a day to the server. Edit both
+  rules through the Cloudflare API, not by hand, so this note stays true.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
 
