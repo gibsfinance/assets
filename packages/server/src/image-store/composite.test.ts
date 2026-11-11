@@ -74,6 +74,14 @@ const collect = async (store: BlobStore): Promise<BlobStat[]> => {
 
 const digestOf = (text: string) => hashBytes(Buffer.from(text))
 
+/** The same store, but its listing leaves out each blob's time, which the interface allows. */
+const withoutTimes = (store: BlobStore): BlobStore => ({
+  ...store,
+  list: async function* () {
+    for await (const { sha256, byteSize } of store.list()) yield { sha256, byteSize }
+  },
+})
+
 describeBlobStoreContract('tiered: a local cache over an object store', async () => {
   const clock = createFakeClock()
   return {
@@ -272,6 +280,22 @@ describe('createTieredBlobStore', () => {
     expect(await cache.stat(added)).not.toBeNull()
   })
 
+  it('treats cached blobs that carry no time as the oldest', async () => {
+    const cache = await localStore()
+    const older = (await cache.put(Buffer.from('aaaa'))).sha256
+    const newer = (await cache.put(Buffer.from('bbbb'))).sha256
+    const store = createTieredBlobStore({
+      cache: { ...cache, list: () => withoutTimes(cache).list() },
+      backing: objectStore(createFakeClock()),
+      maxCacheBytes: 10,
+    })
+
+    await store.put(Buffer.from('cccc'))
+
+    expect(await cache.stat(older)).toBeNull()
+    expect(await cache.stat(newer)).not.toBeNull()
+  })
+
   it('serves a blob that was already in the cache before it was ever read through the store', async () => {
     const cache = await localStore()
     const { sha256 } = await cache.put(Buffer.from('preloaded'))
@@ -458,6 +482,18 @@ describe('createMirroredBlobStore', () => {
     const [only] = await collect(store)
 
     expect(only.modifiedAtMs).toBe(clock.now())
+  })
+
+  it('prefers an entry that has a time over one that has none, in either order', async () => {
+    const { clock, first, second } = build()
+    await first.put(Buffer.from('shared'))
+    await second.put(Buffer.from('shared'))
+    clock.advance(1000)
+    const timed = createMirroredBlobStore({ stores: [withoutTimes(first), second] })
+    const untimed = createMirroredBlobStore({ stores: [first, withoutTimes(second)] })
+
+    expect((await collect(timed))[0].modifiedAtMs).toBe(clock.now() - 1000)
+    expect((await collect(untimed))[0].modifiedAtMs).toBe(clock.now() - 1000)
   })
 
   it('refuses a mirror with no stores, or with minimumWrites out of range', () => {

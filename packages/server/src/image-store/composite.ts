@@ -15,6 +15,9 @@ import { assertSha256Hex } from './hash'
 import { BlobStoreError } from './http'
 import type { BlobStat, BlobStore } from './types'
 
+/** When a blob was last written or reused. A store that does not say counts as long ago, so it is the first to go. */
+const ageOf = (stat: BlobStat): number => stat.modifiedAtMs ?? 0
+
 /**
  * Asks stores in order until one gives an answer that is not null.
  *
@@ -117,7 +120,7 @@ export function createTieredBlobStore(options: TieredBlobStoreOptions): BlobStor
     loading ??= (async () => {
       const held: BlobStat[] = []
       for await (const stat of cache.list()) held.push(stat)
-      held.sort((a, b) => (a.modifiedAtMs ?? 0) - (b.modifiedAtMs ?? 0))
+      held.sort((a, b) => ageOf(a) - ageOf(b))
       for (const stat of held) remember(stat.sha256, stat.byteSize)
     })()
     return loading
@@ -247,7 +250,7 @@ export function createMirroredBlobStore(options: MirroredBlobStoreOptions): Blob
     for (const store of stores) {
       for await (const stat of store.list()) {
         const seen = union.get(stat.sha256)
-        union.set(stat.sha256, seen && (seen.modifiedAtMs ?? 0) >= (stat.modifiedAtMs ?? 0) ? seen : stat)
+        union.set(stat.sha256, seen && ageOf(seen) >= ageOf(stat) ? seen : stat)
       }
     }
     yield* union.values()

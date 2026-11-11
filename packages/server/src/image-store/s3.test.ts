@@ -170,6 +170,17 @@ describe('S3 requests', () => {
     expect((await store.stat(hashBytes(bytes)))?.modifiedAtMs).toBe(clock.now())
   })
 
+  it('names an unknown cause when an error inside a 200 answer carries no code', async () => {
+    const client = createS3ObjectClient({
+      location: { endpoint: 'https://s3.example.test', region: 'r', addressing: 'path' },
+      bucket: 'blobs',
+      credentials: CREDENTIALS,
+      fetch: async () => new Response('<Error></Error>', { status: 200 }),
+    })
+
+    await expect(client.renew('k')).rejects.toThrow('s3 copy failed: unknown')
+  })
+
   it('stops with an error when a listing is cut off and names no way on', async () => {
     const { service, store } = build()
     for (const text of ['a', 'b', 'c', 'd']) await store.put(Buffer.from(text))
