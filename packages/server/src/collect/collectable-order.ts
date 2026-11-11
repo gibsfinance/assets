@@ -50,6 +50,7 @@ export const collectableOrder = [
   'pancakeswap-extended',
   'pangolin',
   'arbitrum',
+  'etherscan',
   'jupiter',
   'mew',
   'relay',
