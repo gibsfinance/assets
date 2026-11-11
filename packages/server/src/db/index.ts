@@ -14,7 +14,15 @@ import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
 import { sanitizeImage } from '../sanitize'
-import { isPlaceholderImage, isPlaceholderUri, placeholderByteLengths } from '../image-placeholders'
+import {
+  isPlaceholderDigest,
+  isPlaceholderStoredImage,
+  isPlaceholderUri,
+  placeholderByteLengths,
+  knownPlaceholders,
+} from '../image-placeholders'
+import { getImageStore, hashBytes } from '../image-store'
+import { imageColumnsWithoutStoredBytes, unexportedBytesSql } from './image-columns'
 import { isLinkOnlyHost, linkOnlyUriPrefixes } from '../link-only-hosts'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
@@ -166,6 +174,19 @@ const writeMissing = async ({
   })
 }
 
+/** Bytes to keep for one image row, with what describes them. */
+type StoredImageBytes = {
+  /** The sanitized bytes. Empty for a link-only row. */
+  bytes: Buffer
+  /** sha256 of `bytes`, which names the file in the image store. Null for a link-only row. */
+  sha256: string | null
+  /** Length of `bytes`. */
+  byteSize: number
+}
+
+/** What a link-only row stores: no bytes, no digest, length 0. */
+const NO_STORED_BYTES: StoredImageBytes = { bytes: Buffer.alloc(0), sha256: null, byteSize: 0 }
+
 /**
  * Write one `image` row and its `link` row together, keyed on the same
  * conflict targets `insertImage` and `insertLinkOnlyImage` both rely on: a
@@ -177,13 +198,18 @@ const writeMissing = async ({
 const upsertImageAndLink = async (
   {
     originalUri,
-    content,
+    stored,
     ext,
     imageHash,
     mode,
   }: {
     originalUri: string
-    content: Buffer
+    /**
+     * The bytes to keep, with the digest and length that describe them. A link-only row has
+     * no bytes: an empty buffer, no digest, length 0. Whatever is passed here is already in the
+     * image store, because the store is written before this runs.
+     */
+    stored: StoredImageBytes
     ext: string
     imageHash: string
     mode: ImageMode
@@ -191,14 +217,24 @@ const upsertImageAndLink = async (
   tx?: DrizzleTx,
 ) => {
   const db = tx ?? getDrizzle()
+  // The database copy is optional (IMAGE_BYTES_IN_DATABASE). The digest and length are not: they
+  // are what every reader uses to find the file, and `images export` selects on the length.
+  const content = config.imageBytesInDatabase ? stored.bytes : null
+  const { sha256: contentSha256, byteSize } = stored
   const [inserted] = await db
     .insert(s.image)
-    .values({ uri: originalUri, content, imageHash, ext, mode })
+    .values({ uri: originalUri, content, contentSha256, byteSize, imageHash, ext, mode })
     .onConflictDoUpdate({
       target: s.image.imageHash,
-      set: { content: dsql`excluded.content`, mode: dsql`excluded.mode`, uri: dsql`excluded.uri` },
+      set: {
+        content: dsql`excluded.content`,
+        contentSha256: dsql`excluded.content_sha256`,
+        byteSize: dsql`excluded.byte_size`,
+        mode: dsql`excluded.mode`,
+        uri: dsql`excluded.uri`,
+      },
     })
-    .returning()
+    .returning(imageColumnsWithoutStoredBytes)
   const [link] = await db
     .insert(s.link)
     .values({
@@ -253,19 +289,27 @@ export const insertImage = async (
 
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
   const sanitized = await sanitizeImage(image, ext)
+  // One digest of the stored bytes serves the placeholder check, the row, and the file's name.
+  const sha256 = hashBytes(sanitized)
   // Some sources answer a logo they do not hold with a generic "no artwork"
   // graphic under HTTP 200 rather than a 404, so it arrives here looking like
   // any other image. Storing one is worse than storing nothing: it ranks by its
   // provider's priority like real artwork would, and DexScreener sits high
   // enough that its question-mark icon was outranking genuine chain logos from
   // every fallback below it.
-  if (isPlaceholderImage(sanitized)) {
+  if (isPlaceholderDigest(sha256, sanitized.length)) {
     failureLog('placeholder image %o -> %o', providerKey, originalUri)
     return null
   }
   const shouldSave = args.checkShouldSave(providerKey)
-  const content = shouldSave ? sanitized : Buffer.from([])
+  const stored: StoredImageBytes = shouldSave
+    ? { bytes: sanitized, sha256, byteSize: sanitized.length }
+    : NO_STORED_BYTES
   const mode = shouldSave ? imageMode.SAVE : imageMode.LINK
+  // The file is written before the row, which may sit in a transaction that commits much later.
+  // A rollback then leaves a file nothing points at, which `images gc` removes; the other order
+  // could leave a committed row that points at a file that never arrived.
+  if (shouldSave) await getImageStore().put(sanitized)
   const [, result] = await Promise.all([
     removeMissing({
       imageHash,
@@ -273,7 +317,7 @@ export const insertImage = async (
       providerKey,
       listId,
     }),
-    upsertImageAndLink({ originalUri, content, ext, imageHash, mode }, tx),
+    upsertImageAndLink({ originalUri, stored, ext, imageHash, mode }, tx),
   ])
   return result
 }
@@ -339,7 +383,7 @@ export const insertLinkOnlyImage = async (
       providerKey,
       listId,
     }),
-    upsertImageAndLink({ originalUri, content: emptyContent, ext, imageHash, mode: imageMode.LINK }, tx),
+    upsertImageAndLink({ originalUri, stored: NO_STORED_BYTES, ext, imageHash, mode: imageMode.LINK }, tx),
   ])
   return result
 }
@@ -525,7 +569,11 @@ export const getImageFromLink = async (uri: string, tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const [link] = await db.select().from(s.link).where(eq(s.link.uri, uri)).limit(1)
   if (!link) return null
-  const [image] = await db.select().from(s.image).where(eq(s.image.imageHash, link.imageHash)).limit(1)
+  const [image] = await db
+    .select(imageColumnsWithoutStoredBytes)
+    .from(s.image)
+    .where(eq(s.image.imageHash, link.imageHash))
+    .limit(1)
   if (!image) return null
   return {
     link,
@@ -569,9 +617,13 @@ export const getFreshImageFromLink = async (uri: string, maxAgeMs: number, tx?: 
     .where(and(eq(s.link.uri, uri), gte(s.link.updatedAt, cutoff)))
     .limit(1)
   if (!link) return null
-  const [image] = await db.select().from(s.image).where(eq(s.image.imageHash, link.imageHash)).limit(1)
+  const [image] = await db
+    .select(imageColumnsWithoutStoredBytes)
+    .from(s.image)
+    .where(eq(s.image.imageHash, link.imageHash))
+    .limit(1)
   if (!image) return null
-  if (image.content && isPlaceholderImage(image.content)) return null
+  if (isPlaceholderStoredImage(image)) return null
   return { link, image }
 }
 
@@ -902,6 +954,22 @@ export const getListFromId = async (listId: string, tx?: DrizzleTx) => {
 }
 
 /**
+ * Narrows `image` rows to those that could be a known placeholder, so a sweep reads a handful
+ * of rows rather than every stored icon.
+ *
+ * A row that has been exported is matched by its digest, which needs no bytes. A row that has
+ * not been exported yet has no digest, so it is matched by the length of its bytes, which is the
+ * prefilter the sweep always used. Both arms stay until the backfill is finished.
+ */
+const placeholderCandidateSql: SQL = dsql`(
+  ${inArray(
+    s.image.contentSha256,
+    knownPlaceholders.map((placeholder) => placeholder.fingerprint),
+  )}
+  OR (${s.image.contentSha256} IS NULL AND ${inArray(dsql`octet_length(${s.image.content})`, [...placeholderByteLengths])})
+)`
+
+/**
  * Release every network icon slot currently pointing at a known upstream
  * placeholder, so the run that follows can fill it with real artwork.
  *
@@ -928,12 +996,14 @@ export const purgePlaceholderNetworkIcons = async (tx?: DrizzleTx) => {
     .select({
       networkId: s.network.networkId,
       chainId: s.network.chainId,
-      content: s.image.content,
+      contentSha256: s.image.contentSha256,
+      byteSize: s.image.byteSize,
+      content: unexportedBytesSql,
     })
     .from(s.network)
     .innerJoin(s.image, eq(s.image.imageHash, s.network.imageHash))
-    .where(inArray(dsql`octet_length(${s.image.content})`, [...placeholderByteLengths]))
-  const stale = candidates.filter((row) => isPlaceholderImage(row.content))
+    .where(placeholderCandidateSql)
+  const stale = candidates.filter(isPlaceholderStoredImage)
   if (!stale.length) return []
   await db
     .update(s.network)
@@ -1008,10 +1078,15 @@ const unreferencedBy = (column: AnyColumn): SQL[] =>
 export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
   const db = tx ?? getDrizzle()
   const candidates = await db
-    .select({ imageHash: s.image.imageHash, content: s.image.content })
+    .select({
+      imageHash: s.image.imageHash,
+      contentSha256: s.image.contentSha256,
+      byteSize: s.image.byteSize,
+      content: unexportedBytesSql,
+    })
     .from(s.image)
-    .where(inArray(dsql`octet_length(${s.image.content})`, [...placeholderByteLengths]))
-  const stale = candidates.filter((row) => isPlaceholderImage(row.content)).map((row) => row.imageHash)
+    .where(placeholderCandidateSql)
+  const stale = candidates.filter(isPlaceholderStoredImage).map((row) => row.imageHash)
   if (!stale.length) return []
   // The cached fetch result for an address that answers with a placeholder is
   // never worth keeping — re-reading it is precisely what has to stop.
@@ -2095,6 +2170,9 @@ const listRanksColumns: ListEntryRankColumns = {
  *   'listToken' (default) - starts from list_token with full outer join to image (getTokensUnderListId style)
  *   'provider'  - starts from provider with right joins to list/list_token/token/image (getListTokens style)
  * @param formatPreference - Ordered groups of extensions for format sorting
+ * @param options.includeContent - Also return `content`, `contentSha256` and `byteSize`. `content`
+ *   holds bytes only for a row that has not been exported to the image store (see
+ *   `image-columns.ts`); read the rest with `loadImageBytes`.
  */
 export const applyOrder = async (
   listOrderId: viem.Hex,
@@ -2157,7 +2235,11 @@ export const applyOrder = async (
         ${s.image.ext},
         ${s.image.mode},
         ${s.image.uri},
-        ${includeContent ? dsql`${s.image.content},` : dsql``}
+        ${
+          includeContent
+            ? dsql`${unexportedBytesSql} AS "content", ${s.image.contentSha256} AS "contentSha256", ${s.image.byteSize} AS "byteSize",`
+            : dsql``
+        }
         ${s.provider.key} AS "providerKey",
         ${s.list.key} AS "listKey",
         ${s.listToken.listTokenOrderId} AS "listTokenOrderId",

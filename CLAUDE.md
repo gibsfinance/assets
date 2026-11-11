@@ -15,8 +15,8 @@ yarn workspace ui run test
 # calling the change done.
 #   Every workspace — 100% on all four metrics, and the floors are set there.
 #     A single untested line fails the build while every test still passes.
-#     Actuals: server 5060 statements / 2428 branches / 824 functions / 4618
-#     lines over 1769 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     Actuals: server 6058 statements / 2964 branches / 1080 functions / 5469
+#     lines over 2430 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
 #     92 tests, @gibs/utils 95, @gibs/react 41.
 #   There is no margin under the interface floors any more. The old ones sat
 #     ~0.2 below measured because this workspace used to report slightly lower
@@ -189,6 +189,27 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   `logoURI` names the image `/image/:chainId/:address` serves. `applyOrder` adds one term after
   usable image: a current list version beats a superseded one (the lists read current versions only).
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
+
+### Image Bytes: the Store
+Image bytes live in a content-addressed store (`packages/server/src/image-store/`, directory `IMAGE_STORE_DIR`,
+layout `sha256/<2 hex>/<64 hex>`), not only in `image.content`. The server and the collector must share that
+directory.
+- `image_hash` is unchanged: it is the primary key and the public `/image/direct/<hash>` address, derived from the
+  downloaded bytes, the source address and the extension. It is NOT a hash of the bytes served. `image.content_sha256`
+  is (sanitized bytes, the file's name) and `image.byte_size` is their length. Link-only rows: length 0, no digest, no file.
+- Write order: `insertImage` writes the file BEFORE the row, which may sit in a long transaction. A rollback leaves an
+  orphan file (`images gc` removes it); a row never points to a missing file. `put` renews the age of a file it reuses.
+- Read path: queries select `CASE WHEN content_sha256 IS NULL THEN content END` (`db/image-columns.ts`); routes call
+  `withImageBytes` / `loadImageBytes` (`image-store/image-bytes.ts`), which take the bytes from the row when it has no
+  digest and from the file otherwise. A missing file is logged and falls to the ordinary redirect / 404 branches. Never
+  select `image.content` directly, and keep `res.contentType(ext).send(buffer)` so the ETag and 304s stay identical.
+- `IMAGE_BYTES_IN_DATABASE` (default true) decides whether the database copy is still written. Turn it off only after
+  `images export` and `images verify` have passed. A trigger from migration 0022 clears a digest that stops matching
+  its bytes, which covers the previous release writing `content` during a rolling deploy.
+- Operator command (`src/bin/images.ts`, `yarn workspace server run start:images <command>`): `export` (resumable, copies
+  rows into the store), `verify [--rehash]` (exits 1 on any problem), `import` (rollback: bytes back into `content`),
+  `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7).
+- The `content` column is dropped in a later migration, after production has run with bytes off.
 
 ### Lists That Change Membership (jupiter)
 - `list_token` rows are only ever added, so a token leaves a list only when the list moves to a new

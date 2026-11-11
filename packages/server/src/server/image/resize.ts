@@ -10,7 +10,7 @@
  * their fixed width and height stripped so a browser scales them from the viewBox alone.
  * `cacheControlFor()` picks between the two cache lifetimes the service serves: a year-long,
  * immutable lifetime for content-addressed responses (`/image/direct/{imageHash}`, where the
- * address is the hash of the bytes it names) and the shorter, configured lifetime everywhere
+ * address is derived from the content it names) and the shorter, configured lifetime everywhere
  * else, where the same address can later answer with different bytes.
  */
 import sharp from 'sharp'
@@ -51,7 +51,7 @@ const MAX_DIM = 2048
 
 /**
  * The two cache lifetimes this service serves. `content-addressed` names a
- * route whose address is the hash of its own bytes — `/image/direct/{hash}` —
+ * route whose address is derived from its own content — `/image/direct/{hash}` —
  * so the bytes behind that address can never change and a year-long,
  * `immutable` cache is honest. Every other route names a mutable address (a
  * token or chain can get a new image at the same address later), so it keeps
@@ -315,6 +315,10 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
       return false
     }
   }
+
+  // No bytes to convert: the image's file is missing from the image store (already logged by
+  // `loadImageBytes`), or a save-mode row holds none. Let the caller redirect or answer 404.
+  if (!content || content.length === 0) return false
 
   // SVG with viewBox and no explicit format conversion → serve as-is
   if (SVG_SOURCE_EXTS.has(img.ext)) {

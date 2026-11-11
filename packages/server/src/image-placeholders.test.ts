@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest'
 import { sanitizeImage } from './sanitize'
 import {
   contentFingerprint,
+  isPlaceholderDigest,
   isPlaceholderImage,
+  isPlaceholderStoredImage,
   isPlaceholderUri,
   knownPlaceholders,
   placeholderByteLengths,
@@ -37,6 +39,58 @@ describe('isPlaceholderImage', () => {
 
   it('rejects on length before hashing, so ordinary images cost one comparison', () => {
     expect(isPlaceholderImage(Buffer.alloc(1024, 7))).toBe(false)
+  })
+})
+
+describe('isPlaceholderDigest', () => {
+  it('recognizes every known placeholder by its digest and length together, without the bytes', () => {
+    for (const placeholder of knownPlaceholders) {
+      expect(isPlaceholderDigest(placeholder.fingerprint, placeholder.byteLength)).toBe(true)
+    }
+  })
+
+  it('does not accept a known digest under a length that entry never had', () => {
+    const [placeholder] = knownPlaceholders
+    expect(isPlaceholderDigest(placeholder.fingerprint, placeholder.byteLength + 1)).toBe(false)
+  })
+
+  it('does not accept a known length under a digest that is not on the list', () => {
+    expect(isPlaceholderDigest('0'.repeat(64), knownPlaceholders[0].byteLength)).toBe(false)
+  })
+})
+
+describe('isPlaceholderStoredImage', () => {
+  const [placeholder] = knownPlaceholders
+
+  it('answers from the digest once the row has been exported, ignoring any bytes it still carries', () => {
+    expect(
+      isPlaceholderStoredImage({
+        contentSha256: placeholder.fingerprint,
+        byteSize: placeholder.byteLength,
+        content: null,
+      }),
+    ).toBe(true)
+    expect(
+      isPlaceholderStoredImage({ contentSha256: '1'.repeat(64), byteSize: placeholder.byteLength, content: null }),
+    ).toBe(false)
+  })
+
+  it('does not trust a digest that has no length beside it', () => {
+    expect(isPlaceholderStoredImage({ contentSha256: placeholder.fingerprint, byteSize: null, content: null })).toBe(
+      false,
+    )
+  })
+
+  it('falls back to the bytes for a row that has not been exported', async () => {
+    const sanitized = await sanitizeImage(fixture('chain-placeholder.png'), '.png')
+    expect(isPlaceholderStoredImage({ contentSha256: null, byteSize: null, content: sanitized })).toBe(true)
+    expect(isPlaceholderStoredImage({ contentSha256: null, byteSize: null, content: Buffer.alloc(1024, 7) })).toBe(
+      false,
+    )
+  })
+
+  it('treats a row with neither a digest nor bytes as not a placeholder', () => {
+    expect(isPlaceholderStoredImage({ contentSha256: null, byteSize: 0, content: null })).toBe(false)
   })
 })
 

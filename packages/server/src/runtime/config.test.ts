@@ -10,6 +10,7 @@ const SETTINGS = [
   'SHARP_CACHE_ITEMS',
   'SHARP_CONCURRENCY',
   'IMAGE_STORE_DIR',
+  'IMAGE_BYTES_IN_DATABASE',
 ]
 
 /** Loads `config.ts` afresh, because it reads the environment once, when it is first imported. */
@@ -75,5 +76,21 @@ describe('config: image store directory', () => {
 
     vi.stubEnv('IMAGE_STORE_DIR', 'relative/place')
     expect((await loadConfig()).imageStoreDirectory).toBe(path.resolve('relative/place'))
+  })
+})
+
+describe('config: bytes in the database', () => {
+  it('keeps writing them when nothing is set, so a deploy changes nothing until the operator says so', async () => {
+    expect((await loadConfig()).imageBytesInDatabase).toBe(true)
+  })
+
+  it('stops writing them when IMAGE_BYTES_IN_DATABASE is false', async () => {
+    vi.stubEnv('IMAGE_BYTES_IN_DATABASE', 'false')
+    expect((await loadConfig()).imageBytesInDatabase).toBe(false)
+  })
+
+  it('ignores a value it does not recognise, rather than flipping the switch', async () => {
+    vi.stubEnv('IMAGE_BYTES_IN_DATABASE', 'flase')
+    expect((await loadConfig()).imageBytesInDatabase).toBe(true)
   })
 })

@@ -5,7 +5,8 @@ const harness = createDrizzleHarness()
 vi.mock('./drizzle', () => ({ getDrizzle: () => harness.db }))
 vi.mock('../log/App', () => createLogAppMock())
 
-const { detectImageExt, sanitizeImage, checkShouldSave, fetchMock, fsPromises } = vi.hoisted(() => ({
+const { detectImageExt, sanitizeImage, checkShouldSave, fetchMock, fsPromises, storePut } = vi.hoisted(() => ({
+  storePut: vi.fn<(bytes: Uint8Array) => Promise<unknown>>(),
   detectImageExt: vi.fn<(image: Buffer, providedExt: string) => Promise<string | null>>(),
   sanitizeImage: vi.fn<(image: Buffer, ext: string) => Promise<Buffer>>(),
   checkShouldSave: vi.fn<(providerKey: string) => boolean>(),
@@ -22,6 +23,10 @@ vi.mock('../sanitize', () => ({ sanitizeImage }))
 vi.mock('../args', () => ({ checkShouldSave }))
 vi.mock('../fetch', () => ({ fetch: fetchMock }))
 vi.mock('fs', () => ({ promises: fsPromises }))
+vi.mock('../image-store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../image-store')>()),
+  getImageStore: () => ({ put: storePut }),
+}))
 
 // Static imports so the module graph loads once during file setup rather than
 // inside a test's own timeout budget — see index.order.test.ts.
@@ -46,7 +51,9 @@ import {
 import * as s from './schema'
 import { getTableName, is } from 'drizzle-orm'
 import { PgTable } from 'drizzle-orm/pg-core'
-import { placeholderByteLengths } from '../image-placeholders'
+import { placeholderByteLengths, knownPlaceholders } from '../image-placeholders'
+import { hashBytes } from '../image-store'
+import config from '../../config'
 
 beforeEach(() => {
   harness.reset()
@@ -58,6 +65,8 @@ beforeEach(() => {
   fsPromises.mkdir.mockReset().mockResolvedValue(undefined)
   fsPromises.writeFile.mockReset().mockResolvedValue(undefined)
   fsPromises.readFile.mockReset()
+  storePut.mockReset().mockResolvedValue(undefined)
+  config.imageBytesInDatabase = true
 })
 
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, ...Array.from({ length: 200 }, () => 0)])
@@ -176,7 +185,111 @@ describe('insertImage', () => {
     const conflictStep = insertQuery?.steps.find((step) => step.method === 'onConflictDoUpdate')
     const conflictArgs = conflictStep?.args[0] as { target: unknown; set: Record<string, unknown> }
     expect(conflictArgs.target).toBe(s.image.imageHash)
-    expect(Object.keys(conflictArgs.set).sort()).toEqual(['content', 'mode', 'uri'])
+    expect(Object.keys(conflictArgs.set).sort()).toEqual(['byteSize', 'content', 'contentSha256', 'mode', 'uri'])
+    // Every column that describes the bytes is replaced together, or a re-collected image
+    // could keep a digest that names the old file.
+    expect(renderSql(conflictArgs.set.contentSha256)).toBe('excluded.content_sha256')
+    expect(renderSql(conflictArgs.set.byteSize)).toBe('excluded.byte_size')
+  })
+
+  describe('the image store', () => {
+    const SANITIZED = Buffer.from('sanitized bytes of a logo')
+    const insertedRow = () =>
+      harness.queries.find((query) => query.root === 'insert')?.steps.find((step) => step.method === 'values')
+        ?.args[0] as {
+        content: Buffer | null
+        contentSha256: string | null
+        byteSize: number
+        mode: string
+      }
+
+    beforeEach(() => {
+      detectImageExt.mockResolvedValue('.png')
+      sanitizeImage.mockResolvedValue(SANITIZED)
+      harness.queueResult([{ imageHash: 'hash-1' }])
+      harness.queueResult([{ uri: 'https://x/icon.png' }])
+    })
+
+    const collect = () =>
+      insertImage({ providerKey: 'trustwallet', originalUri: 'https://x/icon.png', image: PNG_BYTES, listId: null })
+
+    it('writes the file before any query runs, so a committed row never points at a missing file', async () => {
+      const queriesAtWrite: number[] = []
+      storePut.mockImplementation(async () => {
+        queriesAtWrite.push(harness.queries.length)
+      })
+
+      await collect()
+
+      expect(storePut).toHaveBeenCalledTimes(1)
+      expect(storePut).toHaveBeenCalledWith(SANITIZED)
+      // No insert, no missing-record removal: nothing had reached the database yet.
+      expect(queriesAtWrite).toEqual([0])
+      expect(harness.queries.some((query) => query.root === 'insert')).toBe(true)
+    })
+
+    it('stores the digest and length of the sanitized bytes, not of the download', async () => {
+      await collect()
+
+      expect(insertedRow().contentSha256).toBe(hashBytes(SANITIZED))
+      expect(insertedRow().contentSha256).not.toBe(hashBytes(PNG_BYTES))
+      expect(insertedRow().byteSize).toBe(SANITIZED.length)
+      expect(insertedRow().content).toEqual(SANITIZED)
+    })
+
+    it('writes no row at all when the file cannot be written', async () => {
+      storePut.mockRejectedValue(new Error('disk full'))
+
+      await expect(collect()).rejects.toThrow('disk full')
+
+      expect(harness.queries).toHaveLength(0)
+    })
+
+    it('leaves the database copy out when IMAGE_BYTES_IN_DATABASE is off, and keeps the digest and length', async () => {
+      config.imageBytesInDatabase = false
+
+      await collect()
+
+      expect(insertedRow().content).toBeNull()
+      expect(insertedRow().contentSha256).toBe(hashBytes(SANITIZED))
+      expect(insertedRow().byteSize).toBe(SANITIZED.length)
+      expect(storePut).toHaveBeenCalledTimes(1)
+    })
+
+    it('writes no file and records no digest in link mode, where the length is zero', async () => {
+      checkShouldSave.mockReturnValue(false)
+
+      await collect()
+
+      expect(storePut).not.toHaveBeenCalled()
+      expect(insertedRow()).toMatchObject({ mode: 'link', contentSha256: null, byteSize: 0 })
+      expect(insertedRow().content).toEqual(Buffer.alloc(0))
+    })
+
+    it('writes no file for a link-only address, and no database bytes either when the switch is off', async () => {
+      config.imageBytesInDatabase = false
+
+      await insertLinkOnlyImage({ providerKey: 'debank', originalUri: 'https://x/icon.png', listId: null })
+
+      expect(storePut).not.toHaveBeenCalled()
+      expect(insertedRow()).toMatchObject({ mode: 'link', contentSha256: null, byteSize: 0, content: null })
+    })
+
+    it('writes no file for a placeholder, which it recognises by digest', async () => {
+      const [placeholder] = knownPlaceholders
+      // A stand-in with the digest and length of a known placeholder: the check must act on
+      // those two values alone.
+      const stored = Buffer.alloc(placeholder.byteLength, 1)
+      sanitizeImage.mockResolvedValue(stored)
+      const fingerprints = vi
+        .spyOn(await import('../image-store'), 'hashBytes')
+        .mockReturnValue(placeholder.fingerprint)
+
+      expect(await collect()).toBeNull()
+
+      fingerprints.mockRestore()
+      expect(storePut).not.toHaveBeenCalled()
+    })
   })
 
   it('rejects a known upstream placeholder without storing anything', async () => {
@@ -225,7 +338,9 @@ describe('insertImage', () => {
 describe('purgePlaceholderNetworkIcons', () => {
   it('releases a slot whose stored icon is a known placeholder', async () => {
     const { sanitized } = await sanitizedPlaceholder()
-    harness.queueResult([{ networkId: 'network-1', chainId: 'eip155-4689', content: sanitized }])
+    harness.queueResult([
+      { networkId: 'network-1', chainId: 'eip155-4689', contentSha256: null, byteSize: null, content: sanitized },
+    ])
     harness.queueResult([])
 
     const released = await purgePlaceholderNetworkIcons()
@@ -249,7 +364,9 @@ describe('purgePlaceholderNetworkIcons', () => {
       sanitized.subarray(0, sanitized.length - 1),
       Buffer.from([sanitized[sanitized.length - 1] ^ 0xff]),
     ])
-    harness.queueResult([{ networkId: 'network-1', chainId: 'eip155-1', content: lookalike }])
+    harness.queueResult([
+      { networkId: 'network-1', chainId: 'eip155-1', contentSha256: null, byteSize: null, content: lookalike },
+    ])
 
     const released = await purgePlaceholderNetworkIcons()
 
@@ -267,7 +384,26 @@ describe('purgePlaceholderNetworkIcons', () => {
     // Nearly two thousand networks carry an icon; without this the purge would
     // pull every stored image across the wire on every collect run.
     expect(renderSql(where)).toContain('octet_length')
-    expect(sqlParams(where)).toEqual(placeholderByteLengths)
+    expect(sqlParams(where)).toEqual([
+      ...knownPlaceholders.map((placeholder) => placeholder.fingerprint),
+      ...placeholderByteLengths,
+    ])
+  })
+
+  it('recognises an exported row by its digest and length, with no bytes read', async () => {
+    const [placeholder] = knownPlaceholders
+    harness.queueResult([
+      {
+        networkId: 'network-1',
+        chainId: 'eip155-4689',
+        contentSha256: placeholder.fingerprint,
+        byteSize: placeholder.byteLength,
+        content: null,
+      },
+    ])
+    harness.queueResult([])
+
+    expect(await purgePlaceholderNetworkIcons()).toEqual(['eip155-4689'])
   })
 
   it('issues no update when nothing matches', async () => {
@@ -289,7 +425,7 @@ describe('purgeUnreferencedPlaceholderImages', () => {
 
   it('deletes a stored placeholder that nothing points at', async () => {
     const { sanitized } = await sanitizedPlaceholder()
-    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: sanitized }])
     harness.queueResult([]) // link delete
     harness.queueResult([]) // variant delete
     harness.queueResult([{ imageHash: 'hash-1' }]) // image delete, returning
@@ -304,7 +440,7 @@ describe('purgeUnreferencedPlaceholderImages', () => {
     // cache it is, it would hold every placeholder ever stored in place
     // permanently and the sweep would delete nothing, ever.
     const { sanitized } = await sanitizedPlaceholder()
-    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: sanitized }])
     harness.queueResult([])
     harness.queueResult([])
     harness.queueResult([{ imageHash: 'hash-1' }])
@@ -330,7 +466,7 @@ describe('purgeUnreferencedPlaceholderImages', () => {
       sanitized.subarray(0, sanitized.length - 1),
       Buffer.from([sanitized[sanitized.length - 1] ^ 0xff]),
     ])
-    harness.queueResult([{ imageHash: 'hash-1', content: lookalike }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: lookalike }])
 
     expect(await purgeUnreferencedPlaceholderImages()).toEqual([])
     expect(deletes()).toHaveLength(0)
@@ -350,7 +486,22 @@ describe('purgeUnreferencedPlaceholderImages', () => {
 
     const where = whereOf(harness.queries.find((query) => query.root === 'select'))
     expect(renderSql(where)).toContain('octet_length')
-    expect(sqlParams(where)).toEqual(placeholderByteLengths)
+    expect(sqlParams(where)).toEqual([
+      ...knownPlaceholders.map((placeholder) => placeholder.fingerprint),
+      ...placeholderByteLengths,
+    ])
+  })
+
+  it('reclaims an exported placeholder by its digest and length', async () => {
+    const [placeholder] = knownPlaceholders
+    harness.queueResult([
+      { imageHash: 'hash-1', contentSha256: placeholder.fingerprint, byteSize: placeholder.byteLength, content: null },
+    ])
+    harness.queueResult([])
+    harness.queueResult([])
+    harness.queueResult([{ imageHash: 'hash-1' }])
+
+    expect(await purgeUnreferencedPlaceholderImages()).toEqual(['hash-1'])
   })
 
   it('guards both reclaiming deletes against every table in the schema that can reference an image', async () => {
@@ -365,7 +516,7 @@ describe('purgeUnreferencedPlaceholderImages', () => {
     expect(referrers.length).toBeGreaterThan(0)
 
     const { sanitized } = await sanitizedPlaceholder()
-    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: sanitized }])
     harness.queueResult([])
     harness.queueResult([])
     harness.queueResult([{ imageHash: 'hash-1' }])
@@ -394,7 +545,7 @@ describe('purgeUnreferencedPlaceholderImages', () => {
     const correlationsIn = (sql: string) => [...sql.matchAll(/= "(\w+)"\."image_hash"\)/g)].map(([, table]) => table)
 
     const { sanitized } = await sanitizedPlaceholder()
-    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: sanitized }])
     harness.queueResult([])
     harness.queueResult([])
     harness.queueResult([{ imageHash: 'hash-1' }])
@@ -416,8 +567,8 @@ describe('purgeUnreferencedPlaceholderImages', () => {
     // referenced, and still served.
     const { sanitized } = await sanitizedPlaceholder()
     harness.queueResult([
-      { imageHash: 'unreferenced', content: sanitized },
-      { imageHash: 'still-in-use', content: sanitized },
+      { imageHash: 'unreferenced', contentSha256: null, byteSize: null, content: sanitized },
+      { imageHash: 'still-in-use', contentSha256: null, byteSize: null, content: sanitized },
     ])
     harness.queueResult([])
     harness.queueResult([])
@@ -603,9 +754,32 @@ describe('getFreshImageFromLink', () => {
     // taken straight back from cache within the same run.
     const { sanitized } = await sanitizedPlaceholder()
     harness.queueResult([{ uri: 'https://dd.dexscreener.com/ds-data/chains/iotex.png', imageHash: 'hash-1' }])
-    harness.queueResult([{ imageHash: 'hash-1', content: sanitized }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: null, byteSize: null, content: sanitized }])
     const result = await getFreshImageFromLink('https://dd.dexscreener.com/ds-data/chains/iotex.png', 1000)
     expect(result).toBeNull()
+  })
+
+  it('reports a fresh link to an exported placeholder as missing, by digest and without reading the file', async () => {
+    const [placeholder] = knownPlaceholders
+    harness.queueResult([{ uri: 'https://dd.dexscreener.com/ds-data/chains/iotex.png', imageHash: 'hash-1' }])
+    harness.queueResult([
+      { imageHash: 'hash-1', contentSha256: placeholder.fingerprint, byteSize: placeholder.byteLength, content: null },
+    ])
+
+    expect(await getFreshImageFromLink('https://dd.dexscreener.com/ds-data/chains/iotex.png', 1000)).toBeNull()
+  })
+
+  it('selects the image without bytes that an exported row already holds in the store', async () => {
+    harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-1' }])
+    harness.queueResult([{ imageHash: 'hash-1', contentSha256: 'a'.repeat(64), byteSize: 5, content: null }])
+
+    await getFreshImageFromLink('https://x/icon.png', 1000)
+
+    const imageSelect = harness.queries.filter((query) => query.root === 'select')[1]
+    const columns = imageSelect.steps[0].args[0] as Record<string, unknown>
+    expect(renderSql(columns.content)).toContain(
+      'CASE WHEN "image"."content_sha256" IS NULL THEN "image"."content" END',
+    )
   })
 
   it('returns a fresh link to real artwork', async () => {

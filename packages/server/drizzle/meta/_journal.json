@@ -155,6 +155,13 @@
       "when": 1793900000000,
       "tag": "0021_keccak256_in_plpgsql",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1794371237950,
+      "tag": "0022_image_store_columns",
+      "breakpoints": true
     }
   ]
 }

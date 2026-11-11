@@ -20,7 +20,7 @@ import type { BlobStat, BlobStore } from './index'
 /** The file operations the store uses, so a test can make any one of them fail. */
 export type StoreFileSystem = Pick<
   typeof fileSystemModule,
-  'mkdir' | 'open' | 'rename' | 'stat' | 'readFile' | 'unlink' | 'readdir'
+  'mkdir' | 'open' | 'rename' | 'stat' | 'readFile' | 'unlink' | 'readdir' | 'utimes'
 >
 
 /** How old a file in `tmp/` must be before the start-up sweep deletes it. */
@@ -83,12 +83,28 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): LocalBlobS
     return path.join(blobRoot, sha256.slice(0, 2), sha256)
   }
 
-  /** Size of a file, or null when it is not there. */
-  const sizeOf = async (filePath: string): Promise<number | null> => {
+  /** Size and last change of a file, or null when it is not there. */
+  const statOf = async (filePath: string): Promise<{ size: number; mtimeMs: number } | null> => {
     try {
-      return (await fileSystem.stat(filePath)).size
+      const { size, mtimeMs } = await fileSystem.stat(filePath)
+      return { size, mtimeMs }
     } catch (error) {
       if (isMissing(error)) return null
+      throw error
+    }
+  }
+
+  /**
+   * Marks a file as just used, so a clean-up that goes by age (`images gc`) does not take a
+   * blob that a write has just agreed to reuse. Returns false when the file is already gone.
+   */
+  const touch = async (filePath: string): Promise<boolean> => {
+    const stamp = new Date(now())
+    try {
+      await fileSystem.utimes(filePath, stamp, stamp)
+      return true
+    } catch (error) {
+      if (isMissing(error)) return false
       throw error
     }
   }
@@ -119,7 +135,9 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): LocalBlobS
     const byteSize = bytes.byteLength
     const finalPath = blobPath(sha256)
     // A file of the right size under a name that is its own digest is the same content.
-    if ((await sizeOf(finalPath)) === byteSize) return { sha256, byteSize }
+    // Reusing it counts as a use: the caller is about to commit a row that points at it.
+    const present = await statOf(finalPath)
+    if (present?.size === byteSize && (await touch(finalPath))) return { sha256, byteSize }
 
     const shardDirectory = path.dirname(finalPath)
     const temporaryPath = path.join(temporaryRoot, `${sha256}.${processId}.${randomSuffix()}`)
@@ -146,8 +164,8 @@ export function createLocalBlobStore(options: LocalBlobStoreOptions): LocalBlobS
   }
 
   const stat = async (sha256: string): Promise<BlobStat | null> => {
-    const byteSize = await sizeOf(blobPath(sha256))
-    return byteSize === null ? null : { sha256, byteSize }
+    const found = await statOf(blobPath(sha256))
+    return found === null ? null : { sha256, byteSize: found.size, modifiedAtMs: found.mtimeMs }
   }
 
   /** Deletes a file. Returns false, rather than throwing, when it was already gone. */

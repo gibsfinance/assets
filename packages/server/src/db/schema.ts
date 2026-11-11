@@ -62,7 +62,21 @@ export const image = pgTable(
   'image',
   {
     imageHash: text('image_hash').primaryKey().notNull(),
-    content: bytea('content').notNull(),
+    /**
+     * The stored bytes, after sanitizing. Null once the bytes live only in the image store
+     * (see `image-store/`): read through `loadImageBytes`, never directly. Empty for a
+     * link-only row.
+     */
+    content: bytea('content'),
+    /**
+     * sha256 of the stored bytes in lowercase hexadecimal, which is also the name of the
+     * file in the image store. Null for a link-only row (no bytes) and for a row that has
+     * not been exported yet. Not unique: the same picture under two addresses is two rows
+     * and one file.
+     */
+    contentSha256: text('content_sha256'),
+    /** Length of the stored bytes. 0 for a link-only row. Null until the row is exported. */
+    byteSize: integer('byte_size'),
     uri: text().notNull(),
     ext: text().notNull(),
     mode: text().notNull(),
@@ -74,6 +88,7 @@ export const image = pgTable(
     index().using('btree', table.ext.asc().nullsLast().op('text_ops')),
     index().using('btree', table.mode.asc().nullsLast().op('text_ops')),
     index().using('btree', table.uri.asc().nullsLast().op('text_ops')),
+    index('image_content_sha256_index').using('btree', table.contentSha256.asc().nullsLast().op('text_ops')),
   ],
 )
 
