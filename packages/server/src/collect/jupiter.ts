@@ -4,7 +4,7 @@ import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { nextListVersion, sameMembership, type ListVersionNumbers } from './list-membership'
 import {
   parseJupiterToken,

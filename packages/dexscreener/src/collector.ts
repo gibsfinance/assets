@@ -1,20 +1,24 @@
 import _ from 'lodash'
-import { ChainType, IInfo, Website, Social, chainIdToChain, TokenPairsResponse, dexscreenerApi, IToken } from '.'
+import { type ChainType, type IInfo, type Website, type Social, chainIdToChain, type TokenPairsResponse, dexscreenerApi, type IToken } from '.'
 import type * as dexscreenerSDK from 'dexscreener-sdk'
 import { erc20Abi, erc20Abi_bytes32, type Hex } from 'viem'
-import { MinimalTokenInfoWithLogo, retry } from '@gibs/utils'
+import { type MinimalTokenInfoWithLogo, retry } from '@gibs/utils'
 import { createChainClient } from '@gibs/utils/viem'
 export type UpdateKey = 'token' | 'pair'
 
 export type TokenKey = `${ChainType}-${number}-${string}`
 
 export class Collector {
-  constructor(
-    protected chainKey: string,
-    protected chainType: ChainType,
-    protected chainId: number,
-    protected signal: AbortSignal,
-  ) {}
+  protected chainKey: string
+  protected chainType: ChainType
+  protected chainId: number
+  protected signal: AbortSignal
+  constructor(chainKey: string, chainType: ChainType, chainId: number, signal: AbortSignal) {
+    this.chainKey = chainKey
+    this.chainType = chainType
+    this.chainId = chainId
+    this.signal = signal
+  }
   pending = new Set<TokenKey>()
   fetched = new Set<TokenKey>()
   token = new Map<TokenKey, dexscreenerSDK.IToken>()

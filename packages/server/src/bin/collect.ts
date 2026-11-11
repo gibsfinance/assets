@@ -5,10 +5,12 @@ import * as db from '../db'
 import { setDoesRender } from '../log/App'
 import { startMemoryReporting } from '../server/memory'
 import * as paths from '../paths'
+import { applySharpLimits } from '../sharp-limits'
 import { isRefreshEnabled, refreshSubmodulesForProviders } from '../submodule-refresh'
 import _ from 'lodash'
 const { providers, logger, concurrency } = args.collect()
 
+applySharpLimits()
 setDoesRender(logger === 'terminal')
 
 async function runCollect() {

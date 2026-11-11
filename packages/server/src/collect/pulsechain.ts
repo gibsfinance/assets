@@ -1,5 +1,5 @@
 import * as db from '../db'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'pulsechain'
 

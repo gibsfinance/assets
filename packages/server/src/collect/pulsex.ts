@@ -6,7 +6,7 @@ import * as utils from '../utils'
 import { minimalList } from '../server/list/utils'
 import * as remoteTokenList from './remote-tokenlist'
 import * as db from '../db'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'pulsex'
 

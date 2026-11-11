@@ -1,5 +1,5 @@
 import { fetch } from '../fetch'
-import lists from '../harvested/uniswap/lists.json'
+import lists from '../harvested/uniswap/lists.json' with { type: 'json' }
 import * as types from '../types'
 import _ from 'lodash'
 import promiseLimit from 'promise-limit'
@@ -7,7 +7,7 @@ import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { terminalRowTypes } from '../log/types'
 import { terminal } from '../utils'
 import { failureLog } from '@gibs/utils'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'uniswap'
 

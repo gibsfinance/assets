@@ -8,8 +8,8 @@ import { fetch } from '../fetch'
 import * as db from '../db'
 import * as utils from '../utils'
 import { delay } from '../utils/delay'
-import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { terminalCounterTypes, terminalLogTypes, type TerminalRowProxy, terminalRowTypes } from '../log/types'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'routescan'
 

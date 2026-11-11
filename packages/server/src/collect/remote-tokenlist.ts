@@ -5,8 +5,14 @@ import * as utils from '../utils'
 import _ from 'lodash'
 import * as viem from 'viem'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { KV, terminalCounterTypes, terminalLogTypes, terminalRowTypes, TerminalSectionProxy } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import {
+  type KV,
+  terminalCounterTypes,
+  terminalLogTypes,
+  terminalRowTypes,
+  type TerminalSectionProxy,
+} from '../log/types'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 type Extension = {
   address: viem.Hex

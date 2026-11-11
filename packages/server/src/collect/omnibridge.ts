@@ -6,7 +6,7 @@ import * as db from '../db'
 import { chainIdToNetworkId, chainToPublicClient, counterId, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import type { MinimalTokenInfo } from '@gibs/utils'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 /**
  * Configuration types for bridge endpoints

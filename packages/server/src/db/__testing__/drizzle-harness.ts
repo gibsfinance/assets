@@ -110,7 +110,10 @@ const terminalMethods = ['limit', 'returning'] as const
  */
 /** Sentinel wrapper: a queued entry the next query rejects with, instead of resolving. */
 class QueuedRejection {
-  constructor(readonly error: unknown) {}
+  readonly error: unknown
+  constructor(error: unknown) {
+    this.error = error
+  }
 }
 
 export const createDrizzleHarness = () => {

@@ -719,7 +719,7 @@ export const batchFetchImagesForTokens = async (
   }
 
   // Use promiseLimit to control concurrency
-  const limit = promiseLimit(8) // Limit to 8 concurrent image fetches
+  const limit = promiseLimit(config.concurrency.imageFetches) // IMAGE_FETCH_CONCURRENCY, default 8
 
   // Every task below resolves: the body is wrapped in a total try/catch that
   // turns any failure into a `success: false` entry, so one bad image degrades
@@ -1422,13 +1422,14 @@ export const fetchImageAndStoreForToken = async (
 }
 
 /**
- * How many logos to download at once in `prewarmImages`.
+ * How many logos to download at once in `prewarmImages` (IMAGE_PREWARM_CONCURRENCY,
+ * default 8).
  *
  * Matches the ceiling `batchFetchImagesForTokens` already uses, and is bounded by what a
  * provider's image host will tolerate rather than by anything local — the work is a fetch
  * with a three-second timeout, so raising this trades politeness for wall clock.
  */
-const IMAGE_PREWARM_CONCURRENCY = 8
+const IMAGE_PREWARM_CONCURRENCY = config.concurrency.imagePrewarm
 
 /**
  * Download every logo a list needs, concurrently, before anything walks its tokens.

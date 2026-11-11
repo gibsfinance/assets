@@ -4,7 +4,7 @@ import * as utils from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { limitBy } from '@gibs/utils'
 import { limitByTime } from '@gibs/utils/fetch'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import {
   isValidPlatformAddress,
   normalizePlatformAddress,

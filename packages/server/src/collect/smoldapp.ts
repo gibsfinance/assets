@@ -12,8 +12,8 @@ import promiseLimit from 'promise-limit'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { erc20Read } from '@gibs/utils/viem'
 import { failureLog } from '@gibs/utils'
-import { TokenListVersion } from '../types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { type TokenListVersion } from '../types'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const oneListInsertAtATime = promiseLimit<List>(2)
 

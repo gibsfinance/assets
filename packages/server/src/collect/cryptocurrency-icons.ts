@@ -1,6 +1,6 @@
 import { registeredCoinTypes } from 'slip44'
 import * as db from '../db'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { resolveChains, type CatalogEntry, type ResolvedChain } from './non-evm-resolver'
 
 const providerKey = 'cryptocurrency-icons'

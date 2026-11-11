@@ -1,6 +1,6 @@
 import * as path from 'path'
 import * as fs from 'fs'
-import { createPublicClient, http, PublicClient } from 'viem'
+import { createPublicClient, http, type PublicClient } from 'viem'
 
 import * as db from '../db'
 import * as types from '../types'
@@ -10,7 +10,7 @@ import * as submoduleSource from '../submodule-source'
 import { terminalCounterTypes, terminalLogTypes, terminalRowTypes } from '../log/types'
 import { failureLog, limitBy } from '@gibs/utils'
 import _ from 'lodash'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'trustwallet'
 const blockchainsRoot = path.join(paths.submodules, providerKey, 'blockchains')

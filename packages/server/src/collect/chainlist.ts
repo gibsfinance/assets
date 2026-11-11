@@ -1,7 +1,7 @@
 import { limitBy } from '@gibs/utils'
 import * as db from '../db'
 import { fetch } from '../fetch'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { mergeRegistries, pickIconUrl, type ChainlistEntry } from './chainlist-parse'
 
 const providerKey = 'chainlist'

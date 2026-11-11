@@ -6,7 +6,7 @@ import { limitBy } from '@gibs/utils'
 import * as utils from '../utils'
 import { terminalLogTypes, terminalRowTypes } from '../log/types'
 import { keccak256, stringToHex } from 'viem'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'countries'
 

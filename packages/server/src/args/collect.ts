@@ -4,6 +4,7 @@ import _ from 'lodash'
 import { type Collectable, allCollectables } from '../collect/collectables'
 import type { ImageModeParam } from '../types'
 import { imageMode } from '../db/tables'
+import config from '../../config'
 
 /**
  * RPC configuration helper for chain endpoints
@@ -50,7 +51,7 @@ export const collect = _.memoize(() => {
       type: 'number',
       describe: 'max providers to run in parallel',
       required: false,
-      default: 4,
+      default: config.concurrency.providers,
     },
     rpc1: rpc('ethereum', 'https://rpc-ethereum.g4mm4.io'),
     rpc369: rpc('pulsechain', 'https://rpc-pulsechain.g4mm4.io'),

@@ -14,7 +14,14 @@ import * as db from '../../db'
 import * as utils from '../../utils'
 import * as viem from 'viem'
 import type { Network, Token } from '../../db/schema-types'
-import { Extensions, ServedTokenEntry, TokenEntry, TokenEntryMetadataOptional, TokenInfo, TokenList } from '../../types'
+import {
+  type Extensions,
+  type ServedTokenEntry,
+  type TokenEntry,
+  type TokenEntryMetadataOptional,
+  type TokenInfo,
+  type TokenList,
+} from '../../types'
 import _ from 'lodash'
 import { eq, asc } from 'drizzle-orm'
 import * as s from '../../db/schema'

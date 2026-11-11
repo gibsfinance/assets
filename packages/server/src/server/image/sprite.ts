@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import type { OverlayOptions } from 'sharp'
 import config from '../../../config'
-import { RequestHandler } from 'express'
+import { type RequestHandler } from 'express'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, ne, sql as dsql } from 'drizzle-orm'
 import * as s from '../../db/schema'

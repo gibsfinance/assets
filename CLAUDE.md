@@ -63,6 +63,42 @@ yarn smoke:production              # gib.show
 #   did not come from that code at all: suspect the cache before the code.
 ```
 
+## Running on Plain Node, and Runtime Settings
+
+Production runs `node --import ./src/bin/register-hooks.ts ./src/bin/server.ts` (and `collect.ts`)
+from `packages/server`, not `yarn run server`. Node strips the types itself; the preload
+(`src/runtime/node-hooks.ts`) finds the file behind an extensionless import and compiles the one
+`.tsx` file with esbuild. Measured at idle in a Linux container, the server tree went from about
+410 MB (yarn, tsx launcher, server, esbuild service) to about 250 MB. `yarn start:server` and
+`yarn start:collect` run the same thing; `yarn server` and `yarn collect` still use tsx.
+- Source must stay strippable. `packages/server/tsconfig.json` sets `verbatimModuleSyntax` and
+  `erasableSyntaxOnly`, so a type-only import needs `import type` / `type X`, and enums,
+  namespaces and constructor parameter properties are errors. A JSON import needs
+  `with { type: 'json' }`.
+- The collector still loads esbuild because the terminal view is JSX. Making that import lazy in
+  the server would save about 35 MB more.
+
+Settings read once at start-up (`config.ts`). A value that is not a whole number of at least one
+falls back to the default.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `COLLECT_PROVIDER_CONCURRENCY` | 4 | providers collected in parallel (`--concurrency` overrides) |
+| `IMAGE_FETCH_CONCURRENCY` | 8 | logos downloaded at once while a list's tokens are stored |
+| `IMAGE_PREWARM_CONCURRENCY` | 8 | logos downloaded at once while a list is prewarmed |
+| `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
+| `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
+| `SHARP_CONCURRENCY` | 1 | threads libvips may use |
+| `IMAGE_STORE_DIR` | `<repository root>/image-store` | root of the content-addressed image store |
+
+## Image Store (`packages/server/src/image-store/`)
+Content-addressed blob storage, not yet called by anything. `getImageStore()` returns a
+`BlobStore` (`put`, `get`, `stat`, `delete`, `list`); `hashBytes()` is the sha256 of the stored
+bytes. The local store lays files out as `<root>/sha256/<first two hex>/<64 hex>` with no
+extension. A write goes to `<root>/tmp/`, is flushed, renamed into place, and its shard directory
+is flushed. A digest that is not 64 lowercase hex characters is refused before any path is built.
+Building the store sweeps temporary files older than an hour.
+
 ## Architecture
 
 ### ORM: Drizzle (migrated from Knex March 2026)
