@@ -52,6 +52,7 @@ import pangolinCollector from './pangolin'
 import arbitrumCollector from './arbitrum'
 import mewCollector from './mew'
 import jupiterCollector from './jupiter'
+import etherscanCollector from './etherscan'
 // Bridge aggregators. Broad, cross-chain, and verified-only — see ./aggregator.
 import lifiCollector from './lifi'
 import relayCollector from './relay'
@@ -108,6 +109,7 @@ type CollectableKey =
   | 'pancakeswap-extended'
   | 'pangolin'
   | 'arbitrum'
+  | 'etherscan'
   | 'mew'
   | 'jupiter'
   | 'lifi'
@@ -221,6 +223,13 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     'pancakeswap-extended': pancakeswapExtendedCollector,
     pangolin: pangolinCollector,
     arbitrum: arbitrumCollector,
+    // Etherscan's own token records, fetched only for tokens other providers already rank
+    // (it has no endpoint that ranks tokens) and only on the chains and plan the key allows.
+    // It sits below every curated list and every aggregator, so it may not overrule a source that
+    // chose its art on purpose, and above the metadata dump and the network-icon fallbacks. This
+    // is a precaution, not a measurement: no key that can call `tokeninfo` has run yet, so how
+    // often its logos differ from the sources above is unknown. Revisit once real data exists.
+    etherscan: etherscanCollector,
     // Jupiter's verified Solana universe, filed under solana-501 and split into one
     // list per meaningful tag (lst, meme, rwa, stable, and so on).
     jupiter: jupiterCollector,

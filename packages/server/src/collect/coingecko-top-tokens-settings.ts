@@ -11,6 +11,20 @@
  * with an address-based limit shared by everyone behind the same address.
  */
 
+/**
+ * The provider key. It is a provider of its own, not a second set of lists under `coingecko`:
+ * the full collector registers one list per chain holding every coin CoinGecko knows, unranked,
+ * and keeps its list keys (the bare chain id) and its ranking slots. A second collector cannot
+ * share its registry key, and a separate key lets this one fail, be ranked and be turned off alone.
+ */
+export const COINGECKO_TOP_TOKENS_PROVIDER_KEY = 'coingecko-top-tokens'
+
+/** What every list key of this provider starts with: `top-tokens-<chain id>` follows the routescan naming. */
+export const TOP_TOKENS_LIST_KEY_PREFIX = 'top-tokens'
+
+/** The list key for one chain, `top-tokens-<chain id>`. */
+export const topTokensListKey = (chainId: number): string => `${TOP_TOKENS_LIST_KEY_PREFIX}-${chainId}`
+
 /** How the configured key is presented to CoinGecko. */
 export type CoinGeckoPlan = 'keyless' | 'demo' | 'pro'
 

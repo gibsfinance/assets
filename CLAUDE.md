@@ -15,8 +15,8 @@ yarn workspace ui run test
 # calling the change done.
 #   Every workspace — 100% on all four metrics, and the floors are set there.
 #     A single untested line fails the build while every test still passes.
-#     Actuals: server 7166 statements / 3555 branches / 1318 functions / 6407
-#     lines over 3162 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     Actuals: server 7469 statements / 3686 branches / 1385 functions / 6679
+#     lines over 3281 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
 #     92 tests, @gibs/utils 95, @gibs/react 41.
 #   There is no margin under the interface floors any more. The old ones sat
 #     ~0.2 below measured because this workspace used to report slightly lower
@@ -301,13 +301,28 @@ contested token.
   documented Demo and Pro forms.
 - Plan: CoinGecko's pages do not state a plan requirement for these endpoints; the Demo documentation lists all four.
 
-### Retired provider: etherscan
-The `etherscan` collector (a headless-browser scrape of explorer pages) was removed. The
-Etherscan API has no top-tokens endpoint, and its token-info endpoint is a paid tier. Its
-existing rows stay in the database and `/list/etherscan/top-tokens` still serves them, now
-frozen. With no list order item they rank last, so any other provider wins a contested token.
-Nothing deletes them; remove them with a deliberate migration if that is ever wanted.
-`coingecko-top-tokens` (above) now fills the role it was meant to.
+### Etherscan collector (API V2)
+The old `etherscan` collector scraped explorer pages with a headless browser and was removed. The current
+`collect/etherscan.ts` uses the documented Etherscan API V2 under the same provider key `etherscan`, so existing
+rows and `/list/etherscan/top-tokens` stay valid (that list is frozen and empty).
+- Etherscan has no endpoint that ranks tokens (docs.etherscan.io/endpoint-overview). The collector fetches
+  `tokeninfo` for tokens that other providers' lists already rank (`getTopTokenAddresses`, `ETHERSCAN_SOURCE_LISTS`). The default reads the `coingecko-top-tokens` lists
+  (`top-tokens-<chain id>`, above) first, then routescan's `top-tokens*` lists; a token both name keeps its earlier place.
+  The provider key and list key prefix are constants in `coingecko-top-tokens-settings.ts`, which Etherscan imports.
+- `tokeninfo` is API Pro (Standard plan and up), 2 calls per second on every plan; the free plan covers only some
+  chains. Nothing assumes what the key may do: discovery runs a probe (`etherscan-capability.ts`), once per run, and
+  the collector uses only chain and endpoint pairs that answered `ok`. Others get one log line each, are not
+  failures, and are not retried. A free key therefore collects nothing and logs why.
+- A refusal in the middle of a chain stops that chain and leaves its published list as it was. Lists are
+  `top-tokens-<chainId>`, versioned by membership through `versioned-lists.ts` (shared with Jupiter and `coingecko-top-tokens`).
+- `etherscan-response.ts` classifies answers from their text (status 0 with the reason in `message` or `result`);
+  tests use the exact refusal strings in `__testing__/etherscan-fixtures.ts`. Add a new refusal there first.
+- Operator command: `yarn workspace server run start:etherscan check` prints what the key can use (never the key)
+  and exits 1 when no chain can be collected.
+- Rank: just below `arbitrum`, below every curated list and aggregator. A precaution, not a measurement; revisit
+  once a key that can call `tokeninfo` has produced data.
+- The `image` field is the logo. Only an absolute address is kept; a relative one is dropped because its host is
+  unknown per chain. This is unverified against live data (no key that can call `tokeninfo` has been available).
 
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function

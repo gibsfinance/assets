@@ -18,26 +18,21 @@ import {
   type TopToken,
 } from './coingecko-top-tokens-select'
 import {
+  COINGECKO_TOP_TOKENS_PROVIDER_KEY,
   MARKETS_PAGE_SIZE,
+  topTokensListKey,
   readCoinGeckoTopTokensSettings,
   type CoinGeckoTopTokensSettings,
 } from './coingecko-top-tokens-settings'
 import { publishWalkedList, resolveListVersion, retireStaleLists } from './versioned-lists'
 
-/**
- * The provider key. It is a provider of its own, not a second set of lists under `coingecko`:
- * the full collector registers one list per chain holding every coin CoinGecko knows, unranked,
- * and keeps its list keys (the bare chain id) and its ranking slots. A second collector cannot
- * share its registry key, and a separate key lets this one fail, be ranked and be turned off alone.
- */
-export const providerKey = 'coingecko-top-tokens'
+export const providerKey = COINGECKO_TOP_TOKENS_PROVIDER_KEY
 const providerName = 'CoinGecko: top tokens'
 
 /** A list with fewer tokens than this is skipped rather than created near-empty. */
 export const MIN_LIST_SIZE = 5
 
-/** The list key for one chain, `top-tokens-<chain id>`, following the routescan naming. */
-export const topTokensListKey = (chainId: number): string => `top-tokens-${chainId}`
+export { topTokensListKey }
 
 /** A configured chain that CoinGecko knows, with the platform that carries its contracts. */
 type ChainTarget = {

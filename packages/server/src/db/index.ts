@@ -92,6 +92,7 @@ export { migrate } from './drizzle'
 
 /** Version-aware list queries for collectors whose membership changes between runs. */
 export { getListVersionSnapshot, getProviderListKeys, pruneSupersededListVersions } from './list-versions'
+export { getTopTokenAddresses, type SourceListSelector } from './source-tokens'
 
 /** Run a Drizzle transaction. */
 export const transaction = async <T>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => {

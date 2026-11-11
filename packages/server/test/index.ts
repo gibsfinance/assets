@@ -13,6 +13,7 @@ import './canonical-image.test'
 import './algorand-alias-migration.test'
 import './keccak256.test'
 import './image-store.test'
+import './source-tokens.test'
 
 import { cleanup } from '../src/cleanup'
 import { removeImageStoreRoot } from './image-store-directory'

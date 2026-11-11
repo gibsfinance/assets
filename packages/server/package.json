@@ -23,6 +23,8 @@
     "start:collect": "node --import ./src/bin/register-hooks.ts ./src/bin/collect.ts",
     "images": "tsx src/bin/images",
     "start:images": "node --import ./src/bin/register-hooks.ts ./src/bin/images.ts",
+    "etherscan": "tsx src/bin/etherscan",
+    "start:etherscan": "node --import ./src/bin/register-hooks.ts ./src/bin/etherscan.ts",
     "collect:dev": "tsx --watch src/bin/collect",
     "harvest": "tsx src/bin/harvest",
     "server": "tsx ./src/bin/server.ts",
