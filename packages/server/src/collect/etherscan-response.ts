@@ -40,6 +40,9 @@ export type EtherscanClassification = {
  * https://docs.etherscan.io/common-error-messages.
  */
 const REFUSAL_PHRASES: readonly { outcome: Exclude<EtherscanOutcome, 'ok' | 'other'>; phrases: readonly string[] }[] = [
+  // First, because the daily-quota message also ends "please upgrade to API Pro" and would
+  // otherwise read as a plan refusal (seen 2026-11-11 on Celo and Linea). It resets daily.
+  { outcome: 'rate-limited', phrases: ['community free api limit reached'] },
   { outcome: 'requires-pro', phrases: ['api pro endpoint', 'upgrade to api pro'] },
   { outcome: 'chain-not-on-plan', phrases: ['free api access is not supported for this chain'] },
   { outcome: 'invalid-key', phrases: ['invalid api key', 'missing/invalid api key'] },

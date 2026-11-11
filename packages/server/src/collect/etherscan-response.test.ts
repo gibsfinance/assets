@@ -51,6 +51,11 @@ describe('classifyEtherscanResponse', () => {
     ['Max rate limit reached, please use API Key for higher rate limit'],
     ['Max calls per sec rate limit reached (3/sec)'],
     ['Community Free API limit reached.'],
+    // Sent on 2026-11-11 for Celo and Linea. It ends by offering API Pro, which must not make it
+    // read as a plan refusal: the quota resets daily, the chain is not out of reach.
+    [
+      'Community Free API Limit reached. Resets 2026-11-12 00:00:00 UTC. For higher, uninterrupted limits, please upgrade to API Pro: https://etherscan.io/apis',
+    ],
   ])('recognises the rate message %j', (text) => {
     expect(classifyEtherscanResponse({ status: '0', message: 'NOTOK', result: text }).outcome).toBe('rate-limited')
   })
