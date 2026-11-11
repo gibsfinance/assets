@@ -15,7 +15,7 @@ import * as fileSystemModule from 'node:fs/promises'
 import * as path from 'node:path'
 import { log } from '../logger'
 import { assertSha256Hex, hashBytes, SHA256_PATTERN } from './hash'
-import type { BlobStat, BlobStore } from './index'
+import type { BlobStat, BlobStore } from './types'
 
 /** The file operations the store uses, so a test can make any one of them fail. */
 export type StoreFileSystem = Pick<

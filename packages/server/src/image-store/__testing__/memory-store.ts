@@ -1,5 +1,5 @@
 import { hashBytes } from '../hash'
-import type { BlobStat, BlobStore } from '../index'
+import type { BlobStat, BlobStore } from '../types'
 
 /** A blob store in memory, for tests of code that uses a {@link BlobStore}. */
 export type MemoryBlobStore = BlobStore & {
