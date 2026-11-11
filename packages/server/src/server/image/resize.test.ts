@@ -684,6 +684,25 @@ describe('maybeResize', () => {
     expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
   })
 
+  it.each([
+    ['null: the file is missing from the image store', null],
+    ['empty bytes', Buffer.alloc(0)],
+  ])(
+    'declines to resize a saved image whose bytes are %s, leaving the caller to redirect or answer 404',
+    async (_label, content) => {
+      global.fetch = vi.fn() as never
+      const res = mockRes()
+      const img = makeImage({ mode: 'save', content: content as Buffer })
+
+      const result = await maybeResize({ res, img, params: parseResizeParams({ query: { w: '72' } }) })
+
+      expect(result).toBe(false)
+      expect(sharp).not.toHaveBeenCalled()
+      expect(res.send).not.toHaveBeenCalled()
+      expect(global.fetch).not.toHaveBeenCalled()
+    },
+  )
+
   it('will not fetch a link-only host in order to resize it', async () => {
     // A resize is a derivative, and a link-only host's terms forbid a derivative as
     // firmly as a copy. Fetching the bytes here purely to transcode them would be

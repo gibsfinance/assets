@@ -9,16 +9,23 @@ import { normalizeProvidedId } from '../../db/provided-id'
 import { chainIdFilterMatch } from '../../chain-id'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { LICENSE_LINK_HEADER } from './attribution'
+import { loadImageBytes } from '../../image-store/image-bytes'
+import { unexportedBytesSql } from '../../db/image-columns'
+import _ from 'lodash'
 
 const DEFAULT_SIZE = 32
 const DEFAULT_COLS = 25
 const MAX_TOKENS = 2000
+/** How many image files a sprite request reads at once. */
+const FILE_READ_BATCH_SIZE = 20
 
 interface SpriteToken {
   address: string
   chainId: string
   imageHash: string
-  content: Buffer
+  /** Bytes the row itself carries; null once a digest names a file. See `loadImageBytes`. */
+  content: Buffer | null
+  contentSha256: string | null
   ext: string
   mode: string
   uri: string
@@ -40,7 +47,8 @@ export function spriteKey(token: { chainId: string; address: string }): string {
 async function rasterize(image: SpriteToken, size: number): Promise<Buffer | null> {
   try {
     let buf: Buffer
-    if (image.mode === 'link' || !image.content || image.content.length === 0) {
+    const stored = image.mode === 'link' ? null : await loadImageBytes(image)
+    if (!stored || stored.length === 0) {
       if (!image.uri) return null
       // A link-only host's terms forbid a copy and a derivative; a sprite cell is
       // both. Treated as an image that failed to rasterize: the cell stays empty
@@ -50,7 +58,7 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
       if (!res.ok) return null
       buf = Buffer.from(await res.arrayBuffer())
     } else {
-      buf = image.content
+      buf = stored
     }
     return sharp(buf)
       .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -94,15 +102,23 @@ async function resolveListId(providerKey: string, listKey: string): Promise<stri
   return row?.listId ?? null
 }
 
-/** Query tokens under a list with their images */
-function queryListTokens(listId: string) {
+/**
+ * Query tokens under a list with their images.
+ *
+ * @param options.withBytes Whether to return the bytes a row still carries itself (a row that
+ *   has not been exported to the image store). The manifest needs them only for `?content=mixed`.
+ */
+function queryListTokens(listId: string, { withBytes }: { withBytes: boolean }) {
   return getDrizzle()
     .select({
       address: s.token.providedId,
       chainId: s.network.chainId,
       imageHash: s.image.imageHash,
       ext: s.image.ext,
-      content: s.image.content,
+      // Only a row not yet exported to the image store carries bytes here; the rest are read
+      // from their files, and only for the cells that need them (see `loadImageBytes`).
+      content: withBytes ? unexportedBytesSql : dsql<Buffer | null>`NULL::bytea`,
+      contentSha256: s.image.contentSha256,
       mode: s.image.mode,
       uri: s.image.uri,
     })
@@ -144,7 +160,7 @@ export const manifest: RequestHandler = async (req, res, _next) => {
   const mixed = req.query.content === 'mixed'
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
-  let q = queryListTokens(listId)
+  let q = queryListTokens(listId, { withBytes: mixed })
   if (chainFilter) q = q.where(chainFilterCondition(chainFilter))
 
   const tokens = await q.limit(limit)
@@ -153,13 +169,28 @@ export const manifest: RequestHandler = async (req, res, _next) => {
   const tokenMap: Record<string, [number, number] | string> = {}
   let rasterIdx = 0
 
-  for (const t of tokens) {
-    const key = spriteKey({ chainId: String(t.chainId), address: t.address as string })
+  const unique: { key: string; token: (typeof tokens)[number] }[] = []
+  for (const token of tokens) {
+    const key = spriteKey({ chainId: String(token.chainId), address: token.address as string })
     if (seen.has(key)) continue
     seen.add(key)
-
-    if (mixed && t.ext === '.svg' && t.content && t.content.length > 0) {
-      tokenMap[key] = `data:image/svg+xml;base64,${t.content.toString('base64')}`
+    unique.push({ key, token })
+  }
+  // Only a mixed manifest reads bytes, and only an SVG's: they become inline data addresses.
+  // Every other token is placed in the grid without its image being read.
+  const inlineSvgs = new Map<string, Buffer>()
+  const svgs = mixed ? unique.filter(({ token }) => token.ext === '.svg') : []
+  for (const batch of _.chunk(svgs, FILE_READ_BATCH_SIZE)) {
+    const read = await Promise.all(batch.map(({ token }) => loadImageBytes(token)))
+    batch.forEach(({ key }, index) => {
+      const bytes = read[index]
+      if (bytes && bytes.length > 0) inlineSvgs.set(key, bytes)
+    })
+  }
+  for (const { key } of unique) {
+    const svg = inlineSvgs.get(key)
+    if (svg) {
+      tokenMap[key] = `data:image/svg+xml;base64,${svg.toString('base64')}`
     } else {
       tokenMap[key] = [rasterIdx % cols, Math.floor(rasterIdx / cols)]
       rasterIdx++
@@ -208,7 +239,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
   const mixed = req.query.content === 'mixed'
   const chainFilter = req.query.chainId ? String(req.query.chainId) : null
 
-  let q = queryListTokens(listId)
+  let q = queryListTokens(listId, { withBytes: true })
   if (chainFilter) q = q.where(chainFilterCondition(chainFilter))
 
   const tokens = (await q.limit(limit)) as unknown as SpriteToken[]
@@ -237,9 +268,8 @@ export const sheet: RequestHandler = async (req, res, _next) => {
 
   // Rasterize in parallel batches
   const composites: OverlayOptions[] = []
-  const batchSize = 20
-  for (let i = 0; i < deduped.length; i += batchSize) {
-    const batch = deduped.slice(i, i + batchSize)
+  for (let i = 0; i < deduped.length; i += FILE_READ_BATCH_SIZE) {
+    const batch = deduped.slice(i, i + FILE_READ_BATCH_SIZE)
     const results = await Promise.all(
       batch.map(async (token, batchIdx) => {
         const idx = i + batchIdx

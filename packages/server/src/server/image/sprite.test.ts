@@ -10,7 +10,8 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 
-vi.mock('../../../config', () => ({ default: { cacheSeconds: 86400 } }))
+const configMock = vi.hoisted(() => ({ default: { cacheSeconds: 86400, imageStoreDirectory: '' } }))
+vi.mock('../../../config', () => configMock)
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
 vi.mock('../../db/schema', () => ({
   token: { networkId: 'networkId', providedId: 'providedId', tokenId: 'tokenId' },
@@ -33,6 +34,11 @@ import { fileURLToPath } from 'node:url'
 import { manifest, sheet, spriteKey } from './sprite'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
+import { sql } from 'drizzle-orm'
+import { getImageStore, resetImageStoreForTests } from '../../image-store'
+import * as fileSystem from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import type { Request, Response } from 'express'
 
 /** Golden sprite keys shared with @gibs/sdk — see fixtures/sprite-key-contract.json */
@@ -487,6 +493,115 @@ describe('sprite endpoints', () => {
       expect(res.status).toHaveBeenCalledWith(204)
       expect(res.end).toHaveBeenCalled()
       expect(res.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('bytes kept in the image store', () => {
+    let storeRoot: string
+
+    beforeAll(async () => {
+      storeRoot = await fileSystem.mkdtemp(path.join(os.tmpdir(), 'sprite-store-'))
+      configMock.default.imageStoreDirectory = storeRoot
+      resetImageStoreForTests()
+    })
+
+    /** A row as the sprite query returns it once its bytes are in the store. */
+    const exportedRow = async (bytes: Buffer, overrides: Record<string, unknown> = {}) => {
+      const stored = await getImageStore().put(bytes)
+      return {
+        address: ADDRESS,
+        chainId: '1',
+        imageHash: `h-${stored.sha256.slice(0, 8)}`,
+        ext: '.png',
+        content: null,
+        contentSha256: stored.sha256,
+        mode: 'save',
+        uri: '',
+        ...overrides,
+      }
+    }
+
+    it('inlines an SVG from its file in a mixed manifest', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [await exportedRow(svgContent, { ext: '.svg' })])
+      const res = mockResponse()
+
+      await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toBe(
+        `data:image/svg+xml;base64,${svgContent.toString('base64')}`,
+      )
+    })
+
+    it('gives an SVG whose file is missing a grid cell instead, like one that carries no bytes', async () => {
+      const row = await exportedRow(svgContent, { ext: '.svg', contentSha256: 'd'.repeat(64) })
+      queueDrizzleResults([{ listId: 'L1' }], [row])
+      const res = mockResponse()
+
+      await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toEqual([0, 0])
+    })
+
+    it('gives an SVG that carries empty bytes a grid cell, rather than an empty data address', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [{ ...(await exportedRow(svgContent, { ext: '.svg' })), content: Buffer.alloc(0), contentSha256: null }],
+      )
+      const res = mockResponse()
+
+      await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toEqual([0, 0])
+    })
+
+    it('reads no file for a manifest that is not mixed, and for rasters in a mixed one', async () => {
+      const raster = await exportedRow(pngContent)
+      const get = vi.spyOn(getImageStore(), 'get')
+      queueDrizzleResults([{ listId: 'L1' }], [raster])
+      await manifest(mockRequest(), mockResponse(), vi.fn())
+      queueDrizzleResults([{ listId: 'L1' }], [raster])
+      await manifest(mockRequest({ query: { content: 'mixed' } }), mockResponse(), vi.fn())
+
+      expect(get).not.toHaveBeenCalled()
+      get.mockRestore()
+    })
+
+    it('asks the database for the bytes a row still carries only in a mixed manifest', async () => {
+      const selectsNullInsteadOfBytes = async (query: Record<string, string>) => {
+        vi.mocked(sql).mockClear()
+        queueDrizzleResults([{ listId: 'L1' }], [])
+        await manifest(mockRequest({ query }), mockResponse(), vi.fn())
+        return vi.mocked(sql).mock.calls.some((call) => String(call[0]).includes('NULL::bytea'))
+      }
+
+      expect(await selectsNullInsteadOfBytes({})).toBe(true)
+      expect(await selectsNullInsteadOfBytes({ content: 'mixed' })).toBe(false)
+    })
+
+    it('draws a raster cell from its file in the sheet', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [await exportedRow(pngContent)])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      const { data, info } = await sharp((res.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      expect(data[((32 / 2) * info.width + 32 / 2) * 4 + 3]).toBeGreaterThan(0)
+    })
+
+    it('leaves the cell empty, and the grid as it was, when the file is missing and there is no address to fetch', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [await exportedRow(pngContent, { contentSha256: 'e'.repeat(64) })])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(headerValue(res, 'x-sprite-count')).toBe('1')
+      expect(res.send).toHaveBeenCalled()
     })
   })
 })

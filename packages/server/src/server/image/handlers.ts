@@ -8,9 +8,17 @@
  * Query params: `?as=webp` converts output format, `?only=vector` filters source type,
  * `?mode=link` forces redirect to source URI. Path extension (`.webp`) is equivalent to `?as=`.
  *
- * `getImageByHash` is content-addressed — the hash in the URL is the hash of the bytes it
- * serves — so both it and any resized variant of it carry a year-long, immutable cache-control
- * (see `CachePolicy` in `./resize`) instead of the configured, shorter, default. The best-guess
+ * `getImageByHash` is addressed by `image_hash`, which is derived from the content: a keccak256
+ * of the downloaded bytes, the source address and the extension, taken before sanitizing. It is
+ * NOT a hash of the bytes served (`image.content_sha256` is that). A different download gets a
+ * different key, so the row behind a key changes only if the sanitizer's output for the very same
+ * download changes. On that footing both it and any resized variant of it
+ * carry a year-long, immutable cache-control (see `CachePolicy` in `./resize`) instead of the
+ * configured, shorter, default.
+ *
+ * Bytes are read through `withImageBytes`: from the row for an image not yet exported to the
+ * image store, from the store otherwise. A route fetches them once, before it decides how to
+ * answer, so `sendImage` and `maybeResize` see the same row shape in every state of the migration. The best-guess
  * network route also sets `RESOLVED_CHAIN_HEADER` on success, naming the chain identifier a bare
  * numeric request actually resolved to.
  */
@@ -34,6 +42,8 @@ import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored, resolveChainIdAlias } from '../../chain-id'
 import { RESOLVED_CHAIN_HEADER } from './headers'
+import { withImageBytes } from '../../image-store/image-bytes'
+import { imageColumnsWithoutStoredBytes } from '../../db/image-columns'
 
 export { RESOLVED_CHAIN_HEADER }
 
@@ -131,7 +141,13 @@ export const getListTokens = async ({
 
   // No ordering — simple query
   const [row] = await drizzle
-    .select()
+    .select({
+      provider: s.provider,
+      list: s.list,
+      list_token: s.listToken,
+      token: s.token,
+      image: imageColumnsWithoutStoredBytes,
+    })
     .from(s.provider)
     .rightJoin(s.list, eq(s.list.providerId, s.provider.providerId))
     .rightJoin(s.listToken, eq(s.listToken.listId, s.list.listId))
@@ -196,7 +212,7 @@ export const getNetworkIcon = async (chainId: ChainId, exts?: string[]) => {
   }
 
   const [row] = await drizzle
-    .select()
+    .select({ image: imageColumnsWithoutStoredBytes, network: s.network })
     .from(s.image)
     .leftJoin(s.network, eq(s.network.imageHash, s.image.imageHash))
     .where(and(...conditions))
@@ -332,7 +348,7 @@ const getListImage =
         throw status === 406 ? httpErrors.NotAcceptable(formatError) : httpErrors.NotFound(formatError)
       }
     }
-    return { img, outputExt }
+    return { img: await withImageBytes(img), outputExt }
   }
 
 /** Convert Express query param to a flat string array, handling string, array, and object shapes */
@@ -416,23 +432,23 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     conditions.push(inArray(s.image.ext, exts))
   }
   const drizzle = getDrizzle()
-  const [img] = await drizzle
-    .select()
+  const [row] = await drizzle
+    .select(imageColumnsWithoutStoredBytes)
     .from(s.image)
     .where(and(...conditions))
     .limit(1)
-  if (!img) {
+  if (!row) {
     return next(httpErrors.NotFound('image not found'))
   }
-  const image = img as Image
+  const image = (await withImageBytes(row)) as Image
   if (!imageSatisfiesLicense(image, queryStringToList(req.query.license))) {
     return next(httpErrors.NotFound('image not available under the requested license'))
   }
   const params = parseResizeParams({ query: req.query })
-  // Content-addressed: the hash in the URL is the hash of these exact bytes, so
-  // they can never change at this address. A year-long, immutable cache is
-  // honest here in a way it would not be for a token or chain image, which can
-  // get new content at the same address later. Both the un-resized original
+  // Content-addressed: the key in the URL is derived from the downloaded bytes (and their
+  // source address), so a new download never lands on an old key. A year-long, immutable cache
+  // is honest here in a way it would not be for a token or chain image, which can get new
+  // content at the same address later. Both the un-resized original
   // below and any resized/transcoded variant maybeResize serves carry the same
   // policy — a caller who asks for a resized hash-addressed image gets the same
   // permanent-cache guarantee as one who asks for the original.
@@ -474,7 +490,7 @@ const bestGuessNeworkImage = async (
   if (!img) {
     throw httpErrors.NotFound('best guess network image not found')
   }
-  return { img, resolvedChainId }
+  return { img: await withImageBytes(img), resolvedChainId }
 }
 
 /**
@@ -679,14 +695,14 @@ export const sendImage = (
   // or strip them. Only the root element is ever rewritten — see
   // stripRootSvgDimensions.
   //
-  // The content-addressed route is deliberately excluded. Its whole contract is
-  // that the hash in the path is the hash of the bytes it returns, which is also
-  // what makes a year-long immutable lifetime safe to promise. Rewriting the
-  // markup there would break that digest for every caller who verifies it, and
-  // the year-long cache would carry the broken promise well past any correction.
-  // Presentation is worth less than an integrity guarantee, so the hash route
-  // serves exactly what was stored.
+  // The content-addressed route is deliberately excluded. Its contract is that one path
+  // keeps returning the stored bytes, which is what makes a year-long immutable lifetime safe
+  // to promise. (The key in the path is not the sha256 of those bytes; `image.content_sha256`
+  // is that digest.) Rewriting the markup there would change what a path returns, and the
+  // year-long cache would carry the change well past any correction. So the hash route serves
+  // exactly what was stored.
   const rewritable = SVG_EXTS.has(img.ext) && cachePolicy !== 'content-addressed'
-  const content = rewritable ? stripRootSvgDimensions(img.content) : img.content
+  // `classifyImageServe` answered 'serve' only because there are bytes.
+  const content = rewritable ? stripRootSvgDimensions(img.content!) : img.content
   r.contentType(img.ext).send(content)
 }

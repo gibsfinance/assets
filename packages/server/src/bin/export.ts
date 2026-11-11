@@ -7,6 +7,8 @@ import { failureLog } from '@gibs/utils/log'
 import { getDrizzle } from '../db/drizzle'
 import { eq, and } from 'drizzle-orm'
 import * as s from '../db/schema'
+import { imageColumnsWithoutStoredBytes, unexportedBytesSql } from '../db/image-columns'
+import { loadImageBytes } from '../image-store/image-bytes'
 
 main()
   .then(cleanup)
@@ -25,7 +27,7 @@ async function main() {
   const drizzle = getDrizzle()
   if (!token) {
     const [match] = await drizzle
-      .select()
+      .select({ image: imageColumnsWithoutStoredBytes })
       .from(s.network)
       .innerJoin(s.image, eq(s.image.imageHash, s.network.imageHash))
       .where(eq(s.network.chainId, String(chainId)))
@@ -37,7 +39,10 @@ async function main() {
     await fs.promises.mkdir(imgExportDir, {
       recursive: true,
     })
-    await fs.promises.writeFile(path.join(imgExportDir, `${chainId}${match.image.ext}`), match.image.content)
+    await fs.promises.writeFile(
+      path.join(imgExportDir, `${chainId}${match.image.ext}`),
+      (await loadImageBytes(match.image)) ?? Buffer.alloc(0),
+    )
     return
   }
   console.log('%o@%o', chainId, token)
@@ -52,7 +57,8 @@ async function main() {
       symbol: s.token.symbol,
       decimals: s.token.decimals,
       imageHash: s.image.imageHash,
-      content: s.image.content,
+      content: unexportedBytesSql,
+      contentSha256: s.image.contentSha256,
       ext: s.image.ext,
       mode: s.image.mode,
       uri: s.image.uri,
@@ -76,7 +82,7 @@ async function main() {
       await fs.promises.mkdir(dirname, {
         recursive: true,
       })
-      await fs.promises.writeFile(filepath, res.content)
+      await fs.promises.writeFile(filepath, (await loadImageBytes(res)) ?? Buffer.alloc(0))
     }),
   )
 }
