@@ -2,6 +2,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readLimit } from './src/runtime/read-limit'
 import { readSwitch } from './src/runtime/read-switch'
+import { readEtherscanSettings } from './src/collect/etherscan-settings'
 
 const database = {
   url: process.env.DATABASE_URL || 'postgres://gibassets:password@localhost:5876/gibassets',
@@ -105,6 +106,12 @@ const imageStore = process.env.IMAGE_STORE?.trim() || 'local'
  */
 const imageBytesInDatabase = readSwitch(process.env.IMAGE_BYTES_IN_DATABASE, true)
 
+/**
+ * Settings for the Etherscan collector (see `collect/etherscan-settings.ts` for each variable).
+ * The API key is a secret: set it in the environment only, and never log this object.
+ */
+const etherscan = readEtherscanSettings(process.env)
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -118,4 +125,5 @@ export default {
   imageStoreDirectory,
   imageStore,
   imageBytesInDatabase,
+  etherscan,
 }
