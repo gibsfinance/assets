@@ -750,3 +750,22 @@ export const listSubmission = pgTable(
     unique('list_submission_provider_key_list_key_unique').on(table.providerKey, table.listKey),
   ],
 )
+
+/**
+ * Where each blob of the IPFS image store lives. A blob is named by the sha256 of its bytes and
+ * IPFS names content by a CID, which is not that hash once a file is split into blocks, so this
+ * table is the only place the one name maps to the other. It also holds what IPFS cannot answer
+ * for `stat` and `list`: how long a blob is and when it was last written or reused. Rows exist
+ * only when the store is configured as `ipfs`.
+ */
+export const imageStoreCid = pgTable('image_store_cid', {
+  /** sha256 of the stored bytes, 64 lowercase hexadecimal characters. */
+  sha256: text().primaryKey().notNull(),
+  /** The IPFS content identifier the pinning service returned for those bytes. */
+  cid: text().notNull(),
+  byteSize: bigint('byte_size', { mode: 'number' }).notNull(),
+  /** When the blob was last written or reused. `images gc` reads it. */
+  modifiedAt: timestamp('modified_at', { precision: 3, withTimezone: true, mode: 'date' })
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
+})
