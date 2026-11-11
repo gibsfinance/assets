@@ -47,7 +47,7 @@ describe('getImageStore', () => {
 
     expect(second).not.toBe(first)
     expect(await first.stat(stored.sha256)).toBeNull()
-    expect(await second.stat(stored.sha256)).toEqual(stored)
+    expect(await second.stat(stored.sha256)).toEqual(expect.objectContaining(stored))
     await fileSystem.rm(otherRoot, { recursive: true, force: true })
   })
 

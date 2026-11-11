@@ -109,13 +109,55 @@ describe('put', () => {
       }),
     })
     await store.put(hello)
-    const modifiedBefore = (await fileSystem.stat(blobFile(HELLO_DIGEST))).mtimeMs
-
     const second = await store.put(Buffer.from('hello'))
 
     expect(second).toEqual({ sha256: HELLO_DIGEST, byteSize: 5 })
     expect(writes).toBe(1)
-    expect((await fileSystem.stat(blobFile(HELLO_DIGEST))).mtimeMs).toBe(modifiedBefore)
+  })
+
+  it('renews the modification time of content it finds already stored, so age-based clean-up sees the reuse', async () => {
+    let clock = 1_000_000
+    const store = createLocalBlobStore({ root, now: () => clock })
+    await store.put(hello)
+    await fileSystem.utimes(blobFile(HELLO_DIGEST), new Date(1_000), new Date(1_000))
+    clock = 5_000_000
+
+    await store.put(hello)
+
+    expect((await fileSystem.stat(blobFile(HELLO_DIGEST))).mtimeMs).toBe(5_000_000)
+  })
+
+  it('writes the content again when the file vanishes between the check and the renewal', async () => {
+    const writer = createLocalBlobStore({ root })
+    await writer.put(hello)
+    const store = createLocalBlobStore({
+      root,
+      fileSystem: withFaults({
+        utimes: (async (filePath: string) => {
+          await fileSystem.unlink(filePath)
+          throw systemError('ENOENT')
+        }) as StoreFileSystem['utimes'],
+      }),
+    })
+
+    await store.put(hello)
+
+    expect(await fileSystem.readFile(blobFile(HELLO_DIGEST))).toEqual(hello)
+  })
+
+  it('passes on a failure to renew the modification time other than "not there"', async () => {
+    const writer = createLocalBlobStore({ root })
+    await writer.put(hello)
+    const store = createLocalBlobStore({
+      root,
+      fileSystem: withFaults({
+        utimes: (async () => {
+          throw systemError('EACCES')
+        }) as StoreFileSystem['utimes'],
+      }),
+    })
+
+    await expect(store.put(hello)).rejects.toMatchObject({ code: 'EACCES' })
   })
 
   it('replaces a file of the right name but the wrong size, which a crashed write elsewhere could leave', async () => {
@@ -145,7 +187,7 @@ describe('put', () => {
     expect(new Set(results.map((result) => result.sha256))).toEqual(new Set([HELLO_DIGEST]))
     expect(await fileSystem.readFile(blobFile(HELLO_DIGEST))).toEqual(hello)
     expect(await temporaryFiles()).toEqual([])
-    expect(await collect(store.list())).toEqual([{ sha256: HELLO_DIGEST, byteSize: 5 }])
+    expect(await collect(store.list())).toEqual([expect.objectContaining({ sha256: HELLO_DIGEST, byteSize: 5 })])
   })
 
   it('leaves no temporary file and no blob when the write fails, and closes the file', async () => {
@@ -250,7 +292,11 @@ describe('get and stat', () => {
     await store.put(hello)
 
     expect(await store.get(HELLO_DIGEST)).toEqual(hello)
-    expect(await store.stat(HELLO_DIGEST)).toEqual({ sha256: HELLO_DIGEST, byteSize: 5 })
+    expect(await store.stat(HELLO_DIGEST)).toEqual({
+      sha256: HELLO_DIGEST,
+      byteSize: 5,
+      modifiedAtMs: (await fileSystem.stat(blobFile(HELLO_DIGEST))).mtimeMs,
+    })
   })
 
   it('answers null for a blob that is not there, before and after the store has any files', async () => {
@@ -371,9 +417,11 @@ describe('list', () => {
 
     const listed = await collect(store.list())
 
-    expect(listed.sort((a, b) => a.sha256.localeCompare(b.sha256))).toEqual(
-      [...stored].sort((a, b) => a.sha256.localeCompare(b.sha256)),
+    const byDigest = (a: { sha256: string }, b: { sha256: string }) => a.sha256.localeCompare(b.sha256)
+    expect(listed.sort(byDigest).map(({ sha256, byteSize }) => ({ sha256, byteSize }))).toEqual(
+      [...stored].sort(byDigest),
     )
+    expect(listed.every((blob) => typeof blob.modifiedAtMs === 'number')).toBe(true)
   })
 
   it('yields nothing for a store that has never been written to', async () => {
@@ -395,7 +443,7 @@ describe('list', () => {
     await fileSystem.mkdir(path.join(blobs, 'zz'), { recursive: true })
     await fileSystem.writeFile(path.join(blobs, 'zz', HELLO_DIGEST), 'x')
 
-    expect(await collect(store.list())).toEqual([{ sha256: HELLO_DIGEST, byteSize: 5 }])
+    expect(await collect(store.list())).toEqual([expect.objectContaining({ sha256: HELLO_DIGEST, byteSize: 5 })])
   })
 
   it('skips a blob that is deleted between being listed and being examined', async () => {
@@ -412,7 +460,7 @@ describe('list', () => {
       }),
     })
 
-    expect(await collect(store.list())).toEqual([other])
+    expect(await collect(store.list())).toEqual([expect.objectContaining(other)])
   })
 
   it('passes on a failure to read a directory other than "not there"', async () => {

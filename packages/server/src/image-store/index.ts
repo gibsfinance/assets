@@ -2,8 +2,9 @@
  * Content-addressed storage for image bytes.
  *
  * A blob is named by the sha256 of its bytes, so the same bytes are stored once however many
- * rows point at them, and a name can never refer to different content. Nothing calls this
- * module yet; it is the destination for moving image bytes out of the database.
+ * rows point at them, and a name can never refer to different content. The `image` table
+ * keeps each blob's digest (`content_sha256`) and length (`byte_size`); the bytes themselves
+ * are read through `loadImageBytes` and written by `insertImage` before its row commits.
  */
 import config from '../../config'
 import { log } from '../logger'
@@ -17,6 +18,12 @@ export type BlobStat = {
   sha256: string
   /** Length of the blob in bytes. */
   byteSize: number
+  /**
+   * When the blob was last written or reused, in milliseconds since the epoch. Present on what
+   * `stat` and `list` return, absent on what `put` returns. A clean-up that goes by age
+   * (`images gc`) reads it.
+   */
+  modifiedAtMs?: number
 }
 
 /**
@@ -27,7 +34,8 @@ export type BlobStat = {
  */
 export interface BlobStore {
   /**
-   * Stores bytes under their own digest. Storing bytes that are already present writes nothing.
+   * Stores bytes under their own digest. Storing bytes that are already present writes nothing,
+   * but renews the blob's modification time, so age-based clean-up sees the reuse.
    *
    * @param bytes The content.
    * @returns The digest and length of what is now stored.
