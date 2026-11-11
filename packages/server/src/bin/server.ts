@@ -8,12 +8,14 @@ import { listen } from '../server'
 import { getStats } from '../server/stats'
 import { startMemoryReporting } from '../server/memory'
 import { applySharpLimits } from '../sharp-limits'
+import { initializeImageStore } from '../image-store'
 import { warmTokensByChainCache, warmMergedCache, warmProviderListCache } from '../server/list/handlers'
 
 // Begins before anything else so the readings cover migration and warm-up, which are the
 // two heaviest things this process ever does and the two that no reading has ever covered.
 startMemoryReporting()
 applySharpLimits()
+initializeImageStore()
 
 // Start HTTP server immediately so the load balancer can probe /health (503 until ready).
 // Warm-up runs in the background; setReady() flips /health to 200 when done.

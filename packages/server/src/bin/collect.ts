@@ -6,11 +6,13 @@ import { setDoesRender } from '../log/App'
 import { startMemoryReporting } from '../server/memory'
 import * as paths from '../paths'
 import { applySharpLimits } from '../sharp-limits'
+import { initializeImageStore } from '../image-store'
 import { isRefreshEnabled, refreshSubmodulesForProviders } from '../submodule-refresh'
 import _ from 'lodash'
 const { providers, logger, concurrency } = args.collect()
 
 applySharpLimits()
+initializeImageStore()
 setDoesRender(logger === 'terminal')
 
 async function runCollect() {

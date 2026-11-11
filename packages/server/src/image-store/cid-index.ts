@@ -19,7 +19,7 @@
  * so one backup covers both.
  */
 import { asc, eq, gt } from 'drizzle-orm'
-import { getDrizzle, type DrizzleDB } from '../db/drizzle'
+import type { DrizzleDB } from '../db/drizzle'
 import * as s from '../db/schema'
 
 /** What the index records about one blob. */
@@ -71,23 +71,28 @@ const toRecord = (row: typeof s.imageStoreCid.$inferSelect): CidRecord => ({
  */
 export function createDatabaseCidIndex(options: DatabaseCidIndexOptions = {}): BlobCidIndex {
   const { pageSize = CID_INDEX_PAGE_SIZE } = options
-  const database = () => options.database ?? getDrizzle()
+  // Loaded on first use: importing the database module opens a connection pool, which a store
+  // that never touches IPFS must not do.
+  const database = async () => options.database ?? (await import('../db/drizzle')).getDrizzle()
 
   const get = async (sha256: string): Promise<CidRecord | null> => {
-    const rows = await database().select().from(s.imageStoreCid).where(eq(s.imageStoreCid.sha256, sha256)).limit(1)
+    const db = await database()
+    const rows = await db.select().from(s.imageStoreCid).where(eq(s.imageStoreCid.sha256, sha256)).limit(1)
     return rows.length === 0 ? null : toRecord(rows[0])
   }
 
   const put = async (record: CidRecord): Promise<void> => {
     const values = { cid: record.cid, byteSize: record.byteSize, modifiedAt: new Date(record.modifiedAtMs) }
-    await database()
+    const db = await database()
+    await db
       .insert(s.imageStoreCid)
       .values({ sha256: record.sha256, ...values })
       .onConflictDoUpdate({ target: s.imageStoreCid.sha256, set: values })
   }
 
   const remove = async (sha256: string): Promise<boolean> => {
-    const removed = await database()
+    const db = await database()
+    const removed = await db
       .delete(s.imageStoreCid)
       .where(eq(s.imageStoreCid.sha256, sha256))
       .returning({ sha256: s.imageStoreCid.sha256 })
@@ -97,7 +102,8 @@ export function createDatabaseCidIndex(options: DatabaseCidIndexOptions = {}): B
   async function* list(): AsyncGenerator<CidRecord, void, undefined> {
     let cursor = ''
     for (;;) {
-      const rows = await database()
+      const db = await database()
+      const rows = await db
         .select()
         .from(s.imageStoreCid)
         .where(gt(s.imageStoreCid.sha256, cursor))
