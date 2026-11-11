@@ -15,8 +15,8 @@ yarn workspace ui run test
 # calling the change done.
 #   Every workspace — 100% on all four metrics, and the floors are set there.
 #     A single untested line fails the build while every test still passes.
-#     Actuals: server 6058 statements / 2964 branches / 1080 functions / 5469
-#     lines over 2430 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     Actuals: server 7166 statements / 3555 branches / 1318 functions / 6407
+#     lines over 3162 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
 #     92 tests, @gibs/utils 95, @gibs/react 41.
 #   There is no margin under the interface floors any more. The old ones sat
 #     ~0.2 below measured because this workspace used to report slightly lower
@@ -274,12 +274,40 @@ directory.
   but never a row that is the only imaged row for its token.
 - A feed that fails or answers empty leaves its list alone.
 
+### Top Tokens per Chain (coingecko-top-tokens)
+Provider `coingecko-top-tokens`, one list per chain, `top-tokens-<chain id>` (for example
+`/list/coingecko-top-tokens/top-tokens-56`). It is a provider of its own, not more lists under
+`coingecko`: the full collector keeps its bare-chain-id lists, its unranked order and its ranking
+slots, and a separate key lets this one fail, be ranked and be switched off alone. It sits directly
+below `coingecko` in `collectable-order.ts`; both serve CoinGecko's own artwork, so it decides no
+contested token.
+- Sources: `/asset_platforms` (chain id to platform id, through `chain_identifier`), `/coins/list?include_platform=true`
+  (address by platform), `/coins/markets?order=market_cap_desc&per_page=250` (rank, name, symbol, logo) and
+  `/token_lists/{platform}/all.json` (decimals). A token is a coin with a valid contract address on the chain, in market
+  capitalisation order. Native coins have no contract address and never appear. A token missing from the token list is
+  stored with decimals 0, the value the full collector uses; an existing token row is never overwritten.
+- Market pages are read until every chain has enough tokens, the pages end, or `COINGECKO_TOP_TOKENS_MARKET_PAGES`
+  is reached. If a page fails, a chain that already has its full count is filed and every other chain keeps its list.
+- Requests per run: 2, plus at most `COINGECKO_TOP_TOKENS_MARKET_PAGES` market pages, plus one token list per chain. With the
+  defaults that is at most 39. `coingecko-client.ts` spaces them (12 s keyless, 700 ms Demo, 150 ms Pro, under 5 to 15,
+  100 and plan-dependent calls a minute), waits `retry-after` (else 60 s) on a 429, and waits 5 s longer per retry on a
+  5xx or dropped connection, up to 5 retries. Every attempt counts against CoinGecko's limit, so it takes its turn first.
+- Membership versioning is Jupiter's (`versioned-lists.ts`, shared): same members reuse the version, a change files the next
+  one, a chain that fails or answers nothing leaves its list alone, a chain dropped from `COINGECKO_TOP_TOKENS_CHAINS` is
+  retired to one empty version, and images go through `fetchImageAndStoreForToken`.
+- Settings: `COINGECKO_API_KEY`, `COINGECKO_API_PLAN` (`demo` or Pro, default Pro), `COINGECKO_TOP_TOKENS_COUNT`,
+  `_CHAINS`, `_MARKET_PAGES`, `_INTERVAL_MS` (see `docs/skills/self-hosting.md`). The full `coingecko` collector still sends
+  any key to the Pro host as a query parameter, which CoinGecko documents for Pro keys only; this collector follows the
+  documented Demo and Pro forms.
+- Plan: CoinGecko's pages do not state a plan requirement for these endpoints; the Demo documentation lists all four.
+
 ### Retired provider: etherscan
 The `etherscan` collector (a headless-browser scrape of explorer pages) was removed. The
 Etherscan API has no top-tokens endpoint, and its token-info endpoint is a paid tier. Its
 existing rows stay in the database and `/list/etherscan/top-tokens` still serves them, now
 frozen. With no list order item they rank last, so any other provider wins a contested token.
 Nothing deletes them; remove them with a deliberate migration if that is ever wanted.
+`coingecko-top-tokens` (above) now fills the role it was meant to.
 
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function

@@ -34,7 +34,12 @@ yarn server:dev
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `PORT` | No | Server port (default: `3000`) |
-| `COINGECKO_API_KEY` | No | CoinGecko API key for token list collection |
+| `COINGECKO_API_KEY` | No | CoinGecko API key for token list collection. Without it the public host is used, slowly (one request every 12 seconds) |
+| `COINGECKO_API_PLAN` | No | `demo` if the key is a free Demo key (sent to the public host in the `x-cg-demo-api-key` header). Any other value, or none, means a Pro key (Pro host, `x-cg-pro-api-key` header). Read by the top-tokens collector only; the full CoinGecko collector sends any key as a Pro key |
+| `COINGECKO_TOP_TOKENS_COUNT` | No | Tokens per chain in the `coingecko-top-tokens` lists (default `100`) |
+| `COINGECKO_TOP_TOKENS_CHAINS` | No | Comma-separated chain ids that get a `top-tokens-<chain id>` list (default: 1, 10, 25, 56, 100, 137, 250, 288, 369, 1101, 1284, 1285, 2222, 5000, 8453, 42161, 42220, 43114, 59144, 81457, 534352). A chain left out has its list retired on the next run |
+| `COINGECKO_TOP_TOKENS_MARKET_PAGES` | No | Most pages of 250 coins, ranked by market capitalisation, a run reads (default `16`) |
+| `COINGECKO_TOP_TOKENS_INTERVAL_MS` | No | Gap between CoinGecko requests in milliseconds. Defaults by plan: 12000 without a key, 700 Demo, 150 Pro |
 | `GITHUB_OAUTH_CLIENT_ID` | No | GitHub OAuth app client ID (for list publishing) |
 | `GITHUB_OAUTH_CLIENT_SECRET` | No | GitHub OAuth app client secret |
 | `PUBLIC_BASE_URL` | No | API base URL for the UI (empty = same origin) |
