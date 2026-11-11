@@ -196,6 +196,21 @@ describe('S3 requests', () => {
     expect(service.requests[0].headers.get('x-amz-security-token')).toBe('temporary')
   })
 
+  it('gives a blob the same age from a listing, which has milliseconds, and from a head, which has seconds', async () => {
+    const { store, clock } = build()
+    clock.advance(500)
+    const { sha256 } = await store.put(Buffer.from('half a second in'))
+
+    const [listed] = await (async () => {
+      const found = []
+      for await (const stat of store.list()) found.push(stat)
+      return found
+    })()
+
+    expect(listed).toEqual(await store.stat(sha256))
+    expect((listed.modifiedAtMs as number) % 1000).toBe(0)
+  })
+
   it('uses the global fetch and clock when none are given', async () => {
     const globalFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
     const store = createS3BlobStore({

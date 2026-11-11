@@ -146,6 +146,8 @@ export type S3ClientOptions = RemoteStoreEnvironment & {
 
 const OCTET_STREAM = 'application/octet-stream'
 
+const wholeSeconds = (milliseconds: number): number => Math.floor(milliseconds / 1000) * 1000
+
 /**
  * Builds the six operations of {@link ObjectClient} on S3 requests.
  *
@@ -242,7 +244,8 @@ export function createS3ObjectClient(options: S3ClientOptions): ObjectClient {
         yield {
           key: readElement(entry, 'Key') as string,
           byteSize: Number(readElement(entry, 'Size')),
-          modifiedAtMs: parseModifiedAt(readElement(entry, 'LastModified'), 's3 list'),
+          // HEAD answers in whole seconds and a listing in milliseconds; both are given in seconds so a blob has one age.
+          modifiedAtMs: wholeSeconds(parseModifiedAt(readElement(entry, 'LastModified'), 's3 list')),
         }
       }
       const isTruncated = readElement(page, 'IsTruncated') === 'true'

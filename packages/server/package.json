@@ -32,7 +32,8 @@
     "create-orders": "tsx src/bin/create-orders",
     "test": "NODE_ENV=test tsx --test --test-reporter=spec --test-reporter-destination=stdout ./test/index.ts",
     "test:exits": "bash test-provider-exits.sh",
-    "smoke": "tsx ./src/bin/smoke.ts"
+    "smoke": "tsx ./src/bin/smoke.ts",
+    "test:emulators": "IMAGE_STORE_EMULATORS=1 vitest run .emulator.test.ts"
   },
   "repository": {
     "type": "git",
