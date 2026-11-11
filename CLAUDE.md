@@ -89,15 +89,62 @@ falls back to the default.
 | `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
-| `IMAGE_STORE_DIR` | `<repository root>/image-store` | root of the content-addressed image store |
+| `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
+| `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
+| `IMAGE_STORE_S3_PRESET` | `aws` | `s3`: `aws`, `r2`, `hetzner`, `b2`, `wasabi`, `spaces`, `minio` or `custom` |
+| `IMAGE_STORE_S3_BUCKET` | required | `s3`: bucket name |
+| `IMAGE_STORE_S3_REGION` | preset's (`aws` `us-east-1`, `r2` `auto`, `hetzner` `fsn1`, `wasabi` `us-east-1`, `spaces` `nyc3`; `b2` has none) | `s3`: region the requests are signed for |
+| `IMAGE_STORE_S3_ENDPOINT` | preset's | `s3`: endpoint address; required for `minio` and `custom` |
+| `IMAGE_STORE_S3_ACCOUNT_ID` | — | `s3` with `r2`: Cloudflare account id, part of the endpoint |
+| `IMAGE_STORE_S3_ADDRESSING` | preset's | `s3`: `path` or `virtual` (bucket in the host name) |
+| `IMAGE_STORE_S3_PREFIX` | none | `s3`: text before every key, to share a bucket |
+| `IMAGE_STORE_S3_ACCESS_KEY_ID`, `IMAGE_STORE_S3_SECRET_ACCESS_KEY` | required (secret) | `s3`: keys; environment only |
+| `IMAGE_STORE_S3_SESSION_TOKEN` | none (secret) | `s3`: for temporary credentials |
+| `IMAGE_STORE_GCS_BUCKET` | required | `gcs`: bucket name |
+| `IMAGE_STORE_GCS_CREDENTIALS_JSON` | (secret) | `gcs`: the service-account key file's text. One of this or the file setting is required unless an endpoint is set |
+| `IMAGE_STORE_GCS_CREDENTIALS_FILE` | — | `gcs`: path to the service-account key file |
+| `IMAGE_STORE_GCS_ENDPOINT` | `https://storage.googleapis.com` | `gcs`: set to aim at an emulator (then no credentials are needed) |
+| `IMAGE_STORE_GCS_PREFIX` | none | `gcs`: text before every key |
+| `IMAGE_STORE_AZURE_ACCOUNT`, `IMAGE_STORE_AZURE_CONTAINER` | required | `azure`: storage account and container |
+| `IMAGE_STORE_AZURE_ACCOUNT_KEY` / `IMAGE_STORE_AZURE_SAS_TOKEN` | exactly one (secret) | `azure`: Shared Key, or a shared access signature with read, write, create, delete and list rights |
+| `IMAGE_STORE_AZURE_ENDPOINT` | `https://<account>.blob.core.windows.net` | `azure`: set for an emulator (its address includes the account) |
+| `IMAGE_STORE_AZURE_PREFIX` | none | `azure`: text before every key |
+| `IMAGE_STORE_IPFS_PROVIDER` | required | `ipfs`: `kubo` (any Kubo RPC node), `filebase` or `pinata` |
+| `IMAGE_STORE_IPFS_API_URL` | provider's (`filebase`, `pinata`); required for `kubo` | `ipfs`: pinning API address |
+| `IMAGE_STORE_IPFS_GATEWAYS` | provider's; required for `kubo` | `ipfs`: comma-separated gateway addresses ending where the CID goes (`…/ipfs/`), tried in order |
+| `IMAGE_STORE_IPFS_API_TOKEN` | required for `filebase`, `pinata` (secret) | `ipfs`: bearer token |
+
+Every setting except a secret can instead be written in the `IMAGE_STORE` JSON; a secret is read from the environment
+only and the JSON form refuses it. `docs/skills/self-hosting.md` has the full reference with examples.
 
 ## Image Store (`packages/server/src/image-store/`)
-Content-addressed blob storage, not yet called by anything. `getImageStore()` returns a
-`BlobStore` (`put`, `get`, `stat`, `delete`, `list`); `hashBytes()` is the sha256 of the stored
-bytes. The local store lays files out as `<root>/sha256/<first two hex>/<64 hex>` with no
-extension. A write goes to `<root>/tmp/`, is flushed, renamed into place, and its shard directory
-is flushed. A digest that is not 64 lowercase hex characters is refused before any path is built.
-Building the store sweeps temporary files older than an hour.
+Content-addressed blob storage. `getImageStore()` returns a `BlobStore` (`put`, `get`, `stat`, `delete`, `list`);
+`hashBytes()` is the sha256 of the stored bytes. Which store it is comes from `IMAGE_STORE`, parsed by
+`store-config.ts`; `initializeImageStore()` builds it at start-up in the server and collector, so a missing or
+invalid setting stops the process with one line that names the setting (and never a secret's value).
+- **Adapters.** `local.ts` (files: `<root>/sha256/<first two hex>/<64 hex>`, no extension; a write goes to
+  `<root>/tmp/`, is flushed, renamed into place, and its shard directory is flushed; building it sweeps temporary
+  files older than an hour). `s3.ts` + `sigv4.ts` (one S3 implementation and a small Signature Version 4 signer, with
+  provider presets as data in `S3_PRESETS`; chosen over the AWS software development kit, which adds about twenty
+  megabytes for the same six requests). `gcs.ts` (native JSON API with service-account sign-in, no S3 interoperability
+  keys). `azure.ts` (Shared Key or SAS). `ipfs.ts` + `cid-index.ts` (pinning through a Kubo RPC or Pinata, reads
+  through gateways whose bytes are hashed; the `image_store_cid` table maps sha256 to CID and answers `stat` and `list`).
+  The remote adapters share `object-blob-store.ts`: keys are `[prefix]sha256/<2 hex>/<64 hex>`, `put` of a stored blob
+  renews its age with a server-side copy (or metadata change) and sends no bytes, `list` follows paging.
+- **Composites** (`composite.ts`), built only from other stores so they nest: `tiered` (bounded local cache by recency,
+  read-through and write-through), `mirrored` (writes to all, reads from the first that answers, `list` is the union),
+  `fallback` (reads a second store it never writes, lists or deletes from, so `images gc` here cannot touch it).
+- **Rules every adapter keeps** (`__testing__/blob-store-contract.ts` runs them against all of them): a malformed
+  digest throws `TypeError` before storage is touched; `get` and `stat` answer null and `delete` false for a missing
+  blob, and only a real "not found" answer counts as missing (a 403 is an error); `stat` and `list` give a
+  `modifiedAtMs` that a repeated `put` moves forward.
+- **Tests.** Unit tests inject `fetch`, the clock and the file system, so the coverage run needs no Docker. The
+  emulator suites (`*.emulator.test.ts`) run the same contract against real servers in Docker: MinIO
+  (`cgr.dev/chainguard/minio`), Azurite, fake-gcs-server and Kubo. Run them with
+  `yarn workspace server run test:emulators` (sets `IMAGE_STORE_EMULATORS=1`); they are skipped otherwise. Known
+  emulator limit: fake-gcs-server does not move `updated` on a metadata PATCH, so its renewal test is skipped
+  there and covered against the unit fake.
+- S3 `HEAD` gives whole seconds and a listing gives milliseconds; the adapter truncates the listing so both agree.
 
 ## Architecture
 
@@ -208,7 +255,11 @@ directory.
   its bytes, which covers the previous release writing `content` during a rolling deploy.
 - Operator command (`src/bin/images.ts`, `yarn workspace server run start:images <command>`): `export` (resumable, copies
   rows into the store), `verify [--rehash]` (exits 1 on any problem), `import` (rollback: bytes back into `content`),
-  `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7).
+  `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7), `copy --from <spec>
+  --to <spec> [--concurrency N]` (moves every blob between any two stores; resumable, since a blob the destination
+  holds with the same length is skipped; each blob is hashed after reading and a mismatch is reported, never written;
+  exits 1 on any problem). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
+  `BlobStore` interface, so they work on whatever `IMAGE_STORE` names; `gc` deletes only through `delete`.
 - The `content` column is dropped in a later migration, after production has run with bytes off.
 
 ### Lists That Change Membership (jupiter)
