@@ -3,11 +3,7 @@ name: gibassets
 services:
   postgres:
     container_name: gibassets-postgres
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
-      tags:
-        - gibsfinance/postgres:latest
+    image: postgres:16
     shm_size: 16g
     command: ['postgres']
     ports:
@@ -17,6 +13,7 @@ services:
     networks:
       - gibassets
     environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata16
       - POSTGRES_DB=gibassets
       - POSTGRES_USER=gibassets
       - POSTGRES_PASSWORD=password
@@ -66,6 +63,9 @@ services:
     environment:
       DATABASE_URL: 'postgres://gibassets:password@postgres:5432/gibassets'
       FAKE_SPINNER: 'true'
+      # The image refreshes its artwork repositories at the start of each run. Here
+      # ./submodules is the working checkout on this machine, which a refresh would reset.
+      REFRESH_SUBMODULES: 'false'
       RPC_56: $RPC_56
     healthcheck:
       test: ["CMD-SHELL", "ps aux | grep -v grep | grep -q yarn"]

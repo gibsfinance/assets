@@ -1,18 +1,11 @@
 CREATE EXTENSION IF NOT EXISTS citext;
 --> statement-breakpoint
-CREATE EXTENSION IF NOT EXISTS plpython3u;
---> statement-breakpoint
-CREATE OR REPLACE FUNCTION keccak256(input TEXT)
-RETURNS TEXT AS $$
-import sha3
-k = sha3.keccak_256()
-if input is None:
-    k.update(b'')
-else:
-    k.update(input.encode('utf-8'))
-return k.hexdigest()
-$$ LANGUAGE plpython3u;
---> statement-breakpoint
+-- keccak256(text) is defined in 0021_keccak256_in_plpgsql. It was a PL/Python function
+-- here, which needed an image with Python and the safe-pysha3 package. The triggers
+-- below call it only when a row is inserted, and no migration before 0021 inserts one,
+-- so a fresh database has the function by the time anything reads it. Databases that
+-- already ran this file are unaffected: Drizzle skips an applied migration by its
+-- timestamp, not by its hash.
 CREATE OR REPLACE FUNCTION autoupdate_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN

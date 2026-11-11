@@ -3,12 +3,10 @@
   "version": "1.0.1",
   "private": true,
   "scripts": {
-    "docker:build": "yarn run docker:build:postgres && yarn run docker:build:server",
+    "docker:build": "yarn run docker:build:server",
     "docker:build:server": "docker build -t gibsfinance/assets:latest .",
-    "docker:build:postgres": "docker compose build --no-cache postgres",
-    "docker:push": "yarn run docker:push:server && yarn run docker:push:postgres",
+    "docker:push": "yarn run docker:push:server",
     "docker:push:server": "docker push gibsfinance/assets:latest",
-    "docker:push:postgres": "docker push gibsfinance/postgres:latest",
     "build": "yarn workspace @gibs/utils run build && yarn workspace @gibs/dexscreener run build && yarn workspace ui run build && yarn workspace server run build",
     "collect": "yarn workspace server run collect",
     "server": "yarn workspace server run server",
@@ -19,7 +17,7 @@
     "test": "yarn workspace server run test",
     "db:migrate-latest": "yarn workspace server run db:migrate-latest",
     "db:seed": "yarn workspace server run db:seed",
-    "cronworker": "/usr/local/bin/update_submodules.sh && yarn workspace server run collect --logger=pretty --concurrency=8",
+    "cronworker": "yarn workspace server run collect --logger=pretty --concurrency=8",
     "db:migrate-make": "yarn workspace server run db:migrate-make",
     "smoke": "node scripts/smoke-test.mjs",
     "smoke:production": "node scripts/smoke-test.mjs https://gib.show"

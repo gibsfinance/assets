@@ -4,6 +4,8 @@ import { cleanup } from '../cleanup'
 import * as db from '../db'
 import { setDoesRender } from '../log/App'
 import { startMemoryReporting } from '../server/memory'
+import * as paths from '../paths'
+import { isRefreshEnabled, refreshSubmodulesForProviders } from '../submodule-refresh'
 import _ from 'lodash'
 const { providers, logger, concurrency } = args.collect()
 
@@ -23,6 +25,11 @@ async function runCollect() {
   // the last tick, which is where a batch job usually finishes its heaviest work.
   const memory = startMemoryReporting()
   try {
+    // Newest artwork before anything reads it. A repository that cannot be fetched keeps the
+    // copy already on disk, so a network failure never stops the run.
+    if (isRefreshEnabled(process.env['REFRESH_SUBMODULES'])) {
+      await refreshSubmodulesForProviders(paths.submodules, providerList, console.log)
+    }
     await db.migrate()
     await db.purgeExpiredCache().catch(_.noop)
     await collect.main(providerList, logger, concurrency)

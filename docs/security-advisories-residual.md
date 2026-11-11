@@ -169,7 +169,7 @@ dependency tree across incompatible majors), so they are accepted as residual.
   prototype pollution. The eslint 9 upgrade did not clear these; they remain via
   other tooling consumers (vitest, drizzle-kit, and their transitive chains).
 - **ip-address — moderate:** cross-site scripting in HTML-emitting helpers via
-  `socks` (the proxy-agent chain under puppeteer); we never call those helpers.
+  `socks` (the npm agent chain); we never call those helpers.
 - **mdast-util-to-hast — moderate:** unsanitized class attribute via
   `hast-util-to-html` (build-time documentation rendering).
 - **@babel/core — low:** arbitrary file read via a source-map comment, at

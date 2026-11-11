@@ -155,11 +155,11 @@ dense_rank() OVER (
 30+ collectors registered in `collectables.ts` — **order defines image priority** (lower index = higher priority):
 
 ```
-0: gibs        5: internetmoney   10: trustwallet
-1: pulsex      6: midgard         11: smoldapp
-2: dexscreener 7: pumptires       12: coingecko
-3: countries   8: etherscan       13: uniswap
-4: pulsechain  9: routescan       14+: others...
+0: gibs        5: internetmoney   10: piteas
+1: pulsex      6: midgard         11: pls369
+2: dexscreener 7: pumptires       12: balancer
+3: countries   8: routescan       13: phux
+4: pulsechain  9: trustwallet     14+: others...
 ```
 
 Two-phase contract (`BaseCollector`):

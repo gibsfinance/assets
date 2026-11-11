@@ -1351,8 +1351,8 @@ describe('batchFetchImagesForTokens', () => {
   })
 
   it('reuses a logo already inside its freshness window instead of downloading it again', async () => {
-    // The reason this matters is cost, not tidiness: this batch path is the one etherscan
-    // uses, and without the check it re-downloaded, re-sanitized and rewrote every logo it
+    // The reason this matters is cost, not tidiness: this is the batch path collectors
+    // use, and without the check it re-downloaded, re-sanitized and rewrote every logo it
     // had ever seen on every collect run. The freshness window exists to stop exactly that,
     // and every sibling fetch path in the module already honours it.
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-cached' }])

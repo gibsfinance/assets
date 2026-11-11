@@ -37,7 +37,6 @@ import compoundCollector from './compound'
 import optimismCollector from './optimism'
 import pumpiresCollector from './pumptires'
 import dexscreenerCollector from './dexscreener'
-import etherscanCollector from './etherscan'
 import routescanCollector from './routescan'
 import _ from 'lodash'
 import gibsCollector from './gibs'
@@ -80,7 +79,6 @@ type CollectableKey =
   | 'internetmoney'
   | 'midgard'
   | 'pumptires'
-  | 'etherscan'
   | 'routescan'
   | 'trustwallet'
   | 'piteas'
@@ -140,7 +138,6 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
         'https://raw.githubusercontent.com/pulsecoin-io/Midgard-tokenlist/refs/heads/main/midgard-tokenlist.json',
     }),
     pumptires: pumpiresCollector,
-    etherscan: etherscanCollector,
     routescan: routescanCollector,
     trustwallet: new TrustWalletCollector(),
     piteas: new RemoteTokenListCollector('piteas', {

@@ -34,7 +34,7 @@ all_providers=(
   midgard internetmoney phux pls369 smoldapp levinswap
   honeyswap pancake quickswap roll scroll set omnibridge
   dfyn coingecko 9mm uma baofinance compound optimism
-  pumptires etherscan
+  pumptires
 )
 
 if [ $# -gt 0 ]; then

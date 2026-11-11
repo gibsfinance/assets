@@ -81,6 +81,24 @@ yarn smoke:production              # gib.show
   migration's number and delete the generated `.sql`. That is what keeps the two aligned.
 - Old Knex files: moved to `_backup/knex/` (gitignored)
 
+### Primary Keys and the Plain Postgres Image
+- The database runs on the plain `postgres:16` image (`docker-compose.yml`, with
+  `PGDATA=/var/lib/postgresql/data/pgdata16`). There is no custom database image.
+- Every primary key is `keccak256` of its natural key, built by a `BEFORE INSERT` trigger
+  (`gcid_*` functions). The `keccak256(text)` they call is pure PL/pgSQL, defined in
+  `0021_keccak256_in_plpgsql`. It used to be PL/Python with `safe-pysha3`, which is why the
+  database once needed its own image; 0021 also drops the `plpython3u` extension.
+- The output is fixed: Keccak-256 (not NIST SHA-3) of the UTF-8 text, lowercase hex, no `0x`,
+  NULL hashed as the empty string. Stored rows reference each other by these ids, so never
+  change it. `packages/server/test/keccak256.test.ts` pins it to values recorded from the
+  PL/Python function and to viem's `keccak256`, which the application uses for the same ids.
+- It costs about 1 millisecond per hash (PL/Python was about 0.03). Each insert into a table
+  with one of these triggers pays it once, upserts that conflict included. Do not add a
+  second hash per row without a reason.
+- `0000` no longer creates the extension or the function; a fresh database gets the function
+  from 0021 and no earlier migration inserts a row. Drizzle skips applied migrations by their
+  timestamp in `_journal.json`, not by file hash, so editing 0000 did not disturb existing databases.
+
 ### First Paint and the Service Worker
 Return visitors paint from cache; the build removes the two blocking requests.
 - The built `index.html` carries its stylesheet inline (`src/prerender/inline-stylesheet.ts`, run by
@@ -103,9 +121,27 @@ Return visitors paint from cache; the build removes the two blocking requests.
   get the origin's `no-cache` (browser TTL: respect origin). A deploy reaches first-time visitors
   within a minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of
   about 120 ms. The other rule in that phase ("content") caches `/image`, `/list`, `/token`, `/stats`,
-  `/networks`. Edit both through the Cloudflare API, not by hand, so this note stays true.
+  `/networks`. It respects the origin's lifetimes, except that it keeps 404 answers for one hour:
+  without that, Cloudflare kept them about 3 minutes despite the origin's `max-age=86400`, and one
+  client polling a few imageless addresses sent about 3,000 requests a day to the server. Edit both
+  rules through the Cloudflare API, not by hand, so this note stays true.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
+
+### Vendored Artwork Repositories and the Images
+Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read repositories from `submodules/` on disk.
+- `src/submodule-refresh.ts` owns how they get there: depth 1, `--filter=blob:none`, and a sparse checkout of only
+  the directories a collector walks (`sparsePaths`). If a collector starts reading another directory, add it there.
+- The collector refreshes the repositories its providers read at the start of every run
+  (`bin/collect.ts`), when `REFRESH_SUBMODULES=true`. The worker image sets it. A repository that cannot be
+  fetched keeps the copy already on disk. Off by default, because on a development machine these directories are
+  git submodules somebody may be working in. `SUBMODULES_DIRECTORY` moves the directory (`paths.ts`).
+- `Dockerfile.worker` bakes a first copy with `scripts/refresh-submodules.mjs`, which runs the same module under
+  Node's own type stripping. That is why `submodule-refresh.ts` has no run-time relative imports. Pass
+  `--build-arg SUBMODULES_SNAPSHOT=<anything new>` to get a copy newer than the cached layer.
+- Both images install with `yarn workspaces focus server --production`, in a stage that holds only the
+  package manifests. Both run TypeScript from source, so the server image builds only `packages/ui`
+  (the typecheck job gates the rest) and the worker image builds nothing.
 
 ### Image Serving Pipeline
 - `?as=webp` — output format conversion (sharp resize pipeline)
@@ -129,6 +165,13 @@ Return visitors paint from cache; the build removes the two blocking requests.
 - `pruneSupersededListVersions` (`db/list-versions.ts`) trims versions older than the newest three,
   but never a row that is the only imaged row for its token.
 - A feed that fails or answers empty leaves its list alone.
+
+### Retired provider: etherscan
+The `etherscan` collector (a headless-browser scrape of explorer pages) was removed. The
+Etherscan API has no top-tokens endpoint, and its token-info endpoint is a paid tier. Its
+existing rows stay in the database and `/list/etherscan/top-tokens` still serves them, now
+frozen. With no list order item they rank last, so any other provider wins a contested token.
+Nothing deletes them; remove them with a deliberate migration if that is ever wanted.
 
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function

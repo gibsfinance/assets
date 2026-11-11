@@ -1,42 +1,56 @@
-# Build stage
-FROM node:24-alpine AS builder
+# Collector image: runs `yarn run collect`.
+#
+# Stages, each cached by what it depends on:
+#   prod-deps    only what the collector loads at run time - changes only with dependencies
+#   submodules   a shallow, sparse copy of the artwork repositories - changes with the
+#                refresh code, or with SUBMODULES_SNAPSHOT
+# The final stage adds source. Source changes rebuild only the last few layers.
 
-RUN corepack enable && \
-    apk add --no-cache git && \
-    git config --global user.email "you@example.com" && \
-    git config --global user.name "Your Name"
+FROM node:24-alpine AS prod-deps
 
 WORKDIR /usr/src/app
 
-# Bundled Chrome can't run on alpine/musl (collectors use BROWSER_WS_ENDPOINT instead),
-# and the download step breaks the production-prune rebuild — skip it entirely.
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV COREPACK_ENABLE_AUTO_PIN=0
+COPY package.json ./
+RUN corepack enable && corepack install
 
-# Copy dependency files and submodule setup
-COPY update_submodules.sh /usr/local/bin/update_submodules.sh
-COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
-RUN chmod +x /usr/local/bin/update_submodules.sh
+# Only dependency manifests, so the install is cached until one changes.
+COPY yarn.lock .yarnrc.yml ./
+COPY packages/utils/package.json packages/utils/package.json
+COPY packages/dexscreener/package.json packages/dexscreener/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/server/package.json packages/server/package.json
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/react/package.json packages/react/package.json
 
-# Update submodules
-RUN /usr/local/bin/update_submodules.sh
-
-# Copy packages, and the TypeScript 7 runner the workspace builds call
-COPY scripts/tsc7.mjs scripts/tsc7.mjs
-COPY packages packages
-
-# Install dependencies and build
-RUN yarn install --immutable && \
-    yarn run build && \
-    yarn workspaces focus --all --production && \
+# The collector runs from source (tsx), so nothing is built. Only the server and the
+# workspaces it imports are installed; the interface's dependencies are left out.
+RUN yarn workspaces focus server --production && \
     yarn cache clean --all
 
-# Production stage
-FROM node:24-alpine AS production
 
-RUN corepack enable && \
-    apk add --no-cache git
+# The copy of the artwork repositories that ships in the image, so a fresh container
+# can collect before its first refresh. Depth 1, no file contents the collectors do
+# not read. The collector refreshes them again at the start of every run
+# (REFRESH_SUBMODULES below), so this copy only has to be good enough to start from.
+# Change SUBMODULES_SNAPSHOT to force a newer copy than the cached layer holds.
+FROM node:24-alpine AS submodules
+
+RUN apk add --no-cache git
 
 WORKDIR /usr/src/app
+
+ARG SUBMODULES_SNAPSHOT=unset
+COPY packages/server/package.json packages/server/package.json
+COPY packages/server/src/submodule-refresh.ts packages/server/src/submodule-refresh.ts
+COPY scripts/refresh-submodules.mjs scripts/refresh-submodules.mjs
+RUN echo "snapshot: $SUBMODULES_SNAPSHOT" && node scripts/refresh-submodules.mjs submodules
+
+
+# Production stage
+FROM prod-deps AS production
+
+RUN apk add --no-cache git
 
 ARG NODE_ENV=production
 ENV NODE_ENV=$NODE_ENV
@@ -45,11 +59,17 @@ ENV FAKE_SPINNER=$FAKE_SPINNER
 ARG PREVENT_WRITE_MISSING
 ENV PREVENT_WRITE_MISSING=$PREVENT_WRITE_MISSING
 
-# Copy only production dependencies and built files
-COPY --from=builder /usr/src/app/node_modules ./node_modules
-COPY --from=builder /usr/src/app/packages ./packages
-COPY --from=builder /usr/src/app/submodules ./submodules
-COPY package.json yarn.lock .yarnrc.yml tsconfig.json .gitmodules ./
+# Refresh each artwork repository at the start of every collection run. To keep the
+# refreshed copy between runs, mount a volume at /usr/src/app/submodules (see below).
+ENV REFRESH_SUBMODULES=true
+
+COPY --from=submodules /usr/src/app/submodules ./submodules
+COPY tsconfig.json ./
+COPY packages/utils packages/utils
+COPY packages/dexscreener packages/dexscreener
+COPY packages/server packages/server
+COPY scripts/refresh-submodules.mjs scripts/refresh-submodules.mjs
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
+RUN chmod +x /usr/local/bin/update_submodules.sh
 
 CMD ["yarn", "run", "collect"]

@@ -79,7 +79,7 @@ npx tsc --noEmit -p packages/server/tsconfig.json
 
 ## Data Sources
 
-Aggregates from: Trust Wallet, PulseX, CoinGecko, Uniswap token lists, Etherscan, RouteScan, OmniBridge, Smoldapp, PLS369, and 20+ more. Each provider is a `BaseCollector` class with `discover()` and `collect()` phases.
+Aggregates from: Trust Wallet, PulseX, CoinGecko, Uniswap token lists, RouteScan, OmniBridge, Smoldapp, PLS369, and 20+ more. Each provider is a `BaseCollector` class with `discover()` and `collect()` phases.
 
 ## Submodules
 
