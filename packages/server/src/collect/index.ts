@@ -1,4 +1,5 @@
 import promiseLimit from 'promise-limit'
+import config from '../../config'
 import * as utils from '../utils'
 import { type Collectable, collectables } from '../collect/collectables'
 import { loadSubmissionCollectors, updateSubmissionStatus } from './user-submissions'
@@ -12,7 +13,7 @@ import { withListPublication } from '../db/publication'
 import { getDrizzle } from '../db/drizzle'
 import { sql as dsql } from 'drizzle-orm'
 
-const DEFAULT_PROVIDER_CONCURRENCY = 4
+const DEFAULT_PROVIDER_CONCURRENCY = config.concurrency.providers
 
 const checkOutstandingConnections = async (provider: string) => {
   const db = getDrizzle()

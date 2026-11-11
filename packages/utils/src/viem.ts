@@ -8,7 +8,7 @@ import {
   multicall3Abi,
   encodeFunctionData,
   decodeFunctionResult,
-  PublicClient,
+  type PublicClient,
   erc20Abi,
   erc20Abi_bytes32,
   fromHex,

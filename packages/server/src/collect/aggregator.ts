@@ -18,7 +18,7 @@ import { failureLog, limitBy } from '@gibs/utils'
 import * as db from '../db'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { groupByChain, dedupeByAddress, type AggregatorToken, type ParsedCatalogue } from './aggregator-parse'
 
 /** How many tokens are inserted at once. Matches the other collectors. */

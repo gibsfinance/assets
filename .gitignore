@@ -3,6 +3,8 @@ postgres-data*
 .env
 missing
 image-export
+# Content-addressed image store (IMAGE_STORE_DIR default)
+/image-store/
 frontend/build/
 frontend/.svelte-kit/
 frontend/package/

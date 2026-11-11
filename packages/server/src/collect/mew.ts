@@ -6,7 +6,7 @@ import * as types from '../types'
 import * as utils from '../utils'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
 import { terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { parseTokenRecord } from './ethereum-lists-parse'
 
 const providerKey = 'mew'

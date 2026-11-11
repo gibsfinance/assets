@@ -11,7 +11,7 @@ import * as submoduleSource from '../submodule-source'
 import promiseLimit from 'promise-limit'
 import { chainToPublicClient, counterId, mapToSet, terminal } from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'pls369'
 type Piece = {

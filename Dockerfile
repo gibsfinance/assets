@@ -37,7 +37,7 @@ RUN yarn workspaces focus server --production && \
     yarn cache clean --all
 
 
-# The server runs from source (tsx), so the only build output it needs is the interface.
+# The server runs from source (see the final stage), so the only build output it needs is the interface.
 # The interface build never reads the other workspaces' output, so the TypeScript
 # builds are not repeated here; the typecheck job in CI is what gates them.
 FROM build-deps AS interface
@@ -74,4 +74,10 @@ COPY --from=interface /usr/src/app/packages/ui/dist packages/ui/dist
 # image needs docs/, so it is copied here rather than into an earlier stage.
 COPY docs docs
 
-CMD ["yarn", "run", "server"]
+# Plain node runs the source: Node strips the types, and a small preload (see
+# packages/server/src/runtime/node-hooks.ts) finds the files behind extensionless imports and
+# compiles the one JSX file. `yarn run server` kept yarn and the tsx launcher alive beside the
+# program, about 160 MB for the pair. It changes into packages/server first because the program
+# resolves some paths from the working directory, as `yarn run` did; `exec` replaces the shell.
+# The container's own working directory stays the repository root.
+CMD ["sh", "-c", "cd packages/server && exec node --import ./src/bin/register-hooks.ts ./src/bin/server.ts"]

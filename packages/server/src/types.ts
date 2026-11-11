@@ -1,7 +1,7 @@
 import type { Bridge, BridgeLink, Image, Network, Token } from './db/schema-types'
 import type { ImageMode } from './db/tables'
 import type { Hex } from 'viem'
-import { MinimalTokenInfo } from '@gibs/utils'
+import { type MinimalTokenInfo } from '@gibs/utils'
 
 export type Todo = (signal: AbortSignal) => Promise<void>
 

@@ -2,7 +2,7 @@ import * as db from '../db'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as paths from '../paths'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const pathToNativeV4Pulse = path.join(paths.harvested, 'gibs', 'images', '0x3af.png')
 

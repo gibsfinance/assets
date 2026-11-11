@@ -1,7 +1,7 @@
 import tokenList from '../harvested/phux/369'
 import * as types from '../types'
 import * as inmemoryTokenlist from './inmemory-tokenlist'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'phux'
 const listKey = 'exchange'

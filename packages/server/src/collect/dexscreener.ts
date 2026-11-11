@@ -9,7 +9,7 @@ import {
   type IInfo,
   type IToken,
   nameToKey,
-  TokenPairsResponse,
+  type TokenPairsResponse,
 } from '@gibs/dexscreener'
 import { Collector } from '@gibs/dexscreener/collector'
 
@@ -18,8 +18,8 @@ import * as db from '../db'
 import { toCAIP2 } from '../chain-id'
 import * as utils from '../utils'
 import type { Network } from '../db/schema-types'
-import { terminalCounterTypes, terminalLogTypes, TerminalRowProxy, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { terminalCounterTypes, terminalLogTypes, type TerminalRowProxy, terminalRowTypes } from '../log/types'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const providerKey = 'dexscreener'
 
@@ -30,14 +30,10 @@ type ChainInfo = {
 
 class TerminalLinkedCollector extends Collector {
   protected infoCheck = new Set<string>()
-  constructor(
-    chainKey: string,
-    chainType: ChainType,
-    chainId: number,
-    signal: AbortSignal,
-    protected row: TerminalRowProxy,
-  ) {
+  protected row: TerminalRowProxy
+  constructor(chainKey: string, chainType: ChainType, chainId: number, signal: AbortSignal, row: TerminalRowProxy) {
     super(chainKey, chainType, chainId, signal)
+    this.row = row
   }
   setInfo(address: string, info: IInfo) {
     super.setInfo(address, info)

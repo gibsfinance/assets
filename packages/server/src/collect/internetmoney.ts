@@ -9,7 +9,7 @@ import type { List, Provider } from '../db/schema-types'
 import promiseLimit from 'promise-limit'
 import _ from 'lodash'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 
 const baseUrl = 'https://api.internetmoney.io/api/v1/networks'
 const CONCURRENT_TOKENS = 16

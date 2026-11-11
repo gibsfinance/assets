@@ -6,6 +6,8 @@
     "rootDir": ".",
     "outDir": "./dist",
     "jsx": "preserve",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "paths": {
       "@/*": ["./src/*"]
     }

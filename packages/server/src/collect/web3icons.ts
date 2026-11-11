@@ -1,7 +1,7 @@
 import { limitBy } from '@gibs/utils'
 import * as db from '../db'
 import { fetch } from '../fetch'
-import { BaseCollector, DiscoveryManifest } from './base-collector'
+import { BaseCollector, type DiscoveryManifest } from './base-collector'
 import { parseNetworkEntries, type Web3IconsCollectEntry } from './web3icons-parse'
 
 const providerKey = 'web3icons'

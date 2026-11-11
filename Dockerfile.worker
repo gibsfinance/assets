@@ -1,4 +1,4 @@
-# Collector image: runs `yarn run collect`.
+# Collector image: runs the collector on plain node.
 #
 # Stages, each cached by what it depends on:
 #   prod-deps    only what the collector loads at run time - changes only with dependencies
@@ -23,7 +23,7 @@ COPY packages/server/package.json packages/server/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/react/package.json packages/react/package.json
 
-# The collector runs from source (tsx), so nothing is built. Only the server and the
+# The collector runs from source on plain node, so nothing is built. Only the server and the
 # workspaces it imports are installed; the interface's dependencies are left out.
 RUN yarn workspaces focus server --production && \
     yarn cache clean --all
@@ -72,4 +72,6 @@ COPY scripts/refresh-submodules.mjs scripts/refresh-submodules.mjs
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh
 RUN chmod +x /usr/local/bin/update_submodules.sh
 
-CMD ["yarn", "run", "collect"]
+# Plain node runs the source; see Dockerfile for why. It changes into packages/server first, as
+# `yarn run` did, and leaves the container's own working directory alone; `exec` replaces the shell.
+CMD ["sh", "-c", "cd packages/server && exec node --import ./src/bin/register-hooks.ts ./src/bin/collect.ts"]
