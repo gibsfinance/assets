@@ -1,5 +1,10 @@
+import * as fileSystem from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { VerifySummary } from './backfill'
+import { hashBytes } from './hash'
+import { createLocalBlobStore } from './local'
 import { runImagesCommand, type ImagesOperations } from './images-command'
 
 vi.mock('./backfill', async (importOriginal) => ({
@@ -14,6 +19,17 @@ vi.mock('./garbage-collection', async (importOriginal) => ({
 }))
 
 const okVerify = { ok: true } as unknown as VerifySummary
+const okCopy = {
+  scanned: 2,
+  copied: 2,
+  skippedExisting: 0,
+  corrupt: 0,
+  missing: 0,
+  failed: 0,
+  bytesCopied: 9,
+  errors: [],
+  ok: true,
+}
 
 const setup = () => {
   const printed: string[] = []
@@ -31,6 +47,7 @@ const setup = () => {
       deleted: 0,
       unreferencedBytes: 0,
     })),
+    copyImages: vi.fn(async () => okCopy),
   }
   const output = { print: (text: string) => printed.push(text), printError: (text: string) => errors.push(text) }
   return { operations, output, printed, errors }
@@ -127,6 +144,69 @@ describe('runImagesCommand', () => {
 
     expect(await runImagesCommand(['export'], { operations, output })).toBe(1)
     expect(errors).toContain('plain text')
+  })
+
+  it('passes both store specs and the concurrency to copy, and prints its summary', async () => {
+    const { operations, output, printed } = setup()
+
+    const exitCode = await runImagesCommand(
+      ['copy', '--from', 'local', '--to', '{"type":"s3"}', '--concurrency', '8'],
+      {
+        operations,
+        output,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(operations.copyImages).toHaveBeenCalledWith({ from: 'local', to: '{"type":"s3"}', concurrency: 8 })
+    expect(JSON.parse(printed[0])).toMatchObject({ copied: 2 })
+  })
+
+  it('defaults copy to four at once, and exits 1 when it reports a problem', async () => {
+    const { operations, output } = setup()
+    operations.copyImages = vi.fn(async () => ({ ...okCopy, corrupt: 1, ok: false }))
+
+    expect(await runImagesCommand(['copy', '--from', 'a', '--to', 'b'], { operations, output })).toBe(1)
+    expect(operations.copyImages).toHaveBeenCalledWith({ from: 'a', to: 'b', concurrency: 4 })
+  })
+
+  it('refuses copy without both stores named', async () => {
+    const { operations, output, errors } = setup()
+
+    expect(await runImagesCommand(['copy', '--from', 'local'], { operations, output })).toBe(1)
+    expect(errors.length).toBeGreaterThan(0)
+    expect(operations.copyImages).not.toHaveBeenCalled()
+  })
+
+  it('copies between two stores built from JSON specs when no operations are passed', async () => {
+    const source = await fileSystem.mkdtemp(path.join(os.tmpdir(), 'images-copy-from-'))
+    const destination = await fileSystem.mkdtemp(path.join(os.tmpdir(), 'images-copy-to-'))
+    const bytes = Buffer.from('moved by the real command')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await createLocalBlobStore({ root: source }).put(bytes)
+
+    const exitCode = await runImagesCommand([
+      'copy',
+      '--from',
+      JSON.stringify({ type: 'local', dir: source }),
+      '--to',
+      JSON.stringify({ type: 'local', dir: destination }),
+    ])
+
+    expect(exitCode).toBe(0)
+    expect(await createLocalBlobStore({ root: destination }).get(hashBytes(bytes))).toEqual(bytes)
+    log.mockRestore()
+    await fileSystem.rm(source, { recursive: true, force: true })
+    await fileSystem.rm(destination, { recursive: true, force: true })
+  })
+
+  it('prints a configuration mistake in a copy spec and exits 1', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    expect(await runImagesCommand(['copy', '--from', 'floppy', '--to', 'local'])).toBe(1)
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('unknown store type "floppy"'))
+    error.mockRestore()
   })
 
   it('runs the real operations and prints to the console when none are passed', async () => {

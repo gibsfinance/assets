@@ -1,11 +1,14 @@
 /**
  * @module image-store/images-command
- * The `images` command line: `export`, `verify`, `import` and `gc`.
+ * The `images` command line: `export`, `verify`, `import`, `gc` and `copy`.
  *
  * `bin/images.ts` only hands `process.argv` to {@link runImagesCommand} and sets the exit code
  * from what it returns. Parsing and dispatch live here so they can be tested.
  */
 import yargs from 'yargs'
+import config from '../../config'
+import { copyBlobs, DEFAULT_COPY_CONCURRENCY, type CopySummary } from './copy'
+import { createBlobStoreFromSpec } from './store-config'
 import { collectGarbage, DEFAULT_GRACE_PERIOD_MS, type GarbageCollectionSummary } from './garbage-collection'
 import {
   DEFAULT_BATCH_SIZE,
@@ -25,6 +28,7 @@ export type ImagesOperations = {
   verifyImages: (options: { rehash: boolean }) => Promise<VerifySummary>
   importImages: (options: { batchSize: number; sleepMs: number }) => Promise<ImportSummary>
   collectGarbage: (options: { dryRun: boolean; gracePeriodMs: number }) => Promise<GarbageCollectionSummary>
+  copyImages: (options: { from: string; to: string; concurrency: number }) => Promise<CopySummary>
 }
 
 /** Where the command's output and errors go. Tests collect them. */
@@ -38,6 +42,14 @@ const realOperations: ImagesOperations = {
   verifyImages: (options) => verifyImages(options),
   importImages: (options) => importImages(options),
   collectGarbage: (options) => collectGarbage(options),
+  copyImages: ({ from, to, concurrency }) => {
+    const context = { defaultLocalDirectory: config.imageStoreDirectory }
+    return copyBlobs({
+      from: createBlobStoreFromSpec(from, context),
+      to: createBlobStoreFromSpec(to, context),
+      concurrency,
+    })
+  },
 }
 
 const realOutput: ImagesCommandOutput = {
@@ -82,7 +94,7 @@ export async function runImagesCommand(
       .scriptName('images')
       .exitProcess(false)
       .strict()
-      .demandCommand(1, 'name a command: export, verify, import or gc')
+      .demandCommand(1, 'name a command: export, verify, import, gc or copy')
       .command(
         'export',
         'copy the bytes of every image row into the image store and record digest and length; safe to stop and repeat',
@@ -146,6 +158,36 @@ export async function runImagesCommand(
               gracePeriodMs: (argv['grace-days'] as number) * MILLISECONDS_PER_DAY,
             }),
           )
+        },
+      )
+      .command(
+        'copy',
+        "copy every blob from one store to another, checking each one's sha256; safe to stop and repeat; exits 1 on any problem",
+        (command) =>
+          command
+            .option('from', {
+              type: 'string',
+              demandOption: true,
+              describe: 'the source store: a kind name such as s3, or JSON (see IMAGE_STORE)',
+            })
+            .option('to', {
+              type: 'string',
+              demandOption: true,
+              describe: 'the destination store, in the same form',
+            })
+            .option('concurrency', {
+              type: 'number',
+              default: DEFAULT_COPY_CONCURRENCY,
+              describe: 'blobs copied at once',
+            }),
+        async (argv) => {
+          const summary = await operations.copyImages({
+            from: argv.from as string,
+            to: argv.to as string,
+            concurrency: argv.concurrency as number,
+          })
+          report(summary)
+          if (!summary.ok) exitCode = 1
         },
       )
       .parseAsync()
