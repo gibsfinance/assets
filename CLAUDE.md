@@ -128,6 +128,21 @@ Return visitors paint from cache; the build removes the two blocking requests.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
 
+### Vendored Artwork Repositories and the Images
+Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read repositories from `submodules/` on disk.
+- `src/submodule-refresh.ts` owns how they get there: depth 1, `--filter=blob:none`, and a sparse checkout of only
+  the directories a collector walks (`sparsePaths`). If a collector starts reading another directory, add it there.
+- The collector refreshes the repositories its providers read at the start of every run
+  (`bin/collect.ts`), when `REFRESH_SUBMODULES=true`. The worker image sets it. A repository that cannot be
+  fetched keeps the copy already on disk. Off by default, because on a development machine these directories are
+  git submodules somebody may be working in. `SUBMODULES_DIRECTORY` moves the directory (`paths.ts`).
+- `Dockerfile.worker` bakes a first copy with `scripts/refresh-submodules.mjs`, which runs the same module under
+  Node's own type stripping. That is why `submodule-refresh.ts` has no run-time relative imports. Pass
+  `--build-arg SUBMODULES_SNAPSHOT=<anything new>` to get a copy newer than the cached layer.
+- Both images install with `yarn workspaces focus server --production`, in a stage that holds only the
+  package manifests. Both run TypeScript from source, so the server image builds only `packages/ui`
+  (the typecheck job gates the rest) and the worker image builds nothing.
+
 ### Image Serving Pipeline
 - `?as=webp` — output format conversion (sharp resize pipeline)
 - `?only=vector` — source type filter (filter by extension before selection)
