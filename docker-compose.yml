@@ -3,11 +3,7 @@ name: gibassets
 services:
   postgres:
     container_name: gibassets-postgres
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
-      tags:
-        - gibsfinance/postgres:latest
+    image: postgres:16
     shm_size: 16g
     command: ['postgres']
     ports:
@@ -17,6 +13,7 @@ services:
     networks:
       - gibassets
     environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata16
       - POSTGRES_DB=gibassets
       - POSTGRES_USER=gibassets
       - POSTGRES_PASSWORD=password

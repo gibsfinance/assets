@@ -81,6 +81,24 @@ yarn smoke:production              # gib.show
   migration's number and delete the generated `.sql`. That is what keeps the two aligned.
 - Old Knex files: moved to `_backup/knex/` (gitignored)
 
+### Primary Keys and the Plain Postgres Image
+- The database runs on the plain `postgres:16` image (`docker-compose.yml`, with
+  `PGDATA=/var/lib/postgresql/data/pgdata16`). There is no custom database image.
+- Every primary key is `keccak256` of its natural key, built by a `BEFORE INSERT` trigger
+  (`gcid_*` functions). The `keccak256(text)` they call is pure PL/pgSQL, defined in
+  `0021_keccak256_in_plpgsql`. It used to be PL/Python with `safe-pysha3`, which is why the
+  database once needed its own image; 0021 also drops the `plpython3u` extension.
+- The output is fixed: Keccak-256 (not NIST SHA-3) of the UTF-8 text, lowercase hex, no `0x`,
+  NULL hashed as the empty string. Stored rows reference each other by these ids, so never
+  change it. `packages/server/test/keccak256.test.ts` pins it to values recorded from the
+  PL/Python function and to viem's `keccak256`, which the application uses for the same ids.
+- It costs about 1 millisecond per hash (PL/Python was about 0.03). Each insert into a table
+  with one of these triggers pays it once, upserts that conflict included. Do not add a
+  second hash per row without a reason.
+- `0000` no longer creates the extension or the function; a fresh database gets the function
+  from 0021 and no earlier migration inserts a row. Drizzle skips applied migrations by their
+  timestamp in `_journal.json`, not by file hash, so editing 0000 did not disturb existing databases.
+
 ### First Paint and the Service Worker
 Return visitors paint from cache; the build removes the two blocking requests.
 - The built `index.html` carries its stylesheet inline (`src/prerender/inline-stylesheet.ts`, run by

@@ -10,6 +10,7 @@ import './dedupe-migration.test'
 import './sprite-chain-filter.test'
 import './canonical-image.test'
 import './algorand-alias-migration.test'
+import './keccak256.test'
 
 import { cleanup } from '../src/cleanup'
 import test from 'node:test'
