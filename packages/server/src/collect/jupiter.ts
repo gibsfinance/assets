@@ -5,7 +5,7 @@ import * as db from '../db'
 import * as utils from '../utils'
 import { terminalCounterTypes, terminalRowTypes } from '../log/types'
 import { BaseCollector, type DiscoveryManifest } from './base-collector'
-import { nextListVersion, sameMembership, type ListVersionNumbers } from './list-membership'
+import { publishWalkedList, resolveListVersion, retireStaleLists } from './versioned-lists'
 import {
   parseJupiterToken,
   type JupiterToken,
@@ -43,14 +43,6 @@ const CATEGORY_SOURCES: readonly { listKey: string; name: string; url: string }[
 /** A tag or category list with fewer than this many tokens is skipped rather than created near-empty. */
 const MIN_LIST_SIZE = 5
 
-/**
- * How many published versions of each list keep their full set of members. Older versions
- * are trimmed to the tokens that would otherwise lose their only icon (see
- * `pruneSupersededListVersions`). Three covers the current version, the one before it, and
- * one spare in case the newest is later found wrong.
- */
-const RETAINED_LIST_VERSIONS = 3
-
 /** A parsed token carrying its stable insertion order within a single list. */
 type OrderedToken = JupiterToken & { orderIdx: number }
 
@@ -78,114 +70,6 @@ const narrowTokens = (raw: unknown): JupiterToken[] => {
 
 /** Attach a stable per-list insertion order to a set of tokens. */
 const withOrder = (tokens: JupiterToken[]): OrderedToken[] => tokens.map((token, orderIdx) => ({ ...token, orderIdx }))
-
-/**
- * Choose the version a list's members should be filed under.
- *
- * A list's members are the tokens its feed returned in this run, and nothing else. Rows are
- * only ever added to a version, so a token that left the feed can leave the list only if
- * the list moves to a new version that does not contain it. Readers take the newest
- * published version, so the new version shows the current members while the old version's
- * rows stay behind for the by-address image route, which ranks superseded versions below
- * current ones but still uses them.
- *
- * - Same members as the published version: reuse it. An unchanged feed adds no version.
- * - Different members: the next number above the highest stored version, published or not,
- *   so a run that stopped before publishing never has its partial rows reused.
- * - No version stored yet: the database default (0.0.0).
- */
-const resolveListVersion = async ({
-  providerId,
-  listKey,
-  addresses,
-}: {
-  providerId: string
-  listKey: string
-  addresses: string[]
-}): Promise<Partial<ListVersionNumbers>> => {
-  const { highest, published } = await db.getListVersionSnapshot({ providerId, listKey })
-  if (published && sameMembership(published.providedIds, addresses)) {
-    return { major: published.major, minor: published.minor, patch: published.patch }
-  }
-  if (!highest) return {}
-  return nextListVersion(highest)
-}
-
-/**
- * Stop listing members for every Jupiter list this run did not produce.
- *
- * A list is stale when it is stored but absent from `liveKeys`: a tag that fell below
- * MIN_LIST_SIZE or that Jupiter retired (`yield`), or a list the collector no longer
- * defines. Lists in `unreliableKeys` are skipped because their feed failed or came back
- * empty, which says nothing about their members.
- *
- * Retiring publishes a new, empty version, which the list readers serve in place of the
- * older versions (see `getLists`). That is the same mechanism a membership change uses, so
- * the old rows stay available to the image route. A list already empty is left alone, so
- * a retired list costs one version, once.
- */
-const retireStaleLists = async ({
-  providerId,
-  providerKey: ownerKey,
-  liveKeys,
-  unreliableKeys,
-}: {
-  providerId: string
-  providerKey: string
-  liveKeys: Set<string>
-  unreliableKeys: Set<string>
-}): Promise<void> => {
-  const storedKeys = await db.getProviderListKeys(providerId)
-  for (const listKey of storedKeys) {
-    if (liveKeys.has(listKey) || unreliableKeys.has(listKey)) continue
-    const { highest, published } = await db.getListVersionSnapshot({ providerId, listKey })
-    if (!highest || !published || published.providedIds.length === 0) continue
-    const [emptied] = await db.insertList({
-      providerId,
-      providerKey: ownerKey,
-      networkId: published.networkId,
-      key: listKey,
-      name: published.name,
-      ...nextListVersion(highest),
-    })
-    await db.markListTokensCollected(emptied.listId)
-    failureLog('provider=%o list=%o retired: no longer produced by the feed', ownerKey, listKey)
-  }
-}
-
-/**
- * Publish a list version once its whole feed has been walked, then trim old versions.
- *
- * Publishing is what switches readers to the new version, so it waits for the walk to end
- * and is skipped after an abort (the version is half written). A version with no stored
- * token is not published either: it would hide a complete older version behind an empty
- * one. Individual token failures do not withhold it; the next run sees the shortfall as a
- * membership change and files the list again.
- *
- * A failed trim is logged and ignored. It only leaves old rows in place, which is the
- * state before this code existed.
- */
-const publishWalkedList = async ({
-  list,
-  stored,
-  signal,
-}: {
-  list: PreparedList
-  stored: number
-  signal: AbortSignal
-}): Promise<void> => {
-  if (signal.aborted || stored === 0) return
-  await db.markListTokensCollected(list.listId)
-  try {
-    await db.pruneSupersededListVersions({
-      providerId: list.providerId,
-      listKey: list.listKey,
-      keep: RETAINED_LIST_VERSIONS,
-    })
-  } catch (err) {
-    failureLog('provider=%o list=%o prune failed: %o', providerKey, list.listKey, (err as Error).message)
-  }
-}
 
 /**
  * Two-phase collector for Jupiter's Solana tokens.
@@ -365,7 +249,7 @@ class JupiterCollector extends BaseCollector {
             failureLog('token %o/%o/%o failed: %o', providerKey, list.listKey, token.address, (err as Error).message)
           }
         })
-        await publishWalkedList({ list, stored, signal })
+        await publishWalkedList({ providerKey, list, stored, signal })
       }
     } finally {
       row.complete()

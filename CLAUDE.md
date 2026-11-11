@@ -15,8 +15,8 @@ yarn workspace ui run test
 # calling the change done.
 #   Every workspace — 100% on all four metrics, and the floors are set there.
 #     A single untested line fails the build while every test still passes.
-#     Actuals: server 6058 statements / 2964 branches / 1080 functions / 5469
-#     lines over 2430 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     Actuals: server 7469 statements / 3686 branches / 1385 functions / 6679
+#     lines over 3281 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
 #     92 tests, @gibs/utils 95, @gibs/react 41.
 #   There is no margin under the interface floors any more. The old ones sat
 #     ~0.2 below measured because this workspace used to report slightly lower
@@ -89,15 +89,62 @@ falls back to the default.
 | `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
-| `IMAGE_STORE_DIR` | `<repository root>/image-store` | root of the content-addressed image store |
+| `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
+| `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
+| `IMAGE_STORE_S3_PRESET` | `aws` | `s3`: `aws`, `r2`, `hetzner`, `b2`, `wasabi`, `spaces`, `minio` or `custom` |
+| `IMAGE_STORE_S3_BUCKET` | required | `s3`: bucket name |
+| `IMAGE_STORE_S3_REGION` | preset's (`aws` `us-east-1`, `r2` `auto`, `hetzner` `fsn1`, `wasabi` `us-east-1`, `spaces` `nyc3`; `b2` has none) | `s3`: region the requests are signed for |
+| `IMAGE_STORE_S3_ENDPOINT` | preset's | `s3`: endpoint address; required for `minio` and `custom` |
+| `IMAGE_STORE_S3_ACCOUNT_ID` | — | `s3` with `r2`: Cloudflare account id, part of the endpoint |
+| `IMAGE_STORE_S3_ADDRESSING` | preset's | `s3`: `path` or `virtual` (bucket in the host name) |
+| `IMAGE_STORE_S3_PREFIX` | none | `s3`: text before every key, to share a bucket |
+| `IMAGE_STORE_S3_ACCESS_KEY_ID`, `IMAGE_STORE_S3_SECRET_ACCESS_KEY` | required (secret) | `s3`: keys; environment only |
+| `IMAGE_STORE_S3_SESSION_TOKEN` | none (secret) | `s3`: for temporary credentials |
+| `IMAGE_STORE_GCS_BUCKET` | required | `gcs`: bucket name |
+| `IMAGE_STORE_GCS_CREDENTIALS_JSON` | (secret) | `gcs`: the service-account key file's text. One of this or the file setting is required unless an endpoint is set |
+| `IMAGE_STORE_GCS_CREDENTIALS_FILE` | — | `gcs`: path to the service-account key file |
+| `IMAGE_STORE_GCS_ENDPOINT` | `https://storage.googleapis.com` | `gcs`: set to aim at an emulator (then no credentials are needed) |
+| `IMAGE_STORE_GCS_PREFIX` | none | `gcs`: text before every key |
+| `IMAGE_STORE_AZURE_ACCOUNT`, `IMAGE_STORE_AZURE_CONTAINER` | required | `azure`: storage account and container |
+| `IMAGE_STORE_AZURE_ACCOUNT_KEY` / `IMAGE_STORE_AZURE_SAS_TOKEN` | exactly one (secret) | `azure`: Shared Key, or a shared access signature with read, write, create, delete and list rights |
+| `IMAGE_STORE_AZURE_ENDPOINT` | `https://<account>.blob.core.windows.net` | `azure`: set for an emulator (its address includes the account) |
+| `IMAGE_STORE_AZURE_PREFIX` | none | `azure`: text before every key |
+| `IMAGE_STORE_IPFS_PROVIDER` | required | `ipfs`: `kubo` (any Kubo RPC node), `filebase` or `pinata` |
+| `IMAGE_STORE_IPFS_API_URL` | provider's (`filebase`, `pinata`); required for `kubo` | `ipfs`: pinning API address |
+| `IMAGE_STORE_IPFS_GATEWAYS` | provider's; required for `kubo` | `ipfs`: comma-separated gateway addresses ending where the CID goes (`…/ipfs/`), tried in order |
+| `IMAGE_STORE_IPFS_API_TOKEN` | required for `filebase`, `pinata` (secret) | `ipfs`: bearer token |
+
+Every setting except a secret can instead be written in the `IMAGE_STORE` JSON; a secret is read from the environment
+only and the JSON form refuses it. `docs/skills/self-hosting.md` has the full reference with examples.
 
 ## Image Store (`packages/server/src/image-store/`)
-Content-addressed blob storage, not yet called by anything. `getImageStore()` returns a
-`BlobStore` (`put`, `get`, `stat`, `delete`, `list`); `hashBytes()` is the sha256 of the stored
-bytes. The local store lays files out as `<root>/sha256/<first two hex>/<64 hex>` with no
-extension. A write goes to `<root>/tmp/`, is flushed, renamed into place, and its shard directory
-is flushed. A digest that is not 64 lowercase hex characters is refused before any path is built.
-Building the store sweeps temporary files older than an hour.
+Content-addressed blob storage. `getImageStore()` returns a `BlobStore` (`put`, `get`, `stat`, `delete`, `list`);
+`hashBytes()` is the sha256 of the stored bytes. Which store it is comes from `IMAGE_STORE`, parsed by
+`store-config.ts`; `initializeImageStore()` builds it at start-up in the server and collector, so a missing or
+invalid setting stops the process with one line that names the setting (and never a secret's value).
+- **Adapters.** `local.ts` (files: `<root>/sha256/<first two hex>/<64 hex>`, no extension; a write goes to
+  `<root>/tmp/`, is flushed, renamed into place, and its shard directory is flushed; building it sweeps temporary
+  files older than an hour). `s3.ts` + `sigv4.ts` (one S3 implementation and a small Signature Version 4 signer, with
+  provider presets as data in `S3_PRESETS`; chosen over the AWS software development kit, which adds about twenty
+  megabytes for the same six requests). `gcs.ts` (native JSON API with service-account sign-in, no S3 interoperability
+  keys). `azure.ts` (Shared Key or SAS). `ipfs.ts` + `cid-index.ts` (pinning through a Kubo RPC or Pinata, reads
+  through gateways whose bytes are hashed; the `image_store_cid` table maps sha256 to CID and answers `stat` and `list`).
+  The remote adapters share `object-blob-store.ts`: keys are `[prefix]sha256/<2 hex>/<64 hex>`, `put` of a stored blob
+  renews its age with a server-side copy (or metadata change) and sends no bytes, `list` follows paging.
+- **Composites** (`composite.ts`), built only from other stores so they nest: `tiered` (bounded local cache by recency,
+  read-through and write-through), `mirrored` (writes to all, reads from the first that answers, `list` is the union),
+  `fallback` (reads a second store it never writes, lists or deletes from, so `images gc` here cannot touch it).
+- **Rules every adapter keeps** (`__testing__/blob-store-contract.ts` runs them against all of them): a malformed
+  digest throws `TypeError` before storage is touched; `get` and `stat` answer null and `delete` false for a missing
+  blob, and only a real "not found" answer counts as missing (a 403 is an error); `stat` and `list` give a
+  `modifiedAtMs` that a repeated `put` moves forward.
+- **Tests.** Unit tests inject `fetch`, the clock and the file system, so the coverage run needs no Docker. The
+  emulator suites (`*.emulator.test.ts`) run the same contract against real servers in Docker: MinIO
+  (`cgr.dev/chainguard/minio`), Azurite, fake-gcs-server and Kubo. Run them with
+  `yarn workspace server run test:emulators` (sets `IMAGE_STORE_EMULATORS=1`); they are skipped otherwise. Known
+  emulator limit: fake-gcs-server does not move `updated` on a metadata PATCH, so its renewal test is skipped
+  there and covered against the unit fake.
+- S3 `HEAD` gives whole seconds and a listing gives milliseconds; the adapter truncates the listing so both agree.
 
 ## Architecture
 
@@ -208,7 +255,11 @@ directory.
   its bytes, which covers the previous release writing `content` during a rolling deploy.
 - Operator command (`src/bin/images.ts`, `yarn workspace server run start:images <command>`): `export` (resumable, copies
   rows into the store), `verify [--rehash]` (exits 1 on any problem), `import` (rollback: bytes back into `content`),
-  `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7).
+  `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7), `copy --from <spec>
+  --to <spec> [--concurrency N]` (moves every blob between any two stores; resumable, since a blob the destination
+  holds with the same length is skipped; each blob is hashed after reading and a mismatch is reported, never written;
+  exits 1 on any problem). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
+  `BlobStore` interface, so they work on whatever `IMAGE_STORE` names; `gc` deletes only through `delete`.
 - The `content` column is dropped in a later migration, after production has run with bytes off.
 
 ### Lists That Change Membership (jupiter)
@@ -223,12 +274,55 @@ directory.
   but never a row that is the only imaged row for its token.
 - A feed that fails or answers empty leaves its list alone.
 
-### Retired provider: etherscan
-The `etherscan` collector (a headless-browser scrape of explorer pages) was removed. The
-Etherscan API has no top-tokens endpoint, and its token-info endpoint is a paid tier. Its
-existing rows stay in the database and `/list/etherscan/top-tokens` still serves them, now
-frozen. With no list order item they rank last, so any other provider wins a contested token.
-Nothing deletes them; remove them with a deliberate migration if that is ever wanted.
+### Top Tokens per Chain (coingecko-top-tokens)
+Provider `coingecko-top-tokens`, one list per chain, `top-tokens-<chain id>` (for example
+`/list/coingecko-top-tokens/top-tokens-56`). It is a provider of its own, not more lists under
+`coingecko`: the full collector keeps its bare-chain-id lists, its unranked order and its ranking
+slots, and a separate key lets this one fail, be ranked and be switched off alone. It sits directly
+below `coingecko` in `collectable-order.ts`; both serve CoinGecko's own artwork, so it decides no
+contested token.
+- Sources: `/asset_platforms` (chain id to platform id, through `chain_identifier`), `/coins/list?include_platform=true`
+  (address by platform), `/coins/markets?order=market_cap_desc&per_page=250` (rank, name, symbol, logo) and
+  `/token_lists/{platform}/all.json` (decimals). A token is a coin with a valid contract address on the chain, in market
+  capitalisation order. Native coins have no contract address and never appear. A token missing from the token list is
+  stored with decimals 0, the value the full collector uses; an existing token row is never overwritten.
+- Market pages are read until every chain has enough tokens, the pages end, or `COINGECKO_TOP_TOKENS_MARKET_PAGES`
+  is reached. If a page fails, a chain that already has its full count is filed and every other chain keeps its list.
+- Requests per run: 2, plus at most `COINGECKO_TOP_TOKENS_MARKET_PAGES` market pages, plus one token list per chain. With the
+  defaults that is at most 39. `coingecko-client.ts` spaces them (12 s keyless, 700 ms Demo, 150 ms Pro, under 5 to 15,
+  100 and plan-dependent calls a minute), waits `retry-after` (else 60 s) on a 429, and waits 5 s longer per retry on a
+  5xx or dropped connection, up to 5 retries. Every attempt counts against CoinGecko's limit, so it takes its turn first.
+- Membership versioning is Jupiter's (`versioned-lists.ts`, shared): same members reuse the version, a change files the next
+  one, a chain that fails or answers nothing leaves its list alone, a chain dropped from `COINGECKO_TOP_TOKENS_CHAINS` is
+  retired to one empty version, and images go through `fetchImageAndStoreForToken`.
+- Settings: `COINGECKO_API_KEY`, `COINGECKO_API_PLAN` (`demo` or Pro, default Pro), `COINGECKO_TOP_TOKENS_COUNT`,
+  `_CHAINS`, `_MARKET_PAGES`, `_INTERVAL_MS` (see `docs/skills/self-hosting.md`). The full `coingecko` collector still sends
+  any key to the Pro host as a query parameter, which CoinGecko documents for Pro keys only; this collector follows the
+  documented Demo and Pro forms.
+- Plan: CoinGecko's pages do not state a plan requirement for these endpoints; the Demo documentation lists all four.
+
+### Etherscan collector (API V2)
+The old `etherscan` collector scraped explorer pages with a headless browser and was removed. The current
+`collect/etherscan.ts` uses the documented Etherscan API V2 under the same provider key `etherscan`, so existing
+rows and `/list/etherscan/top-tokens` stay valid (that list is frozen and empty).
+- Etherscan has no endpoint that ranks tokens (docs.etherscan.io/endpoint-overview). The collector fetches
+  `tokeninfo` for tokens that other providers' lists already rank (`getTopTokenAddresses`, `ETHERSCAN_SOURCE_LISTS`). The default reads the `coingecko-top-tokens` lists
+  (`top-tokens-<chain id>`, above) first, then routescan's `top-tokens*` lists; a token both name keeps its earlier place.
+  The provider key and list key prefix are constants in `coingecko-top-tokens-settings.ts`, which Etherscan imports.
+- `tokeninfo` is API Pro (Standard plan and up), 2 calls per second on every plan; the free plan covers only some
+  chains. Nothing assumes what the key may do: discovery runs a probe (`etherscan-capability.ts`), once per run, and
+  the collector uses only chain and endpoint pairs that answered `ok`. Others get one log line each, are not
+  failures, and are not retried. A free key therefore collects nothing and logs why.
+- A refusal in the middle of a chain stops that chain and leaves its published list as it was. Lists are
+  `top-tokens-<chainId>`, versioned by membership through `versioned-lists.ts` (shared with Jupiter and `coingecko-top-tokens`).
+- `etherscan-response.ts` classifies answers from their text (status 0 with the reason in `message` or `result`);
+  tests use the exact refusal strings in `__testing__/etherscan-fixtures.ts`. Add a new refusal there first.
+- Operator command: `yarn workspace server run start:etherscan check` prints what the key can use (never the key)
+  and exits 1 when no chain can be collected.
+- Rank: just below `arbitrum`, below every curated list and aggregator. A precaution, not a measurement; revisit
+  once a key that can call `tokeninfo` has produced data.
+- The `image` field is the logo. Only an absolute address is kept; a relative one is dropped because its host is
+  unknown per chain. This is unverified against live data (no key that can call `tokeninfo` has been available).
 
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function

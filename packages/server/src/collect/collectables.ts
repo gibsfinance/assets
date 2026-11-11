@@ -31,6 +31,7 @@ import setCollector from './set'
 import klerosCollector from './kleros'
 import dfynCollector from './dfyn'
 import CoinGeckoCollector from './coingecko'
+import coinGeckoTopTokensCollector from './coingecko-top-tokens'
 import umaCollector from './uma'
 import baofinanceCollector from './baofinance'
 import compoundCollector from './compound'
@@ -51,6 +52,7 @@ import pangolinCollector from './pangolin'
 import arbitrumCollector from './arbitrum'
 import mewCollector from './mew'
 import jupiterCollector from './jupiter'
+import etherscanCollector from './etherscan'
 // Bridge aggregators. Broad, cross-chain, and verified-only — see ./aggregator.
 import lifiCollector from './lifi'
 import relayCollector from './relay'
@@ -97,6 +99,7 @@ type CollectableKey =
   | 'omnibridge'
   | 'dfyn'
   | 'coingecko'
+  | 'coingecko-top-tokens'
   | '9mm'
   | 'uma'
   | 'baofinance'
@@ -106,6 +109,7 @@ type CollectableKey =
   | 'pancakeswap-extended'
   | 'pangolin'
   | 'arbitrum'
+  | 'etherscan'
   | 'mew'
   | 'jupiter'
   | 'lifi'
@@ -202,6 +206,10 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     // outrank another aggregate source; it may not outrank a curator.
     lifi: lifiCollector,
     coingecko: new CoinGeckoCollector(),
+    // The largest tokens by market capitalisation on about twenty chains, one ranked
+    // list per chain (`top-tokens-<chain id>`). It reads the same CoinGecko artwork as the
+    // full collector above, so it sits directly below it and decides no contested token.
+    'coingecko-top-tokens': coinGeckoTopTokensCollector,
     '9mm': nineMM,
     uma: umaCollector,
     baofinance: baofinanceCollector,
@@ -215,6 +223,13 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     'pancakeswap-extended': pancakeswapExtendedCollector,
     pangolin: pangolinCollector,
     arbitrum: arbitrumCollector,
+    // Etherscan's own token records, fetched only for tokens other providers already rank
+    // (it has no endpoint that ranks tokens) and only on the chains and plan the key allows.
+    // It sits below every curated list and every aggregator, so it may not overrule a source that
+    // chose its art on purpose, and above the metadata dump and the network-icon fallbacks. This
+    // is a precaution, not a measurement: no key that can call `tokeninfo` has run yet, so how
+    // often its logos differ from the sources above is unknown. Revisit once real data exists.
+    etherscan: etherscanCollector,
     // Jupiter's verified Solana universe, filed under solana-501 and split into one
     // list per meaningful tag (lst, meme, rwa, stable, and so on).
     jupiter: jupiterCollector,

@@ -2,6 +2,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readLimit } from './src/runtime/read-limit'
 import { readSwitch } from './src/runtime/read-switch'
+import { readEtherscanSettings } from './src/collect/etherscan-settings'
 
 const database = {
   url: process.env.DATABASE_URL || 'postgres://gibassets:password@localhost:5876/gibassets',
@@ -86,6 +87,14 @@ const imageStoreDirectory = process.env.IMAGE_STORE_DIR
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'image-store')
 
 /**
+ * Which kind of storage holds the image store: `local` (the default), `s3`, `gcs`, `azure`, `ipfs`,
+ * or JSON describing a `tiered`, `mirrored` or `fallback` combination. The text is only read
+ * here; `image-store/store-config.ts` parses it and reads each kind's own settings, so a mistake
+ * is reported at start-up by name. See `docs/skills/self-hosting.md` for every setting.
+ */
+const imageStore = process.env.IMAGE_STORE?.trim() || 'local'
+
+/**
  * Whether new and refreshed images still keep their bytes in the `image.content` column, as
  * well as in the image store. Controlled by IMAGE_BYTES_IN_DATABASE (default true).
  *
@@ -96,6 +105,12 @@ const imageStoreDirectory = process.env.IMAGE_STORE_DIR
  * written afterwards carry a NULL `content`, and every reader goes through the store.
  */
 const imageBytesInDatabase = readSwitch(process.env.IMAGE_BYTES_IN_DATABASE, true)
+
+/**
+ * Settings for the Etherscan collector (see `collect/etherscan-settings.ts` for each variable).
+ * The API key is a secret: set it in the environment only, and never log this object.
+ */
+const etherscan = readEtherscanSettings(process.env)
 
 Error.stackTraceLimit = Infinity
 
@@ -108,5 +123,7 @@ export default {
   concurrency,
   sharp,
   imageStoreDirectory,
+  imageStore,
   imageBytesInDatabase,
+  etherscan,
 }

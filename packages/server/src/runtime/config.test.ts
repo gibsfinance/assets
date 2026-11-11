@@ -11,6 +11,8 @@ const SETTINGS = [
   'SHARP_CONCURRENCY',
   'IMAGE_STORE_DIR',
   'IMAGE_BYTES_IN_DATABASE',
+  'ETHERSCAN_API_KEY',
+  'ETHERSCAN_CALLS_PER_SECOND',
 ]
 
 /** Loads `config.ts` afresh, because it reads the environment once, when it is first imported. */
@@ -92,5 +94,21 @@ describe('config: bytes in the database', () => {
   it('ignores a value it does not recognise, rather than flipping the switch', async () => {
     vi.stubEnv('IMAGE_BYTES_IN_DATABASE', 'flase')
     expect((await loadConfig()).imageBytesInDatabase).toBe(true)
+  })
+})
+
+describe('config: etherscan', () => {
+  it('leaves the collector off, at the free plan rate, when nothing is set', async () => {
+    const { etherscan } = await loadConfig()
+    expect(etherscan.apiKey).toBeUndefined()
+    expect(etherscan.callsPerSecond).toBe(3)
+  })
+
+  it('reads the key and the rate from the environment', async () => {
+    vi.stubEnv('ETHERSCAN_API_KEY', 'a-key')
+    vi.stubEnv('ETHERSCAN_CALLS_PER_SECOND', '10')
+    const { etherscan } = await loadConfig()
+    expect(etherscan.apiKey).toBe('a-key')
+    expect(etherscan.callsPerSecond).toBe(10)
   })
 })

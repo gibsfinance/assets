@@ -162,6 +162,13 @@
       "when": 1794371237950,
       "tag": "0022_image_store_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794408711183,
+      "tag": "0023_image_store_cid",
+      "breakpoints": true
     }
   ]
 }

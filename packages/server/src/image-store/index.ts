@@ -7,96 +7,62 @@
  * are read through `loadImageBytes` and written by `insertImage` before its row commits.
  */
 import config from '../../config'
-import { log } from '../logger'
-import { createLocalBlobStore } from './local'
+import { ImageStoreConfigurationError } from './configuration-error'
+import { createBlobStoreFromSpec } from './store-config'
+import type { BlobStore } from './types'
 
 export { assertSha256Hex, hashBytes, isSha256Hex } from './hash'
+export { ImageStoreConfigurationError } from './configuration-error'
 
-/** What the store knows about one blob. */
-export type BlobStat = {
-  /** The blob's name: the sha256 of its bytes, 64 lowercase hexadecimal characters. */
-  sha256: string
-  /** Length of the blob in bytes. */
-  byteSize: number
-  /**
-   * When the blob was last written or reused, in milliseconds since the epoch. Present on what
-   * `stat` and `list` return, absent on what `put` returns. A clean-up that goes by age
-   * (`images gc`) reads it.
-   */
-  modifiedAtMs?: number
-}
-
-/**
- * Storage for blobs named by the sha256 of their bytes.
- *
- * Every method that takes a digest throws a `TypeError` for anything that is not 64 lowercase
- * hexadecimal characters, before it touches storage.
- */
-export interface BlobStore {
-  /**
-   * Stores bytes under their own digest. Storing bytes that are already present writes nothing,
-   * but renews the blob's modification time, so age-based clean-up sees the reuse.
-   *
-   * @param bytes The content.
-   * @returns The digest and length of what is now stored.
-   */
-  put(bytes: Uint8Array): Promise<BlobStat>
-
-  /**
-   * Reads a blob.
-   *
-   * The bytes are returned as stored; they are not hashed again on the way out.
-   *
-   * @param sha256 The blob's digest.
-   * @returns The bytes, or null when no such blob exists.
-   */
-  get(sha256: string): Promise<Buffer | null>
-
-  /**
-   * Looks a blob up without reading it.
-   *
-   * @param sha256 The blob's digest.
-   * @returns The blob's digest and length, or null when no such blob exists.
-   */
-  stat(sha256: string): Promise<BlobStat | null>
-
-  /**
-   * Removes a blob.
-   *
-   * @param sha256 The blob's digest.
-   * @returns True when a blob was removed, false when there was none.
-   */
-  delete(sha256: string): Promise<boolean>
-
-  /**
-   * Walks every stored blob, in no particular order. Blobs added or removed during the walk
-   * may or may not appear.
-   *
-   * @returns An asynchronous iterator of digests and lengths.
-   */
-  list(): AsyncIterable<BlobStat>
-}
+export type { BlobStat, BlobStore } from './types'
 
 let sharedStore: BlobStore | undefined
 
 /**
  * The process's blob store, built from configuration on first use.
  *
- * Today that is a directory (`IMAGE_STORE_DIR`, see `config.ts`). Building it also starts a
+ * Which store it is comes from `IMAGE_STORE` (see `store-config.ts`): a directory by default
+ * (`IMAGE_STORE_DIR`), or object storage, IPFS, or a combination. A local store also starts a
  * background sweep of temporary files that an earlier crash left behind; a failed sweep is
  * logged and never reaches the caller.
  *
  * @returns The shared store.
+ * @throws ImageStoreConfigurationError when the configuration is missing or wrong.
  */
 export function getImageStore(): BlobStore {
   if (sharedStore) return sharedStore
-  const store = createLocalBlobStore({ root: config.imageStoreDirectory })
-  store.sweepStaleTemporaryFiles().then(
-    (deleted) => deleted > 0 && log('image store: swept %d stale temporary files', deleted),
-    (error: unknown) => log('image store: temporary file sweep failed: %o', error),
-  )
-  sharedStore = store
-  return store
+  sharedStore = createBlobStoreFromSpec(config.imageStore || 'local', {
+    defaultLocalDirectory: config.imageStoreDirectory,
+  })
+  return sharedStore
+}
+
+/** Where {@link initializeImageStore} writes its message and how it ends the process. Tests replace both. */
+export type InitializeImageStoreOptions = {
+  /** Prints the message. Defaults to standard error. */
+  report?: (message: string) => void
+  /** Ends the process. Defaults to `process.exit`. */
+  exit?: (code: number) => void
+}
+
+/**
+ * Builds the shared store at start-up, so a missing or invalid setting stops the process with
+ * one clear line instead of failing on the first image request.
+ *
+ * @param options See {@link InitializeImageStoreOptions}.
+ * @returns The store, or undefined after `exit` was called for a configuration error.
+ * @throws Anything that is not a configuration error.
+ */
+export function initializeImageStore(options: InitializeImageStoreOptions = {}): BlobStore | undefined {
+  const { report = (message) => console.error(message), exit = (code) => process.exit(code) } = options
+  try {
+    return getImageStore()
+  } catch (error) {
+    if (!(error instanceof ImageStoreConfigurationError)) throw error
+    report(`image store configuration error: ${error.message}`)
+    exit(1)
+    return undefined
+  }
 }
 
 /**

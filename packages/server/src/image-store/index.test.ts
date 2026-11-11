@@ -4,17 +4,20 @@ import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const logMock = vi.hoisted(() => vi.fn())
-const configMock = vi.hoisted(() => ({ default: { imageStoreDirectory: '' } }))
+const configMock = vi.hoisted(() => ({
+  default: { imageStoreDirectory: '', imageStore: undefined as string | undefined },
+}))
 vi.mock('../logger', () => ({ log: logMock }))
 vi.mock('../../config', () => configMock)
 
-import { getImageStore, hashBytes, resetImageStoreForTests } from './index'
+import { getImageStore, hashBytes, initializeImageStore, resetImageStoreForTests } from './index'
 
 let root: string
 
 beforeEach(async () => {
   root = await fileSystem.mkdtemp(path.join(os.tmpdir(), 'image-store-index-test-'))
   configMock.default.imageStoreDirectory = root
+  configMock.default.imageStore = undefined
   logMock.mockClear()
   resetImageStoreForTests()
 })
@@ -84,5 +87,57 @@ describe('getImageStore', () => {
     await vi.waitFor(() =>
       expect(logMock).toHaveBeenCalledWith('image store: temporary file sweep failed: %o', expect.anything()),
     )
+  })
+})
+
+describe('initializeImageStore', () => {
+  it('builds and returns the shared store when the configuration is good', () => {
+    const exit = vi.fn()
+
+    expect(initializeImageStore({ exit, report: vi.fn() })).toBe(getImageStore())
+    expect(exit).not.toHaveBeenCalled()
+  })
+
+  it('reports one clear line and exits with 1 when the configuration is wrong', () => {
+    configMock.default.imageStore = 'floppy'
+    const report = vi.fn()
+    const exit = vi.fn()
+
+    expect(initializeImageStore({ report, exit })).toBeUndefined()
+
+    expect(report).toHaveBeenCalledWith(
+      expect.stringMatching(/^image store configuration error: IMAGE_STORE: unknown store type "floppy"/),
+    )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+
+  it('prints to standard error and ends the process by default', () => {
+    configMock.default.imageStore = 'floppy'
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+
+    initializeImageStore()
+
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(exit).toHaveBeenCalledWith(1)
+    error.mockRestore()
+    exit.mockRestore()
+  })
+
+  it('lets a failure that is not a configuration error through', () => {
+    configMock.default.imageStore = 'local'
+    configMock.default.imageStoreDirectory = null as never
+
+    expect(() => initializeImageStore({ exit: vi.fn(), report: vi.fn() })).toThrow(TypeError)
+  })
+})
+
+describe('getImageStore with IMAGE_STORE', () => {
+  it('builds the kind the setting names', async () => {
+    configMock.default.imageStore = JSON.stringify({ type: 'local', dir: root })
+
+    const stored = await getImageStore().put(Buffer.from('named dir'))
+
+    expect(await fileSystem.stat(path.join(root, 'sha256', stored.sha256.slice(0, 2), stored.sha256))).toBeTruthy()
   })
 })
