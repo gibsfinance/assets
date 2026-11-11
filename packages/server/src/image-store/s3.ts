@@ -25,7 +25,8 @@ import {
   type RemoteStoreEnvironment,
 } from './http'
 import { createObjectBlobStore, type ObjectClient, type ObjectInfo } from './object-blob-store'
-import { encodeRfc3986, signRequestV4, EMPTY_PAYLOAD_SHA256, type AwsCredentials } from './sigv4'
+import { encodeObjectPath, encodeRfc3986 } from './encoding'
+import { signRequestV4, EMPTY_PAYLOAD_SHA256, type AwsCredentials } from './sigv4'
 import type { BlobStore } from './types'
 import { readBlocks, readElement } from './xml'
 
@@ -145,9 +146,6 @@ export type S3ClientOptions = RemoteStoreEnvironment & {
 
 const OCTET_STREAM = 'application/octet-stream'
 
-/** The path of a key, each segment percent-encoded and the slashes between them kept. */
-const encodeKey = (key: string): string => key.split('/').map(encodeRfc3986).join('/')
-
 /**
  * Builds the six operations of {@link ObjectClient} on S3 requests.
  *
@@ -167,7 +165,7 @@ export function createS3ObjectClient(options: S3ClientOptions): ObjectClient {
     const text = Object.entries(query)
       .map(([name, value]) => `${encodeRfc3986(name)}=${encodeRfc3986(value)}`)
       .join('&')
-    return new URL(`${bucketRoot}${encodeKey(key)}${text ? `?${text}` : ''}`)
+    return new URL(`${bucketRoot}${encodeObjectPath(key)}${text ? `?${text}` : ''}`)
   }
 
   const request = (
@@ -222,7 +220,7 @@ export function createS3ObjectClient(options: S3ClientOptions): ObjectClient {
   const renew = async (key: string): Promise<void> => {
     const response = await request('PUT', urlOf(key), {
       headers: {
-        'x-amz-copy-source': `/${encodeRfc3986(bucket)}/${encodeKey(key)}`,
+        'x-amz-copy-source': `/${encodeRfc3986(bucket)}/${encodeObjectPath(key)}`,
         'x-amz-metadata-directive': 'REPLACE',
         'x-amz-meta-renewed-at': new Date(now()).toISOString(),
         'content-type': OCTET_STREAM,

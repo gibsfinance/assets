@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_PAYLOAD_SHA256, encodeRfc3986, signRequestV4, type AwsCredentials } from './sigv4'
+import { encodeObjectPath, encodeRfc3986 } from './encoding'
+import { EMPTY_PAYLOAD_SHA256, signRequestV4, type AwsCredentials } from './sigv4'
 import { hashBytes } from './hash'
 
 /** The example credentials AWS prints throughout its Signature Version 4 documentation. */
@@ -134,6 +135,12 @@ describe('signRequestV4, beyond the published examples', () => {
 
     expect(headers['x-amz-date']).toBe('20130524T000000Z')
     expect(headers['x-amz-content-sha256']).toBe(EMPTY_PAYLOAD_SHA256)
+  })
+})
+
+describe('encodeObjectPath', () => {
+  it('encodes each segment and keeps the slashes', () => {
+    expect(encodeObjectPath('a b/c d/e')).toBe('a%20b/c%20d/e')
   })
 })
 

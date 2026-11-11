@@ -9,6 +9,7 @@
  * AWS publishes in its S3 documentation.
  */
 import { createHash, createHmac, type BinaryLike } from 'node:crypto'
+import { encodeRfc3986 } from './encoding'
 
 /** The keys that sign requests. */
 export type AwsCredentials = {
@@ -38,15 +39,6 @@ export type SignRequestOptions = {
 
 /** sha256 of an empty body, as hexadecimal. */
 export const EMPTY_PAYLOAD_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-
-/**
- * Percent-encodes text the way Signature Version 4 requires: everything except letters, digits,
- * `-`, `_`, `.` and `~`.
- *
- * @param text Text to encode.
- */
-export const encodeRfc3986 = (text: string): string =>
-  encodeURIComponent(text).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
 
 const hmac = (key: BinaryLike, data: string): Buffer => createHmac('sha256', key).update(data).digest()
 
