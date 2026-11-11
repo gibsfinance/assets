@@ -41,6 +41,7 @@ export const collectableOrder = [
   'dfyn',
   'lifi',
   'coingecko',
+  'coingecko-top-tokens',
   '9mm',
   'uma',
   'baofinance',

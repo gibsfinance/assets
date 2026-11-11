@@ -31,6 +31,7 @@ import setCollector from './set'
 import klerosCollector from './kleros'
 import dfynCollector from './dfyn'
 import CoinGeckoCollector from './coingecko'
+import coinGeckoTopTokensCollector from './coingecko-top-tokens'
 import umaCollector from './uma'
 import baofinanceCollector from './baofinance'
 import compoundCollector from './compound'
@@ -97,6 +98,7 @@ type CollectableKey =
   | 'omnibridge'
   | 'dfyn'
   | 'coingecko'
+  | 'coingecko-top-tokens'
   | '9mm'
   | 'uma'
   | 'baofinance'
@@ -202,6 +204,10 @@ const buildCollectables = (): Record<CollectableKey, BaseCollector> => {
     // outrank another aggregate source; it may not outrank a curator.
     lifi: lifiCollector,
     coingecko: new CoinGeckoCollector(),
+    // The largest tokens by market capitalisation on about twenty chains, one ranked
+    // list per chain (`top-tokens-<chain id>`). It reads the same CoinGecko artwork as the
+    // full collector above, so it sits directly below it and decides no contested token.
+    'coingecko-top-tokens': coinGeckoTopTokensCollector,
     '9mm': nineMM,
     uma: umaCollector,
     baofinance: baofinanceCollector,
