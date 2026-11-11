@@ -133,6 +133,13 @@ Return visitors paint from cache; the build removes the two blocking requests.
   but never a row that is the only imaged row for its token.
 - A feed that fails or answers empty leaves its list alone.
 
+### Retired provider: etherscan
+The `etherscan` collector (a headless-browser scrape of explorer pages) was removed. The
+Etherscan API has no top-tokens endpoint, and its token-info endpoint is a paid tier. Its
+existing rows stay in the database and `/list/etherscan/top-tokens` still serves them, now
+frozen. With no list order item they rank last, so any other provider wins a contested token.
+Nothing deletes them; remove them with a deliberate migration if that is ever wanted.
+
 ### Token List Ordering
 - `applyOrder()` in `db/index.ts` — CTE with dense_rank window function
 - `dedupe` flag: true = WHERE rank=1 (image endpoints), false = all rows (token lists)

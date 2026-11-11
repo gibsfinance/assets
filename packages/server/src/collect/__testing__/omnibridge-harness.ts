@@ -13,8 +13,7 @@
  *   fresh `createCollectorHarness()` instance — omnibridge.ts's discover()
  *   phase writes through exactly the same funnel `remote-tokenlist.ts` does.
  * - `storeToken` (and the `insertToken` / `insertListToken` it composes)
- *   comes from `createTokenStoreHarness()`, shared with `etherscan.ts`'s
- *   harness for the same reason.
+ *   comes from `createTokenStoreHarness()`.
  *
  * What is bespoke here:
  * - `insertBridge` / `getBridge` / `updateBridgeBlockProgress` /

@@ -2,8 +2,8 @@
  * Shared stand-in for the token-storage half of `../db` — `insertToken`,
  * `insertTokenBatch`, `insertListToken`, and `storeToken` — used by collectors
  * that write tokens without going through the image-fetching path that
- * `collector-harness.ts` already models (`omnibridge.ts` and `etherscan.ts`
- * both call `storeToken` directly instead of `fetchImageAndStoreForToken`).
+ * `collector-harness.ts` already models (`omnibridge.ts`
+ * calls `storeToken` directly instead of `fetchImageAndStoreForToken`).
  *
  * Mirrors the identity/upsert semantics of the real functions in `../db`
  * because that behavior is load-bearing for collectors that re-process the

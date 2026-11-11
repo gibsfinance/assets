@@ -23,7 +23,6 @@ export const collectableOrder = [
   'internetmoney',
   'midgard',
   'pumptires',
-  'etherscan',
   'routescan',
   'trustwallet',
   'piteas',
