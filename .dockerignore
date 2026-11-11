@@ -4,3 +4,5 @@ node_modules
 postgres-data*
 .DS_Store
 .yarn/cache
+**/node_modules
+**/coverage

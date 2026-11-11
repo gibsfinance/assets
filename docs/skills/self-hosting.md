@@ -132,6 +132,12 @@ docker run -p 3000:3000 \
 - Migrations run when the server starts; a separate migrate step is not needed.
 - The images build with the `Dockerfile` (server and interface) and `Dockerfile.worker`
   (collector). Any host that runs containers works; set the environment variables there.
+- The collector keeps its artwork repositories (Trust Wallet, SmolDapp, Ethereum Lists, PulseChain assets) current
+  by itself: at the start of every run it fetches the newest commit of each, shallow and sparse, and falls back
+  to the copy it has if the network fails. The image holds a first copy. To keep the refreshed copy between
+  container restarts, mount a named volume at `/usr/src/app/submodules` (a named volume starts with the image's
+  copy; an empty bind mount starts empty and the first run clones into it). Set `REFRESH_SUBMODULES=false` to turn
+  the refresh off, and `SUBMODULES_DIRECTORY` to keep the repositories somewhere else.
 
 ## Monitoring
 
