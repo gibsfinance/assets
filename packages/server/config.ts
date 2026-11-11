@@ -1,6 +1,7 @@
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readLimit } from './src/runtime/read-limit'
+import { readSwitch } from './src/runtime/read-switch'
 
 const database = {
   url: process.env.DATABASE_URL || 'postgres://gibassets:password@localhost:5876/gibassets',
@@ -84,6 +85,18 @@ const imageStoreDirectory = process.env.IMAGE_STORE_DIR
   ? path.resolve(process.env.IMAGE_STORE_DIR)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'image-store')
 
+/**
+ * Whether new and refreshed images still keep their bytes in the `image.content` column, as
+ * well as in the image store. Controlled by IMAGE_BYTES_IN_DATABASE (default true).
+ *
+ * The store is always written. This switch only decides whether the database copy is written
+ * too. It stays true until `images export` has filled the store from the existing rows and
+ * `images verify` has passed, because the previous release reads the column and a rollback
+ * to it needs the bytes there. Set it to false to stop writing bytes into the database; rows
+ * written afterwards carry a NULL `content`, and every reader goes through the store.
+ */
+const imageBytesInDatabase = readSwitch(process.env.IMAGE_BYTES_IN_DATABASE, true)
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -95,4 +108,5 @@ export default {
   concurrency,
   sharp,
   imageStoreDirectory,
+  imageBytesInDatabase,
 }

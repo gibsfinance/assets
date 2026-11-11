@@ -100,6 +100,21 @@ export const isPlaceholderUri = (uri: string | null | undefined): boolean => {
 export const contentFingerprint = (image: Buffer): string => createHash('sha256').update(image).digest('hex')
 
 /**
+ * Whether a digest and length together name a known upstream placeholder.
+ *
+ * The twin of {@link isPlaceholderImage} for a caller that already holds the sha256 of the
+ * sanitized bytes, as every stored image does (`image.content_sha256`, `image.byte_size`):
+ * it answers without the bytes in hand. The length is checked as well as the digest because
+ * `byteLength` is half of what a list entry records, and a digest alone would trust a value
+ * the entry was never written to vouch for.
+ *
+ * @param sha256 Hex-encoded sha256 of the sanitized bytes.
+ * @param byteLength Length of those bytes.
+ */
+export const isPlaceholderDigest = (sha256: string, byteLength: number): boolean =>
+  placeholderByteLengths.includes(byteLength) && fingerprints.has(sha256)
+
+/**
  * Whether these bytes are a known upstream placeholder rather than real artwork.
  *
  * Expects bytes that have already been through `sanitizeImage`, which is what
@@ -109,5 +124,22 @@ export const isPlaceholderImage = (image: Buffer): boolean => {
   if (!image.length) return false
   // A length that matches nothing on the list cannot hash to anything on it.
   if (!placeholderByteLengths.includes(image.length)) return false
-  return fingerprints.has(contentFingerprint(image))
+  return isPlaceholderDigest(contentFingerprint(image), image.length)
+}
+
+/**
+ * Whether a stored `image` row holds a known upstream placeholder, whichever way its bytes
+ * are recorded: by digest once the row has been exported to the image store, by the bytes
+ * themselves before that.
+ *
+ * @param row The `content_sha256`, `byte_size` and (narrowed) `content` columns of an image row.
+ */
+export const isPlaceholderStoredImage = (row: {
+  contentSha256: string | null
+  byteSize: number | null
+  content: Buffer | null
+}): boolean => {
+  // A digest is always written together with its length; a row with one and not the other is unexported.
+  if (row.contentSha256 !== null) return row.byteSize !== null && isPlaceholderDigest(row.contentSha256, row.byteSize)
+  return row.content !== null && isPlaceholderImage(row.content)
 }
