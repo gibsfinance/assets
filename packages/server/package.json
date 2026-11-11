@@ -21,6 +21,8 @@
     "collect": "tsx src/bin/collect",
     "start:server": "node --import ./src/bin/register-hooks.ts ./src/bin/server.ts",
     "start:collect": "node --import ./src/bin/register-hooks.ts ./src/bin/collect.ts",
+    "images": "tsx src/bin/images",
+    "start:images": "node --import ./src/bin/register-hooks.ts ./src/bin/images.ts",
     "collect:dev": "tsx --watch src/bin/collect",
     "harvest": "tsx src/bin/harvest",
     "server": "tsx ./src/bin/server.ts",
