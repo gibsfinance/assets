@@ -1,18 +1,42 @@
 /*
- * The logos that drift beside the home page title. The markup is in the frontmatter of
+ * The logos that float beside the home page title. The markup is in the frontmatter of
  * src/content/docs/index.mdx (Starlight's `hero.image.html`), so there is no script: the
- * drift is a CSS animation and the pictures load lazily from the public instance.
+ * motion is CSS animation and the pictures load lazily from the public instance.
+ *
+ * The cloud has real depth. `.hero-logos` sets the perspective, `.hero-logos-cloud` keeps its
+ * children in one 3D space and slowly sways on the vertical axis, and each logo sits at its own
+ * depth. Near logos look larger, far logos look smaller and a little dimmer. Only transform and
+ * opacity change, so the page never repaints. The sway and the tilts are small on purpose: a
+ * logo never turns more than about 36 degrees from the reader, so it stays easy to recognise.
  *
  * Each logo sets its own place and motion through custom properties:
  *   --x, --y      centre of the logo, as a share of the box
  *   --size        width and height of the logo
  *   --dx, --dy    how far it drifts
+ *   --z           depth: positive is nearer the reader, negative is further away
+ *   --fade        opacity at that depth (1 for near logos, lower for far ones)
+ *   --tilt        how far it leans on its vertical axis as it drifts
  *   --duration, --delay   the pace of its drift
+ * The sway of the whole cloud is set on `.hero-logos` itself:
+ *   --perspective   distance of the reader from the cloud
+ *   --sway          angle the cloud turns either way
+ *   --sway-duration time for one pass of the sway
  */
 .hero-logos {
+  --perspective: 520px;
+  --sway: 22deg;
+  --sway-duration: 16s;
   position: relative;
   width: 100%;
   aspect-ratio: 1;
+  perspective: var(--perspective);
+}
+
+.hero-logos-cloud {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  animation: hero-cloud-sway var(--sway-duration) ease-in-out infinite alternate;
 }
 
 .hero-logos img {
@@ -26,17 +50,31 @@
   border: 1px solid var(--sl-color-hairline-light);
   border-radius: 50%;
   background: var(--sl-color-bg-nav);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--sl-color-accent) 22%, transparent);
+  /* The glow doubles as a soft depth shadow: it sits under the coin and falls off to one side. */
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--sl-color-accent) 22%, transparent),
+    4px 10px 14px color-mix(in srgb, var(--sl-color-black) 35%, transparent);
   object-fit: contain;
+  opacity: var(--fade);
+  transform: translate3d(0, 0, var(--z));
   animation: hero-logo-drift var(--duration) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes hero-cloud-sway {
+  from {
+    transform: rotateY(calc(var(--sway) * -1)) rotateX(3deg);
+  }
+  to {
+    transform: rotateY(var(--sway)) rotateX(-3deg);
+  }
 }
 
 @keyframes hero-logo-drift {
   from {
-    transform: translate(0, 0) rotate(-3deg);
+    transform: translate3d(0, 0, var(--z)) rotateY(calc(var(--tilt) * -1)) rotateZ(-3deg);
   }
   to {
-    transform: translate(var(--dx), var(--dy)) rotate(3deg);
+    transform: translate3d(var(--dx), var(--dy), var(--z)) rotateY(var(--tilt)) rotateZ(3deg);
   }
 }
 
@@ -47,9 +85,15 @@
   }
 }
 
-/* A still arrangement for readers who ask for less motion. */
+/* A still 3D arrangement for readers who ask for less motion. */
 @media (prefers-reduced-motion: reduce) {
+  .hero-logos-cloud {
+    animation: none;
+    transform: rotateY(-8deg) rotateX(2deg);
+  }
+
   .hero-logos img {
     animation: none;
+    transform: translate3d(0, 0, var(--z)) rotateY(calc(var(--tilt) * -0.5));
   }
 }
