@@ -169,6 +169,13 @@
       "when": 1794408711183,
       "tag": "0023_image_store_cid",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794518910136,
+      "tag": "0024_purge_svg_variants",
+      "breakpoints": true
     }
   ]
 }

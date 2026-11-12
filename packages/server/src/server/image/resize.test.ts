@@ -528,6 +528,7 @@ describe('maybeResize', () => {
 
     // Re-wire the sharp mock pipeline after resetAllMocks
     const mockPipeline = {
+      metadata: vi.fn().mockResolvedValue({ width: 24, height: 24 }),
       resize: vi.fn().mockReturnThis(),
       toFormat: vi.fn().mockReturnThis(),
       toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized')),
