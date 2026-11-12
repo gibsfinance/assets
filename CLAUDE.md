@@ -15,9 +15,9 @@ yarn workspace ui run test
 # calling the change done.
 #   Every workspace — 100% on all four metrics, and the floors are set there.
 #     A single untested line fails the build while every test still passes.
-#     Actuals: server 7469 statements / 3686 branches / 1385 functions / 6679
-#     lines over 3281 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
-#     92 tests, @gibs/utils 95, @gibs/react 41.
+#     Actuals: server 7513 statements / 3700 branches / 1398 functions / 6720
+#     lines over 3311 tests; ui 2746/1633/714/2394 over 1845 tests; @gibs/sdk
+#     92 tests, @gibs/utils 95, @gibs/react 41, docs 29 (79/41/16/67).
 #   There is no margin under the interface floors any more. The old ones sat
 #     ~0.2 below measured because this workspace used to report slightly lower
 #     on the CI runner than locally. At 100 there is nothing left to absorb, so
@@ -34,6 +34,11 @@ yarn workspace @gibs/sdk run vitest run --coverage
 yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
 yarn workspace ui run vitest run --coverage
+
+# Documentation site (Starlight) — see "Documentation Site" below
+yarn workspace docs dev              # dev server with live reload
+yarn workspace docs build            # static site into packages/docs/dist
+yarn workspace docs run vitest run --coverage   # the build scripts, at 100%
 
 # Lint — each workspace runs its own, from its own directory. CI runs both.
 cd packages/server && yarn lint
@@ -113,6 +118,7 @@ falls back to the default.
 | `IMAGE_STORE_IPFS_API_URL` | provider's (`filebase`, `pinata`); required for `kubo` | `ipfs`: pinning API address |
 | `IMAGE_STORE_IPFS_GATEWAYS` | provider's; required for `kubo` | `ipfs`: comma-separated gateway addresses ending where the CID goes (`…/ipfs/`), tried in order |
 | `IMAGE_STORE_IPFS_API_TOKEN` | required for `filebase`, `pinata` (secret) | `ipfs`: bearer token |
+| `DOCS_HOSTNAMES` | empty (off) | comma-separated host names that get the documentation site instead of the application (see "Documentation Site") |
 
 Every setting except a secret can instead be written in the `IMAGE_STORE` JSON; a secret is read from the environment
 only and the JSON form refuses it. `docs/skills/self-hosting.md` has the full reference with examples.
@@ -344,6 +350,36 @@ rows and `/list/etherscan/top-tokens` stay valid (that list is frozen and empty)
   handler neither tests for them nor changes behaviour.
 - The route registers **before** `/:providerKey`, which would otherwise swallow it.
 
+### Documentation Site (`packages/docs`)
+A Starlight (Astro) site: guides, a generated endpoint reference, and contributor notes. Production is
+`docs.gib.show`, staging is `docs-staging.gib.show`. Run it with `yarn workspace docs dev`.
+- **Pages.** Content lives in `packages/docs/src/content/docs/`: `index.mdx` (splash), then one directory per
+  sidebar group, in this order: `getting-started/`, `api-reference/`, `list-management/`, `self-hosting/`,
+  `contributing/`. Groups fill themselves from their directory. Every page needs `title`, `description` and
+  `sidebar: { order: N }` in its frontmatter. The sidebar then adds the generated endpoint reference.
+- **Endpoint reference** (`/reference/`). `scripts/generate-openapi.ts` writes `generated/openapi.json` from
+  `packages/server/src/server/openapi.ts` on every build and dev start, and `starlight-openapi` renders it. The file is
+  not committed, so the reference cannot drift from the code. Adding a route to `openapi.ts` (which CI already
+  demands) is all it takes to document it.
+- **One source for the old markdown URLs.** `/skills/api-reference.md`, `/skills/list-management.md` and
+  `/skills/self-hosting.md` (linked from `/llms.txt`) are not separate documents. After `astro build`,
+  `scripts/generate-guides.ts` joins each content directory in sidebar order into one file under
+  `packages/docs/dist/skills/`: frontmatter removed, the page title as a `##` heading, page headings one level
+  lower, MDX-only syntax removed (see `scripts/guides.ts` for exactly what a page may contain). `docs.ts` serves
+  the generated file when it exists and falls back to `docs/skills/*.md`. Edit the pages, never the output. Once the
+  pages exist, delete `docs/skills/*.md` so the fallback has nothing left to serve. `docs/terms.md` and `/terms`
+  are separate and unchanged.
+- **Serving.** No separate container. `server/docs-site.ts` serves `packages/docs/dist` when the request's host
+  name is in `DOCS_HOSTNAMES`. On those hosts it answers every request (the site, or the site's own 404 page), so
+  the API does not answer there; on every other host it passes the request on, so the site does not answer on
+  `gib.show`. `_astro/*` is cached for a year as immutable; HTML is `no-cache`. The setting is matched against the
+  `Host` header, so a proxy in front must pass the original host name through. The `Dockerfile` builds the site in its
+  own stage and copies only `dist` into the runtime image. Set `DOCS_SITE_URL` at build time for staging
+  (`https://docs-staging.gib.show`); it feeds the sitemap, canonical links and the absolute links in the joined guides.
+- **Checks.** `yarn workspace docs run check` (types for the scripts and content configuration), `yarn lint` from the
+  package, and the `docs` CI job builds the whole site. The build scripts are the only testable code; they sit at
+  100% like every other workspace. `packages/docs` is outside the root `tsconfig.json`.
+
 ### UI Utils Pattern
 Pure functions extracted from components live in `packages/ui/src/lib/utils/`:
 - `formatting.ts` — formatBytes, detectImageFormat, buildImageUrlWithSize, truncateAddress, generateRepoName
@@ -356,9 +392,9 @@ Components import from these — do not re-inline logic that's been extracted.
 
 ## CI
 
-Workflow: `.github/workflows/test.yml` — 8 job definitions (lint, typecheck, build, unit-test,
+Workflow: `.github/workflows/test.yml` — 9 job definitions (lint, typecheck, build, docs, unit-test,
 vitest, coverage, browser-test, integration-test). `vitest` and `coverage` are matrices over the
-five workspaces and `typecheck` is a matrix over two configurations, so a run reports 17 jobs.
+six workspaces and `typecheck` is a matrix over two configurations, so a run reports 20 jobs.
 `coverage` fails independently of `vitest`: every test can pass while a threshold breach turns
 the run red.
 
@@ -369,7 +405,8 @@ Express router because Express 5 discards mount paths and `image/index.ts` regis
 `router.use`, so a stack walk would find no image endpoint and report success. A new
 `router.use` in `routes.ts` also fails it until it is added to that file's `MOUNTS`.
 
-Only `packages/server` and `packages/ui` are type-checked. Nothing type-checks the other three
+Only `packages/server` and `packages/ui` are type-checked by the `typecheck` job, and `packages/docs` by its own
+`docs` job (`yarn workspace docs run check`). Nothing type-checks the other three
 workspaces, and `yarn workspace ui run build` is a bare `vite build`, which strips types without
 reading them — so the `typecheck` job is the only thing standing between a type error and
 master.
