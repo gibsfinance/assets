@@ -1,80 +1,252 @@
 /*
- * The logos that float beside the home page title. The markup is in the frontmatter of
+ * The logos that orbit beside the home page title. The markup is in the frontmatter of
  * src/content/docs/index.mdx (Starlight's `hero.image.html`), so there is no script: the
  * motion is CSS animation and the pictures load lazily from the public instance.
  *
- * The cloud has real depth. `.hero-logos` sets the perspective, `.hero-logos-cloud` keeps its
- * children in one 3D space and slowly sways on the vertical axis, and each logo sits at its own
- * depth. Near logos look larger, far logos look smaller and a little dimmer. Only transform and
- * opacity change, so the page never repaints. The sway and the tilts are small on purpose: a
- * logo never turns more than about 36 degrees from the reader, so it stays easy to recognise.
+ * The scene is a disc seen from above at an angle, with the Gib coin floating at its centre.
+ * Logos ride two rings on the disc, float above them and cast a shadow on the floor. The disc
+ * and the coin never move, so the eye has a fixed frame to read the depth from; only the view
+ * sways a few degrees.
  *
- * Each logo sets its own place and motion through custom properties:
- *   --x, --y      centre of the logo, as a share of the box
- *   --size        width and height of the logo
- *   --dx, --dy    how far it drifts
- *   --z           depth: positive is nearer the reader, negative is further away
- *   --fade        opacity at that depth (1 for near logos, lower for far ones)
- *   --tilt        how far it leans on its vertical axis as it drifts
- *   --duration, --delay   the pace of its drift
- * The sway of the whole cloud is set on `.hero-logos` itself:
- *   --perspective   distance of the reader from the cloud
- *   --sway          angle the cloud turns either way
- *   --sway-duration time for one pass of the sway
+ * Layers, from outside in:
+ *   .hero-logos          the box; sets the perspective and is the size container (cqi units)
+ *   .hero-logos-scene    the slow sway of the whole view
+ *   .hero-logos-plane    the disc, tilted back by --tilt; holds the floor, rings and shadows
+ *   .hero-logos-arm      one per logo slot: spins in the plane, once per --lap
+ *   .hero-logos-tip      moves out to the ring's radius --radius
+ *   .hero-logos-face     spins back, so the logo keeps its orientation as it goes round
+ *   .hero-logos-upright  undoes the plane's tilt, so the logo faces the reader
+ *
+ * Every moving layer is a point (no width or height). Full-size 3D layers cut through each
+ * other, and Chrome draws the cut as a visible box edge.
+ *
+ * More variety than slots: each slot holds three logos (.hero-logos-pick-0 to -2) and shows the
+ * next one on every lap. The change happens three quarters into a lap, which is when the slot
+ * is on the far side of the coin, so the reader never sees a logo swap in the open.
+ *
+ * Per slot: --radius (ring), --lap (seconds for one lap), --start (negative delay = where on
+ * the ring it begins), --size (logo diameter). Sizes are shares of the box width (cqi).
  */
 .hero-logos {
-  --perspective: 520px;
-  --sway: 22deg;
-  --sway-duration: 16s;
+  --tilt: 62deg;
+  --hub-glow: rgb(245 179 1); /* the gold of the Gib coin itself, not a theme colour */
+  --floor-shadow: rgb(0 0 0 / 0.5);
+  --logo-lift: -7cqi;
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  perspective: var(--perspective);
+  container-type: inline-size;
+  perspective: 1000px;
+  perspective-origin: 50% 38%;
 }
 
-.hero-logos-cloud {
+:root[data-theme='light'] .hero-logos {
+  --floor-shadow: rgb(0 0 0 / 0.2);
+}
+
+.hero-logos-scene,
+.hero-logos-plane {
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  animation: hero-cloud-sway var(--sway-duration) ease-in-out infinite alternate;
 }
 
-.hero-logos img {
+.hero-logos-scene {
+  animation: hero-logos-sway 14s ease-in-out infinite alternate;
+}
+
+.hero-logos-plane {
+  transform: rotateX(var(--tilt));
+}
+
+.hero-logos-arm,
+.hero-logos-tip,
+.hero-logos-face,
+.hero-logos-upright,
+.hero-logos-hub {
   position: absolute;
-  left: calc(var(--x) - var(--size) / 2);
-  top: calc(var(--y) - var(--size) / 2);
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.hero-logos-tip,
+.hero-logos-face,
+.hero-logos-upright {
+  left: 0;
+  top: 0;
+}
+
+.hero-logos-upright,
+.hero-logos-hub {
+  transform: rotateX(calc(var(--tilt) * -1));
+}
+
+.hero-logos-floor {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 86cqi;
+  height: 86cqi;
+  margin: -43cqi 0 0 -43cqi;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--hub-glow) 34%, transparent),
+    color-mix(in srgb, var(--hub-glow) 10%, transparent) 22%,
+    color-mix(in srgb, var(--hub-glow) 4%, transparent) 48%,
+    transparent 70%
+  );
+}
+
+.hero-logos-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--radius) * 2);
+  height: calc(var(--radius) * 2);
+  margin: calc(var(--radius) * -1) 0 0 calc(var(--radius) * -1);
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--hub-glow) 32%, transparent);
+}
+
+.hero-logos-arm {
+  animation: hero-logos-spin var(--lap) linear var(--start) infinite;
+}
+
+.hero-logos-tip {
+  transform: translateX(var(--radius));
+}
+
+.hero-logos-face {
+  animation: hero-logos-spin var(--lap) linear var(--start) infinite reverse;
+}
+
+.hero-logos-shadow,
+.hero-logos-hub-shadow {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--floor-shadow), transparent 70%);
+}
+
+.hero-logos-shadow {
+  width: 7cqi;
+  height: 7cqi;
+  margin: -3.5cqi 0 0 -3.5cqi;
+}
+
+.hero-logos-hub-shadow {
+  left: 50%;
+  top: 50%;
+  width: 16cqi;
+  height: 16cqi;
+  margin: -8cqi 0 0 -8cqi;
+}
+
+.hero-logos-chip {
+  position: absolute;
   width: var(--size);
   height: var(--size);
-  padding: calc(var(--size) / 9);
-  box-sizing: border-box;
-  border: 1px solid var(--sl-color-hairline-light);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  transform: translateY(var(--logo-lift));
   border-radius: 50%;
+  border: 1px solid var(--sl-color-hairline-light);
   background: var(--sl-color-bg-nav);
-  /* The glow doubles as a soft depth shadow: it sits under the coin and falls off to one side. */
-  box-shadow:
-    0 0 24px color-mix(in srgb, var(--sl-color-accent) 22%, transparent),
-    4px 10px 14px color-mix(in srgb, var(--sl-color-black) 35%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--hub-glow) 14%, transparent);
+}
+
+.hero-logos-chip img {
+  position: absolute;
+  inset: calc(var(--size) / 9);
+  width: calc(100% - var(--size) * 2 / 9);
+  height: calc(100% - var(--size) * 2 / 9);
   object-fit: contain;
-  opacity: var(--fade);
-  transform: translate3d(0, 0, var(--z));
-  animation: hero-logo-drift var(--duration) ease-in-out var(--delay) infinite alternate;
+  opacity: 0;
+  animation: calc(var(--lap) * 3) linear var(--start) infinite;
 }
 
-@keyframes hero-cloud-sway {
-  from {
-    transform: rotateY(calc(var(--sway) * -1)) rotateX(3deg);
-  }
+.hero-logos-chip .hero-logos-pick-0 {
+  animation-name: hero-logos-pick-0;
+}
+
+.hero-logos-chip .hero-logos-pick-1 {
+  animation-name: hero-logos-pick-1;
+}
+
+.hero-logos-chip .hero-logos-pick-2 {
+  animation-name: hero-logos-pick-2;
+}
+
+.hero-logos-coin {
+  position: absolute;
+  width: 17cqi;
+  height: 17cqi;
+  margin: -8.5cqi 0 0 -8.5cqi;
+  transform: translateY(-10.5cqi);
+  clip-path: circle(47%);
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--hub-glow) 45%, transparent));
+}
+
+@keyframes hero-logos-spin {
   to {
-    transform: rotateY(var(--sway)) rotateX(-3deg);
+    transform: rotateZ(360deg);
   }
 }
 
-@keyframes hero-logo-drift {
+@keyframes hero-logos-sway {
   from {
-    transform: translate3d(0, 0, var(--z)) rotateY(calc(var(--tilt) * -1)) rotateZ(-3deg);
+    transform: rotateY(-8deg) translateY(4px);
   }
   to {
-    transform: translate3d(var(--dx), var(--dy), var(--z)) rotateY(var(--tilt)) rotateZ(3deg);
+    transform: rotateY(8deg) translateY(-4px);
+  }
+}
+
+/* Three laps per cycle; each logo is shown for one lap and swapped on the far side of the coin. */
+@keyframes hero-logos-pick-0 {
+  0%,
+  24% {
+    opacity: 1;
+  }
+  26%,
+  90.7% {
+    opacity: 0;
+  }
+  92.7%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes hero-logos-pick-1 {
+  0%,
+  24% {
+    opacity: 0;
+  }
+  26%,
+  57.3% {
+    opacity: 1;
+  }
+  59.3%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hero-logos-pick-2 {
+  0%,
+  57.3% {
+    opacity: 0;
+  }
+  59.3%,
+  90.7% {
+    opacity: 1;
+  }
+  92.7%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -85,15 +257,14 @@
   }
 }
 
-/* A still 3D arrangement for readers who ask for less motion. */
+/*
+ * A still scene for readers who ask for less motion. Pausing (rather than removing) the
+ * animations keeps each slot where its start delay puts it, so the logos stay spread round
+ * the rings instead of piling up at one point, and each shows its first logo.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .hero-logos-cloud {
-    animation: none;
-    transform: rotateY(-8deg) rotateX(2deg);
-  }
-
-  .hero-logos img {
-    animation: none;
-    transform: translate3d(0, 0, var(--z)) rotateY(calc(var(--tilt) * -0.5));
+  .hero-logos *,
+  .hero-logos *::before {
+    animation-play-state: paused;
   }
 }

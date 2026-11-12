@@ -396,10 +396,17 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
     built HTML file that contains a `<select` element (logic and tests in `scripts/no-native-select.ts`).
   - Interface enforcement: `packages/ui/eslint.config.js` forbids the JSX `select` element
     (`no-restricted-syntax`), so `cd packages/ui && yarn lint` fails on one.
-- **Home page hero.** The logos beside the title are `hero.image.html` in `index.mdx` (plain markup, a CSS drift
-  animation in `src/styles/hero-logos.css`, no script). They load lazily from `https://gib.show/image/...`
-  (production, because staging may lack data), are `aria-hidden`, stand still under `prefers-reduced-motion`, and are
-  hidden below 50rem where Starlight stacks the hero. Check each URL answers 200 before changing the set.
+- **Home page hero.** The logos beside the title are `hero.image.html` in `index.mdx` (plain markup, CSS 3D
+  animation in `src/styles/hero-logos.css`, no script): a tilted disc with the Gib coin fixed at its centre and
+  seven logo slots riding two rings. The fixed disc and coin are the frame of reference; the owner rejected a
+  whole-cloud sway with nothing still ("a mobile with no frame of reference"). Each slot holds three logos and swaps
+  to the next one three quarters into a lap, when it is behind the coin. Moving layers are zero-size points, because
+  full-size 3D layers that cross render a visible box edge in Chrome; for the same reason the coin floats wholly
+  above the disc. Sizes are `cqi` units, so the scene scales with Starlight's column. Logos load lazily from
+  `https://gib.show/image/...` (production, because staging may lack data); use vector or at least 256 px sources so
+  none look blurry. `aria-hidden`; under `prefers-reduced-motion` the animations are paused, not removed, so the
+  slots stay spread round the rings; hidden below 50rem where Starlight stacks the hero. Check each URL answers 200
+  before changing the set.
 - **Checks.** `yarn workspace docs run check` (types for the scripts and content configuration), `yarn lint` from the
   package, and the `docs` CI job builds the whole site. The build scripts are the only testable code; they sit at
   100% like every other workspace (that now includes `src/lib/`, whose DOM tests use `// @vitest-environment jsdom`).
