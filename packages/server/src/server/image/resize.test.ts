@@ -191,7 +191,7 @@ describe('parseResizeParams', () => {
     expect(parseResizeParams({ query: {}, pathExt: '.gif' })).toBeNull()
   })
 
-  // docs/skills/api-reference.md published `format` as the output-format
+  // the old published API guide published `format` as the output-format
   // parameter name before the code ever read it, so requests written against
   // that guide are honoured as a deprecated alias rather than silently
   // ignored (see parseResizeParams' own doc comment).

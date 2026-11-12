@@ -87,8 +87,7 @@ COPY --from=interface /usr/src/app/packages/ui/dist packages/ui/dist
 # packages/docs/dist/skills for /skills/*.md.
 COPY --from=docs /usr/src/app/packages/docs/dist packages/docs/dist
 
-# The server reads docs/terms.md, and the older docs/skills/*.md as a fallback behind
-# the generated guides, from disk at request
+# The server reads docs/terms.md from disk at request
 # time (packages/server/src/server/docs.ts), resolved relative to its own
 # source directory rather than the working directory. Nothing else in the
 # image needs docs/, so it is copied here rather than into an earlier stage.

@@ -121,7 +121,7 @@ falls back to the default.
 | `DOCS_HOSTNAMES` | empty (off) | comma-separated host names that get the documentation site instead of the application (see "Documentation Site") |
 
 Every setting except a secret can instead be written in the `IMAGE_STORE` JSON; a secret is read from the environment
-only and the JSON form refuses it. `docs/skills/self-hosting.md` has the full reference with examples.
+only and the JSON form refuses it. The docs site page `packages/docs/src/content/docs/self-hosting/` has the full reference with examples.
 
 ## Image Store (`packages/server/src/image-store/`)
 Content-addressed blob storage. `getImageStore()` returns a `BlobStore` (`put`, `get`, `stat`, `delete`, `list`);
@@ -302,7 +302,7 @@ contested token.
   one, a chain that fails or answers nothing leaves its list alone, a chain dropped from `COINGECKO_TOP_TOKENS_CHAINS` is
   retired to one empty version, and images go through `fetchImageAndStoreForToken`.
 - Settings: `COINGECKO_API_KEY`, `COINGECKO_API_PLAN` (`demo` or Pro, default Pro), `COINGECKO_TOP_TOKENS_COUNT`,
-  `_CHAINS`, `_MARKET_PAGES`, `_INTERVAL_MS` (see `docs/skills/self-hosting.md`). The full `coingecko` collector still sends
+  `_CHAINS`, `_MARKET_PAGES`, `_INTERVAL_MS` (see `packages/docs/src/content/docs/self-hosting/`). The full `coingecko` collector still sends
   any key to the Pro host as a query parameter, which CoinGecko documents for Pro keys only; this collector follows the
   documented Demo and Pro forms.
 - Plan: CoinGecko's pages do not state a plan requirement for these endpoints; the Demo documentation lists all four.
@@ -366,8 +366,8 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
   `scripts/generate-guides.ts` joins each content directory in sidebar order into one file under
   `packages/docs/dist/skills/`: frontmatter removed, the page title as a `##` heading, page headings one level
   lower, MDX-only syntax removed (see `scripts/guides.ts` for exactly what a page may contain). `docs.ts` serves
-  the generated file when it exists and falls back to `docs/skills/*.md`. Edit the pages, never the output. Once the
-  pages exist, delete `docs/skills/*.md` so the fallback has nothing left to serve. `docs/terms.md` and `/terms`
+  only the generated file; a guide that has not been built answers the ordinary 404. Edit the pages, never the
+  output. `docs/terms.md` and `/terms`
   are separate and unchanged.
 - **Serving.** No separate container. `server/docs-site.ts` serves `packages/docs/dist` when the request's host
   name is in `DOCS_HOSTNAMES`. On those hosts it answers every request (the site, or the site's own 404 page), so

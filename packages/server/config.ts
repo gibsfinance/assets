@@ -91,7 +91,7 @@ const imageStoreDirectory = process.env.IMAGE_STORE_DIR
  * Which kind of storage holds the image store: `local` (the default), `s3`, `gcs`, `azure`, `ipfs`,
  * or JSON describing a `tiered`, `mirrored` or `fallback` combination. The text is only read
  * here; `image-store/store-config.ts` parses it and reads each kind's own settings, so a mistake
- * is reported at start-up by name. See `docs/skills/self-hosting.md` for every setting.
+ * is reported at start-up by name. See the self-hosting pages in `packages/docs/src/content/docs/self-hosting/` for every setting.
  */
 const imageStore = process.env.IMAGE_STORE?.trim() || 'local'
 
