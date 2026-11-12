@@ -7,11 +7,28 @@
  * why), so these tests read the real docs/ directory the way a request in
  * production would.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import type { Request, Response, NextFunction } from 'express'
-import { getSkillDoc, getTerms, DOCS_PATH, SKILLS_DOCS_PATH } from './docs'
+import {
+  createSkillDocHandler,
+  getSkillDoc as defaultSkillDoc,
+  getTerms,
+  DOCS_PATH,
+  GENERATED_SKILLS_PATH,
+  SKILLS_DOCS_PATH,
+} from './docs'
 
 vi.mock('../../config', () => ({ default: { cacheSeconds: 3600 } }))
+
+// The behaviour tests read the hand-written guides: a documentation build on this machine
+// must not change what they see, so the generated directory is one that never exists.
+const getSkillDoc = createSkillDocHandler({
+  generatedDirectory: path.join(os.tmpdir(), 'no-generated-guides-here'),
+  fallbackDirectory: SKILLS_DOCS_PATH,
+})
 
 function mockRequest(params: Record<string, string> = {}): Request {
   return { params } as unknown as Request
@@ -93,6 +110,58 @@ describe('docs', () => {
 
       expect(next).toHaveBeenCalledWith()
       expect(res.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('generated guides', () => {
+    let generatedDirectory: string
+    let fallbackDirectory: string
+
+    beforeAll(() => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-docs-'))
+      generatedDirectory = path.join(root, 'generated')
+      fallbackDirectory = path.join(root, 'fallback')
+      fs.mkdirSync(generatedDirectory)
+      fs.mkdirSync(fallbackDirectory)
+      fs.writeFileSync(path.join(generatedDirectory, 'both.md'), '# generated copy')
+      fs.writeFileSync(path.join(fallbackDirectory, 'both.md'), '# hand-written copy')
+      fs.writeFileSync(path.join(fallbackDirectory, 'old-only.md'), '# hand-written only')
+    })
+
+    afterAll(() => {
+      fs.rmSync(path.dirname(generatedDirectory), { recursive: true, force: true })
+    })
+
+    const send = async (filename: string) => {
+      const res = mockResponse()
+      const next = vi.fn() as unknown as NextFunction
+      await createSkillDocHandler({ generatedDirectory, fallbackDirectory })(mockRequest({ filename }), res, next)
+      return { res, next }
+    }
+
+    it('prefers the generated copy over the hand-written one', async () => {
+      const { res, next } = await send('both.md')
+      expect(next).not.toHaveBeenCalled()
+      expect((res.send as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('# generated copy')
+    })
+
+    it('falls back to the hand-written copy when the build did not produce that guide', async () => {
+      const { res } = await send('old-only.md')
+      expect((res.send as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('# hand-written only')
+    })
+
+    it('falls through to next() when neither directory has the guide', async () => {
+      const { res, next } = await send('neither.md')
+      expect(next).toHaveBeenCalledWith()
+      expect(res.send).not.toHaveBeenCalled()
+    })
+
+    it('reads the documentation build output by default', async () => {
+      expect(GENERATED_SKILLS_PATH.endsWith('/docs/dist/skills')).toBe(true)
+      // A traversal attempt is refused before any directory is read, with the real default handler too.
+      const next = vi.fn() as unknown as NextFunction
+      await defaultSkillDoc(mockRequest({ filename: '../x.md' }), mockResponse(), next)
+      expect(next).toHaveBeenCalledWith()
     })
   })
 

@@ -14,6 +14,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import type { NextFunction, RequestHandler, Response } from 'express'
 import config from '../../config'
+import { DOCS_SITE_PATH } from './docs-site'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -38,12 +39,28 @@ export const SKILLS_DOCS_PATH = path.join(DOCS_PATH, 'skills')
 const SKILL_DOC_FILENAME = /^[\w-]+\.md$/
 
 /**
- * Read a markdown file and send it as text/markdown, or hand off to `next()`
- * so the request falls through to the app's ordinary JSON 404 — the same
- * response shape every other unmatched path already answers with.
+ * The directory the documentation build writes the generated guides into
+ * (`packages/docs/dist/skills`, see packages/docs/scripts/guides.ts). The site's pages are the only
+ * copy of the guides' text; the build joins them into these files.
  */
-const sendMarkdownFile = async (res: Response, next: NextFunction, filePath: string): Promise<void> => {
-  const content = await fs.promises.readFile(filePath, 'utf8').catch(() => null)
+export const GENERATED_SKILLS_PATH = path.join(DOCS_SITE_PATH, 'skills')
+
+/** The first file that can be read, or `null` when none can. */
+const readFirstFile = async (filePaths: readonly string[]): Promise<string | null> => {
+  for (const filePath of filePaths) {
+    const content = await fs.promises.readFile(filePath, 'utf8').catch(() => null)
+    if (content !== null) return content
+  }
+  return null
+}
+
+/**
+ * Read the first readable markdown file of a list and send it as text/markdown, or hand off to
+ * `next()` so the request falls through to the app's ordinary JSON 404 — the same response shape
+ * every other unmatched path already answers with.
+ */
+const sendMarkdownFile = async (res: Response, next: NextFunction, filePaths: readonly string[]): Promise<void> => {
+  const content = await readFirstFile(filePaths)
   if (content === null) {
     next()
     return
@@ -52,17 +69,37 @@ const sendMarkdownFile = async (res: Response, next: NextFunction, filePath: str
   res.type('text/markdown').send(content)
 }
 
-/** GET /skills/:filename — one of the guides under docs/skills/. */
-export const getSkillDoc: RequestHandler = async (req, res, next) => {
-  const filename = req.params.filename
-  if (!SKILL_DOC_FILENAME.test(filename)) {
-    next()
-    return
+/**
+ * Build the handler for GET /skills/:filename.
+ *
+ * The generated copy wins when the documentation has been built. The older hand-written file under
+ * docs/skills/ answers otherwise, so the address keeps working before the first build and until
+ * those files are deleted.
+ *
+ * @param options.generatedDirectory Where the documentation build writes the joined guides.
+ * @param options.fallbackDirectory Where the older hand-written guides live.
+ */
+export const createSkillDocHandler =
+  (options: { generatedDirectory: string; fallbackDirectory: string }): RequestHandler =>
+  async (req, res, next) => {
+    const filename = req.params.filename
+    if (!SKILL_DOC_FILENAME.test(filename)) {
+      next()
+      return
+    }
+    await sendMarkdownFile(res, next, [
+      path.join(options.generatedDirectory, filename),
+      path.join(options.fallbackDirectory, filename),
+    ])
   }
-  await sendMarkdownFile(res, next, path.join(SKILLS_DOCS_PATH, filename))
-}
+
+/** GET /skills/:filename — one of the guides, from the documentation build or else docs/skills/. */
+export const getSkillDoc: RequestHandler = createSkillDocHandler({
+  generatedDirectory: GENERATED_SKILLS_PATH,
+  fallbackDirectory: SKILLS_DOCS_PATH,
+})
 
 /** GET /terms — the licence/attribution terms page every image response links to. */
 export const getTerms: RequestHandler = async (_req, res, next) => {
-  await sendMarkdownFile(res, next, path.join(DOCS_PATH, 'terms.md'))
+  await sendMarkdownFile(res, next, [path.join(DOCS_PATH, 'terms.md')])
 }
