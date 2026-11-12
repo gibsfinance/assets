@@ -35,6 +35,10 @@ yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
 yarn workspace ui run vitest run --coverage
 
+# Storybook for the interface components — see "Storybook" below
+yarn workspace ui storybook          # dev server on port 6006
+yarn workspace ui run build:storybook   # static files into packages/ui/storybook-static
+
 # Documentation site (Starlight) — see "Documentation Site" below
 yarn workspace docs dev              # dev server with live reload
 yarn workspace docs build            # static site into packages/docs/dist
@@ -379,6 +383,27 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
 - **Checks.** `yarn workspace docs run check` (types for the scripts and content configuration), `yarn lint` from the
   package, and the `docs` CI job builds the whole site. The build scripts are the only testable code; they sit at
   100% like every other workspace. `packages/docs` is outside the root `tsconfig.json`.
+
+### Storybook (`packages/ui`)
+A catalog of the reusable interface components, published inside the documentation site at `/storybook/`
+(docs page: `packages/docs/src/content/docs/design/storybook.md`).
+- **Where things live.** Stories sit beside their component as `<Component>.stories.tsx`. `.storybook/main.ts` reuses
+  the interface's `vite.config.ts` and removes its three build-only plugins by name (`prerender-home`,
+  `inline-stylesheet`, `service-worker`); a new build-only plugin there must be added to that list. `.storybook/preview.tsx`
+  wraps every story in the query client, theme, settings and Studio providers, and the toolbar **Theme** item sets the
+  `dark` class through the real `ThemeProvider`. Fixtures and the `fetch` stand-in are in `src/lib/storybook/`; a story
+  lists the paths it needs under the `mockApi` parameter and every other path answers 404, so no story reaches a network.
+- **The rule.** Every new reusable component gets a story in the same change, with the empty, loading, error and
+  long-text states where they apply. Stories must not use the native `select` element.
+- **Coverage.** `*.stories.{ts,tsx}` and `src/lib/storybook/**` are excluded from the `ui` coverage include, because they
+  are documentation, not application code. `src/lib/storybook/stories.test.tsx` renders every story in jsdom, so a
+  component change that breaks a story fails the ordinary test run. Lint and the typecheck still cover stories and `.storybook/`.
+- **Publishing.** `yarn workspace docs build` runs `build:storybook` (in `ui`) and `scripts/copy-storybook.ts`, which
+  copies `packages/ui/storybook-static` to `packages/docs/dist/storybook`. The `Dockerfile` docs stage copies
+  `packages/ui` for that; the runtime image is unchanged. `docs-site.ts` serves `/storybook/` like any other docs path;
+  `storybook/assets/*` (hashed) is immutable and HTML is `no-cache`. Storybook's built `.html` files hold no `<select`, but
+  the manager's JavaScript bundles under `dist/storybook/sb-*` mention it, so any check of the built site for native
+  selects must scan HTML only or skip `dist/storybook/`.
 
 ### UI Utils Pattern
 Pure functions extracted from components live in `packages/ui/src/lib/utils/`:
