@@ -9,12 +9,12 @@ sidebar:
 
 | Response | `cache-control` |
 |----------|-----------------|
-| Images by chain and address | `public, max-age=86400`, with a seven-day `stale-while-revalidate` and `stale-if-error` window |
+| Images by chain and address | `public, max-age=86400` on `gib.show`, with a seven-day `stale-while-revalidate` and `stale-if-error` window |
 | `/image/direct/{imageHash}` | `public, max-age=31536000, immutable` |
 | `/list/tokens/{chainId}` | `public, max-age=21600, stale-while-revalidate=86400` (6 hours fresh, 24 hours stale) |
-| `/networks`, `/stats` | `public, max-age=` followed by the server's cache setting |
+| Provider lists, `/networks`, `/stats`, sprite sheets | `public, max-age=` followed by the server's cache setting |
 
-The server's cache setting is `CACHE_SECONDS`. It is one hour (3600) if the operator sets nothing. The published definition for `gib.show` describes one day for images. A server you host yourself uses whatever you set. See [Configuration](/self-hosting/configuration/).
+The server's cache setting is `CACHE_SECONDS`. It is one hour (3600) if the operator sets nothing, and one day (86400) on `gib.show`. Image lifetimes use the same setting. A server you host yourself uses whatever you set. See [Configuration](/self-hosting/configuration/).
 
 Responses that an operator rebuilds with `refresh` carry `cache-control: no-store`, so no content delivery network keeps them.
 
