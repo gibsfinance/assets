@@ -42,12 +42,12 @@ Returns submissions, optionally filtered by status. A submission has one of thes
 POST /api/images/submit
 ```
 
-Send a JSON body with `chainId` (prefixed or bare), `address`, `image` and `submittedBy`. The `image` is a data URI of the form `data:image/...;base64,...`.
+Send a JSON body with `chainId` (prefixed or bare), `address`, `image` and `submittedBy`. The `image` is a data address of the form `data:image/...;base64,...`.
 
 - The decoded image can be at most 512 KB. Accepted formats are `png`, `jpg`, `webp`, `gif` and `svg`.
 - The request body can be at most 1 MB, because base64 text is about a third larger than the bytes it carries. A larger body answers 413.
 - The answer is 201 with `imageHash` and `imageUrl`.
-- The answer is 400 for a missing field, an invalid data URI, or an image over the limit.
+- The answer is 400 for a missing field, an invalid data address, or an image over the limit.
 
 ## Operator-only endpoints
 

@@ -24,7 +24,7 @@ curl "https://gib.show/sprite/pulsex/extended?size=32&cols=10&limit=20"
 | `size` | 16 to 128 | 32 | Cell size in pixels. |
 | `cols` | 5 to 50 | 25 | Number of grid columns. |
 | `limit` | 1 to 2000 | 500 | Most tokens. |
-| `content` | `mixed` | none | With `content=mixed`, vector images are inlined as data URIs in the manifest instead of being drawn on the sheet. |
+| `content` | `mixed` | none | With `content=mixed`, vector images are inlined as data addresses in the manifest instead of being drawn on the sheet. |
 | `chainId` | | none | Keep only tokens on one chain. |
 
 The manifest fields are `spriteUrl`, `size`, `cols`, `rows`, `rasterCount`, `svgCount`, `count` and `tokens`. An unknown provider or list answers 404.

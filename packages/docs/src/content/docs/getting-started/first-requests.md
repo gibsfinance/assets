@@ -25,7 +25,7 @@ curl https://gib.show/image/369/0xa1077a294dde1b09bb078844df40758a5d0f9a27
 
 Gib.Show answers with the image itself. If it has no image for the token, it answers with a 404 status.
 
-Chains that are not EVM chains, such as Solana and Tron, need the prefixed chain identifier. See [Chain identifiers](/api-reference/overview/#chain-identifiers).
+Chains that are not Ethereum-style, such as Solana and Tron, need the prefixed chain identifier. See [Chain identifiers](/api-reference/overview/#chain-identifiers).
 
 ### Resize and change the format
 

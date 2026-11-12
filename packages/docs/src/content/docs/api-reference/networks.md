@@ -9,7 +9,7 @@ sidebar:
 GET /networks
 ```
 
-Returns every supported network with its chain identifiers and image hash. That includes EVM chains and the non-EVM chains the service also indexes, such as Solana and Tron.
+Returns every supported network with its chain identifiers and image hash. That includes Ethereum-style chains and the other chains the service also indexes, such as Solana and Tron.
 
 ```bash
 curl https://gib.show/networks

@@ -18,7 +18,7 @@ Returns the highest-priority image for a token. [Image priority](/api-reference/
 **Path parameters**
 
 - `chainId` is the chain identifier, prefixed (`eip155-1`) or bare (`1` for Ethereum, `369` for PulseChain). See [Chain identifiers](/api-reference/overview/#chain-identifiers).
-- `address` is the token contract address. Use `0x...` for EVM chains. Use a base58 address or another chain-native identifier for non-EVM chains.
+- `address` is the token contract address. Use `0x...` for Ethereum-style (`eip155`) chains. Use a base58 address or another chain-native identifier for other chains.
 
 **Examples**
 
