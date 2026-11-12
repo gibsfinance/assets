@@ -1789,7 +1789,7 @@ describe('ListEditor publishing', () => {
       fireEvent.click(screen.getByText('GitHub').closest('button')!)
     })
     await waitFor(() => expect(screen.getByText('Published!')).toBeTruthy())
-    const banner = screen.getByText('Published!').closest('.bg-green-50') as HTMLElement
+    const banner = screen.getByText('Published!').closest('.bg-success-soft') as HTMLElement
     const bannerBefore = banner.innerHTML
 
     await act(async () => {

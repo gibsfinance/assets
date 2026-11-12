@@ -218,7 +218,7 @@ describe('CountUpNumber', () => {
   })
 
   it('passes its class name through to the rendered element', () => {
-    const { container } = render(<CountUpNumber end={1} className="text-gradient-green" />)
-    expect(container.querySelector('span')!.className).toBe('text-gradient-green')
+    const { container } = render(<CountUpNumber end={1} className="text-gradient-accent" />)
+    expect(container.querySelector('span')!.className).toBe('text-gradient-accent')
   })
 })

@@ -36,7 +36,7 @@ const withApplicationProviders: Decorator = (Story, context) => {
         <ThemeSync theme={theme} />
         <SettingsProvider>
           <StudioProvider>
-            <div className="min-h-full bg-white p-4 text-gray-900 dark:bg-surface-base dark:text-white">
+            <div className="min-h-full bg-surface p-4 text-content-strong">
               <Story />
             </div>
           </StudioProvider>

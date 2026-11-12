@@ -12,7 +12,7 @@ const meta = {
     return (
       <div className="flex flex-col items-center gap-2">
         <RadialPositionPicker {...args} angleDeg={angleDeg} onChange={setAngleDeg} />
-        <span className="font-mono text-xs text-gray-500 dark:text-white/50">{angleDeg} degrees</span>
+        <span className="font-mono text-xs text-content-subtle">{angleDeg} degrees</span>
       </div>
     )
   },

@@ -4,7 +4,7 @@ import CountUpNumber from './CountUpNumber'
 const meta = {
   title: 'Components/CountUpNumber',
   component: CountUpNumber,
-  args: { end: 123456, duration: 2000, className: 'font-heading text-5xl font-bold text-accent-500' },
+  args: { end: 123456, duration: 2000, className: 'font-heading text-5xl font-bold text-accent' },
 } satisfies Meta<typeof CountUpNumber>
 
 export default meta

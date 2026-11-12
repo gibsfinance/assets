@@ -20,8 +20,8 @@ export default function FrameworkSwitcher({ languages, activeLanguage, onSelect 
           onClick={() => onSelect(lang.key)}
           className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
             activeLanguage === lang.key
-              ? 'bg-accent-500 text-black shadow-glow-green'
-              : 'bg-surface-light-2 dark:bg-surface-2 text-gray-600 dark:text-gray-400 hover:bg-surface-light-3 dark:hover:bg-surface-3'
+              ? 'bg-accent text-black shadow-glow-accent'
+              : 'bg-surface-inset-4 text-content-muted hover:bg-surface-active-5'
           }`}>
           {lang.label}
         </button>

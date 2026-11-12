@@ -42,7 +42,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
     <div className="relative w-full">
       <button
         type="button"
-        className="flex w-full items-center justify-between border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-1 px-4 py-2.5 text-left text-sm transition-colors hover:border-accent-500/40"
+        className="flex w-full items-center justify-between border-b border-border bg-surface-raised px-4 py-2.5 text-left text-sm transition-colors hover:border-accent/40"
         onClick={() => setIsOpen(true)}>
         {selectedNetwork ? (
           <span className="flex items-center gap-2 truncate">
@@ -53,11 +53,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
               shape="circle"
               className="inline-block rounded-full"
             />
-            {selectedNetwork.name}{' '}
-            <span className="text-gray-400 dark:text-white/40">({selectedNetwork.chainIdentifier})</span>
+            {selectedNetwork.name} <span className="text-content-faint-2">({selectedNetwork.chainIdentifier})</span>
           </span>
         ) : (
-          <span className="text-gray-400 dark:text-white/40">Choose a network...</span>
+          <span className="text-content-faint-2">Choose a network...</span>
         )}
         <span className="flex flex-shrink-0 items-center gap-1">
           {/*
@@ -66,10 +65,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
             Same box, same gap, so the arrow sits where it always has.
           */}
           {selectedNetwork && <span className="h-5 w-5" aria-hidden="true" />}
-          <Icon
-            icon={faChevronDown}
-            className={`text-accent-500/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
+          <Icon icon={faChevronDown} className={`text-accent/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
@@ -84,7 +80,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
       {selectedNetwork && (
         <button
           type="button"
-          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70"
+          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-content-faint-2 transition-colors hover:bg-surface-active hover:text-content-muted-3"
           onClick={() => onSelect(null)}
           aria-label="Clear network selection">
           <Icon icon={faXmark} className="text-[10px]" />
@@ -141,7 +137,7 @@ function VirtualNetworkList({
 
   if (networks.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-gray-400 dark:text-white/30">
+      <div className="flex flex-1 items-center justify-center px-4 py-10 text-sm text-content-faint">
         No networks match that search
       </div>
     )
@@ -155,9 +151,9 @@ function VirtualNetworkList({
           return (
             <button
               key={network.chainIdentifier}
-              className={`absolute left-0 top-0 flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-accent-500/10 ${
+              className={`absolute left-0 top-0 flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-accent/10 ${
                 selectedChainId === network.chainIdentifier
-                  ? 'bg-accent-500/5 border-l-2 border-accent-500'
+                  ? 'bg-accent/5 border-l-2 border-accent'
                   : 'border-l-2 border-transparent'
               }`}
               style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
@@ -172,9 +168,9 @@ function VirtualNetworkList({
                   shape="circle"
                   className="inline-block rounded-full"
                 />
-                <span className="truncate text-gray-900 dark:text-white/90">{network.name}</span>
+                <span className="truncate text-content-strong-4">{network.name}</span>
               </span>
-              <span className="flex-shrink-0 whitespace-nowrap text-sm text-gray-400 dark:text-white/30">
+              <span className="flex-shrink-0 whitespace-nowrap text-sm text-content-faint">
                 {network.isEvm ? `Chain ${network.chainId}` : network.chainIdentifier}
               </span>
             </button>
@@ -230,13 +226,13 @@ function NetworkDialog({
           leave="ease-in duration-200"
           leaveFrom="translate-x-0"
           leaveTo="-translate-x-full">
-          <DialogPanel className="fixed inset-y-0 left-0 flex w-[480px] flex-col overflow-hidden border-r border-border-light dark:border-border-dark bg-white dark:bg-surface-base shadow-elevated">
-            <div className="flex-shrink-0 border-b border-border-light dark:border-border-dark bg-white/90 dark:bg-surface-base/90 px-4 py-3 backdrop-blur-sm">
-              <h2 className="font-heading text-lg font-semibold text-gray-900 dark:text-white">Select Network</h2>
+          <DialogPanel className="fixed inset-y-0 left-0 flex w-[480px] flex-col overflow-hidden border-r border-border bg-surface shadow-elevated">
+            <div className="flex-shrink-0 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur-sm">
+              <h2 className="font-heading text-lg font-semibold text-content-strong">Select Network</h2>
               <div className="relative mt-2">
                 <Icon
                   icon={faMagnifyingGlass}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 dark:text-white/30"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-content-faint"
                 />
                 <input
                   type="text"
@@ -244,7 +240,7 @@ function NetworkDialog({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={`Search ${sortedNetworks.length.toLocaleString()} networks...`}
                   aria-label="Search networks"
-                  className="w-full rounded-lg border border-border-light dark:border-border-dark bg-gray-50 dark:bg-surface-2 py-2 pl-8 pr-3 text-sm text-gray-900 dark:text-white/90 placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-accent-500/40 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-inset py-2 pl-8 pr-3 text-sm text-content-strong-4 placeholder:text-content-faint focus:border-accent/40 focus:outline-none"
                 />
               </div>
             </div>

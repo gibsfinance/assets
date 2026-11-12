@@ -218,8 +218,8 @@ describe('snap-to-corner buttons', () => {
     const topLeft = screen.getByLabelText('Snap to TL (315°)')
     const topRight = screen.getByLabelText('Snap to TR (45°)')
 
-    expect(topLeft.className).toContain('bg-accent-500/20')
-    expect(topRight.className).not.toContain('bg-accent-500/20')
+    expect(topLeft.className).toContain('bg-accent/20')
+    expect(topRight.className).not.toContain('bg-accent/20')
   })
 })
 
@@ -241,12 +241,12 @@ describe('handle position on the circumference', () => {
     // eighty is bottom. This confirms the handle actually moves to the side
     // of the circle the angle says it should.
     const topRender = render(<RadialPositionPicker angleDeg={0} onChange={vi.fn()} />)
-    const topHandle = topRender.container.querySelector('[class*="shadow-glow-green"]') as HTMLElement
+    const topHandle = topRender.container.querySelector('[class*="shadow-glow-accent"]') as HTMLElement
     const topPosition = parseFloat(topHandle.style.top)
     topRender.unmount()
 
     const bottomRender = render(<RadialPositionPicker angleDeg={180} onChange={vi.fn()} />)
-    const bottomHandle = bottomRender.container.querySelector('[class*="shadow-glow-green"]') as HTMLElement
+    const bottomHandle = bottomRender.container.querySelector('[class*="shadow-glow-accent"]') as HTMLElement
     const bottomPosition = parseFloat(bottomHandle.style.top)
     bottomRender.unmount()
 

@@ -224,7 +224,7 @@ const waitForMetrics = () => screen.findByText('Tokens by Chain')
 
 /** The figure shown above a metric caption, read from the counter rather than the caption. */
 const metricValue = (caption: string) =>
-  screen.getByText(caption).parentElement!.querySelector('.text-gradient-green')!.textContent
+  screen.getByText(caption).parentElement!.querySelector('.text-gradient-accent')!.textContent
 
 /** Display names of the network tiles currently drawn, in the order they appear. */
 const drawnNetworks = (container: HTMLElement) =>

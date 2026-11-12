@@ -273,17 +273,17 @@ function ActiveListEditor({
   )
 
   return (
-    <div className="relative flex h-full flex-col bg-white dark:bg-surface-base">
+    <div className="relative flex h-full flex-col bg-surface">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <input
             type="text"
             value={activeList.name}
             onChange={(e) => handleNameChange(e.target.value)}
-            className="min-w-0 border-none bg-transparent font-heading text-lg font-bold text-gray-900 outline-none focus:ring-0 dark:text-white"
+            className="min-w-0 border-none bg-transparent font-heading text-lg font-bold text-content-strong outline-none focus:ring-0"
           />
-          <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 dark:bg-surface-2 dark:text-white/40">
+          <span className="flex-shrink-0 rounded-full bg-surface-inset-2 px-2 py-0.5 text-[10px] text-content-subtle-2">
             {activeList.source.type}
           </span>
         </div>
@@ -291,16 +291,16 @@ function ActiveListEditor({
           <Menu>
             <MenuButton
               disabled={isPublishing || activeList.tokens.length === 0}
-              className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200">
+              className="flex items-center gap-1.5 rounded-lg bg-surface-inverse px-3 py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-surface-inverse-hover disabled:opacity-50">
               <Icon icon={faCloudArrowUp} className="text-sm" />
               {isPublishing ? 'Publishing...' : 'Publish'}
               <Icon icon={faChevronDown} className="text-[8px] opacity-60" />
             </MenuButton>
             <MenuItems
               anchor="bottom end"
-              className="z-50 mt-1 w-56 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
+              className="z-50 mt-1 w-56 rounded-lg border border-border bg-surface-inset-3 p-1 shadow-lg">
               {publishers.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-gray-400 dark:text-white/40">
+                <div className="px-3 py-2 text-xs text-content-faint-2">
                   No providers configured. Set VITE_GITHUB_CLIENT_ID, VITE_GITLAB_CLIENT_ID, or VITE_GITEA_URL in .env
                 </div>
               ) : (
@@ -309,18 +309,18 @@ function ActiveListEditor({
                     <button
                       type="button"
                       onClick={() => publish(pub, activeList)}
-                      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-surface-3">
+                      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-surface-active-3">
                       <Icon
                         icon={pub.icon}
-                        className={`text-sm w-4 ${pub.isAuthorized() ? 'text-accent-500' : 'text-gray-400 dark:text-white/40'}`}
+                        className={`text-sm w-4 ${pub.isAuthorized() ? 'text-accent' : 'text-content-faint-2'}`}
                       />
-                      <span className="flex-1 font-medium text-gray-700 dark:text-white/80">{pub.name}</span>
+                      <span className="flex-1 font-medium text-content-secondary">{pub.name}</span>
                       {pub.isAuthorized() ? (
-                        <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-[10px] font-medium text-accent-500">
+                        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
                           Connected
                         </span>
                       ) : (
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-surface-3 dark:text-white/40">
+                        <span className="rounded-full bg-surface-active-2 px-2 py-0.5 text-[10px] font-medium text-content-subtle-2">
                           Connect
                         </span>
                       )}
@@ -333,7 +333,7 @@ function ActiveListEditor({
           <button
             type="button"
             onClick={closeEditor}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-content-faint-2 transition-colors hover:bg-surface-inset-2 hover:text-content-muted-5">
             <Icon icon={faXmark} />
           </button>
         </div>
@@ -341,8 +341,8 @@ function ActiveListEditor({
 
       {/* Publish result banner */}
       {publishResult && (
-        <div className="border-b border-border-light bg-green-50 px-4 py-2 dark:border-border-dark dark:bg-green-900/20">
-          <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
+        <div className="border-b border-border bg-success-soft px-4 py-2">
+          <div className="flex items-center gap-2 text-xs text-success-strong">
             <Icon icon={faCircleCheck} />
             <span>Published!</span>
             <a
@@ -365,40 +365,37 @@ function ActiveListEditor({
               type="button"
               onClick={() => handleSubmitToGibShow(publishResult)}
               disabled={isSubmitting}
-              className="ml-auto rounded-md bg-accent-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-600 disabled:opacity-50">
+              className="ml-auto rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-accent-strong disabled:opacity-50">
               {isSubmitting ? 'Submitting...' : 'Submit to Gib.Show'}
             </button>
           </div>
           {submitResult && (
-            <div
-              className={`mt-1 text-[11px] ${
-                submitResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-              }`}>
+            <div className={`mt-1 text-[11px] ${submitResult.success ? 'text-success' : 'text-danger'}`}>
               {submitResult.message}
             </div>
           )}
         </div>
       )}
       {publishError && (
-        <div className="border-b border-border-light bg-red-50 px-4 py-2 dark:border-border-dark dark:bg-red-900/20">
-          <span className="text-xs text-red-600 dark:text-red-400">{publishError}</span>
+        <div className="border-b border-border bg-danger-soft px-4 py-2">
+          <span className="text-xs text-danger">{publishError}</span>
         </div>
       )}
 
       {/* Token count bar */}
-      <div className="flex items-center justify-between border-b border-border-light px-4 py-2 dark:border-border-dark">
-        <span className="text-xs text-gray-500 dark:text-white/40">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2">
+        <span className="text-xs text-content-subtle-2">
           {activeList.tokens.length} token{activeList.tokens.length !== 1 ? 's' : ''}
         </span>
         {activeList.source.remoteProvider && (
-          <span className="text-[10px] text-gray-400 dark:text-white/30">
+          <span className="text-[10px] text-content-faint">
             forked from {activeList.source.remoteProvider}/{activeList.source.remoteKey}
           </span>
         )}
       </div>
 
       {/* Toolbar: add token + load RPC */}
-      <div className="flex items-center gap-2 border-b border-border-light px-4 py-2 dark:border-border-dark">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2">
         <div className="flex flex-1 gap-2">
           <input
             type="text"
@@ -406,7 +403,7 @@ function ActiveListEditor({
             value={addAddress}
             onChange={(e) => setAddAddress(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddToken()}
-            className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-xs text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+            className="flex-1 rounded-lg border border-border-strong bg-surface-inset px-3 py-1.5 font-mono text-xs text-content-strong placeholder:text-content-faint"
           />
           <button
             type="button"
@@ -428,17 +425,15 @@ function ActiveListEditor({
 
       {/* Error banner */}
       {error && (
-        <div className="border-b border-border-light px-4 py-2 dark:border-border-dark">
-          <div className="rounded-lg bg-red-50 p-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </div>
+        <div className="border-b border-border px-4 py-2">
+          <div className="rounded-lg bg-danger-soft p-2 text-xs text-danger">{error}</div>
         </div>
       )}
 
       {/* Sortable token list */}
       <div className="flex-1 overflow-y-auto">
         {activeList.tokens.length === 0 ? (
-          <div className="flex h-48 items-center justify-center text-sm text-gray-400 dark:text-white/30">
+          <div className="flex h-48 items-center justify-center text-sm text-content-faint">
             No tokens yet. Add an address above.
           </div>
         ) : (
@@ -462,7 +457,7 @@ function ActiveListEditor({
 
       {/* Image manager overlay */}
       {editingImageToken && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 dark:bg-black/40">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-scrim-soft">
           <TokenImageManager
             chainId={editingImageToken.chainId}
             address={editingImageToken.address}
@@ -589,36 +584,32 @@ export default function ListEditor() {
   // ─── Creation Menu (no active list) ───────────────────────────
   if (!activeList) {
     return (
-      <div className="flex h-full flex-col bg-white dark:bg-surface-base">
-        <div className="flex items-center justify-between border-b border-border-light px-4 py-3 dark:border-border-dark">
-          <h2 className="font-heading text-lg font-bold text-gray-900 dark:text-white">List Editor</h2>
+      <div className="flex h-full flex-col bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="font-heading text-lg font-bold text-content-strong">List Editor</h2>
           <button
             type="button"
             onClick={closeEditor}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/80">
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-content-faint-2 transition-colors hover:bg-surface-inset-2 hover:text-content-muted-5">
             <Icon icon={faXmark} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="mx-auto max-w-md space-y-4">
-            {error && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
-                {error}
-              </div>
-            )}
+            {error && <div className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{error}</div>}
 
             {/* New List */}
             <button
               type="button"
               onClick={handleCreateNew}
-              className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 dark:border-surface-3 dark:hover:border-accent-500/40">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500/10 text-accent-500">
+              className="flex w-full items-center gap-3 rounded-lg border border-border-strong p-4 text-left transition-all hover:border-accent/40 hover:bg-accent/5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
                 <Icon icon={faPlus} />
               </div>
               <div>
-                <div className="font-medium text-gray-900 dark:text-white">New List</div>
-                <div className="text-xs text-gray-400 dark:text-white/40">Start from scratch</div>
+                <div className="font-medium text-content-strong">New List</div>
+                <div className="text-xs text-content-faint-2">Start from scratch</div>
               </div>
             </button>
 
@@ -628,21 +619,21 @@ export default function ListEditor() {
                 type="button"
                 onClick={() => handleFork(editingSourceKey)}
                 disabled={isImporting}
-                className="flex w-full items-center gap-3 rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-accent-500/40 hover:bg-accent-500/5 disabled:opacity-50 dark:border-surface-3 dark:hover:border-accent-500/40">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-500">
+                className="flex w-full items-center gap-3 rounded-lg border border-border-strong p-4 text-left transition-all hover:border-accent/40 hover:bg-accent/5 disabled:opacity-50">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-secondary/10 text-accent-secondary">
                   <Icon icon={faCodeBranch} />
                 </div>
                 <div>
-                  <div className="font-medium text-gray-900 dark:text-white">Fork {editingSourceKey}</div>
-                  <div className="text-xs text-gray-400 dark:text-white/40">Copy this list and edit locally</div>
+                  <div className="font-medium text-content-strong">Fork {editingSourceKey}</div>
+                  <div className="text-xs text-content-faint-2">Copy this list and edit locally</div>
                 </div>
               </button>
             )}
 
             {/* Import URL */}
-            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <Icon icon={faLink} className="text-xs text-gray-400 dark:text-white/40" />
+            <div className="rounded-lg border border-border-strong p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-content-strong">
+                <Icon icon={faLink} className="text-xs text-content-faint-2" />
                 Import from URL
               </div>
               <div className="flex gap-2">
@@ -651,7 +642,7 @@ export default function ListEditor() {
                   placeholder="https://tokens.uniswap.org"
                   value={importUrl}
                   onChange={(e) => setImportUrl(e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+                  className="flex-1 rounded-lg border border-border-strong bg-surface-inset px-3 py-2 text-sm text-content-strong placeholder:text-content-faint"
                 />
                 <button
                   type="button"
@@ -664,9 +655,9 @@ export default function ListEditor() {
             </div>
 
             {/* Paste JSON */}
-            <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                <Icon icon={faPaste} className="text-xs text-gray-400 dark:text-white/40" />
+            <div className="rounded-lg border border-border-strong p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-content-strong">
+                <Icon icon={faPaste} className="text-xs text-content-faint-2" />
                 Paste JSON
               </div>
               <textarea
@@ -674,7 +665,7 @@ export default function ListEditor() {
                 value={pasteJson}
                 onChange={(e) => setPasteJson(e.target.value)}
                 rows={4}
-                className="mb-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-900 placeholder:text-gray-400 dark:border-surface-3 dark:bg-surface-2 dark:text-white dark:placeholder:text-white/30"
+                className="mb-2 w-full rounded-lg border border-border-strong bg-surface-inset px-3 py-2 font-mono text-xs text-content-strong placeholder:text-content-faint"
               />
               <button
                 type="button"
@@ -687,29 +678,29 @@ export default function ListEditor() {
 
             {/* My Lists */}
             {lists.length > 0 && (
-              <div className="rounded-lg border border-gray-200 p-4 dark:border-surface-3">
+              <div className="rounded-lg border border-border-strong p-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">My Lists</span>
-                  <span className="text-[10px] text-gray-400 dark:text-white/30">{lists.length} saved</span>
+                  <span className="text-sm font-medium text-content-strong">My Lists</span>
+                  <span className="text-[10px] text-content-faint">{lists.length} saved</span>
                 </div>
                 <div className="max-h-[200px] space-y-1 overflow-y-auto">
                   {lists.map((list) => (
                     <div
                       key={list.id}
-                      className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-gray-50 cursor-pointer dark:hover:bg-surface-2"
+                      className="flex items-center gap-3 rounded-md px-3 py-2 transition-colors hover:bg-surface-inset cursor-pointer"
                       onClick={() => setActiveList(list)}>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-500 dark:bg-surface-2 dark:text-white/40">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-surface-inset-2 text-xs text-content-subtle-2">
                         {list.tokens.length}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-gray-800 dark:text-white/80">{list.name}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-white/30">
+                        <div className="truncate text-sm font-medium text-content-body-2">{list.name}</div>
+                        <div className="text-[10px] text-content-faint">
                           {list.source.type} · {new Date(list.updatedAt).toLocaleDateString()}
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="rounded p-1 text-gray-300 hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                        className="rounded p-1 text-content-ghost hover:bg-danger-soft hover:text-danger-hover"
                         title="Delete list"
                         onClick={(e) => {
                           e.stopPropagation()

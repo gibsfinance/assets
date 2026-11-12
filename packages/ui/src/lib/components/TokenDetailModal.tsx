@@ -29,9 +29,9 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-gray-400 dark:text-white/40 transition-all hover:bg-accent-500/10 hover:text-accent-500"
+      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-content-faint-2 transition-all hover:bg-accent/10 hover:text-accent"
       title={copied ? 'Copied!' : 'Copy to clipboard'}>
-      <Icon icon={copied ? faCheck : faCopy} className={copied ? 'text-xs text-accent-500' : 'text-xs'} />
+      <Icon icon={copied ? faCheck : faCopy} className={copied ? 'text-xs text-accent' : 'text-xs'} />
     </button>
   )
 }
@@ -39,8 +39,8 @@ function CopyButton({ text }: { text: string }) {
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-xs text-gray-500 dark:text-white/40">{label}</span>
-      <span className="text-xs font-medium text-gray-900 dark:text-white/80">{value}</span>
+      <span className="text-xs text-content-subtle-2">{label}</span>
+      <span className="text-xs font-medium text-content-strong-3">{value}</span>
     </div>
   )
 }
@@ -79,31 +79,29 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 dark:text-white/40 transition-all hover:bg-gray-100 dark:hover:bg-surface-2 hover:text-gray-600 dark:hover:text-white/80"
+        className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-content-faint-2 transition-all hover:bg-surface-inset-2 hover:text-content-muted-5"
         aria-label="Close">
         <Icon icon={faXmark} className="text-sm" />
       </button>
 
       {/* Hero */}
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-inset-2">
           <Image src={imageUrl} alt={token.symbol} size={48} className="rounded-full object-contain" />
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white/95">{token.name}</h2>
-          <p className="text-sm text-gray-500 dark:text-white/50">
+          <h2 className="text-lg font-semibold text-content-strong-5">{token.name}</h2>
+          <p className="text-sm text-content-subtle">
             {token.symbol} &middot; {getNetworkName(token.chainId)}
           </p>
         </div>
       </div>
 
       {/* Image metadata */}
-      <div className="mb-4 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
-          Image Metadata
-        </p>
+      <div className="mb-4 rounded-lg bg-surface-inset p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-content-faint">Image Metadata</p>
         {isLoading ? (
-          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-white/40">
+          <div className="flex items-center gap-2 text-xs text-content-faint-2">
             <Icon icon={faSpinner} spin />
             Loading metadata…
           </div>
@@ -118,7 +116,7 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
 
             {metadata.format === 'SVG' && (
               <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-500">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/15 px-2.5 py-1 text-xs font-medium text-accent">
                   <Icon icon={faCircleCheck} className="text-[10px]" />
                   Resolution Independent
                 </span>
@@ -126,27 +124,23 @@ function TokenDetail({ token, onClose }: { token: Token; onClose: () => void }) 
             )}
           </div>
         ) : (
-          <p className="text-xs text-gray-400 dark:text-white/30">Metadata unavailable</p>
+          <p className="text-xs text-content-faint">Metadata unavailable</p>
         )}
       </div>
 
       {/* List presence */}
-      <div className="mb-4 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
-          Source List
-        </p>
-        <span className="inline-flex items-center rounded-full bg-gray-200 dark:bg-surface-3 px-3 py-1 text-xs font-medium text-gray-700 dark:text-white/70 ring-1 ring-gray-300 dark:ring-white/10">
+      <div className="mb-4 rounded-lg bg-surface-inset p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-content-faint">Source List</p>
+        <span className="inline-flex items-center rounded-full bg-surface-active px-3 py-1 text-xs font-medium text-content-secondary-2 ring-1 ring-border-soft">
           {token.sourceList}
         </span>
       </div>
 
       {/* API endpoint */}
-      <div className="mb-6 rounded-lg bg-gray-50 dark:bg-surface-2 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">
-          API Endpoint
-        </p>
+      <div className="mb-6 rounded-lg bg-surface-inset p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-content-faint">API Endpoint</p>
         <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded-lg bg-white dark:bg-surface-base px-3 py-2 font-mono text-xs text-accent-500 border border-border-light dark:border-border-dark">
+          <code className="flex-1 truncate rounded-lg bg-surface px-3 py-2 font-mono text-xs text-accent border border-border">
             {`/image/${tokenChainIdentifier(token)}/${token.address}`}
           </code>
           <CopyButton text={imageUrl!} />
@@ -174,7 +168,7 @@ export default function TokenDetailModal({ token, onClose }: TokenDetailModalPro
       <DialogBackdrop className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
 
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border-light dark:border-border-dark bg-white dark:bg-surface-1 p-6 shadow-elevated">
+        <DialogPanel className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-border bg-surface-raised p-6 shadow-elevated">
           {token && <TokenDetail token={token} onClose={onClose} />}
         </DialogPanel>
       </div>

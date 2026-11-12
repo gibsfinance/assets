@@ -20,11 +20,11 @@ export default function NotFound() {
     <div className="mx-auto flex max-w-2xl flex-col items-center px-4 py-24 text-center">
       <p className="font-heading text-7xl font-bold text-gradient-brand">404</p>
 
-      <h1 className="mt-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">This page does not exist</h1>
+      <h1 className="mt-6 text-2xl font-semibold text-content-strong-2">This page does not exist</h1>
 
-      <p className="mt-3 text-gray-500 dark:text-gray-400">
+      <p className="mt-3 text-content-subtle-3">
         Nothing is served at{' '}
-        <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+        <code className="rounded bg-surface-inset-6 px-1.5 py-0.5 font-mono text-sm text-content-secondary-3">
           #{location.pathname}
         </code>
         . The address may be mistyped, or the page may have moved.
@@ -37,9 +37,7 @@ export default function NotFound() {
         <Link to="/studio" className="btn-secondary text-sm">
           Open Studio
         </Link>
-        <Link
-          to="/docs"
-          className="text-sm font-medium text-gray-500 transition-colors hover:text-accent-500 dark:text-gray-400">
+        <Link to="/docs" className="text-sm font-medium text-content-subtle-3 transition-colors hover:text-accent">
           Read the docs
         </Link>
       </div>

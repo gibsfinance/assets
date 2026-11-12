@@ -366,7 +366,7 @@ describe('EndpointCard', () => {
 
     await screen.findByTestId('image')
     const statusValue = screen.getByText('404')
-    expect(statusValue.className).toContain('text-red-400')
+    expect(statusValue.className).toContain('text-danger-bright')
   })
 
   // -------------------------------------------------------------------------

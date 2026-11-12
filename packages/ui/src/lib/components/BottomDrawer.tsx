@@ -207,7 +207,7 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
         role="dialog"
         aria-modal={isOpen}
         aria-label="Token configurator"
-        className="fixed inset-x-0 top-0 z-50 lg:hidden flex flex-col bg-white dark:bg-surface-base rounded-t-lg shadow-[0_-4px_20px_rgba(0,0,0,0.15)]"
+        className="fixed inset-x-0 top-0 z-50 lg:hidden flex flex-col bg-surface rounded-t-lg shadow-[0_-4px_20px_rgba(0,0,0,0.15)]"
         style={{
           height: `${viewportHeight}px`,
           transform: `translateY(${translateY}px)`,
@@ -227,18 +227,16 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
           aria-label={isOpen ? 'Collapse drawer' : 'Expand drawer'}>
           {/* Drag indicator */}
           <div className="flex justify-center pt-2.5 pb-1">
-            <div className="w-9 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+            <div className="w-9 h-1 rounded-full bg-surface-handle-2" />
           </div>
           {/* Handle content */}
           <div className="px-4 pb-2.5 min-h-[28px] flex items-center">
-            {handle ?? <span className="text-sm text-gray-400 dark:text-gray-500">Configure</span>}
+            {handle ?? <span className="text-sm text-content-faint-3">Configure</span>}
           </div>
         </div>
 
         {/* Drawer body */}
-        <div className="flex-1 overflow-y-auto overscroll-contain border-t border-border-light dark:border-border-dark">
-          {children}
-        </div>
+        <div className="flex-1 overflow-y-auto overscroll-contain border-t border-border">{children}</div>
       </div>
     </>
   )

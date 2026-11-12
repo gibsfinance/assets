@@ -1,40 +1,323 @@
 @import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Design tokens.
+ *
+ * Name a token by its ROLE, never by its value. A name says what the colour is for
+ * ("content-muted", "surface-raised", "danger"), so the value can change with the theme,
+ * or with a later theme, and no name turns false. A hue ("cyan", "green") or a mode word
+ * ("light", "dark") never appears in a name. See design/design-language in packages/docs.
+ *
+ * Each role is a custom property: the light value is on `:root`, the dark value is under
+ * `.dark`. `@theme inline` hands the properties to Tailwind, so `bg-surface-raised`,
+ * `text-content-muted` and `border-border` follow the theme with no `dark:` variant.
+ * A role that has the same value in both themes has no entry under `.dark`.
+ */
+:root {
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --ui-content-strong: var(--color-gray-900);
+  --ui-content-strong-2: var(--color-gray-900);
+  --ui-content-strong-3: var(--color-gray-900);
+  --ui-content-strong-4: var(--color-gray-900);
+  --ui-content-strong-5: var(--color-gray-900);
+  --ui-content-body: var(--color-gray-800);
+  --ui-content-body-2: var(--color-gray-800);
+  --ui-content-body-3: var(--color-gray-800);
+  --ui-content-secondary: var(--color-gray-700);
+  --ui-content-secondary-2: var(--color-gray-700);
+  --ui-content-secondary-3: var(--color-gray-700);
+  --ui-content-muted: var(--color-gray-600);
+  --ui-content-muted-2: var(--color-gray-600);
+  --ui-content-muted-3: var(--color-gray-600);
+  --ui-content-muted-4: var(--color-gray-600);
+  --ui-content-muted-5: var(--color-gray-600);
+  --ui-content-muted-6: var(--color-gray-600);
+  --ui-content-subtle: var(--color-gray-500);
+  --ui-content-subtle-2: var(--color-gray-500);
+  --ui-content-subtle-3: var(--color-gray-500);
+  --ui-content-subtle-4: var(--color-gray-500);
+  --ui-content-faint: var(--color-gray-400);
+  --ui-content-faint-2: var(--color-gray-400);
+  --ui-content-faint-3: var(--color-gray-400);
+  --ui-content-faint-4: var(--color-gray-400);
+  --ui-content-ghost: var(--color-gray-300);
+  --ui-content-ghost-2: var(--color-gray-300);
+  --ui-content-ghost-3: var(--color-gray-300);
+  --ui-content-inverse: var(--color-white);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface: var(--color-white);
+  --ui-surface-raised: var(--color-white);
+  --ui-surface-raised-2: #fafafa;
+  --ui-surface-raised-3: #f4f4f5;
+  --ui-surface-inset: var(--color-gray-50);
+  --ui-surface-inset-2: var(--color-gray-100);
+  --ui-surface-inset-3: var(--color-white);
+  --ui-surface-inset-4: #f4f4f5;
+  --ui-surface-inset-5: var(--color-gray-200);
+  --ui-surface-inset-6: var(--color-gray-100);
+  --ui-surface-active: var(--color-gray-200);
+  --ui-surface-active-2: var(--color-gray-100);
+  --ui-surface-active-3: var(--color-gray-50);
+  --ui-surface-active-4: var(--color-white);
+  --ui-surface-active-5: #e4e4e7;
+  --ui-surface-active-6: var(--color-gray-300);
+  --ui-surface-wash: var(--color-gray-100);
+  --ui-surface-wash-2: var(--color-gray-50);
+  --ui-surface-wash-3: var(--color-gray-300);
+  --ui-surface-handle: var(--color-gray-400);
+  --ui-surface-handle-2: var(--color-gray-300);
+  --ui-surface-sheen: color-mix(in oklab, var(--color-white) 5%, transparent);
+  --ui-surface-sheen-faint: color-mix(in oklab, var(--color-white) 2%, transparent);
+  --ui-surface-inverse: var(--color-gray-900);
+  --ui-surface-inverse-2: var(--color-gray-900);
+  --ui-surface-inverse-hover: var(--color-gray-700);
+  --ui-surface-inverse-3: var(--color-white);
+  --ui-surface-bright: var(--color-gray-200);
+  /* Scrims */
+  --ui-scrim-soft: color-mix(in oklab, var(--color-black) 20%, transparent);
+  /* Borders */
+  --ui-border: #e4e4e7;
+  --ui-border-strong: var(--color-gray-200);
+  --ui-border-strong-2: var(--color-gray-100);
+  --ui-border-strong-3: var(--color-gray-300);
+  --ui-border-subtle: var(--color-gray-200);
+  --ui-border-soft: var(--color-gray-300);
+  --ui-border-input: var(--color-gray-300);
+  --ui-border-input-hover: var(--color-gray-400);
+  --ui-border-overlap: #1a1a1e;
+  /* Accent (the same in both themes) */
+  --ui-accent: #00dc82;
+  --ui-accent-strong: #00b368;
+  --ui-accent-soft: #33e69b;
+  --ui-accent-secondary: #0ea5e9;
+  /* Status: danger */
+  --ui-danger: var(--color-red-600);
+  --ui-danger-hover: var(--color-red-500);
+  --ui-danger-strong: var(--color-red-500);
+  --ui-danger-bright: var(--color-red-400);
+  --ui-danger-soft: var(--color-red-50);
+  /* Status: success */
+  --ui-success: var(--color-green-600);
+  --ui-success-strong: var(--color-green-700);
+  --ui-success-bright: var(--color-green-400);
+  --ui-success-soft: var(--color-green-50);
+  /* Status: warning */
+  --ui-warning: var(--color-yellow-700);
+  --ui-warning-soft: var(--color-yellow-50);
+  --ui-warning-edge: var(--color-yellow-500);
+  /* Status: caution */
+  --ui-caution: var(--color-amber-700);
+  --ui-caution-soft: var(--color-amber-50);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface-glass: var(--color-white);
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --ui-content-control: var(--color-gray-700);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface-wash-active: var(--color-gray-200);
+}
+
+.dark {
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --ui-content-strong: var(--color-white);
+  --ui-content-strong-2: var(--color-gray-100);
+  --ui-content-strong-3: color-mix(in oklab, var(--color-white) 80%, transparent);
+  --ui-content-strong-4: color-mix(in oklab, var(--color-white) 90%, transparent);
+  --ui-content-strong-5: color-mix(in oklab, var(--color-white) 95%, transparent);
+  --ui-content-body: color-mix(in oklab, var(--color-white) 90%, transparent);
+  --ui-content-body-2: color-mix(in oklab, var(--color-white) 80%, transparent);
+  --ui-content-body-3: var(--color-white);
+  --ui-content-secondary: color-mix(in oklab, var(--color-white) 80%, transparent);
+  --ui-content-secondary-2: color-mix(in oklab, var(--color-white) 70%, transparent);
+  --ui-content-secondary-3: var(--color-gray-300);
+  --ui-content-muted: var(--color-gray-400);
+  --ui-content-muted-2: var(--color-gray-300);
+  --ui-content-muted-3: color-mix(in oklab, var(--color-white) 70%, transparent);
+  --ui-content-muted-4: color-mix(in oklab, var(--color-white) 60%, transparent);
+  --ui-content-muted-5: color-mix(in oklab, var(--color-white) 80%, transparent);
+  --ui-content-muted-6: color-mix(in oklab, var(--color-white) 50%, transparent);
+  --ui-content-subtle: color-mix(in oklab, var(--color-white) 50%, transparent);
+  --ui-content-subtle-2: color-mix(in oklab, var(--color-white) 40%, transparent);
+  --ui-content-subtle-3: var(--color-gray-400);
+  --ui-content-faint: color-mix(in oklab, var(--color-white) 30%, transparent);
+  --ui-content-faint-2: color-mix(in oklab, var(--color-white) 40%, transparent);
+  --ui-content-faint-3: var(--color-gray-500);
+  --ui-content-ghost: color-mix(in oklab, var(--color-white) 20%, transparent);
+  --ui-content-ghost-2: color-mix(in oklab, var(--color-white) 30%, transparent);
+  --ui-content-ghost-3: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --ui-content-inverse: var(--color-gray-900);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface: #09090b;
+  --ui-surface-raised: #111113;
+  --ui-surface-raised-2: #111113;
+  --ui-surface-raised-3: #111113;
+  --ui-surface-inset: #1a1a1e;
+  --ui-surface-inset-2: #1a1a1e;
+  --ui-surface-inset-3: #1a1a1e;
+  --ui-surface-inset-4: #1a1a1e;
+  --ui-surface-inset-5: #1a1a1e;
+  --ui-surface-inset-6: var(--color-gray-800);
+  --ui-surface-active: #27272a;
+  --ui-surface-active-2: #27272a;
+  --ui-surface-active-3: #27272a;
+  --ui-surface-active-4: #27272a;
+  --ui-surface-active-5: #27272a;
+  --ui-surface-active-6: #27272a;
+  --ui-surface-wash: color-mix(in oklab, var(--color-white) 5%, transparent);
+  --ui-surface-wash-2: color-mix(in oklab, var(--color-white) 2%, transparent);
+  --ui-surface-wash-3: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --ui-surface-handle: color-mix(in oklab, var(--color-white) 40%, transparent);
+  --ui-surface-handle-2: var(--color-gray-600);
+  --ui-surface-inverse: var(--color-white);
+  --ui-surface-inverse-2: var(--color-gray-700);
+  --ui-surface-inverse-hover: var(--color-gray-200);
+  --ui-surface-inverse-3: var(--color-gray-200);
+  /* Scrims */
+  --ui-scrim-soft: color-mix(in oklab, var(--color-black) 40%, transparent);
+  /* Borders */
+  --ui-border: rgba(255, 255, 255, 0.08);
+  --ui-border-strong: #27272a;
+  --ui-border-strong-2: #27272a;
+  --ui-border-strong-3: #27272a;
+  --ui-border-subtle: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --ui-border-soft: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --ui-border-input: color-mix(in oklab, var(--color-white) 20%, transparent);
+  --ui-border-input-hover: color-mix(in oklab, var(--color-white) 30%, transparent);
+  /* Status: danger */
+  --ui-danger: var(--color-red-400);
+  --ui-danger-hover: var(--color-red-400);
+  --ui-danger-soft: color-mix(in oklab, var(--color-red-900) 20%, transparent);
+  /* Status: success */
+  --ui-success: var(--color-green-400);
+  --ui-success-strong: var(--color-green-400);
+  --ui-success-soft: color-mix(in oklab, var(--color-green-900) 20%, transparent);
+  /* Status: warning */
+  --ui-warning: var(--color-yellow-400);
+  --ui-warning-soft: color-mix(in oklab, var(--color-yellow-500) 5%, transparent);
+  /* Status: caution */
+  --ui-caution: var(--color-amber-400);
+  --ui-caution-soft: color-mix(in oklab, var(--color-amber-900) 20%, transparent);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface-glass: color-mix(in oklab, var(--color-white) 3%, transparent);
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --ui-content-control: var(--color-white);
+  /* Surfaces, from the page up to hovered and active fills */
+  --ui-surface-wash-active: color-mix(in oklab, var(--color-white) 10%, transparent);
+}
+
+@theme inline {
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --color-content-strong: var(--ui-content-strong);
+  --color-content-strong-2: var(--ui-content-strong-2);
+  --color-content-strong-3: var(--ui-content-strong-3);
+  --color-content-strong-4: var(--ui-content-strong-4);
+  --color-content-strong-5: var(--ui-content-strong-5);
+  --color-content-body: var(--ui-content-body);
+  --color-content-body-2: var(--ui-content-body-2);
+  --color-content-body-3: var(--ui-content-body-3);
+  --color-content-secondary: var(--ui-content-secondary);
+  --color-content-secondary-2: var(--ui-content-secondary-2);
+  --color-content-secondary-3: var(--ui-content-secondary-3);
+  --color-content-muted: var(--ui-content-muted);
+  --color-content-muted-2: var(--ui-content-muted-2);
+  --color-content-muted-3: var(--ui-content-muted-3);
+  --color-content-muted-4: var(--ui-content-muted-4);
+  --color-content-muted-5: var(--ui-content-muted-5);
+  --color-content-muted-6: var(--ui-content-muted-6);
+  --color-content-subtle: var(--ui-content-subtle);
+  --color-content-subtle-2: var(--ui-content-subtle-2);
+  --color-content-subtle-3: var(--ui-content-subtle-3);
+  --color-content-subtle-4: var(--ui-content-subtle-4);
+  --color-content-faint: var(--ui-content-faint);
+  --color-content-faint-2: var(--ui-content-faint-2);
+  --color-content-faint-3: var(--ui-content-faint-3);
+  --color-content-faint-4: var(--ui-content-faint-4);
+  --color-content-ghost: var(--ui-content-ghost);
+  --color-content-ghost-2: var(--ui-content-ghost-2);
+  --color-content-ghost-3: var(--ui-content-ghost-3);
+  --color-content-inverse: var(--ui-content-inverse);
+  /* Surfaces, from the page up to hovered and active fills */
+  --color-surface: var(--ui-surface);
+  --color-surface-raised: var(--ui-surface-raised);
+  --color-surface-raised-2: var(--ui-surface-raised-2);
+  --color-surface-raised-3: var(--ui-surface-raised-3);
+  --color-surface-inset: var(--ui-surface-inset);
+  --color-surface-inset-2: var(--ui-surface-inset-2);
+  --color-surface-inset-3: var(--ui-surface-inset-3);
+  --color-surface-inset-4: var(--ui-surface-inset-4);
+  --color-surface-inset-5: var(--ui-surface-inset-5);
+  --color-surface-inset-6: var(--ui-surface-inset-6);
+  --color-surface-active: var(--ui-surface-active);
+  --color-surface-active-2: var(--ui-surface-active-2);
+  --color-surface-active-3: var(--ui-surface-active-3);
+  --color-surface-active-4: var(--ui-surface-active-4);
+  --color-surface-active-5: var(--ui-surface-active-5);
+  --color-surface-active-6: var(--ui-surface-active-6);
+  --color-surface-wash: var(--ui-surface-wash);
+  --color-surface-wash-2: var(--ui-surface-wash-2);
+  --color-surface-wash-3: var(--ui-surface-wash-3);
+  --color-surface-handle: var(--ui-surface-handle);
+  --color-surface-handle-2: var(--ui-surface-handle-2);
+  --color-surface-sheen: var(--ui-surface-sheen);
+  --color-surface-sheen-faint: var(--ui-surface-sheen-faint);
+  --color-surface-inverse: var(--ui-surface-inverse);
+  --color-surface-inverse-2: var(--ui-surface-inverse-2);
+  --color-surface-inverse-hover: var(--ui-surface-inverse-hover);
+  --color-surface-inverse-3: var(--ui-surface-inverse-3);
+  --color-surface-bright: var(--ui-surface-bright);
+  /* Scrims */
+  --color-scrim-soft: var(--ui-scrim-soft);
+  /* Borders */
+  --color-border: var(--ui-border);
+  --color-border-strong: var(--ui-border-strong);
+  --color-border-strong-2: var(--ui-border-strong-2);
+  --color-border-strong-3: var(--ui-border-strong-3);
+  --color-border-subtle: var(--ui-border-subtle);
+  --color-border-soft: var(--ui-border-soft);
+  --color-border-input: var(--ui-border-input);
+  --color-border-input-hover: var(--ui-border-input-hover);
+  --color-border-overlap: var(--ui-border-overlap);
+  /* Accent (the same in both themes) */
+  --color-accent: var(--ui-accent);
+  --color-accent-strong: var(--ui-accent-strong);
+  --color-accent-soft: var(--ui-accent-soft);
+  --color-accent-secondary: var(--ui-accent-secondary);
+  /* Status: danger */
+  --color-danger: var(--ui-danger);
+  --color-danger-hover: var(--ui-danger-hover);
+  --color-danger-strong: var(--ui-danger-strong);
+  --color-danger-bright: var(--ui-danger-bright);
+  --color-danger-soft: var(--ui-danger-soft);
+  /* Status: success */
+  --color-success: var(--ui-success);
+  --color-success-strong: var(--ui-success-strong);
+  --color-success-bright: var(--ui-success-bright);
+  --color-success-soft: var(--ui-success-soft);
+  /* Status: warning */
+  --color-warning: var(--ui-warning);
+  --color-warning-soft: var(--ui-warning-soft);
+  --color-warning-edge: var(--ui-warning-edge);
+  /* Status: caution */
+  --color-caution: var(--ui-caution);
+  --color-caution-soft: var(--ui-caution-soft);
+  /* Surfaces, from the page up to hovered and active fills */
+  --color-surface-glass: var(--ui-surface-glass);
+  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  --color-content-control: var(--ui-content-control);
+  /* Surfaces, from the page up to hovered and active fills */
+  --color-surface-wash-active: var(--ui-surface-wash-active);
+}
+
 @theme {
   /* Fonts */
   --font-heading: 'Space Grotesk', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Primary accent (lower = lighter, higher = darker) */
-  --color-accent-400: #33e69b;
-  --color-accent-500: #00dc82;
-  --color-accent-600: #00b368;
-
-  /* Cyan secondary */
-  --color-cyan-500: #0ea5e9;
-
-  /* Dark surfaces */
-  --color-surface-base: #09090b;
-  --color-surface-1: #111113;
-  --color-surface-2: #1a1a1e;
-  --color-surface-3: #27272a;
-
-  /* Light surfaces */
-  --color-surface-light-base: #ffffff;
-  --color-surface-light-1: #fafafa;
-  --color-surface-light-2: #f4f4f5;
-  --color-surface-light-3: #e4e4e7;
-
-  /* Border */
-  --color-border-dark: rgba(255, 255, 255, 0.08);
-  --color-border-light: #e4e4e7;
-
-  /* Glow */
-  --shadow-glow-green: 0 0 20px rgba(0, 220, 130, 0.3);
-  --shadow-glow-cyan: 0 0 20px rgba(14, 165, 233, 0.3);
-  --shadow-glow-green-subtle: 0 0 24px rgba(0, 220, 130, 0.08);
+  /* Glow and depth. The colours match the accent roles above. */
+  --shadow-glow-accent: 0 0 20px rgba(0, 220, 130, 0.3);
+  --shadow-glow-accent-secondary: 0 0 20px rgba(14, 165, 233, 0.3);
+  --shadow-glow-accent-subtle: 0 0 24px rgba(0, 220, 130, 0.08);
   --shadow-elevated: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -49,55 +332,49 @@ body {
 
 /* Gradient text utility */
 .text-gradient-brand {
-  @apply bg-gradient-to-r from-accent-500 to-cyan-500 bg-clip-text text-transparent;
+  @apply bg-gradient-to-r from-accent to-accent-secondary bg-clip-text text-transparent;
 }
 
-.text-gradient-green {
-  @apply bg-gradient-to-r from-accent-500 to-accent-600 bg-clip-text text-transparent;
+.text-gradient-accent {
+  @apply bg-gradient-to-r from-accent to-accent-strong bg-clip-text text-transparent;
 }
 
 /* Glass card */
 .glass-card {
-  @apply backdrop-blur-xl border rounded-lg bg-white border-border-light;
-}
-.dark .glass-card {
-  @apply bg-white/[0.03] border-border-dark;
+  @apply backdrop-blur-xl border rounded-lg bg-surface-glass border-border;
 }
 
 /* Elevated card */
 .elevated-card {
-  @apply rounded-lg border bg-white border-border-light shadow-sm;
+  @apply rounded-lg border bg-surface-raised border-border shadow-sm;
 }
 .dark .elevated-card {
-  @apply bg-surface-1 border-border-dark shadow-elevated;
+  @apply shadow-elevated;
 }
 
 /* Glow card */
 .glow-card {
-  @apply rounded-lg border border-accent-500/20 bg-white shadow-sm;
+  @apply rounded-lg border border-accent/20 bg-surface-raised shadow-sm;
 }
 .dark .glow-card {
-  @apply bg-surface-1 shadow-glow-green-subtle;
+  @apply shadow-glow-accent-subtle;
 }
 
 /* Buttons */
 .btn-primary {
-  @apply bg-gradient-to-r from-accent-500 to-accent-600 text-black font-semibold
-         px-5 py-2.5 rounded-lg shadow-glow-green transition-all duration-150
-         hover:scale-[1.02] hover:shadow-glow-green;
+  @apply bg-gradient-to-r from-accent to-accent-strong text-black font-semibold
+         px-5 py-2.5 rounded-lg shadow-glow-accent transition-all duration-150
+         hover:scale-[1.02] hover:shadow-glow-accent;
 }
 
 .btn-secondary {
   @apply font-medium px-5 py-2.5 rounded-lg border transition-all duration-150
-    bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200;
-}
-.dark .btn-secondary {
-  @apply bg-white/5 text-white border-white/10 hover:bg-white/10;
+    bg-surface-wash text-content-control border-border-subtle hover:bg-surface-wash-active;
 }
 
 .btn-ghost {
-  @apply bg-transparent text-accent-500 font-medium px-5 py-2.5 rounded-lg
-         border border-accent-500/30 transition-all duration-150 hover:bg-accent-500/5;
+  @apply bg-transparent text-accent font-medium px-5 py-2.5 rounded-lg
+         border border-accent/30 transition-all duration-150 hover:bg-accent/5;
 }
 
 /* Conveyor belt animation */

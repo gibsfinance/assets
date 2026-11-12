@@ -35,23 +35,23 @@ export default function ErrorMessage({
   }, [urlType, chainId, networkName, tokenAddress, generatedUrl])
 
   return (
-    <div className="elevated-card border-red-500/40 p-4">
+    <div className="elevated-card border-danger-strong/40 p-4">
       <div className="flex items-center gap-3">
-        <Icon icon={faCircleExclamation} className="text-red-500" />
+        <Icon icon={faCircleExclamation} className="text-danger-strong" />
         <div className="flex-1">
-          <p className="font-medium text-red-500">No icon found</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="font-medium text-danger-strong">No icon found</p>
+          <p className="text-sm text-content-subtle-3">
             There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. You can help by{' '}
             <a
               href={issueUrl}
-              className="text-accent-500 hover:text-accent-400 underline underline-offset-2 transition-colors"
+              className="text-accent hover:text-accent-soft underline underline-offset-2 transition-colors"
               onClick={onSubmitIssue}>
               submitting an issue
             </a>{' '}
             or contributing directly to the{' '}
             <a
               href={GITHUB_REPO_URL}
-              className="text-accent-500 hover:text-accent-400 underline underline-offset-2 transition-colors"
+              className="text-accent hover:text-accent-soft underline underline-offset-2 transition-colors"
               target="_blank"
               rel="noopener">
               Gib Assets repository

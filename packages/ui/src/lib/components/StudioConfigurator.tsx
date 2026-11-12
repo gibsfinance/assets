@@ -98,9 +98,7 @@ function SizeControl() {
         type="button"
         onClick={() => setAspectLinked((v) => !v)}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
-          aspectLinked
-            ? 'bg-accent-500/15 text-accent-500'
-            : 'bg-gray-100 text-gray-400 hover:text-gray-600 dark:bg-surface-2 dark:text-white/30 dark:hover:text-white/50'
+          aspectLinked ? 'bg-accent/15 text-accent' : 'bg-surface-inset-2 text-content-faint hover:text-content-muted-6'
         }`}
         aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}>
         <Icon icon={aspectLinked ? faLink : faLinkSlash} className="text-[9px]" />
@@ -140,13 +138,13 @@ function ShapeDropdown() {
   return (
     <div className="flex items-center gap-1">
       <Menu>
-        <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
+        <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-active-2">
           {currentLabel}
-          <Icon icon={faChevronDown} className="text-[8px] text-gray-400 dark:text-white/40" />
+          <Icon icon={faChevronDown} className="text-[8px] text-content-faint-2" />
         </MenuButton>
         <MenuItems
           anchor="bottom start"
-          className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
+          className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-inset-3 p-1 shadow-lg">
           {SHAPE_OPTIONS.map((option) => (
             <MenuItem key={option.value}>
               <button
@@ -154,8 +152,8 @@ function ShapeDropdown() {
                 onClick={() => updateAppearance({ shape: option.value })}
                 className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   appearance.shape === option.value
-                    ? 'bg-accent-500/10 text-accent-500'
-                    : 'text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-surface-3'
+                    ? 'bg-accent/10 text-accent'
+                    : 'text-content-muted-3 hover:bg-surface-active-3'
                 }`}>
                 {option.label}
               </button>
@@ -188,13 +186,13 @@ function ShadowDropdown() {
 
   return (
     <Menu>
-      <MenuButton className="flex items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/80 dark:hover:bg-surface-3">
+      <MenuButton className="flex items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 py-1 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-active-2">
         {currentLabel}
-        <Icon icon={faChevronDown} className="text-[8px] text-gray-400 dark:text-white/40" />
+        <Icon icon={faChevronDown} className="text-[8px] text-content-faint-2" />
       </MenuButton>
       <MenuItems
         anchor="bottom start"
-        className="z-50 mt-1 w-32 rounded-lg border border-border-light bg-white p-1 shadow-lg dark:border-border-dark dark:bg-surface-2">
+        className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-inset-3 p-1 shadow-lg">
         {SHADOW_OPTIONS.map((option) => (
           <MenuItem key={option.value}>
             <button
@@ -202,8 +200,8 @@ function ShadowDropdown() {
               onClick={() => updateAppearance({ shadow: option.value })}
               className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 appearance.shadow === option.value
-                  ? 'bg-accent-500/10 text-accent-500'
-                  : 'text-gray-600 hover:bg-gray-50 dark:text-white/70 dark:hover:bg-surface-3'
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-content-muted-3 hover:bg-surface-active-3'
               }`}>
               {option.label}
             </button>
@@ -244,16 +242,14 @@ function BackgroundPopover() {
   return (
     <Popover className="relative">
       <PopoverButton
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-light transition-colors hover:border-gray-400 dark:border-border-dark dark:hover:border-white/30"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border transition-colors hover:border-border-input-hover"
         style={swatchStyle}
         aria-label="Background color"
       />
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 rounded-lg border border-border-light bg-white p-3 shadow-lg dark:border-border-dark dark:bg-surface-2">
-        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/40">
-          Background
-        </p>
+        className="z-50 mt-2 rounded-lg border border-border bg-surface-inset-3 p-3 shadow-lg">
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-content-faint-2">Background</p>
         <div className="flex items-center gap-2">
           {BACKGROUND_SWATCHES.map((swatch) => (
             <button
@@ -263,8 +259,8 @@ function BackgroundPopover() {
               aria-label={swatch.label}
               className={`relative h-7 w-7 shrink-0 rounded-md border-2 transition-all ${
                 appearance.backgroundColor === swatch.value
-                  ? 'border-accent-500 ring-2 ring-accent-500/30'
-                  : 'border-border-light hover:border-gray-400 dark:border-border-dark dark:hover:border-white/30'
+                  ? 'border-accent ring-2 ring-accent/30'
+                  : 'border-border hover:border-border-input-hover'
               }`}
               style={
                 swatch.value === 'transparent'
@@ -284,20 +280,18 @@ function BackgroundPopover() {
               type="color"
               value={isCustomBackground ? appearance.backgroundColor : '#666666'}
               onChange={handleCustomColorChange}
-              className="h-7 w-7 cursor-pointer rounded-md border-2 border-border-light bg-gray-50 p-0.5 dark:border-border-dark dark:bg-surface-3"
+              className="h-7 w-7 cursor-pointer rounded-md border-2 border-border bg-surface-active-3 p-0.5"
               aria-label="Custom background color"
             />
           </div>
         </div>
 
         {isCustomBackground && (
-          <span className="mt-1.5 block font-mono text-[10px] text-gray-400 dark:text-white/40">
-            {appearance.backgroundColor}
-          </span>
+          <span className="mt-1.5 block font-mono text-[10px] text-content-faint-2">{appearance.backgroundColor}</span>
         )}
 
         {appearance.backgroundColor !== 'transparent' && appearance.padding === 0 && (
-          <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 p-2 text-[10px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+          <div className="mt-2 flex items-start gap-2 rounded-md bg-caution-soft p-2 text-[10px] text-caution">
             <Icon icon={faLightbulb} className="mt-0.5 flex-shrink-0 text-[9px]" />
             <span>
               Background won't be visible without padding.{' '}
@@ -335,8 +329,8 @@ function BadgePopover() {
       <PopoverButton
         className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           badge.enabled
-            ? 'border-accent-500/30 bg-accent-500/10 text-accent-500'
-            : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
+            ? 'border-accent/30 bg-accent/10 text-accent'
+            : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-active-2'
         }`}
         aria-label="Badge settings">
         <Icon icon={faLink} className="text-[10px]" />
@@ -344,19 +338,19 @@ function BadgePopover() {
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-80 rounded-lg border border-border-light bg-white p-4 shadow-lg dark:border-border-dark dark:bg-surface-1">
+        className="z-50 mt-2 w-80 rounded-lg border border-border bg-surface-raised p-4 shadow-lg">
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-800 dark:text-white/90">Network Badge</span>
+          <span className="text-xs font-semibold text-content-body">Network Badge</span>
           <button
             type="button"
             onClick={() => updateBadge({ enabled: !badge.enabled })}
             className={`relative h-5 w-9 rounded-full transition-colors ${
-              badge.enabled ? 'bg-accent-500/20' : 'bg-gray-200 dark:bg-surface-3'
+              badge.enabled ? 'bg-accent/20' : 'bg-surface-active'
             }`}
             aria-label={badge.enabled ? 'Disable badge' : 'Enable badge'}>
             <span
               className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-all ${
-                badge.enabled ? 'translate-x-4 bg-accent-500' : 'bg-gray-400 dark:bg-white/40'
+                badge.enabled ? 'translate-x-4 bg-accent' : 'bg-surface-handle'
               }`}
             />
           </button>
@@ -375,14 +369,14 @@ function ResolutionOrderPopover() {
   return (
     <Popover className="relative">
       <PopoverButton
-        className="flex h-7 items-center gap-1.5 rounded-md border border-border-light bg-gray-50 px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3"
+        className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2 text-xs font-medium text-content-subtle transition-colors hover:bg-surface-active-2"
         aria-label="Resolution order">
         <Icon icon={faLayerGroup} className="text-[10px]" />
         <span className="hidden sm:inline">Order</span>
       </PopoverButton>
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 w-72 rounded-lg border border-border-light bg-white shadow-lg dark:border-border-dark dark:bg-surface-1">
+        className="z-50 mt-2 w-72 rounded-lg border border-border bg-surface-raised shadow-lg">
         <ListResolutionOrder />
       </PopoverPanel>
     </Popover>
@@ -400,8 +394,8 @@ function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () =>
       onClick={onClick}
       className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
         active
-          ? 'border-accent-500/30 bg-accent-500/10 text-accent-500'
-          : 'border-border-light bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-border-dark dark:bg-surface-2 dark:text-white/50 dark:hover:bg-surface-3'
+          ? 'border-accent/30 bg-accent/10 text-accent'
+          : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-active-2'
       }`}
       aria-label={active ? 'Hide code output' : 'Show code output'}
       aria-pressed={active}>
@@ -417,23 +411,23 @@ function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () =>
 
 function Toolbar({ showCode, onToggleCode }: { showCode: boolean; onToggleCode: () => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-border-light bg-white px-4 py-3 dark:border-border-dark dark:bg-surface-base">
+    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-3">
       <SizeControl />
       <PaddingControl />
 
-      <div className="h-4 w-px bg-border-light dark:bg-border-dark" />
+      <div className="h-4 w-px bg-border" />
 
       <ShapeDropdown />
 
-      <div className="h-4 w-px bg-border-light dark:bg-border-dark" />
+      <div className="h-4 w-px bg-border" />
 
       <ShadowDropdown />
 
-      <div className="h-4 w-px bg-border-light dark:bg-border-dark" />
+      <div className="h-4 w-px bg-border" />
 
       <BackgroundPopover />
 
-      <div className="h-4 w-px bg-border-light dark:bg-border-dark" />
+      <div className="h-4 w-px bg-border" />
 
       <BadgePopover />
       <ResolutionOrderPopover />
@@ -554,10 +548,10 @@ function InfiniteCanvas() {
           }}>
           {!hasToken && (
             <div className="flex flex-col items-center gap-3 pointer-events-none">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gray-100 dark:bg-surface-2">
-                <Icon icon={faCoins} className="text-2xl text-gray-300 dark:text-white/10" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-inset-2">
+                <Icon icon={faCoins} className="text-2xl text-content-ghost-3" />
               </div>
-              <p className="text-sm font-medium text-gray-400 dark:text-white/30">Select a token to preview</p>
+              <p className="text-sm font-medium text-content-faint">Select a token to preview</p>
             </div>
           )}
 
@@ -628,12 +622,12 @@ function InfiniteCanvas() {
       </div>
 
       {/* Zoom controls */}
-      <div className="absolute bottom-3 right-3 flex flex-col items-center gap-0.5 rounded-lg bg-white/80 backdrop-blur shadow-sm dark:bg-surface-2/80">
+      <div className="absolute bottom-3 right-3 flex flex-col items-center gap-0.5 rounded-lg bg-surface-inset-3/80 backdrop-blur shadow-sm">
         {/* Reset */}
         <button
           type="button"
           onClick={resetView}
-          className="flex h-7 w-7 items-center justify-center rounded-t-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          className="flex h-7 w-7 items-center justify-center rounded-t-lg text-content-faint transition-colors hover:text-content-secondary-2"
           aria-label="Reset view"
           title="Reset view">
           <Icon icon={faCrosshairs} className="text-[10px]" />
@@ -643,14 +637,14 @@ function InfiniteCanvas() {
         <button
           type="button"
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom * 1.25) }))}
-          className="flex h-6 w-7 items-center justify-center text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          className="flex h-6 w-7 items-center justify-center text-content-faint transition-colors hover:text-content-secondary-2"
           aria-label="Zoom in"
           title="Zoom in">
           <Icon icon={faPlus} className="text-[9px]" />
         </button>
 
         {/* Zoom percentage */}
-        <span className="flex h-6 w-7 items-center justify-center font-mono text-[9px] text-gray-500 dark:text-white/40">
+        <span className="flex h-6 w-7 items-center justify-center font-mono text-[9px] text-content-subtle-2">
           {Math.round(transform.zoom * 100)}
         </span>
 
@@ -658,7 +652,7 @@ function InfiniteCanvas() {
         <button
           type="button"
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom / 1.25) }))}
-          className="flex h-6 w-7 items-center justify-center rounded-b-lg text-gray-400 transition-colors hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70"
+          className="flex h-6 w-7 items-center justify-center rounded-b-lg text-content-faint transition-colors hover:text-content-secondary-2"
           aria-label="Zoom out"
           title="Zoom out">
           <Icon icon={faMinus} className="text-[9px]" />
@@ -693,9 +687,9 @@ function CodePanel({ open }: { open: boolean }) {
 
   return (
     <div
-      className={`flex-shrink-0 overflow-y-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border-light dark:border-border-dark' : ''}`}
+      className={`flex-shrink-0 overflow-y-hidden transition-[max-height] duration-300 ease-in-out ${open ? 'border-t border-border' : ''}`}
       style={{ maxHeight: open ? `${Math.min(height, 400)}px` : 0 }}>
-      <div ref={panelRef} className="p-4 bg-white dark:bg-surface-base overflow-auto" style={{ maxHeight: 400 }}>
+      <div ref={panelRef} className="p-4 bg-surface overflow-auto" style={{ maxHeight: 400 }}>
         <CodeOutput />
       </div>
     </div>

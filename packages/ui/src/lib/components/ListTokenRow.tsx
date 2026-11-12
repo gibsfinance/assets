@@ -31,11 +31,11 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 border-b border-gray-100 px-4 py-2 dark:border-surface-3 bg-white dark:bg-surface-base">
+      className="flex items-center gap-3 border-b border-border-strong-2 px-4 py-2 bg-surface">
       {/* Drag handle */}
       <button
         type="button"
-        className="flex-shrink-0 cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-white/20 dark:hover:text-white/50"
+        className="flex-shrink-0 cursor-grab text-content-ghost hover:text-content-subtle active:cursor-grabbing"
         {...attributes}
         {...listeners}>
         <Icon icon={faGripVertical} className="text-xs" />
@@ -49,7 +49,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
             e.stopPropagation()
             onImageClick(token)
           }}
-          className="flex-shrink-0 rounded-full ring-2 ring-transparent transition-all hover:ring-accent-500/40"
+          className="flex-shrink-0 rounded-full ring-2 ring-transparent transition-all hover:ring-accent/40"
           title="Edit image">
           <Image
             // token.imageUri is guaranteed a truthy string here: this button only
@@ -71,18 +71,14 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
       {/* Info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-sm font-medium text-gray-800 dark:text-white/90">
-            {token.name || 'Unknown'}
-          </span>
-          <span className="ml-auto flex-shrink-0 text-xs text-gray-400 dark:text-white/40">
-            {token.symbol || '???'}
-          </span>
+          <span className="min-w-0 truncate text-sm font-medium text-content-body">{token.name || 'Unknown'}</span>
+          <span className="ml-auto flex-shrink-0 text-xs text-content-faint-2">{token.symbol || '???'}</span>
         </div>
         <div className="flex items-baseline justify-between">
-          <span className="font-mono text-[10px] text-gray-400 dark:text-white/30">
+          <span className="font-mono text-[10px] text-content-faint">
             {token.address.slice(0, 10)}...{token.address.slice(-6)}
           </span>
-          <span className="text-[10px] text-gray-300 dark:text-white/20">
+          <span className="text-[10px] text-content-ghost">
             {token.decimals}d · chain {token.chainId}
           </span>
         </div>
@@ -92,7 +88,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
       <button
         type="button"
         onClick={() => onRemove(token.address)}
-        className="flex-shrink-0 rounded p-1 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-white/20 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+        className="flex-shrink-0 rounded p-1 text-content-ghost transition-colors hover:bg-danger-soft hover:text-danger-hover"
         title="Remove token">
         <Icon icon={faTrashCan} className="text-xs" />
       </button>

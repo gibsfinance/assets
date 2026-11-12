@@ -21,11 +21,11 @@ function PathDisplay({ path }: { path: string }) {
     <span className="font-mono text-sm">
       {parts.map((part, index) =>
         part.isParam ? (
-          <span key={index} className="text-accent-500">
+          <span key={index} className="text-accent">
             {part.text}
           </span>
         ) : (
-          <span key={index} className="text-gray-900 dark:text-white">
+          <span key={index} className="text-content-strong">
             {part.text}
           </span>
         ),
@@ -54,14 +54,14 @@ function StatsPanel({
 }) {
   if (loading) {
     return (
-      <div className="text-xs text-gray-400 dark:text-white/30">
+      <div className="text-xs text-content-faint">
         <Icon icon={faSpinner} spin className="mr-1" /> Fetching...
       </div>
     )
   }
 
   if (error) {
-    return <div className="text-xs text-red-400">{error}</div>
+    return <div className="text-xs text-danger-bright">{error}</div>
   }
 
   if (!stats) return null
@@ -81,14 +81,14 @@ function StatsPanel({
     <div className="space-y-1.5">
       {rows.map(([label, value]) => (
         <div key={label} className="flex items-baseline justify-between gap-3">
-          <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-white/30">{label}</span>
+          <span className="text-[10px] uppercase tracking-wider text-content-faint">{label}</span>
           <span
             className={`font-mono text-xs ${
               label === 'Status' && stats.status >= 400
-                ? 'text-red-400'
+                ? 'text-danger-bright'
                 : label === 'Cache' && stats.cacheHit
-                  ? 'text-green-400'
-                  : 'text-gray-700 dark:text-white/70'
+                  ? 'text-success-bright'
+                  : 'text-content-secondary-2'
             }`}>
             {value}
           </span>
@@ -165,7 +165,7 @@ function ResponsePanel({ url }: { url: string }) {
 
   return (
     <div className="flex gap-4">
-      <div className="w-48 shrink-0 border-r border-border-light dark:border-border-dark pr-4">
+      <div className="w-48 shrink-0 border-r border-border pr-4">
         <StatsPanel stats={stats} loading={loading} error={error} />
       </div>
       <div className="min-w-0 flex-1">
@@ -174,11 +174,11 @@ function ResponsePanel({ url }: { url: string }) {
             <Image src={url} alt="Preview" size={48} className="rounded-lg" />
           </div>
         ) : loading ? (
-          <div className="text-xs text-gray-400 dark:text-white/30">
+          <div className="text-xs text-content-faint">
             <Icon icon={faSpinner} spin className="mr-1" /> Loading response...
           </div>
         ) : error ? (
-          <div className="text-xs text-red-400">{error}</div>
+          <div className="text-xs text-danger-bright">{error}</div>
         ) : json ? (
           <CodeBlock code={JSON.stringify(json, null, 2)} lang="js" classes="text-xs max-h-96 overflow-auto" />
         ) : null}
@@ -198,14 +198,14 @@ export default function EndpointCard({ method, path, description, example }: End
 
   if (!example) {
     return (
-      <div className="border-b border-border-light dark:border-border-dark px-4 py-3">
+      <div className="border-b border-border px-4 py-3">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+          <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
             {method}
           </span>
           <div className="min-w-0 flex-1 space-y-1">
             <PathDisplay path={path} />
-            <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+            <p className="text-sm text-content-muted">{description}</p>
           </div>
         </div>
       </div>
@@ -215,23 +215,23 @@ export default function EndpointCard({ method, path, description, example }: End
   return (
     <Disclosure>
       {({ open }) => (
-        <div className="border-b border-border-light dark:border-border-dark overflow-hidden">
-          <DisclosureButton className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.02]">
-            <span className="mt-0.5 shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+        <div className="border-b border-border overflow-hidden">
+          <DisclosureButton className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-sheen-faint">
+            <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
               {method}
             </span>
             <div className="min-w-0 flex-1 space-y-1">
               <PathDisplay path={path} />
-              <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+              <p className="text-sm text-content-muted">{description}</p>
             </div>
             <Icon
               icon={faChevronDown}
-              className={`mt-1text-[10px] text-gray-400 dark:text-white/30 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              className={`mt-1text-[10px] text-content-faint transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             />
           </DisclosureButton>
-          <DisclosurePanel className="border-t border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 p-4 space-y-3">
+          <DisclosurePanel className="border-t border-border bg-surface-raised-2 p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 rounded bg-accent-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-500 ring-1 ring-accent-500/30">
+              <span className="shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
                 {method}
               </span>
               <input
@@ -239,7 +239,7 @@ export default function EndpointCard({ method, path, description, example }: End
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="flex-1 rounded border border-border-light dark:border-border-dark bg-white dark:bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-gray-900 dark:text-white/80 outline-none focus:ring-1 focus:ring-accent-500/50"
+                className="flex-1 rounded border border-border bg-surface-inset-3 px-2.5 py-1.5 font-mono text-xs text-content-strong-3 outline-none focus:ring-1 focus:ring-accent/50"
               />
             </div>
             <ResponsePanel url={url} />
