@@ -1,9 +1,22 @@
 ---
-title: Gib.Show documentation
-description: Token and network images and token lists for hundreds of blockchains, free to use with no sign-in.
+title: Gib documentation
+description: Gib is an open-source engine that serves token logos, network logos and token lists. Use the public instance at gib.show or run your own.
 template: splash
 hero:
-  tagline: Free token logos, network logos and token lists for hundreds of blockchains. Put an address in a URL and get an image back.
+  tagline: Gib is an open-source engine that serves token logos, network logos and token lists. Use the public instance at gib.show, or run your own.
+  image:
+    html: |
+      <div class="hero-logos" aria-hidden="true">
+      <img src="https://gib.show/image/1?w=128&h=128&as=webp" alt="" width="64" height="64" loading="lazy" decoding="async" style="--x:50%;--y:48%;--size:64px;--dx:6px;--dy:-8px;--duration:7s;--delay:0s">
+      <img src="https://gib.show/image/1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48?w=128&h=128&as=webp" alt="" width="52" height="52" loading="lazy" decoding="async" style="--x:22%;--y:24%;--size:52px;--dx:-8px;--dy:8px;--duration:5.5s;--delay:-1.5s">
+      <img src="https://gib.show/image/369?w=128&h=128&as=webp" alt="" width="52" height="52" loading="lazy" decoding="async" style="--x:76%;--y:16%;--size:52px;--dx:8px;--dy:10px;--duration:6.5s;--delay:-3s">
+      <img src="https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?w=128&h=128&as=webp" alt="" width="48" height="48" loading="lazy" decoding="async" style="--x:88%;--y:42%;--size:48px;--dx:-6px;--dy:-10px;--duration:5s;--delay:-2s">
+      <img src="https://gib.show/image/56?w=128&h=128&as=webp" alt="" width="48" height="48" loading="lazy" decoding="async" style="--x:62%;--y:84%;--size:48px;--dx:10px;--dy:-6px;--duration:7.5s;--delay:-4s">
+      <img src="https://gib.show/image/1/0x6B175474E89094C44Da98b954EedeAC495271d0F?w=128&h=128&as=webp" alt="" width="48" height="48" loading="lazy" decoding="async" style="--x:18%;--y:68%;--size:48px;--dx:8px;--dy:8px;--duration:6s;--delay:-1s">
+      <img src="https://gib.show/image/8453?w=128&h=128&as=webp" alt="" width="44" height="44" loading="lazy" decoding="async" style="--x:44%;--y:10%;--size:44px;--dx:-10px;--dy:6px;--duration:8s;--delay:-5s">
+      <img src="https://gib.show/image/1/0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984?w=128&h=128&as=webp" alt="" width="40" height="40" loading="lazy" decoding="async" style="--x:8%;--y:44%;--size:40px;--dx:10px;--dy:-8px;--duration:5.8s;--delay:-2.5s">
+      <img src="https://gib.show/image/42161?w=128&h=128&as=webp" alt="" width="44" height="44" loading="lazy" decoding="async" style="--x:74%;--y:66%;--size:44px;--dx:-8px;--dy:-8px;--duration:6.8s;--delay:-3.5s">
+      </div>
   actions:
     - text: Get started
       link: /getting-started/overview/
@@ -18,16 +31,16 @@ import LinkedCard from '../../components/LinkedCard.astro';
 
 <CardGrid stagger>
   <LinkedCard title="Images by address" icon="seti:image" href="/api-reference/images/">
-    Request `/image/1/0x...` and get the best logo for that token. Resize it and change its format with query parameters.
+    Request `/image/1/0x...` from any Gib instance and get the best logo for that token. Resize it and change its format with query parameters.
   </LinkedCard>
   <LinkedCard title="Token lists" icon="list-format" href="/api-reference/token-lists/">
     Read lists in the Uniswap token list format, one chain at a time, from many providers. Search across every chain.
   </LinkedCard>
   <LinkedCard title="List studio" icon="pencil" href="/list-management/overview/">
-    Build, fork, import and publish your own token lists in the browser.
+    Build, fork, import and publish your own token lists in the browser, on gib.show or on your own instance.
   </LinkedCard>
   <LinkedCard title="Run your own" icon="rocket" href="/self-hosting/overview/">
-    Host the service yourself, with your choice of image storage.
+    Anyone can run Gib. Host your own instance, with your choice of image storage.
   </LinkedCard>
   <LinkedCard title="Every endpoint" icon="open-book" href="/reference/">
     Parameters, responses and examples for every route, generated from the server's own definition.
