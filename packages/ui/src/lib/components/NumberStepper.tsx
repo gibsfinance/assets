@@ -2,7 +2,7 @@ import { useCallback, useRef, useEffect } from 'react'
 import { faMinus, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
 
-interface NumberStepperProps {
+export interface NumberStepperProps {
   value: number
   onChange: (value: number) => void
   min?: number

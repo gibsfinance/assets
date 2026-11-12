@@ -4,7 +4,7 @@ import type { Token } from '../types'
 import { faCheck, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
 
-interface TokenListFilterProps {
+export interface TokenListFilterProps {
   selectedChain: number | null
   enabledLists: Set<string>
   tokensByList: Map<string, Token[]>

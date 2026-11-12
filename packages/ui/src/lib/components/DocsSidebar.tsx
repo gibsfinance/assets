@@ -5,7 +5,7 @@ export interface DocsSidebarSection {
   label: string
 }
 
-interface DocsSidebarProps {
+export interface DocsSidebarProps {
   sections: DocsSidebarSection[]
   activeSection: string
   onSectionChange: (id: string) => void

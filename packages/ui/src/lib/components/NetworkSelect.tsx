@@ -13,7 +13,7 @@ import type { NetworkInfo } from '../types'
 import { faChevronDown, faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
 
-interface NetworkSelectProps {
+export interface NetworkSelectProps {
   selectedChainId: string | null
   onSelect: (chainId: string | null) => void
 }

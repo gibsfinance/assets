@@ -8,7 +8,7 @@ import {
   normalizeAngle,
 } from '../utils/radial-angle'
 
-interface RadialPositionPickerProps {
+export interface RadialPositionPickerProps {
   angleDeg: number
   onChange: (angleDeg: number) => void
 }

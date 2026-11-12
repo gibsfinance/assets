@@ -24,6 +24,10 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/lib/networks.json',
         'src/main.tsx',
+        // Storybook is documentation of the components, not part of the application: the
+        // stories and the fixtures and fetch stand-in they use never ship to a visitor.
+        'src/**/*.stories.{ts,tsx}',
+        'src/lib/storybook/**',
       ],
       // One hundred on all four, with no margin under it. Every earlier value here
       // was a ratchet floor set a couple of tenths below the measurement, because

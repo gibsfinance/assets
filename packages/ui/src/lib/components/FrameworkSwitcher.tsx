@@ -3,7 +3,7 @@ interface FrameworkLanguage {
   label: string
 }
 
-interface FrameworkSwitcherProps {
+export interface FrameworkSwitcherProps {
   languages: FrameworkLanguage[]
   activeLanguage: string
   onSelect: (key: string) => void

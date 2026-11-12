@@ -35,3 +35,6 @@ docs/superpowers/
 .playwright-mcp/
 packages/ui/e2e/test-results/
 coverage/
+
+# Storybook static build
+packages/ui/storybook-static/
