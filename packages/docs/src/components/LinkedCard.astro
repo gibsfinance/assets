@@ -1,0 +1,41 @@
+---
+/**
+ * A Starlight `Card` that is a link as a whole: the same look as the cards on
+ * the home page, with the full card clickable and a hover state.
+ */
+import { Card } from '@astrojs/starlight/components'
+import type { ComponentProps } from 'astro/types'
+
+type Props = ComponentProps<typeof Card> & {
+  /** Root-relative address of the page the card opens, with a trailing slash. */
+  href: string
+}
+
+const { href, ...cardProps } = Astro.props
+---
+
+<a class="linked-card" href={href}>
+  <Card {...cardProps}><slot /></Card>
+</a>
+
+<style>
+  .linked-card {
+    display: flex;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 0.5rem;
+  }
+  .linked-card :global(.card) {
+    flex: 1;
+    transition: border-color 150ms ease, transform 150ms ease;
+  }
+  .linked-card:hover :global(.card),
+  .linked-card:focus-visible :global(.card) {
+    border-color: var(--sl-color-accent);
+    transform: translateY(-2px);
+  }
+  .linked-card:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 2px;
+  }
+</style>
