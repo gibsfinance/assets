@@ -328,8 +328,8 @@ describe('badge fields left undefined by older saved data', () => {
     renderConfigurator()
     enableBadge()
     forceUndefinedOptionals()
-    expect(screen.getByText('Circle').className).toContain('bg-accent-500/10')
-    expect(screen.getByText('Square').className).not.toContain('bg-accent-500/10')
+    expect(screen.getByText('Circle').className).toContain('bg-accent/10')
+    expect(screen.getByText('Square').className).not.toContain('bg-accent/10')
   })
 
   it('treats a missing badge padding as zero, on both the slider and its numeric label', () => {
@@ -347,7 +347,7 @@ describe('badge fields left undefined by older saved data', () => {
     renderConfigurator()
     enableBadge()
     forceUndefinedOptionals()
-    expect(screen.getByLabelText('Transparent').className).toContain('border-accent-500')
+    expect(screen.getByLabelText('Transparent').className).toContain('border-accent')
   })
 
   it('shows the neutral grey placeholder in the colour input when the badge background is missing', () => {

@@ -9,3 +9,4 @@ postgres-data*
 packages/docs/dist
 packages/docs/generated
 packages/docs/.astro
+packages/ui/storybook-static

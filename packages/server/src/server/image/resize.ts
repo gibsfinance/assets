@@ -14,7 +14,7 @@
  * else, where the same address can later answer with different bytes.
  */
 import sharp from 'sharp'
-import type { FormatEnum } from 'sharp'
+import type { FormatEnum, Sharp } from 'sharp'
 import type { Response } from 'express'
 import httpErrors from 'http-errors'
 import type { Image, ImageVariant, InsertableImageVariant } from '../../db/schema-types'
@@ -48,6 +48,21 @@ const SVG_SOURCE_EXTS = new Set(['.svg', '.svg+xml'])
 
 /** Max dimension to prevent abuse */
 const MAX_DIM = 2048
+
+/** Resolution at which sharp rasterizes a vector image when no density is given. */
+const SVG_BASE_DENSITY = 72
+
+/** Highest density sharp accepts. */
+const SVG_MAX_DENSITY = 100000
+
+/**
+ * Longest side, in pixels, a vector image may be rasterized to before it is
+ * fitted to the requested size. It is the same bound `parseResizeParams` puts
+ * on a requested side. Bounding the drawing's long side, not only the request,
+ * matters for a narrow image asked for by width alone: it would otherwise be
+ * drawn thousands of pixels tall, past what memory or the WebP format allow.
+ */
+const SVG_MAX_RASTER_SIDE = MAX_DIM
 
 /**
  * The two cache lifetimes this service serves. `content-addressed` names a
@@ -191,6 +206,63 @@ export function stripRootSvgDimensions(content: Buffer): Buffer {
   if (strippedTag === root.tag) return content
 
   return Buffer.from(document.slice(0, root.start) + strippedTag + document.slice(root.end + 1), 'utf8')
+}
+
+/**
+ * How much larger than its intrinsic size a vector image must be rasterized so
+ * that fitting it inside `w` by `h` needs no enlargement. A raster scales up
+ * badly, but a vector can be drawn at any size, so it is drawn at the size
+ * asked for. Never below 1: a request smaller than the image is met by the
+ * ordinary resize, and the image is not drawn larger than it needs to be.
+ * The result is capped so the drawn long side stays within `SVG_MAX_RASTER_SIDE`.
+ */
+export function computeSvgScale({
+  intrinsic,
+  target,
+}: {
+  intrinsic: { width?: number; height?: number }
+  target: { w: number | null; h: number | null }
+}): number {
+  const { width, height } = intrinsic
+  if (!width || !height) return 1
+  const ratios = [target.w ? target.w / width : null, target.h ? target.h / height : null].filter(
+    (ratio): ratio is number => ratio !== null,
+  )
+  if (ratios.length === 0) return 1
+  const wanted = Math.min(...ratios)
+  const sideLimit = SVG_MAX_RASTER_SIDE / Math.max(width, height)
+  return Math.max(1, Math.min(wanted, sideLimit))
+}
+
+/**
+ * The density to hand sharp for a vector image drawn `scale` times larger than
+ * its intrinsic size. Rounded up so the drawing is never a pixel short of the
+ * target, and held to the highest density sharp accepts.
+ */
+export function densityForScale(scale: number): number {
+  return Math.min(SVG_MAX_DENSITY, Math.ceil(SVG_BASE_DENSITY * scale))
+}
+
+/**
+ * Open image bytes with sharp. A vector source is rasterized large enough to
+ * reach the requested size (see `computeSvgScale`); any other source is opened
+ * as it is.
+ */
+export async function openSource({
+  content,
+  ext,
+  target,
+}: {
+  content: Buffer
+  ext: string
+  target: { w: number | null; h: number | null }
+}): Promise<Sharp> {
+  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content)
+  if (!target.w && !target.h) return sharp(content)
+  const intrinsic = await sharp(content).metadata()
+  const scale = computeSvgScale({ intrinsic, target })
+  if (scale === 1) return sharp(content)
+  return sharp(content, { density: densityForScale(scale) })
 }
 
 /** Map format string to content-type */
@@ -352,11 +424,15 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   }
 
   // Cache miss — resize with sharp
-  let pipeline = sharp(content)
+  let pipeline = await openSource({ content, ext: img.ext, target: { w: targetW, h: targetH } })
 
   if (targetW || targetH) {
     pipeline = pipeline.resize(targetW || undefined, targetH || undefined, {
       fit: 'inside',
+      // Nothing is enlarged here. A vector source was already drawn at the
+      // requested size by `openSource`, so it needs no enlargement; leaving the
+      // flag on also stops sharp from drawing it larger than the pixel budget
+      // `SVG_MAX_RASTER_SIDE` allows. A raster source is never enlarged.
       withoutEnlargement: true,
     })
   }

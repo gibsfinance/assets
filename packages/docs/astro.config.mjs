@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import starlightLlmsTxt from 'starlight-llms-txt'
 import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi'
+import { openApiMenuRedirect } from './src/lib/openapi-menu-redirect.ts'
 
 /** Where the site is served. Set `DOCS_SITE_URL` for staging; production is the default. */
 const site = process.env['DOCS_SITE_URL'] || 'https://docs.gib.show'
@@ -13,19 +14,24 @@ const guideGroups = [
   { label: 'List management', directory: 'list-management' },
   { label: 'Self-hosting', directory: 'self-hosting' },
   { label: 'Contributing', directory: 'contributing' },
+  { label: 'Design', directory: 'design' },
 ].map(({ label, directory }) => ({ label, items: [{ autogenerate: { directory } }] }))
 
 export default defineConfig({
   site,
+  // The endpoint reference plugin draws native selects; this swaps in menus. See openapi-menu-redirect.ts.
+  vite: { plugins: [openApiMenuRedirect()] },
   integrations: [
     starlight({
-      title: 'gib.show docs',
+      title: 'Gib docs',
       description:
-        'Guides, the endpoint reference and contributor notes for gib.show, the token image and token list service.',
+        'Guides, the endpoint reference and contributor notes for Gib, the open-source engine behind gib.show that serves token images and token lists.',
       favicon: '/favicon.png',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/gibsfinance/assets' }],
       editLink: { baseUrl: 'https://github.com/gibsfinance/assets/edit/master/packages/docs/' },
-      customCss: ['./src/styles/theme.css'],
+      customCss: ['./src/styles/theme.css', './src/styles/menu.css', './src/styles/hero-logos.css'],
+      // The theme picker is a menu, not a native select. See src/components/ThemeMenu.astro.
+      components: { ThemeSelect: './src/components/ThemeMenu.astro' },
       plugins: [
         // The generated file is written by scripts/generate-openapi.ts from the server's own definition.
         starlightOpenAPI([{ base: 'reference', label: 'Endpoint reference', schema: './generated/openapi.json' }]),

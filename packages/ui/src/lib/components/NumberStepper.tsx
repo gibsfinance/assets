@@ -2,7 +2,7 @@ import { useCallback, useRef, useEffect } from 'react'
 import { faMinus, faPlus } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
 
-interface NumberStepperProps {
+export interface NumberStepperProps {
   value: number
   onChange: (value: number) => void
   min?: number
@@ -68,13 +68,13 @@ export default function NumberStepper({
   )
 
   const btnClass =
-    'flex h-full w-5 items-center justify-center text-[9px] text-gray-400 dark:text-white/30 hover:text-accent-500 hover:bg-accent-500/10 transition-colors select-none'
+    'flex h-full w-5 items-center justify-center text-[9px] text-content-faint hover:text-accent hover:bg-accent/10 transition-colors select-none'
 
   return (
     <div className="flex items-center gap-1">
-      {label && <span className="text-[10px] font-medium text-gray-400 dark:text-white/40">{label}</span>}
+      {label && <span className="text-[10px] font-medium text-content-faint-2">{label}</span>}
       <div
-        className={`${width} flex h-7 items-stretch rounded-md border border-border-light bg-gray-50 dark:border-border-dark dark:bg-surface-2 overflow-hidden`}>
+        className={`${width} flex h-7 items-stretch rounded-md border border-border bg-surface-inset overflow-hidden`}>
         <button
           type="button"
           onClick={decrement}
@@ -92,7 +92,7 @@ export default function NumberStepper({
           pattern="[0-9]*"
           value={value}
           onChange={handleInputChange}
-          className="flex-1 min-w-0 bg-transparent text-center text-xs font-medium text-gray-700 dark:text-white/80 focus:outline-none [appearance:textfield]"
+          className="flex-1 min-w-0 bg-transparent text-center text-xs font-medium text-content-secondary focus:outline-none [appearance:textfield]"
         />
         <button
           type="button"

@@ -35,6 +35,10 @@ yarn workspace @gibs/utils run vitest run --coverage
 yarn workspace @gibs/react run vitest run --coverage
 yarn workspace ui run vitest run --coverage
 
+# Storybook for the interface components — see "Storybook" below
+yarn workspace ui storybook          # dev server on port 6006
+yarn workspace ui run build:storybook   # static files into packages/ui/storybook-static
+
 # Documentation site (Starlight) — see "Documentation Site" below
 yarn workspace docs dev              # dev server with live reload
 yarn workspace docs build            # static site into packages/docs/dist
@@ -355,7 +359,10 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
 `docs.gib.show`, staging is `docs-staging.gib.show`. Run it with `yarn workspace docs dev`.
 - **Pages.** Content lives in `packages/docs/src/content/docs/`: `index.mdx` (splash), then one directory per
   sidebar group, in this order: `getting-started/`, `api-reference/`, `list-management/`, `self-hosting/`,
-  `contributing/`. Groups fill themselves from their directory. Every page needs `title`, `description` and
+  `contributing/`, `design/`. Groups fill themselves from their directory. `design/` holds the design language
+  (`design-language.mdx`, with `src/components/SwatchGrid.astro` for colour swatches); it is not one of the
+  directories joined into the guide files, so it may use MDX components freely. Naming: "Gib" is the software,
+  "gib.show" is the public instance. Every page needs `title`, `description` and
   `sidebar: { order: N }` in its frontmatter. The sidebar then adds the generated endpoint reference.
 - **Endpoint reference** (`/reference/`). `scripts/generate-openapi.ts` writes `generated/openapi.json` from
   `packages/server/src/server/openapi.ts` on every build and dev start, and `starlight-openapi` renders it. The file is
@@ -376,9 +383,69 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
   `Host` header, so a proxy in front must pass the original host name through. The `Dockerfile` builds the site in its
   own stage and copies only `dist` into the runtime image. Set `DOCS_SITE_URL` at build time for staging
   (`https://docs-staging.gib.show`); it feeds the sitemap, canonical links and the absolute links in the joined guides.
+- **No native `<select>`: menus only** (owner rule, written up in `design/design-language`).
+  - Starlight's theme picker is a `<select>`, so `astro.config.mjs` overrides `ThemeSelect` with
+    `src/components/ThemeMenu.astro`: a menu button (WAI-ARIA menu button pattern) that keeps Starlight's behaviour
+    (`starlight-theme` in `localStorage`, `data-theme` on `<html>`, auto follows the system live; Starlight's inline
+    `ThemeProvider` script still prevents the flash). `starlight-openapi` draws two more selects in the endpoint
+    reference (media type and code sample pickers). Its imports are relative, so `src/lib/openapi-menu-redirect.ts`
+    is a Vite plugin that answers them with `src/components/openapi/ContentMenu.astro` and `SnippetMenu.astro`.
+    All three menus share `src/lib/menu-controller.ts` (behaviour) and `src/styles/menu.css` (look). When
+    `starlight-openapi` is upgraded, check those two components still match the plugin's contract.
+  - Docs enforcement: `yarn build` runs `scripts/check-no-select.ts` after `astro build`; it fails and names every
+    built HTML file that contains a `<select` element (logic and tests in `scripts/no-native-select.ts`).
+  - Interface enforcement: `packages/ui/eslint.config.js` forbids the JSX `select` element
+    (`no-restricted-syntax`), so `cd packages/ui && yarn lint` fails on one.
+- **Home page hero.** The logos beside the title are `hero.image.html` in `index.mdx` (plain markup, CSS 3D
+  animation in `src/styles/hero-logos.css`, no script): a tilted disc with the Gib coin fixed at its centre and
+  seven logo slots riding two rings. The fixed disc and coin are the frame of reference; the owner rejected a
+  whole-cloud sway with nothing still ("a mobile with no frame of reference"). Each slot holds three logos and swaps
+  to the next one three quarters into a lap, when it is behind the coin. Moving layers are zero-size points, because
+  full-size 3D layers that cross render a visible box edge in Chrome; for the same reason the coin floats wholly
+  above the disc. Sizes are `cqi` units, so the scene scales with Starlight's column. Logos load lazily from
+  `https://gib.show/image/...` (production, because staging may lack data); use vector or at least 256 px sources so
+  none look blurry. `aria-hidden`; under `prefers-reduced-motion` the animations are paused, not removed, so the
+  slots stay spread round the rings; hidden below 50rem where Starlight stacks the hero. Check each URL answers 200
+  before changing the set.
 - **Checks.** `yarn workspace docs run check` (types for the scripts and content configuration), `yarn lint` from the
   package, and the `docs` CI job builds the whole site. The build scripts are the only testable code; they sit at
-  100% like every other workspace. `packages/docs` is outside the root `tsconfig.json`.
+  100% like every other workspace (that now includes `src/lib/`, whose DOM tests use `// @vitest-environment jsdom`).
+  `packages/docs` is outside the root `tsconfig.json`.
+
+### Storybook (`packages/ui`)
+A catalog of the reusable interface components, published inside the documentation site at `/storybook/`
+(docs page: `packages/docs/src/content/docs/design/storybook.md`).
+- **Where things live.** Stories sit beside their component as `<Component>.stories.tsx`. `.storybook/main.ts` reuses
+  the interface's `vite.config.ts` and removes its three build-only plugins by name (`prerender-home`,
+  `inline-stylesheet`, `service-worker`); a new build-only plugin there must be added to that list. `.storybook/preview.tsx`
+  wraps every story in the query client, theme, settings and Studio providers, and the toolbar **Theme** item sets the
+  `dark` class through the real `ThemeProvider`. Fixtures and the `fetch` stand-in are in `src/lib/storybook/`; a story
+  lists the paths it needs under the `mockApi` parameter and every other path answers 404, so no story reaches a network.
+- **The rule.** Every new reusable component gets a story in the same change, with the empty, loading, error and
+  long-text states where they apply. Stories must not use the native `select` element.
+- **Coverage.** `*.stories.{ts,tsx}` and `src/lib/storybook/**` are excluded from the `ui` coverage include, because they
+  are documentation, not application code. `src/lib/storybook/stories.test.tsx` renders every story in jsdom, so a
+  component change that breaks a story fails the ordinary test run. Lint and the typecheck still cover stories and `.storybook/`.
+- **Publishing.** `yarn workspace docs build` runs `build:storybook` (in `ui`) and `scripts/copy-storybook.ts`, which
+  copies `packages/ui/storybook-static` to `packages/docs/dist/storybook`. The `Dockerfile` docs stage copies
+  `packages/ui` for that; the runtime image is unchanged. `docs-site.ts` serves `/storybook/` like any other docs path;
+  `storybook/assets/*` (hashed) is immutable and HTML is `no-cache`. Storybook's built `.html` files hold no `<select`, but
+  the manager's JavaScript bundles under `dist/storybook/sb-*` mention it, so any check of the built site for native
+  selects must scan HTML only or skip `dist/storybook/`.
+
+### Design Tokens (colour)
+**Name a colour by its role, never by its value.** `--color-cyan-500` is wrong (under another theme it may not be
+cyan); `--color-accent-secondary` is right. A name never holds a hue, a mode word (`light`, `dark`) or a scale number.
+- `packages/ui/src/app.css` defines each role as `--ui-<role>`: light value on `:root`, dark value under `.dark`.
+  `@theme inline` exposes `--color-<role>`, so `text-content-muted` or `bg-surface-raised` follows the theme with no
+  `dark:` variant. A role with no `.dark` entry is the same in both themes. Values name Tailwind's palette
+  (`var(--color-gray-900)`) on purpose: it keeps alpha mixing at run time, which kept every pixel identical.
+- Components never use a raw palette class (`text-gray-400`, `bg-red-50`). The `design/no-raw-palette-classes` lint rule
+  (`packages/ui/eslint-rules/design-tokens.js`) fails on one, and `src/design-tokens.test.ts` fails on a token name with a
+  hue, mode word or scale number. `white`, `black`, `transparent` stay allowed for fills that never change with the theme.
+- A role ending in a number (`content-muted-2`) is a near duplicate kept so no colour changed. Folding them is a
+  deliberate visual change, not a refactor.
+- The design language page of the docs site builds its role tables from `app.css`, so there is no second list to update.
 
 ### UI Utils Pattern
 Pure functions extracted from components live in `packages/ui/src/lib/utils/`:

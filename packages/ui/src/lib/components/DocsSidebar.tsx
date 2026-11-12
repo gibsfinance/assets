@@ -5,7 +5,7 @@ export interface DocsSidebarSection {
   label: string
 }
 
-interface DocsSidebarProps {
+export interface DocsSidebarProps {
   sections: DocsSidebarSection[]
   activeSection: string
   onSectionChange: (id: string) => void
@@ -30,17 +30,15 @@ function DesktopSidebar({ sections, activeSection, onSectionChange }: Omit<DocsS
   return (
     <aside className="hidden lg:block">
       <nav className="sticky top-24 space-y-1">
-        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-500">
-          On this page
-        </p>
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-content-subtle-4">On this page</p>
         {sections.map((section) => (
           <button
             key={section.id}
             onClick={() => handleClick(section.id)}
             className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 ${
               activeSection === section.id
-                ? 'bg-accent-500/10 text-accent-500 border-l-2 border-accent-500 pl-[10px]'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-white/5 hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-accent/10 text-accent border-l-2 border-accent pl-[10px]'
+                : 'text-content-muted hover:bg-surface-sheen hover:text-content-strong'
             }`}>
             {section.label}
           </button>
@@ -73,7 +71,7 @@ function MobileSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSi
   return (
     <div
       ref={containerRef}
-      className="lg:hidden sticky top-14 z-10 flex gap-2 overflow-x-auto border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base py-2 px-4">
+      className="lg:hidden sticky top-14 z-10 flex gap-2 overflow-x-auto border-b border-border bg-surface py-2 px-4">
       {sections.map((section) => (
         <button
           key={section.id}
@@ -81,8 +79,8 @@ function MobileSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSi
           onClick={() => handleClick(section.id)}
           className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-150 whitespace-nowrap ${
             activeSection === section.id
-              ? 'bg-accent-500 text-black'
-              : 'bg-surface-light-2 dark:bg-surface-2 text-gray-600 dark:text-gray-400 hover:bg-surface-light-3 dark:hover:bg-surface-3'
+              ? 'bg-accent text-black'
+              : 'bg-surface-inset-4 text-content-muted hover:bg-surface-active-5'
           }`}>
           {section.label}
         </button>

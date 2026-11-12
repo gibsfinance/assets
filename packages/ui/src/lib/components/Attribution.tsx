@@ -9,7 +9,7 @@ export default function Attribution() {
 
   return (
     <div className="flex flex-col items-center gap-4 py-4">
-      <p className="text-sm text-gray-500 dark:text-gray-400 text-center italic">Powered by</p>
+      <p className="text-sm text-content-subtle-3 text-center italic">Powered by</p>
 
       <div className="flex flex-wrap max-w-md gap-3 items-center justify-center">
         {attributionProviders.map((provider) => (
@@ -19,7 +19,7 @@ export default function Attribution() {
             target="_blank"
             rel="noopener noreferrer"
             title={provider.name}
-            className="flex items-center justify-center rounded-lg bg-gray-50 dark:bg-surface-2 hover:bg-gray-100 dark:hover:bg-surface-3 transition-colors"
+            className="flex items-center justify-center rounded-lg bg-surface-inset hover:bg-surface-active-2 transition-colors"
             style={{ width: CONTAINER_SIZE, height: CONTAINER_SIZE }}>
             <Image
               src={

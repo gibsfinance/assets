@@ -1,0 +1,84 @@
+---
+/**
+ * Takes the place of `starlight-openapi`'s `ContentPicker`, which is a native `<select>` (see
+ * `src/lib/openapi-menu-redirect.ts`). It keeps the plugin's contract: the slot holds panels with
+ * `role="tabpanel"` and `data-openapi-content-type`, and the first one is shown at first.
+ */
+import { Icon } from '@astrojs/starlight/components'
+
+interface Props {
+  label: string
+  singleLabel?: string | undefined
+  types: string[] | undefined
+}
+
+const { label, singleLabel, types = [] } = Astro.props
+---
+
+<gib-content-menu>
+  {
+    types.length === 1 && (
+      <div class="gib-menu-value">
+        <span class="sr-only">{singleLabel ?? label}: </span>
+        {types[0]}
+      </div>
+    )
+  }
+  {
+    types.length > 1 && (
+      <div class="gib-menu gib-menu--field">
+        <button type="button" class="gib-menu-trigger" aria-label={label}>
+          <span class="current">{types[0]}</span>
+          <Icon name="down-caret" />
+        </button>
+        <div class="gib-menu-list" role="menu" aria-label={label} hidden>
+          {types.map((type, index) => (
+            <button type="button" role="menuitemradio" aria-checked={String(index === 0)} tabindex="-1" data-value={type}>
+              <span class="gib-menu-label">{type}</span>
+              <Icon name="approve-check" class="gib-menu-check" />
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  <slot />
+</gib-content-menu>
+
+<script>
+  import { attachMenu, markCheckedItem } from '../../lib/menu-controller.ts'
+
+  class GibContentMenu extends HTMLElement {
+    connectedCallback(): void {
+      const host = this.querySelector<HTMLElement>(':scope > .gib-menu')
+      if (!host) return
+      const items = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      const panels = [...this.querySelectorAll<HTMLElement>(':scope > [role="tabpanel"]')]
+      const current = host.querySelector<HTMLElement>('.current')!
+      let currentIndex = 0
+
+      attachMenu({
+        host,
+        trigger: host.querySelector<HTMLButtonElement>('.gib-menu-trigger')!,
+        menu: host.querySelector<HTMLElement>('.gib-menu-list')!,
+        items,
+        currentIndex: () => currentIndex,
+        onSelect: (item, index) => {
+          currentIndex = index
+          current.textContent = item.dataset['value'] ?? ''
+          markCheckedItem(items, index)
+          for (const panel of panels) panel.hidden = panel.dataset['openapiContentType'] !== item.dataset['value']
+        },
+      })
+    }
+  }
+
+  customElements.define('gib-content-menu', GibContentMenu)
+</script>
+
+<style is:global>
+  gib-content-menu {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+</style>

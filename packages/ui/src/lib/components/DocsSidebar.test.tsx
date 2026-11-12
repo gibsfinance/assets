@@ -130,14 +130,14 @@ describe('DocsSidebar', () => {
 
   it('marks exactly one wide-screen entry as the current section', () => {
     const { container } = renderSidebar({ activeSection: 'features' })
-    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent-500'))
+    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent'))
     expect(highlighted).toHaveLength(1)
     expect(highlighted[0].textContent).toBe('Features')
   })
 
   it('highlights nothing when the current section is not one of its entries', () => {
     const { container } = renderSidebar({ activeSection: 'not-a-section' })
-    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent-500'))
+    const highlighted = desktopButtons(container).filter((button) => button.className.includes('border-accent'))
     expect(highlighted).toHaveLength(0)
   })
 

@@ -24,7 +24,7 @@ function CompactSlider({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 text-[11px] text-gray-500 dark:text-white/50">{label}</span>
+      <span className="w-16 shrink-0 text-[11px] text-content-subtle">{label}</span>
       <input
         type="range"
         min={min}
@@ -33,9 +33,9 @@ function CompactSlider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-gray-200 accent-accent-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-surface-3"
+        className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent disabled:cursor-not-allowed disabled:opacity-40"
       />
-      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-accent-500">{displayValue}</span>
+      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-accent">{displayValue}</span>
     </div>
   )
 }
@@ -77,11 +77,11 @@ export default function BadgeConfigurator() {
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-border-light dark:bg-border-dark" />
+      <div className="h-px bg-border" />
 
       {/* Shape + Ring — compact row */}
       <div className="flex items-center gap-3">
-        <span className="w-16 shrink-0 text-[11px] text-gray-500 dark:text-white/50">Shape</span>
+        <span className="w-16 shrink-0 text-[11px] text-content-subtle">Shape</span>
         <div className="flex gap-1">
           {(['circle', 'square'] as const).map((shape) => (
             <button
@@ -91,8 +91,8 @@ export default function BadgeConfigurator() {
               disabled={isDisabled}
               className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 (badge.badgeShape ?? 'circle') === shape
-                  ? 'bg-accent-500/10 text-accent-500'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-surface-3 dark:text-white/50'
+                  ? 'bg-accent/10 text-accent'
+                  : 'bg-surface-active-2 text-content-subtle hover:bg-surface-bright'
               } disabled:cursor-not-allowed disabled:opacity-40`}>
               {shape.charAt(0).toUpperCase() + shape.slice(1)}
             </button>
@@ -102,7 +102,7 @@ export default function BadgeConfigurator() {
 
       {/* Padding + Background — compact row */}
       <div className="flex items-center gap-3">
-        <span className="w-16 shrink-0 text-[11px] text-gray-500 dark:text-white/50">Pad / BG</span>
+        <span className="w-16 shrink-0 text-[11px] text-content-subtle">Pad / BG</span>
         <div className="flex items-center gap-2">
           <input
             type="range"
@@ -112,9 +112,9 @@ export default function BadgeConfigurator() {
             value={badge.badgePadding ?? 0}
             disabled={isDisabled}
             onChange={(e) => updateBadge({ badgePadding: Number(e.target.value) })}
-            className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-gray-200 accent-accent-500 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-surface-3"
+            className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent disabled:cursor-not-allowed disabled:opacity-40"
           />
-          <span className="w-6 text-right font-mono text-[10px] text-accent-500">{badge.badgePadding ?? 0}</span>
+          <span className="w-6 text-right font-mono text-[10px] text-accent">{badge.badgePadding ?? 0}</span>
           <button
             type="button"
             onClick={() => updateBadge({ badgeBackground: 'transparent' })}
@@ -122,8 +122,8 @@ export default function BadgeConfigurator() {
             aria-label="Transparent"
             className={`h-6 w-6 shrink-0 rounded-md border-2 transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
               (badge.badgeBackground ?? 'transparent') === 'transparent'
-                ? 'border-accent-500 ring-1 ring-accent-500/30'
-                : 'border-border-light dark:border-border-dark'
+                ? 'border-accent ring-1 ring-accent/30'
+                : 'border-border'
             }`}
             style={{
               backgroundImage:
@@ -137,18 +137,18 @@ export default function BadgeConfigurator() {
             value={(badge.badgeBackground ?? 'transparent') !== 'transparent' ? badge.badgeBackground! : '#666666'}
             disabled={isDisabled}
             onChange={(e) => updateBadge({ badgeBackground: e.target.value })}
-            className="h-6 w-6 cursor-pointer rounded-md border border-border-light bg-gray-50 p-0.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-border-dark dark:bg-surface-3"
+            className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-active-3 p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Badge background color"
           />
         </div>
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-border-light dark:bg-border-dark" />
+      <div className="h-px bg-border" />
 
       {/* Ring — compact */}
       <div className="flex items-center gap-3">
-        <span className="w-16 shrink-0 text-[11px] text-gray-500 dark:text-white/50">Ring</span>
+        <span className="w-16 shrink-0 text-[11px] text-content-subtle">Ring</span>
         <label className="flex cursor-pointer items-center gap-2">
           <div className="relative flex">
             <input
@@ -158,8 +158,8 @@ export default function BadgeConfigurator() {
               disabled={isDisabled}
               onChange={(e) => updateBadge({ ringEnabled: e.target.checked })}
             />
-            <div className="h-4 w-7 rounded-full bg-gray-200 transition-colors peer-checked:bg-accent-500/20 dark:bg-surface-3" />
-            <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-gray-400 transition-all peer-checked:translate-x-3 peer-checked:bg-accent-500 dark:bg-white/40" />
+            <div className="h-4 w-7 rounded-full bg-surface-active transition-colors peer-checked:bg-accent/20" />
+            <div className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-surface-handle transition-all peer-checked:translate-x-3 peer-checked:bg-accent" />
           </div>
         </label>
         {badge.ringEnabled && (
@@ -169,7 +169,7 @@ export default function BadgeConfigurator() {
               value={badge.ringColor}
               disabled={isDisabled}
               onChange={(e) => updateBadge({ ringColor: e.target.value })}
-              className="h-6 w-6 cursor-pointer rounded-md border border-border-light bg-gray-50 p-0.5 dark:border-border-dark dark:bg-surface-3"
+              className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-active-3 p-0.5"
               aria-label="Ring color"
             />
             <input
@@ -180,9 +180,9 @@ export default function BadgeConfigurator() {
               value={badge.ringThickness}
               disabled={isDisabled}
               onChange={(e) => updateBadge({ ringThickness: Number(e.target.value) })}
-              className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-gray-200 accent-accent-500 dark:bg-surface-3"
+              className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent"
             />
-            <span className="font-mono text-[10px] text-accent-500">{badge.ringThickness}px</span>
+            <span className="font-mono text-[10px] text-accent">{badge.ringThickness}px</span>
           </>
         )}
       </div>

@@ -137,7 +137,7 @@ export default function Image({
   const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded'
   const skeletonEl = skeleton ? (
     <div
-      className={skeletonClassName || `absolute inset-0 ${shapeClass} bg-gray-200 dark:bg-surface-2`}
+      className={skeletonClassName || `absolute inset-0 ${shapeClass} bg-surface-inset-5`}
       style={loaded || shouldFallback ? { display: 'none' } : undefined}
     />
   ) : null

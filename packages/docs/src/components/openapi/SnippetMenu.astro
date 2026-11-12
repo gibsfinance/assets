@@ -1,0 +1,119 @@
+---
+/**
+ * Takes the place of `starlight-openapi`'s `OperationSnippetPicker`, which is a native `<select>`
+ * (see `src/lib/openapi-menu-redirect.ts`). It keeps the plugin's contract: each code sample is a
+ * `div.sl-openapi-snippet` with `data-openapi-snippet-id`, the choice is kept in `localStorage`
+ * under `starlight-openapi-snippet-id`, and the plugin's own script restores the choice on load.
+ */
+import { Icon } from '@astrojs/starlight/components'
+
+/** One code sample, as the plugin describes it. */
+interface Snippet {
+  id: string
+  label: string
+  groupLabel?: string | undefined
+}
+
+interface Props {
+  snippets: { items: Snippet[]; defaultId?: string | undefined }
+}
+
+const { snippets } = Astro.props
+
+const single = snippets.items.length === 1 ? snippets.items[0] : undefined
+const singleLabel = single?.groupLabel ? `${single.groupLabel} / ${single.label}` : single?.label
+
+/** The items with the label of the group each starts, so the menu can show group headings. */
+const startsGroup = (snippet: Snippet, index: number): boolean =>
+  Boolean(snippet.groupLabel) && snippet.groupLabel !== snippets.items[index - 1]?.groupLabel
+
+const defaultSnippet = snippets.items.find((snippet) => snippet.id === snippets.defaultId) ?? snippets.items[0]
+---
+
+<gib-snippet-menu>
+  {
+    single ? (
+      <div class="gib-menu-value">
+        <span class="sr-only">Code sample: </span>
+        {singleLabel}
+      </div>
+    ) : (
+      <>
+        <div class="gib-menu gib-menu--inline">
+          <button type="button" class="gib-menu-trigger" aria-label="Select code sample">
+            <span class="current">{defaultSnippet?.label}</span>
+            <Icon name="down-caret" />
+          </button>
+          <div class="gib-menu-list" role="menu" aria-label="Code sample">
+            {snippets.items.map((snippet, index) => (
+              <>
+                {startsGroup(snippet, index) && <div class="gib-menu-group-label" role="presentation">{snippet.groupLabel}</div>}
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={String(snippet.id === defaultSnippet?.id)}
+                  tabindex="-1"
+                  data-value={snippet.id}
+                >
+                  <span class="gib-menu-label">{snippet.label}</span>
+                  <Icon name="approve-check" class="gib-menu-check" />
+                </button>
+              </>
+            ))}
+          </div>
+        </div>
+        <div aria-live="polite" class="sr-only" id="sl-openapi-snippet-status"></div>
+      </>
+    )
+  }
+</gib-snippet-menu>
+
+<script>
+  import { attachMenu, markCheckedItem } from '../../lib/menu-controller.ts'
+
+  const STORAGE_KEY = 'starlight-openapi-snippet-id'
+
+  class GibSnippetMenu extends HTMLElement {
+    connectedCallback(): void {
+      const host = this.querySelector<HTMLElement>('.gib-menu')
+      if (!host) return
+      const items = [...host.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      const current = host.querySelector<HTMLElement>('.current')!
+      const status = this.querySelector<HTMLElement>('#sl-openapi-snippet-status')!
+      let currentIndex = Math.max(
+        items.findIndex((item) => item.getAttribute('aria-checked') === 'true'),
+        0,
+      )
+
+      /** Show one item as the choice, on the button and in the list. */
+      const showChoice = (index: number): void => {
+        currentIndex = index
+        current.textContent = items[index]?.textContent?.trim() ?? ''
+        markCheckedItem(items, index)
+      }
+
+      // The plugin's inline script restores the saved sample on the page. Show the same choice here.
+      const savedIndex = items.findIndex((item) => item.dataset['value'] === localStorage.getItem(STORAGE_KEY))
+      if (savedIndex >= 0) showChoice(savedIndex)
+
+      attachMenu({
+        host,
+        trigger: host.querySelector<HTMLButtonElement>('.gib-menu-trigger')!,
+        menu: host.querySelector<HTMLElement>('.gib-menu-list')!,
+        items,
+        currentIndex: () => currentIndex,
+        onSelect: (item, index) => {
+          const id = item.dataset['value'] ?? ''
+          showChoice(index)
+          for (const snippet of document.querySelectorAll<HTMLElement>('div.sl-openapi-snippet')) {
+            snippet.toggleAttribute('hidden', snippet.dataset['openapiSnippetId'] !== id)
+          }
+          status.textContent = `Showing ${current.textContent} code sample.`
+          localStorage.setItem(STORAGE_KEY, id)
+        },
+      })
+    }
+  }
+
+  customElements.define('gib-snippet-menu', GibSnippetMenu)
+</script>

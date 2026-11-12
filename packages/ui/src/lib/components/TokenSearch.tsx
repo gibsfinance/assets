@@ -42,16 +42,16 @@ export default function TokenSearch({
 
   return (
     <div className="flex flex-col sm:flex-row">
-      <div className="flex flex-1 items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 dark:border-surface-3 dark:bg-surface-2">
-        <Icon icon={faMagnifyingGlass} className="text-xs text-gray-400 dark:text-white/30" />
+      <div className="flex flex-1 items-center gap-2 border-b border-border-strong bg-surface-inset px-4 py-2">
+        <Icon icon={faMagnifyingGlass} className="text-xs text-content-faint" />
         <input
           type="search"
           placeholder={`Search ${count} tokens...`}
-          className="flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white/80 dark:placeholder:text-white/30"
+          className="flex-1 bg-transparent text-sm text-content-strong-3 outline-none placeholder:text-content-faint"
           value={query}
           onChange={handleChange}
         />
-        {isSearching && <Icon icon={faSpinner} spin className="text-xs text-accent-500" />}
+        {isSearching && <Icon icon={faSpinner} spin className="text-xs text-accent" />}
         <TokenListFilter
           selectedChain={selectedChain}
           enabledLists={enabledLists}

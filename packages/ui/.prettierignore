@@ -9,3 +9,4 @@ yarn.lock
 coverage
 dist
 dist-ssr
+storybook-static

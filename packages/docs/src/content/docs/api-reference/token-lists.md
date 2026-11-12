@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-Lists follow the [Uniswap token list](https://tokenlists.org/) format. Each token carries a `logoURI` that points at a Gib.Show image. See [Token list format](/list-management/token-list-format/) for the shape of a list.
+Lists follow the [Uniswap token list](https://tokenlists.org/) format. Each token carries a `logoURI` that points at a Gib image. See [Token list format](/list-management/token-list-format/) for the shape of a list.
 
 ## List all lists
 
@@ -94,7 +94,7 @@ To decode a row, pair `fields[i]` with `row[i]`. Then replace each integer in th
 - Rows and the echoed `fields` always follow this order: `address`, `name`, `symbol`, `decimals`, `logoURI`, `sources`. They do so whatever order you asked for.
 - The top-level `sources` array is sent only when you select `sources`.
 - Leave `fields` out to get every field. Dropping `logoURI` roughly halves the raw size.
-- Gib.Show answers 400 when you use `fields` without `format=compact`, when a name is unknown or repeated, or when `address` is missing.
+- Gib answers 400 when you use `fields` without `format=compact`, when a name is unknown or repeated, or when `address` is missing.
 
 An empty `sources` array for a token means the default body has no `sources` property for that token.
 

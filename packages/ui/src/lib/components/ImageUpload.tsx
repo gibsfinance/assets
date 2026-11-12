@@ -78,19 +78,15 @@ export default function ImageUpload({ onUpload, currentImage, size = 32 }: Image
         className={[
           'flex flex-shrink-0 items-center justify-center rounded-full transition-colors',
           currentImage
-            ? 'overflow-hidden ring-2 ring-transparent hover:ring-accent-500/40'
-            : 'border border-dashed border-gray-300 bg-gray-50 hover:border-accent-500/60 hover:bg-accent-500/5 dark:border-white/20 dark:bg-surface-2 dark:hover:border-accent-500/60',
+            ? 'overflow-hidden ring-2 ring-transparent hover:ring-accent/40'
+            : 'border border-dashed border-border-input bg-surface-inset hover:border-accent/60 hover:bg-accent/5',
         ].join(' ')}
         title="Upload token image"
         aria-label="Upload token image">
         {currentImage ? (
           <img src={currentImage} alt="" className="h-full w-full rounded-full object-cover" />
         ) : (
-          <Icon
-            icon={faCamera}
-            className="text-gray-400 dark:text-white/30"
-            style={{ fontSize: Math.max(10, size * 0.4) }}
-          />
+          <Icon icon={faCamera} className="text-content-faint" style={{ fontSize: Math.max(10, size * 0.4) }} />
         )}
       </button>
 

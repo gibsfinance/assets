@@ -62,8 +62,10 @@ Set `REFRESH_SUBMODULES=false` to turn the refresh off. Set `SUBMODULES_DIRECTOR
 - The server logs the number of pruned image variants every day.
 - Collection progress is logged through a terminal view.
 
+To serve the server on your own domain name with encryption, see [Domains and reverse proxies](/self-hosting/domains-and-proxies/).
+
 ## Scaling
 
 - **Horizontal.** Several instances can share one PostgreSQL database. Resized variants are cached in the database, so every instance benefits.
-- **Content delivery network.** You can put one in front. Set cache rules for the `/image/*` paths.
+- **Content delivery network.** You can put one in front. See [Domains and reverse proxies](/self-hosting/domains-and-proxies/#a-content-delivery-network-or-a-tunnel-in-front). Set cache rules for the `/image/*` paths.
 - **Memory.** `sharp` needs about 200 MB to process images. The server itself is light. See [Configuration](/self-hosting/configuration/#runtime-limits) to lower the `sharp` limits on a small host.

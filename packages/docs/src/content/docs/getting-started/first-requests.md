@@ -23,7 +23,7 @@ curl https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599
 curl https://gib.show/image/369/0xa1077a294dde1b09bb078844df40758a5d0f9a27
 ```
 
-Gib.Show answers with the image itself. If it has no image for the token, it answers with a 404 status.
+Gib answers with the image itself. If it has no image for the token, it answers with a 404 status.
 
 Chains that are not Ethereum-style, such as Solana and Tron, need the prefixed chain identifier. See [Chain identifiers](/api-reference/overview/#chain-identifiers).
 
@@ -35,7 +35,7 @@ Add `w`, `h` and `as` to get a smaller image in a lighter format:
 curl "https://gib.show/image/1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?w=72&h=72&as=webp"
 ```
 
-Gib.Show never makes an image larger than its source. [Image options](/api-reference/image-options/) lists every option.
+Gib never makes an image larger than its source. [Image options](/api-reference/image-options/) lists every option.
 
 ## A network logo
 
@@ -56,7 +56,7 @@ https://gib.show/list/{providerKey}/{listKey}?chainId={chainId}
 ```
 
 ```bash
-# All lists Gib.Show knows about
+# All lists the instance knows about
 curl https://gib.show/list
 
 # PulseChain tokens from Piteas
@@ -66,7 +66,7 @@ curl "https://gib.show/list/piteas/exchange?chainId=369"
 curl https://gib.show/list/trustwallet/wallet-ethereum
 ```
 
-The answer is a token list in the [Uniswap token list](https://tokenlists.org/) format. Each token has a `logoURI` that points back at Gib.Show. See [Token lists](/api-reference/token-lists/).
+The answer is a token list in the [Uniswap token list](https://tokenlists.org/) format. Each token has a `logoURI` that points back at the same instance. See [Token lists](/api-reference/token-lists/).
 
 To read the best tokens of one chain from all providers at once, use `/list/tokens/{chainId}`.
 

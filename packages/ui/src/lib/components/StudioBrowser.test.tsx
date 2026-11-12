@@ -1132,15 +1132,15 @@ describe('StudioBrowser — marking the selected row', () => {
 
     fireEvent.click(await screen.findByText('Ethereum'))
     const wethRow = (await screen.findByText('Wrapped Ether')).closest('div.group') as HTMLElement
-    expect(wethRow.className).not.toContain('border-accent-500')
+    expect(wethRow.className).not.toContain('border-accent')
 
     fireEvent.click(wethRow)
 
     await waitFor(() => {
       const updatedWethRow = screen.getByText('Wrapped Ether').closest('div.group') as HTMLElement
-      expect(updatedWethRow.className).toContain('border-accent-500')
+      expect(updatedWethRow.className).toContain('border-accent')
     })
-    expect(screen.getByText('USD Coin').closest('div.group')!.className).not.toContain('border-accent-500')
+    expect(screen.getByText('USD Coin').closest('div.group')!.className).not.toContain('border-accent')
   })
 })
 

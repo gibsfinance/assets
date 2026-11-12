@@ -1,13 +1,13 @@
 ---
 title: API reference overview
-description: The rules that apply to every Gib.Show endpoint, and a map of the pages in this section.
+description: The rules that apply to every Gib endpoint, and a map of the pages in this section.
 sidebar:
   order: 1
 ---
 
-Gib.Show is a token metadata and image service. This section describes its application programming interface (API). All endpoints are public. You need no authentication, except for a few moderation endpoints that are for the operator only.
+Gib is a token metadata and image engine. This section describes its application programming interface (API). All endpoints are public. You need no authentication, except for a few moderation endpoints that are for the operator only.
 
-**Base URL:** `https://gib.show` (production) or `https://staging.gib.show` (staging).
+**Address:** every path in this section is relative to the address of your instance, for example `https://gib.show`, the public instance that the project runs. Every path works the same on any instance. To run your own, see [Self-hosting](/self-hosting/overview/). The examples use `https://gib.show` so that you can copy them.
 
 The [endpoint reference](/reference/) is built from the server's OpenAPI definition. It lists every path, parameter and response, and it always matches the running code. The pages in this section explain how the endpoints behave and why. Read them together.
 
@@ -30,7 +30,7 @@ Responses that name a chain give both forms. For example, `/networks` and `/stat
 |------|----------------|
 | [Images](/api-reference/images/) | Token images, network images, images by hash, fallback and batch lookup |
 | [Image options](/api-reference/image-options/) | Resize, format, filters, licence filter, response headers |
-| [Image priority](/api-reference/image-priority/) | How Gib.Show picks one image when many providers have one |
+| [Image priority](/api-reference/image-priority/) | How Gib picks one image when many providers have one |
 | [Token lists](/api-reference/token-lists/) | The list index, single lists, versions, ranked tokens per chain, merged lists |
 | [Search](/api-reference/search/) | Find tokens by name, symbol or address |
 | [Networks](/api-reference/networks/) | Supported networks and chains |

@@ -22,7 +22,7 @@ Send a JSON body:
 | `submittedBy` | Yes | Who sends it. |
 | `description` | No | A short description. |
 
-The answer is 201 with `id`, `status`, `providerKey` and `listKey`. A new submission starts as `pending`. If you send an address that is already known, Gib.Show updates the name, description and `submittedBy`, and returns the existing status. It does not reset the status to `pending`.
+The answer is 201 with `id`, `status`, `providerKey` and `listKey`. A new submission starts as `pending`. If you send an address that is already known, Gib updates the name, description and `submittedBy`, and returns the existing status. It does not reset the status to `pending`.
 
 The answer is 400 when a field is missing, when the address is not `http` or `https` or points at a private address, or when the content is not a token list.
 

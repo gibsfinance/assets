@@ -2,7 +2,7 @@
 title: Moving between stores
 description: Copy images from one store to another, fill the store from database rows, verify it, roll back, and clean up.
 sidebar:
-  order: 7
+  order: 8
 ---
 
 The `images` command moves and checks image bytes. It works through the same store interface as the server, so it acts on whichever store `IMAGE_STORE` names.

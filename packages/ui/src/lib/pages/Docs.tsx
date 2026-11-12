@@ -255,20 +255,20 @@ export default function Docs() {
   return (
     <div className="min-h-screen">
       {/* Page header */}
-      <div className="border-b border-border-light dark:border-border-dark bg-white dark:bg-surface-base">
+      <div className="border-b border-border bg-surface">
         <div className="container mx-auto max-w-6xl px-6 py-12 text-center">
-          <h1 className="font-heading text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
+          <h1 className="font-heading text-4xl font-bold tracking-tight text-content-strong">
             API <span className="text-gradient-brand">Documentation</span>
           </h1>
-          <p className="mt-3 text-lg text-gray-600 dark:text-gray-400">Complete reference for the Gib Assets API</p>
+          <p className="mt-3 text-lg text-content-muted">Complete reference for the Gib Assets API</p>
           <a
             href={getApiUrl('/openapi.json')}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border-light dark:border-border-dark px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 transition-colors hover:border-accent-500/40 hover:text-accent-500">
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-content-muted-2 transition-colors hover:border-accent/40 hover:text-accent">
             <Icon icon={faCode} className="text-xs" />
             OpenAPI definition
-            <span className="font-mono text-xs text-gray-400 dark:text-gray-500">/openapi.json</span>
+            <span className="font-mono text-xs text-content-faint-3">/openapi.json</span>
           </a>
         </div>
       </div>
@@ -298,26 +298,26 @@ export default function Docs() {
             <div className="relative">
               <Icon
                 icon={faMagnifyingGlass}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-content-faint-4"
               />
               <input
                 type="search"
                 placeholder="Filter endpoints…"
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="w-full rounded-lg border border-border-light dark:border-border-dark bg-surface-light-1 dark:bg-surface-1 py-2.5 pl-9 pr-4 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500/50"
+                className="w-full rounded-lg border border-border bg-surface-raised-2 py-2.5 pl-9 pr-4 text-sm text-content-strong placeholder:text-content-faint-4 focus:outline-none focus:ring-2 focus:ring-accent/50"
               />
             </div>
 
             {/* Endpoint sections — one per OpenAPI tag */}
             {specLoading && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-content-subtle-3">
                 <Icon icon={faSpinner} spin className="mr-2" />
                 Loading the API definition…
               </p>
             )}
             {specError && (
-              <p className="text-sm text-red-400">
+              <p className="text-sm text-danger-bright">
                 Could not load the API definition ({(specError as Error).message}). Try the raw{' '}
                 <a href={getApiUrl('/openapi.json')} className="underline">
                   /openapi.json
@@ -327,10 +327,8 @@ export default function Docs() {
             )}
             {filteredSections.map((section) => (
               <section key={section.id} id={section.id} className="scroll-mt-24 space-y-4">
-                <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">{section.label}</h2>
-                {section.description && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{section.description}</p>
-                )}
+                <h2 className="font-heading text-2xl font-semibold text-content-strong">{section.label}</h2>
+                {section.description && <p className="text-sm text-content-muted">{section.description}</p>}
                 {section.endpoints.length > 0 ? (
                   <div className="glass-card overflow-hidden">
                     {section.endpoints.map((endpoint) => (
@@ -338,29 +336,27 @@ export default function Docs() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No endpoints match &ldquo;{filterQuery}&rdquo;.
-                  </p>
+                  <p className="text-sm text-content-subtle-3">No endpoints match &ldquo;{filterQuery}&rdquo;.</p>
                 )}
               </section>
             ))}
 
             {/* Features */}
             <section id="features" className="scroll-mt-24 space-y-4">
-              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">Features</h2>
+              <h2 className="font-heading text-2xl font-semibold text-content-strong">Features</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 {FEATURES.map((feature) => (
                   <div key={feature.title} className="glass-card p-5 space-y-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/10">
-                        <Icon icon={feature.icon} className="text-accent-500 text-sm" />
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+                        <Icon icon={feature.icon} className="text-accent text-sm" />
                       </div>
-                      <h3 className="font-heading font-semibold text-gray-900 dark:text-white">{feature.title}</h3>
+                      <h3 className="font-heading font-semibold text-content-strong">{feature.title}</h3>
                     </div>
                     <ul className="space-y-1.5 pl-1">
                       {feature.items.map((item) => (
-                        <li key={item} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                          <span className="h-1 w-1 rounded-full bg-accent-500 shrink-0" />
+                        <li key={item} className="flex items-center gap-2 text-sm text-content-muted">
+                          <span className="h-1 w-1 rounded-full bg-accent shrink-0" />
                           {item}
                         </li>
                       ))}
@@ -372,9 +368,9 @@ export default function Docs() {
 
             {/* Code Examples */}
             <section id="code-examples" className="scroll-mt-24 space-y-4">
-              <h2 className="font-heading text-2xl font-semibold text-gray-900 dark:text-white">Code Examples</h2>
+              <h2 className="font-heading text-2xl font-semibold text-content-strong">Code Examples</h2>
               <div className="glass-card overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border-light dark:border-border-dark px-4 py-3">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <FrameworkSwitcher
                     languages={CODE_LANGUAGES}
                     activeLanguage={activeLanguage}

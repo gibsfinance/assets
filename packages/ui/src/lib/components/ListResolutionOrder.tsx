@@ -40,10 +40,10 @@ function ProviderRow({
       draggable
       className={[
         'flex cursor-grab items-center gap-3 rounded-lg px-3 py-2 transition-all select-none',
-        'bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 dark:bg-surface-2',
+        'bg-surface-inset focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
         isDragging ? 'opacity-40' : 'opacity-100',
-        isDragOver ? 'border border-accent-500 bg-accent-500/5' : 'border border-transparent',
-        isSelected ? 'ring-2 ring-accent-500/70' : '',
+        isDragOver ? 'border border-accent bg-accent/5' : 'border border-transparent',
+        isSelected ? 'ring-2 ring-accent/70' : '',
       ].join(' ')}
       onDragStart={() => onDragStart(index)}
       onDragOver={(e) => onDragOver(e, index)}
@@ -52,15 +52,15 @@ function ProviderRow({
       onClick={() => onClick(index)}
       onKeyDown={(e) => onKeyDown(e, index)}>
       {/* Grip handle */}
-      <span className="cursor-grab text-gray-300 select-none dark:text-white/30" aria-hidden="true">
+      <span className="cursor-grab text-content-ghost-2 select-none" aria-hidden="true">
         &#x2807;
       </span>
 
       {/* Provider name */}
-      <span className="flex-1 text-sm font-medium capitalize text-gray-700 dark:text-white/80">{provider}</span>
+      <span className="flex-1 text-sm font-medium capitalize text-content-secondary">{provider}</span>
 
       {/* Position badge */}
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-mono text-gray-500 dark:bg-surface-3 dark:text-white/40">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-active text-[10px] font-mono text-content-subtle-2">
         {index + 1}
       </span>
     </div>
@@ -178,23 +178,19 @@ export default function ListResolutionOrder() {
       {({ open }) => (
         <div className="elevated-card overflow-hidden">
           {/* Toggle button */}
-          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.02]">
+          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-wash-2">
             <div className="flex items-center gap-2">
-              <Icon icon={faLayerGroup} className="text-xs text-accent-500" />
-              <span className="font-heading text-sm font-semibold text-gray-800 dark:text-white/90">
-                Resolution Order
-              </span>
+              <Icon icon={faLayerGroup} className="text-xs text-accent" />
+              <span className="font-heading text-sm font-semibold text-content-body">Resolution Order</span>
               {!isDefault && (
-                <span className="rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-medium text-accent-500">
+                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
                   Custom
                 </span>
               )}
             </div>
             <Icon
               icon={faChevronDown}
-              className={`text-xs text-gray-400 transition-transform duration-200 dark:text-white/40 ${
-                open ? 'rotate-180' : ''
-              }`}
+              className={`text-xs text-content-faint-2 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             />
           </DisclosureButton>
 
@@ -202,13 +198,13 @@ export default function ListResolutionOrder() {
           <DisclosurePanel>
             <div className="flex flex-col gap-1.5 px-4 pb-4 pt-1">
               {/* Instruction hint */}
-              <p className="mb-1 text-[11px] text-gray-400 dark:text-white/30">
+              <p className="mb-1 text-[11px] text-content-faint">
                 Drag or use{' '}
-                <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:border-white/10 dark:bg-surface-3">
+                <kbd className="rounded border border-border-subtle bg-surface-active-2 px-1 py-0.5 font-mono text-[10px]">
                   Enter
                 </kbd>{' '}
                 to select, then{' '}
-                <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-[10px] dark:border-white/10 dark:bg-surface-3">
+                <kbd className="rounded border border-border-subtle bg-surface-active-2 px-1 py-0.5 font-mono text-[10px]">
                   ↑↓
                 </kbd>{' '}
                 to move.

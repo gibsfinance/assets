@@ -2,7 +2,7 @@
 title: Image storage
 description: Choose where image bytes are kept with the IMAGE_STORE setting, and configure each kind of store.
 sidebar:
-  order: 6
+  order: 7
 ---
 
 Image bytes live in a content-addressed store. Each blob is named by the `sha256` of its bytes. You choose where the store is kept with one setting, `IMAGE_STORE`, and you can change it without changing code.

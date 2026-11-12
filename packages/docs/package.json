@@ -8,7 +8,10 @@
     "dev": "yarn run generate:openapi && astro dev",
     "generate:openapi": "node scripts/generate-openapi.ts",
     "generate:guides": "node scripts/generate-guides.ts",
-    "build": "yarn run generate:openapi && astro build && yarn run generate:guides",
+    "build:storybook": "yarn workspace ui run build:storybook",
+    "copy:storybook": "node scripts/copy-storybook.ts",
+    "check:no-select": "node scripts/check-no-select.ts",
+    "build": "yarn run generate:openapi && astro build && yarn run check:no-select && yarn run generate:guides && yarn run build:storybook && yarn run copy:storybook",
     "preview": "astro preview",
     "check": "yarn run generate:openapi && astro sync && node ../../scripts/tsc7.mjs --noEmit -p tsconfig.json",
     "lint": "prettier --check . && eslint .",
@@ -28,6 +31,7 @@
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.5"
   }

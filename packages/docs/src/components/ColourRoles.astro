@@ -1,0 +1,84 @@
+---
+/**
+ * The colour roles of the interface, one table per group: role, light value and dark value, each
+ * with a swatch. Nothing is typed in by hand. The roles are read from `packages/ui/src/app.css`
+ * (see `src/lib/design-tokens.ts`), so the table is the stylesheet.
+ */
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { groupRoles, readColourRoles, readPalette } from '../lib/design-tokens.ts'
+
+const stylesheet = readFileSync(path.resolve(process.cwd(), '../ui/src/app.css'), 'utf8')
+const themePath = createRequire(path.resolve(process.cwd(), 'package.json')).resolve('tailwindcss/theme.css')
+const groups = groupRoles(readColourRoles(stylesheet, readPalette(readFileSync(themePath, 'utf8'))))
+---
+
+{
+  groups.map((entry) => (
+    <>
+      <h4>{entry.group}</h4>
+      <div class="table-wrap">
+        <table class="roles">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Light theme</th>
+              <th>Dark theme</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entry.roles.map((role) => (
+              <tr>
+                <td>
+                  <code>{role.name}</code>
+                </td>
+                <td>
+                  <span class="chip" role="img" aria-label={`Light theme colour ${role.light}`}>
+                    <span class="fill" style={`background:${role.light}`} />
+                  </span>
+                  <code class="value">{role.light}</code>
+                </td>
+                <td>
+                  <span class="chip" role="img" aria-label={`Dark theme colour ${role.dark}`}>
+                    <span class="fill" style={`background:${role.dark}`} />
+                  </span>
+                  <code class="value">{role.dark}</code>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  ))
+}
+
+<style>
+  .table-wrap {
+    overflow-x: auto;
+  }
+  .roles td {
+    vertical-align: middle;
+  }
+  .chip {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-inline-end: 0.5rem;
+    vertical-align: middle;
+    overflow: hidden;
+    border: 1px solid var(--sl-color-hairline-light);
+    border-radius: 0.25rem;
+    background: conic-gradient(#8884 25%, transparent 0 50%, #8884 0 75%, transparent 0) 0 0 / 0.5rem 0.5rem;
+  }
+  .fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .value {
+    font-size: var(--sl-text-xs);
+    overflow-wrap: anywhere;
+  }
+</style>

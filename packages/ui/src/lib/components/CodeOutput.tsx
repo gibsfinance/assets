@@ -32,7 +32,7 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
   ]
 
   return (
-    <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
+    <div className="flex gap-1 rounded-lg bg-surface-inset-2 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.value}
@@ -40,8 +40,8 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
           onClick={() => onChange(tab.value)}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
             value === tab.value
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
-              : 'text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70'
+              ? 'bg-surface-active-4 text-content-strong shadow-sm'
+              : 'text-content-faint-2 hover:text-content-muted-3'
           }`}>
           {tab.label}
         </button>
@@ -57,7 +57,7 @@ interface ModeSwitchProps {
 
 function ModeSwitch({ value, onChange }: ModeSwitchProps) {
   return (
-    <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-surface-2">
+    <div className="flex gap-1 rounded-lg bg-surface-inset-2 p-1">
       {(['snippet', 'component'] as CodeMode[]).map((mode) => (
         <button
           key={mode}
@@ -65,8 +65,8 @@ function ModeSwitch({ value, onChange }: ModeSwitchProps) {
           onClick={() => onChange(mode)}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-all ${
             value === mode
-              ? 'bg-white text-gray-900 shadow-sm dark:bg-surface-3 dark:text-white'
-              : 'text-gray-400 hover:text-gray-600 dark:text-white/40 dark:hover:text-white/70'
+              ? 'bg-surface-active-4 text-content-strong shadow-sm'
+              : 'text-content-faint-2 hover:text-content-muted-3'
           }`}>
           {mode}
         </button>
@@ -100,8 +100,8 @@ function CopyButton({ text, label, variant = 'primary' }: CopyButtonProps) {
 
   const baseClass =
     variant === 'primary'
-      ? 'rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-accent-400 disabled:opacity-50'
-      : 'rounded-lg border border-border-light bg-gray-50 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:border-border-dark dark:bg-surface-2 dark:text-white/70 dark:hover:bg-surface-3 dark:hover:text-white'
+      ? 'rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-accent-soft disabled:opacity-50'
+      : 'rounded-lg border border-border bg-surface-inset px-4 py-2 text-sm font-medium text-content-muted-3 transition-colors hover:bg-surface-active-2 hover:text-content-body-3'
 
   return (
     <button type="button" onClick={handleCopy} className={baseClass}>
@@ -194,7 +194,7 @@ export default function CodeOutput() {
 
       {/* Badge + img warning */}
       {showBadgeWarning && (
-        <div className="flex items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-50 px-4 py-3 text-sm text-yellow-700 dark:bg-yellow-500/5 dark:text-yellow-400">
+        <div className="flex items-start gap-2 rounded-lg border border-warning-edge/20 bg-warning-soft px-4 py-3 text-sm text-warning">
           <Icon icon={faTriangleExclamation} className="mt-0.5 flex-shrink-0" />
           <span>
             Badge requires a wrapper element — switch to <strong>React</strong> or <strong>HTML</strong> for badge
@@ -204,7 +204,7 @@ export default function CodeOutput() {
       )}
 
       {/* Code block */}
-      <div className="overflow-hidden rounded-lg border border-border-light dark:border-border-dark">
+      <div className="overflow-hidden rounded-lg border border-border">
         <CodeBlock
           code={generatedCode}
           lang={codeLanguage}

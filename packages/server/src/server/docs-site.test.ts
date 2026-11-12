@@ -88,10 +88,18 @@ describe('docsCacheHeaders', () => {
     expect(headerFor('_astro/index.4f9a1c.js')).toBe('public, max-age=31536000, immutable')
   })
 
+  it('keeps hashed Storybook assets for a year, but not the unhashed files beside them', () => {
+    expect(headerFor('storybook/assets/iframe-C4EVFBc_.js')).toBe('public, max-age=31536000, immutable')
+    expect(headerFor('storybook/index.json')).toBeUndefined()
+    expect(headerFor('storybook/sb-manager/runtime.js')).toBeUndefined()
+  })
+
   it('asks about every page again, at any depth', () => {
     expect(headerFor('index.html')).toBe('no-cache')
     expect(headerFor('reference/operations/image/index.html')).toBe('no-cache')
     expect(headerFor('404.html')).toBe('no-cache')
+    expect(headerFor('storybook/index.html')).toBe('no-cache')
+    expect(headerFor('storybook/iframe.html')).toBe('no-cache')
   })
 
   it('leaves every other file on the default policy', () => {
@@ -137,6 +145,10 @@ describe('createDocsSiteHandler', () => {
     root = mkdtempSync(path.join(tmpdir(), 'docs-site-'))
     mkdirSync(path.join(root, '_astro'))
     mkdirSync(path.join(root, 'guide'))
+    mkdirSync(path.join(root, 'storybook', 'assets'), { recursive: true })
+    writeFileSync(path.join(root, 'storybook', 'index.html'), '<html>storybook manager</html>')
+    writeFileSync(path.join(root, 'storybook', 'iframe.html'), '<html>storybook canvas</html>')
+    writeFileSync(path.join(root, 'storybook', 'assets', 'iframe-C4EVFBc_.js'), 'export {}')
     writeFileSync(path.join(root, 'index.html'), '<html>docs home</html>')
     writeFileSync(path.join(root, 'guide', 'index.html'), '<html>guide</html>')
     symlinkSync('loop', path.join(root, 'loop'))
@@ -166,6 +178,31 @@ describe('createDocsSiteHandler', () => {
 
   it('keeps hashed assets for a year', async () => {
     const response = await get('/_astro/index.4f9a1c.js', 'docs.example.test')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+  })
+
+  it('serves Storybook at /storybook/, from its index, and its canvas page, revalidated every visit', async () => {
+    for (const [urlPath, body] of [
+      ['/storybook/', '<html>storybook manager</html>'],
+      ['/storybook/index.html', '<html>storybook manager</html>'],
+      ['/storybook/iframe.html?id=components-image--default', '<html>storybook canvas</html>'],
+    ]) {
+      const response = await get(urlPath, 'docs.example.test')
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe(body)
+      expect(response.headers.get('cache-control')).toBe('no-cache')
+    }
+  })
+
+  it('sends /storybook to /storybook/ so its relative links resolve', async () => {
+    const response = await get('/storybook', 'docs.example.test')
+    expect(response.status).toBe(301)
+    expect(response.headers.get('location')).toBe('/storybook/')
+  })
+
+  it('keeps hashed Storybook assets for a year', async () => {
+    const response = await get('/storybook/assets/iframe-C4EVFBc_.js', 'docs.example.test')
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
   })

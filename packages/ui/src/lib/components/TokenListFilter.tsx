@@ -4,7 +4,7 @@ import type { Token } from '../types'
 import { faCheck, faFilter, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
 
-interface TokenListFilterProps {
+export interface TokenListFilterProps {
   selectedChain: number | null
   enabledLists: Set<string>
   tokensByList: Map<string, Token[]>
@@ -45,21 +45,21 @@ export default function TokenListFilter({
   }
 
   return (
-    <Popover className="relative flex border-l border-gray-200 pl-2 dark:border-surface-3">
-      <PopoverButton className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-3 dark:hover:text-white/70">
+    <Popover className="relative flex border-l border-border-strong pl-2">
+      <PopoverButton className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-content-faint-2 transition-colors hover:bg-surface-active-2 hover:text-content-muted-3">
         <Icon icon={faFilter} className="text-[10px]" />
         <span>{count}</span>
       </PopoverButton>
 
       <PopoverPanel
         anchor="bottom"
-        className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-surface-3 dark:bg-surface-1">
+        className="absolute z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border-strong bg-surface-raised shadow-lg">
         <div className="flex flex-col gap-2 p-3">
           {/* Header */}
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-gray-900 dark:text-white">Token Lists</h3>
+            <h3 className="text-xs font-semibold text-content-strong">Token Lists</h3>
             <button
-              className="rounded px-2 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-white/40 dark:hover:bg-surface-2 dark:hover:text-white/70"
+              className="rounded px-2 py-0.5 text-[10px] text-content-faint-2 transition-colors hover:bg-surface-inset-2 hover:text-content-muted-3"
               type="button"
               onClick={handleToggleAll}>
               Toggle All
@@ -67,12 +67,12 @@ export default function TokenListFilter({
           </div>
 
           {/* Search */}
-          <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-surface-3 dark:bg-surface-2">
-            <Icon icon={faMagnifyingGlass} className="text-[10px] text-gray-400 dark:text-white/30" />
+          <div className="flex items-center gap-2 rounded-md border border-border-strong bg-surface-inset px-2.5 py-1.5">
+            <Icon icon={faMagnifyingGlass} className="text-[10px] text-content-faint" />
             <input
               type="search"
               placeholder="Search lists..."
-              className="w-full bg-transparent text-xs text-gray-900 outline-none placeholder:text-gray-400 dark:text-white/80 dark:placeholder:text-white/30"
+              className="w-full bg-transparent text-xs text-content-strong-3 outline-none placeholder:text-content-faint"
               value={listSearchQuery}
               onChange={(e) => setListSearchQuery(e.target.value)}
             />
@@ -85,12 +85,10 @@ export default function TokenListFilter({
               return (
                 <label
                   key={listKey}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-surface-2">
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-inset">
                   <div
                     className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
-                      isEnabled
-                        ? 'border-accent-500 bg-accent-500 text-white'
-                        : 'border-gray-300 bg-white dark:border-surface-3 dark:bg-surface-2'
+                      isEnabled ? 'border-accent bg-accent text-white' : 'border-border-strong-3 bg-surface-inset-3'
                     }`}
                     onClick={(e) => {
                       e.preventDefault()
@@ -99,8 +97,8 @@ export default function TokenListFilter({
                     {isEnabled && <Icon icon={faCheck} className="text-[8px]" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium text-gray-800 dark:text-white/80">{listKey}</div>
-                    <div className="text-[10px] text-gray-400 dark:text-white/30">
+                    <div className="truncate text-xs font-medium text-content-body-2">{listKey}</div>
+                    <div className="text-[10px] text-content-faint">
                       {tokens.filter((token) => token.chainId === selectedChain).length} tokens
                     </div>
                   </div>
