@@ -6259,6 +6259,7 @@ __metadata:
     prettier: "npm:^3.9.10"
     starlight-llms-txt: "npm:0.12.0"
     starlight-openapi: "npm:0.27.1"
+    tailwindcss: "npm:^4.3.3"
     typescript-eslint: "npm:^8.71.1"
     vitest: "npm:^5.0.5"
     yaml: "npm:2.9.1"

@@ -16,7 +16,7 @@ Where the code falls short of its own rules, this page says so. Those gaps are m
 ## Principles
 
 - **Dark first, light equal.** The interface has two full themes. Neither is an afterthought. Every surface, border and text colour has a light value and a dark value.
-- **One accent.** Green (`accent-500`) is the only brand colour. Cyan appears only as a second stop in gradients and glows.
+- **One accent.** The `accent` role is the only brand colour. `accent-secondary` appears only as a second stop in gradients and glows.
 - **Quiet surfaces, bright edges.** Surfaces are near-black or near-white. Borders are thin. Colour and glow are kept for the one thing that matters on the screen.
 - **Show the product.** Token and network logos are the content. They are drawn on plain, round or square chips so any logo looks right.
 - **Native where it helps, never where it does not.** Links, buttons and inputs are native elements. A choice from a list is a menu. A native `select` element is not allowed.
@@ -24,66 +24,42 @@ Where the code falls short of its own rules, this page says so. Those gaps are m
 
 ## Colour
 
-The tokens live in the `@theme` block of `packages/ui/src/app.css`. Tailwind 4 turns each one into utility classes, for example `--color-accent-500` becomes `bg-accent-500` and `text-accent-500`.
+### The naming rule
 
-### Accent
+**Name a colour by its role, never by its value.** A name that carries a value turns false when a theme changes the value. `--color-cyan-500` is wrong: under another theme it may not be cyan. `--color-accent-secondary` is right: it stays true whatever colour fills the role.
 
-Lower numbers are lighter. Higher numbers are darker.
+- A token name never holds a hue (`cyan`, `green`, `gray`, `red`), a mode word (`light`, `dark`) or a number from a colour scale (`500`).
+- A number at the end of a name only tells two near duplicates apart (`content-muted-2`). It is not a value.
+- A token holds one value per theme. It is not two tokens, one for each theme.
 
-<SwatchGrid
-  swatches={[
-    { token: '--color-accent-400', value: '#33e69b', usage: 'Light accent' },
-    { token: '--color-accent-500', value: '#00dc82', usage: 'The brand colour' },
-    { token: '--color-accent-600', value: '#00b368', usage: 'Dark end of the green gradient' },
-    { token: '--color-cyan-500', value: '#0ea5e9', usage: 'Second stop in gradients and glows' },
-  ]}
-/>
+Two checks hold the rule. The `design/no-raw-palette-classes` lint rule in `packages/ui/eslint.config.js` fails the build on a raw palette class such as `text-gray-400` or `bg-red-50`. A test in `packages/ui/src/design-tokens.test.ts` fails on a token in `app.css` whose name holds a hue, a mode word or a scale number. `white`, `black` and `transparent` are not hues and stay allowed where a fill does not change with the theme, for example `text-white` on a dark tooltip.
 
-### Dark surfaces
+### How the roles work
 
-<SwatchGrid
-  swatches={[
-    { token: '--color-surface-base', value: '#09090b', usage: 'Page background' },
-    { token: '--color-surface-1', value: '#111113', usage: 'Cards and panels' },
-    { token: '--color-surface-2', value: '#1a1a1e', usage: 'Inputs, menus, raised rows' },
-    { token: '--color-surface-3', value: '#27272a', usage: 'Hover states and dividers' },
-  ]}
-/>
+`packages/ui/src/app.css` defines each role as a custom property named `--ui-<role>`. The light value is under `:root` and the dark value is under `.dark`. A `@theme inline` block hands each property to Tailwind 4, which turns `--color-<role>` into the utility classes `bg-<role>`, `text-<role>` and `border-<role>`. One class is enough. The old pair `text-gray-600 dark:text-gray-400` is the single class `text-content-muted`, and the theme picks the value.
 
-### Light surfaces
+An alpha modifier works on a role as on any colour: `bg-accent/10`, `bg-surface-active/80`.
 
-<SwatchGrid
-  swatches={[
-    { token: '--color-surface-light-base', value: '#ffffff', usage: 'Page background' },
-    { token: '--color-surface-light-1', value: '#fafafa', usage: 'Cards and panels' },
-    { token: '--color-surface-light-2', value: '#f4f4f5', usage: 'Inputs, raised rows' },
-    { token: '--color-surface-light-3', value: '#e4e4e7', usage: 'Hover states and dividers' },
-  ]}
-/>
+Values refer to Tailwind's palette (`var(--color-gray-900)`). The tables below resolve them, so they show the colour a reader sees.
 
-### Borders and glow
+### Roles in use
+
+The tables are read from `app.css` when this site is built, so they always match the interface. Roles that end in a number are near duplicates: the interface used slightly different values in different places, and each is kept so that no colour changed. Folding them into fewer roles is a design decision for a later change, and it will change pixels.
+
+import ColourRoles from '../../../components/ColourRoles.astro';
+
+<ColourRoles />
+
+### Glow and depth
 
 <SwatchGrid
   swatches={[
-    { token: '--color-border-dark', value: 'rgba(255, 255, 255, 0.08)', usage: 'Border on dark surfaces' },
-    { token: '--color-border-light', value: '#e4e4e7', usage: 'Border on light surfaces' },
-    { token: '--shadow-glow-green', value: 'rgba(0, 220, 130, 0.3)', usage: 'Glow colour, 20px blur' },
-    { token: '--shadow-glow-cyan', value: 'rgba(14, 165, 233, 0.3)', usage: 'Glow colour, 20px blur' },
-    { token: '--shadow-glow-green-subtle', value: 'rgba(0, 220, 130, 0.08)', usage: 'Glow colour, 24px blur' },
+    { token: '--shadow-glow-accent', value: 'rgba(0, 220, 130, 0.3)', usage: 'Glow colour, 20px blur' },
+    { token: '--shadow-glow-accent-secondary', value: 'rgba(14, 165, 233, 0.3)', usage: 'Glow colour, 20px blur' },
+    { token: '--shadow-glow-accent-subtle', value: 'rgba(0, 220, 130, 0.08)', usage: 'Glow colour, 24px blur' },
+    { token: '--shadow-elevated', value: 'rgba(0, 0, 0, 0.4)', usage: 'Shadow colour, 24px blur, 4px down' },
   ]}
 />
-
-### Text colours
-
-Text colours are not tokens. The components use Tailwind's default gray scale (`gray-50` to `gray-900`, defined in the `tailwindcss` package) and white at set opacities.
-
-| Role | Light theme | Dark theme |
-|---|---|---|
-| Body text | `text-gray-900` | `text-gray-100` (`packages/ui/src/Layout.tsx`) |
-| Headings | `text-gray-900` | `text-white` (`packages/ui/src/lib/pages/Home.tsx`) |
-| Navigation, secondary text | `text-gray-500` | `text-gray-400` |
-| Hint and placeholder text | `text-gray-400` | `text-white/30` to `text-white/40` |
-| Links and active items | `text-accent-500`, on hover | `text-accent-500`, on hover |
 
 ### Light and dark
 
@@ -170,22 +146,22 @@ Three card classes are defined in `packages/ui/src/app.css`. All use `rounded-lg
 
 | Class | Light theme | Dark theme | Use |
 |---|---|---|---|
-| `.glass-card` | `bg-white`, `border-border-light`, `backdrop-blur-xl` (24px) | `bg-white/[0.03]`, `border-border-dark` | The default card. On dark, the page shows through it. |
-| `.elevated-card` | `bg-white`, `border-border-light`, `shadow-sm` | `bg-surface-1`, `border-border-dark`, `shadow-elevated` | A card that sits above the page. |
-| `.glow-card` | `bg-white`, `border-accent-500/20`, `shadow-sm` | `bg-surface-1`, `shadow-glow-green-subtle` | The one card that needs attention. Use it rarely. |
+| `.glass-card` | `bg-surface-glass` (white), `border-border`, `backdrop-blur-xl` (24px) | `bg-surface-glass` (3 percent white, so the page shows through it), `border-border` | The default card. |
+| `.elevated-card` | `bg-surface-raised`, `border-border`, `shadow-sm` | `bg-surface-raised`, `border-border`, `shadow-elevated` | A card that sits above the page. |
+| `.glow-card` | `bg-surface-raised`, `border-accent/20`, `shadow-sm` | `bg-surface-raised`, `border-accent/20`, `shadow-glow-accent-subtle` | The one card that needs attention. Use it rarely. |
 
 ### Borders and shadows
 
-- **Borders** are one pixel. They are `border-border-light` (`#e4e4e7`) on light surfaces and `border-border-dark` (8 percent white) on dark ones. An accent border (`border-accent-500/20` to `/40`) marks hover and focus.
+- **Borders** are one pixel. They are `border-border`: `#e4e4e7` on the light theme and 8 percent white on the dark one. An accent border (`border-accent/20` to `/40`) marks hover and focus.
 - **Shadows** on light surfaces are Tailwind's `shadow-sm` and `shadow-lg`. On dark surfaces depth comes from the surface step and from glow, not from black shadows.
 - `--shadow-elevated` is `0 4px 24px rgba(0, 0, 0, 0.4)`.
-- `--shadow-glow-green` and `--shadow-glow-cyan` are `0 0 20px` at 30 percent. `--shadow-glow-green-subtle` is `0 0 24px` at 8 percent.
-- Menus and popovers use `shadow-lg`, a `border-border-light` or `border-border-dark` border, and `bg-white` or `bg-surface-2` (`ListEditor.tsx`).
-- The sticky header is `bg-white/80` or `bg-surface-base/80` with `backdrop-blur-lg` (16px) and a bottom border (`Layout.tsx`).
+- `--shadow-glow-accent` and `--shadow-glow-accent-secondary` are `0 0 20px` at 30 percent. `--shadow-glow-accent-subtle` is `0 0 24px` at 8 percent.
+- Menus and popovers use `shadow-lg`, a `border-border` border, and `bg-surface` or `bg-surface-inset-3` (`ListEditor.tsx`).
+- The sticky header is `bg-surface/80` with `backdrop-blur-lg` (16px) and a bottom border (`Layout.tsx`).
 
 ### Gradient text
 
-`.text-gradient-brand` runs from `accent-500` to `cyan-500`. `.text-gradient-green` runs from `accent-500` to `accent-600`. Use them for one short phrase in a heading, never for body text.
+`.text-gradient-brand` runs from `accent` to `accent-secondary`. `.text-gradient-accent` runs from `accent` to `accent-strong`. Use them for one short phrase in a heading, never for body text.
 
 ### Layers
 
@@ -257,9 +233,9 @@ Three button classes are defined in `app.css`. All use `rounded-lg`, `px-5 py-2.
 
 | Class | Look | Use |
 |---|---|---|
-| `.btn-primary` | Green gradient (`accent-500` to `accent-600`), black text, semibold, `shadow-glow-green`, grows to 1.02 on hover | The one main action on a screen |
-| `.btn-secondary` | Gray fill (`gray-100`, dark `white/5`), one-pixel border, medium weight | Other actions |
-| `.btn-ghost` | Transparent, `accent-500` text, `border-accent-500/30`, `accent-500/5` fill on hover | Quiet actions beside a primary |
+| `.btn-primary` | Accent gradient (`accent` to `accent-strong`), black text, semibold, `shadow-glow-accent`, grows to 1.02 on hover | The one main action on a screen |
+| `.btn-secondary` | Quiet fill (`surface-wash`), one-pixel `border-subtle` border, medium weight | Other actions |
+| `.btn-ghost` | Transparent, `accent` text, `border-accent/30`, `accent/5` fill on hover | Quiet actions beside a primary |
 
 Compact controls inside panels do not use these classes. They use utility classes: `rounded-lg px-3 py-1.5 text-xs font-medium transition-colors` (see the Publish button in `ListEditor.tsx`). Icon-only buttons are `h-8 w-8` or `h-9 w-9`, round to `rounded-lg`, and need an accessible name from `title` or `aria-label`.
 
@@ -269,8 +245,8 @@ Fields are quiet. `TokenSearch.tsx` shows the pattern:
 
 There are two patterns.
 
-- **A field.** `NetworkSelect.tsx` and `pages/Docs.tsx` use `w-full rounded-lg border border-border-light bg-gray-50 py-2 text-sm text-gray-900`. On dark the border is `border-border-dark`, the fill is `bg-surface-2` (or `bg-surface-1` in `Docs.tsx`) and the text is `text-white/90`. A leading search icon sits inside the field, so the field has extra left padding.
-- **A search row.** `TokenSearch.tsx` draws the border on the row (`border-b border-gray-200 bg-gray-50 px-4 py-2`, dark `border-surface-3 bg-surface-2`) and puts a bare `input` in it with `bg-transparent text-sm` and a `text-gray-400` placeholder (dark `white/30`).
+- **A field.** `NetworkSelect.tsx` and `pages/Docs.tsx` use `w-full rounded-lg border border-border bg-surface-inset py-2 text-sm` with a `text-content-strong` text role and a `placeholder:text-content-faint` placeholder. The roles switch with the theme, so a field has one set of classes. A leading search icon sits inside the field, so the field has extra left padding.
+- **A search row.** `TokenSearch.tsx` draws the border on the row (`border-b border-border-strong bg-surface-inset px-4 py-2`) and puts a bare `input` in it with `bg-transparent text-sm` and a `placeholder:text-content-faint` placeholder.
 
 **Known gap.** The bare input in `TokenSearch.tsx` removes its outline and the row draws no ring in its place, and so does the stepper input in `NumberStepper.tsx`. Add `focus-within:` styles to the row, as the other fields do with `focus:border-accent-500/60`.
 
@@ -284,13 +260,13 @@ There are two patterns.
 
 Every control that takes input must show where focus is.
 
-- On the interface, focus uses the accent: `focus:ring-2 focus:ring-accent-500/50`, or `focus:border-accent-500/40` to `/60` on fields. `focus-visible:` is used where a mouse click must not show a ring.
+- On the interface, focus uses the accent: `focus:ring-2 focus:ring-accent/50`, or `focus:border-accent/40` to `/60` on fields. `focus-visible:` is used where a mouse click must not show a ring.
 - On this site, controls use `outline: 2px solid var(--sl-color-accent)` with a 2 pixel offset, on `:focus-visible` (see `LinkedCard.astro` and `ThemeMenu.astro`).
 - Never remove an outline without giving something else in its place. See the known gap under Inputs for the places that break this rule.
 
 ## Accessibility
 
-- **Contrast.** Body text is `gray-900` on white and `gray-100` on `#09090b`. These ratios use the standard relative luminance formula: accent `#00dc82` on `#09090b` is 10.95 to 1, and black on `#00dc82` is 11.56 to 1, so the primary button passes. Accent `#00b368` on `#09090b` is 7.25 to 1.
+- **Contrast.** Body text (`content-strong-2`) is a near-black on white and a near-white on `#09090b`. These ratios use the standard relative luminance formula: accent `#00dc82` on `#09090b` is 10.95 to 1, and black on `#00dc82` is 11.56 to 1, so the primary button passes. Accent `#00b368` on `#09090b` is 7.25 to 1.
 - **Known gap.** Accent text on white does not reach 4.5 to 1: `#00dc82` is 1.82 to 1 and `#00b368` is 2.75 to 1. On the light theme, use accent colour for fills, borders and large shapes, not for small text. Where text must be green on light, use a darker green: this site uses `#00623a` for it. A visible hover or focus colour is only a hint: the link must also be readable, by position, an underline or an icon.
 - **Keyboard.** Everything that works with a mouse works with a keyboard. Use native `button` and `a` elements. Do not put a click handler on a `div`.
 - **Names.** An icon-only control needs `aria-label` or `title`. Decoration, including icons and logos beside a name, is `aria-hidden="true"` with an empty `alt`.

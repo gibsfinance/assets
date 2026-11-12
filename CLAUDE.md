@@ -426,6 +426,20 @@ A catalog of the reusable interface components, published inside the documentati
   the manager's JavaScript bundles under `dist/storybook/sb-*` mention it, so any check of the built site for native
   selects must scan HTML only or skip `dist/storybook/`.
 
+### Design Tokens (colour)
+**Name a colour by its role, never by its value.** `--color-cyan-500` is wrong (under another theme it may not be
+cyan); `--color-accent-secondary` is right. A name never holds a hue, a mode word (`light`, `dark`) or a scale number.
+- `packages/ui/src/app.css` defines each role as `--ui-<role>`: light value on `:root`, dark value under `.dark`.
+  `@theme inline` exposes `--color-<role>`, so `text-content-muted` or `bg-surface-raised` follows the theme with no
+  `dark:` variant. A role with no `.dark` entry is the same in both themes. Values name Tailwind's palette
+  (`var(--color-gray-900)`) on purpose: it keeps alpha mixing at run time, which kept every pixel identical.
+- Components never use a raw palette class (`text-gray-400`, `bg-red-50`). The `design/no-raw-palette-classes` lint rule
+  (`packages/ui/eslint-rules/design-tokens.js`) fails on one, and `src/design-tokens.test.ts` fails on a token name with a
+  hue, mode word or scale number. `white`, `black`, `transparent` stay allowed for fills that never change with the theme.
+- A role ending in a number (`content-muted-2`) is a near duplicate kept so no colour changed. Folding them is a
+  deliberate visual change, not a refactor.
+- The design language page of the docs site builds its role tables from `app.css`, so there is no second list to update.
+
 ### UI Utils Pattern
 Pure functions extracted from components live in `packages/ui/src/lib/utils/`:
 - `formatting.ts` — formatBytes, detectImageFormat, buildImageUrlWithSize, truncateAddress, generateRepoName
