@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import { defineConfig } from 'eslint/config'
+import designTokens from './eslint-rules/design-tokens.js'
 
 export default defineConfig([
   // Generated output is rewritten wholesale on the next run, so nothing in it
@@ -27,6 +28,14 @@ export default defineConfig([
         },
       ],
     },
+  },
+  {
+    // Name a colour by its role, never by its value: a raw palette class such as
+    // `text-gray-400` is false the moment a theme changes the value. Use a role class such
+    // as `text-content-muted`. The rule's reasons are on the design language page.
+    files: ['**/*.{js,mjs,cjs,ts,tsx}'],
+    plugins: { design: designTokens },
+    rules: { 'design/no-raw-palette-classes': 'error' },
   },
   {
     rules: {
