@@ -1,0 +1,12 @@
+/* gib.show's accent green, taken from packages/ui/src/app.css. Everything else stays Starlight's. */
+:root {
+  --sl-color-accent-low: #003d24;
+  --sl-color-accent: #00b368;
+  --sl-color-accent-high: #33e69b;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #c9f5e0;
+  --sl-color-accent: #008a50;
+  --sl-color-accent-high: #00623a;
+}

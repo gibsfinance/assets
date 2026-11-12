@@ -28,6 +28,7 @@
     "packages/react",
     "packages/dexscreener",
     "packages/ui",
+    "packages/docs",
     "packages/server"
   ],
   "devDependencies": {

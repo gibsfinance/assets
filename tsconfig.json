@@ -100,5 +100,5 @@
     "skipLibCheck": true /* Skip type checking all .d.ts files. */
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "packages/server/src/db/migrations", "packages/server/src/db/config.ts", "packages/server/src/db/seeds", "packages/server/src/db/utils.ts"]
+  "exclude": ["node_modules", "dist", "packages/docs", "packages/server/src/db/migrations", "packages/server/src/db/config.ts", "packages/server/src/db/seeds", "packages/server/src/db/utils.ts"]
 }
