@@ -14,6 +14,21 @@ export default defineConfig([
   { files: ['**/*.{js,mjs,cjs,ts,tsx}'], languageOptions: { globals: globals.browser } },
   tseslint.configs.recommended,
   {
+    // A choice from a list is a menu, never a native select. The reasons, and what to use
+    // instead, are on the design language page of the documentation site.
+    files: ['**/*.{jsx,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXOpeningElement[name.name="select"]',
+          message:
+            'Native <select> elements are not allowed. Use a menu: Headless UI Menu or Listbox. See design/design-language in packages/docs.',
+        },
+      ],
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',
