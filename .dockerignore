@@ -6,3 +6,6 @@ postgres-data*
 .yarn/cache
 **/node_modules
 **/coverage
+packages/docs/dist
+packages/docs/generated
+packages/docs/.astro

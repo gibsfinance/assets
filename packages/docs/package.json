@@ -10,7 +10,7 @@
     "generate:guides": "node scripts/generate-guides.ts",
     "build": "yarn run generate:openapi && astro build && yarn run generate:guides",
     "preview": "astro preview",
-    "check": "node ../../scripts/tsc7.mjs --noEmit -p tsconfig.json",
+    "check": "yarn run generate:openapi && astro sync && node ../../scripts/tsc7.mjs --noEmit -p tsconfig.json",
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test": "vitest run"

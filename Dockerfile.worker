@@ -22,6 +22,7 @@ COPY packages/ui/package.json packages/ui/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/react/package.json packages/react/package.json
+COPY packages/docs/package.json packages/docs/package.json
 
 # The collector runs from source on plain node, so nothing is built. Only the server and the
 # workspaces it imports are installed; the interface's dependencies are left out.

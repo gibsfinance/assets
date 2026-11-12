@@ -1,11 +1,12 @@
 # Server image: the HTTP server and the built interface it serves.
 #
-# Four stages, so each one is cached by what it depends on:
+# Five stages, so each one is cached by what it depends on:
 #   manifests    every package.json and the lockfile - changes only when dependencies change
 #   build-deps   all dependencies, for building the interface
 #   prod-deps    only what the server loads at run time
 #   interface    the built interface (packages/ui/dist)
-# The final stage starts from prod-deps and adds source and the built interface.
+#   docs         the built documentation site (packages/docs/dist)
+# The final stage starts from prod-deps and adds source and the two built sites.
 
 FROM node:24-alpine AS manifests
 
@@ -23,9 +24,10 @@ COPY packages/ui/package.json packages/ui/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/react/package.json packages/react/package.json
+COPY packages/docs/package.json packages/docs/package.json
 
 
-# Everything, development tools included. Used only to build the interface.
+# Everything, development tools included. Used only to build the interface and the documentation.
 FROM manifests AS build-deps
 RUN yarn install --immutable
 
@@ -50,6 +52,19 @@ ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 RUN yarn workspace ui run build
 
 
+# The documentation site. Its build reads the server's OpenAPI definition (so the endpoint
+# reference cannot drift from the code) and the guide pages, and writes static files. Only
+# those files reach the runtime image; the site's dependencies stay in this stage.
+FROM build-deps AS docs
+COPY tsconfig.json ./
+COPY packages/server/src/server/openapi.ts packages/server/src/server/openapi.ts
+COPY packages/docs packages/docs
+
+ARG DOCS_SITE_URL
+ENV DOCS_SITE_URL=$DOCS_SITE_URL
+RUN yarn workspace docs run build
+
+
 # Production stage
 FROM prod-deps AS production
 
@@ -67,8 +82,13 @@ COPY packages/utils packages/utils
 COPY packages/dexscreener packages/dexscreener
 COPY packages/server packages/server
 COPY --from=interface /usr/src/app/packages/ui/dist packages/ui/dist
+# Static files only. The server serves them on the host names in DOCS_HOSTNAMES
+# (packages/server/src/server/docs-site.ts) and reads the generated guides in
+# packages/docs/dist/skills for /skills/*.md.
+COPY --from=docs /usr/src/app/packages/docs/dist packages/docs/dist
 
-# The server reads docs/skills/*.md and docs/terms.md from disk at request
+# The server reads docs/terms.md, and the older docs/skills/*.md as a fallback behind
+# the generated guides, from disk at request
 # time (packages/server/src/server/docs.ts), resolved relative to its own
 # source directory rather than the working directory. Nothing else in the
 # image needs docs/, so it is copied here rather than into an earlier stage.

@@ -18,6 +18,7 @@ jobs:
       # A lint that is clean and unchecked is clean until the next commit.
       - run: cd packages/server && yarn lint
       - run: cd packages/ui && yarn lint
+      - run: cd packages/docs && yarn lint
 
   # One job per configuration, so a failure names the package that broke — the
   # same shape as the vitest and coverage matrices below.
@@ -63,6 +64,25 @@ jobs:
       - run: yarn install --immutable
       - run: yarn run build
 
+  # The documentation site (packages/docs). It is built here on its own, because the root
+  # `build` script does not include it: the build reads the server's OpenAPI definition and
+  # the guide pages, so a broken page, a broken link in the sidebar configuration or a change
+  # to openapi.ts that the reference cannot render fails here and nowhere else. The check step
+  # types the build scripts and the content configuration. Lint runs in the `lint` job, and
+  # the build scripts are tested in the `vitest` and `coverage` matrices.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: 'yarn'
+      - run: yarn install --immutable
+      - run: yarn workspace docs run check
+      - run: yarn workspace docs run build
+
   # Legacy `node --test` files. The bulk of the suite is vitest — see the
   # `vitest` job below.
   unit-test:
@@ -93,6 +113,7 @@ jobs:
           - { package: react, workspace: '@gibs/react' }
           - { package: ui, workspace: ui }
           - { package: server, workspace: server }
+          - { package: docs, workspace: docs }
     steps:
       - uses: actions/checkout@v5
       - run: corepack enable
