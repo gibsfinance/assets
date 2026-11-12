@@ -2,7 +2,7 @@
 title: Image resizing
 description: How the server resizes images on the fly, how it caches the results, and which limits apply.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 The server resizes images on the fly with query parameters:
