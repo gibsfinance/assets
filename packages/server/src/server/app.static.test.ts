@@ -60,6 +60,13 @@ describe('static file serving', () => {
     expect(lineOf(appSource, STATIC)).toBeLessThan(lineOf(appSource, ROUTER))
   })
 
+  it('serves the documentation site before the interface and the router, so a docs host never reaches either', () => {
+    const docsSite = lineOf(appSource, /^app\.use\(createDocsSiteHandler\(/)
+    expect(docsSite, 'app.ts no longer registers the documentation site').toBeGreaterThanOrEqual(0)
+    expect(docsSite).toBeLessThan(lineOf(appSource, STATIC))
+    expect(docsSite).toBeLessThan(lineOf(appSource, ROUTER))
+  })
+
   it('registers no middleware in index.ts, where it would land behind the catch-all', () => {
     // The general form of the bug. index.ts imports app.ts, so by the time it runs, the
     // catch-all is already on the stack and anything added here is dead code that looks

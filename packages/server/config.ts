@@ -2,6 +2,7 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readLimit } from './src/runtime/read-limit'
 import { readSwitch } from './src/runtime/read-switch'
+import { readHostnames } from './src/runtime/read-hostnames'
 import { readEtherscanSettings } from './src/collect/etherscan-settings'
 
 const database = {
@@ -112,6 +113,14 @@ const imageBytesInDatabase = readSwitch(process.env.IMAGE_BYTES_IN_DATABASE, tru
  */
 const etherscan = readEtherscanSettings(process.env)
 
+/**
+ * Host names that get the documentation site instead of the application, for example
+ * `docs.gib.show` (comma-separated). Empty, the default, leaves the site off. A request whose
+ * host name is listed gets the built site from `packages/docs/dist` and nothing else; every
+ * other host gets the application. See `server/docs-site.ts`.
+ */
+const docsHostnames = readHostnames(process.env.DOCS_HOSTNAMES)
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -126,4 +135,5 @@ export default {
   imageStore,
   imageBytesInDatabase,
   etherscan,
+  docsHostnames,
 }
