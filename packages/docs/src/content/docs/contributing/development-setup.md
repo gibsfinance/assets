@@ -109,11 +109,11 @@ See [Continuous integration and TypeScript](/contributing/continuous-integration
 ## Smoke test a running instance
 
 ```bash
-yarn smoke                # staging
-yarn smoke:production     # gib.show
+yarn smoke                # the project staging instance
+yarn smoke:production     # the public instance, gib.show
 ```
 
-The smoke test calls every documented endpoint and also sends the inputs that should be refused. It exits with a non-zero status on any failure, so it can gate a deploy. It uses staging unless you pass a target.
+The smoke test calls every documented endpoint and also sends the inputs that should be refused. It exits with a non-zero status on any failure, so it can gate a deploy. It uses the project staging instance unless you pass a target.
 
 Each request carries a random query parameter on purpose. Image responses are cached at the edge for a day, so a plain request after a deploy can be answered by a copy made before it. That looks like missing response headers rather than a stale body. The `link` and `x-license` headers are set unconditionally, so if either is absent, the response did not come from that code at all. Suspect the cache before the code.
 

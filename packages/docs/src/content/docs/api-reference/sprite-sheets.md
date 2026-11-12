@@ -41,4 +41,4 @@ It answers 204 when the list has no raster tokens to draw.
 
 ## Licences
 
-A sheet cannot carry one image's licence. It carries only a link to the [terms page](https://gib.show/terms). Look up each image on its own route before you rely on its licence. Sheets never include artwork from a source that forbids copies.
+A sheet cannot carry one image's licence. It carries only a link to the terms page of the instance. The public instance publishes it at [gib.show/terms](https://gib.show/terms). Look up each image on its own route before you rely on its licence. Sheets never include artwork from a source that forbids copies.

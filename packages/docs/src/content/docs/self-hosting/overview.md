@@ -1,11 +1,11 @@
 ---
 title: Self-hosting overview
-description: Run your own Gib.Show instance for private token metadata and image serving, with requirements and a quick start.
+description: Run your own Gib instance for private token metadata and image serving, with requirements and a quick start.
 sidebar:
   order: 1
 ---
 
-You can run your own Gib.Show instance for private token metadata and image serving. The server, the collector and the interface all live in the public repository at `github.com/gibsfinance/assets`.
+You can run your own Gib instance, for private use or for public use. It serves token metadata and images the same way the public instance at `gib.show` does. The server, the collector and the interface all live in the public repository at `github.com/gibsfinance/assets`.
 
 ## Requirements
 
@@ -84,6 +84,7 @@ Image bytes live in a content-addressed store, which you choose with `IMAGE_STOR
 |------|----------------|
 | [Configuration](/self-hosting/configuration/) | Every environment variable |
 | [Running the server](/self-hosting/running/) | Start commands, Docker, migrations, monitoring, scaling |
+| [Domains and reverse proxies](/self-hosting/domains-and-proxies/) | Host names, DNS records, public address settings, Caddy, nginx, content delivery networks |
 | [Collection](/self-hosting/collection/) | How data gets in, provider priority, the artwork repositories |
 | [Etherscan collector](/self-hosting/etherscan-collector/) | Settings and the check command |
 | [Image storage](/self-hosting/image-storage/) | Choosing a store and every store setting |

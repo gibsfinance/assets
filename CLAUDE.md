@@ -359,7 +359,10 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
 `docs.gib.show`, staging is `docs-staging.gib.show`. Run it with `yarn workspace docs dev`.
 - **Pages.** Content lives in `packages/docs/src/content/docs/`: `index.mdx` (splash), then one directory per
   sidebar group, in this order: `getting-started/`, `api-reference/`, `list-management/`, `self-hosting/`,
-  `contributing/`. Groups fill themselves from their directory. Every page needs `title`, `description` and
+  `contributing/`, `design/`. Groups fill themselves from their directory. `design/` holds the design language
+  (`design-language.mdx`, with `src/components/SwatchGrid.astro` for colour swatches); it is not one of the
+  directories joined into the guide files, so it may use MDX components freely. Naming: "Gib" is the software,
+  "gib.show" is the public instance. Every page needs `title`, `description` and
   `sidebar: { order: N }` in its frontmatter. The sidebar then adds the generated endpoint reference.
 - **Endpoint reference** (`/reference/`). `scripts/generate-openapi.ts` writes `generated/openapi.json` from
   `packages/server/src/server/openapi.ts` on every build and dev start, and `starlight-openapi` renders it. The file is
@@ -380,9 +383,27 @@ A Starlight (Astro) site: guides, a generated endpoint reference, and contributo
   `Host` header, so a proxy in front must pass the original host name through. The `Dockerfile` builds the site in its
   own stage and copies only `dist` into the runtime image. Set `DOCS_SITE_URL` at build time for staging
   (`https://docs-staging.gib.show`); it feeds the sitemap, canonical links and the absolute links in the joined guides.
+- **No native `<select>`: menus only** (owner rule, written up in `design/design-language`).
+  - Starlight's theme picker is a `<select>`, so `astro.config.mjs` overrides `ThemeSelect` with
+    `src/components/ThemeMenu.astro`: a menu button (WAI-ARIA menu button pattern) that keeps Starlight's behaviour
+    (`starlight-theme` in `localStorage`, `data-theme` on `<html>`, auto follows the system live; Starlight's inline
+    `ThemeProvider` script still prevents the flash). `starlight-openapi` draws two more selects in the endpoint
+    reference (media type and code sample pickers). Its imports are relative, so `src/lib/openapi-menu-redirect.ts`
+    is a Vite plugin that answers them with `src/components/openapi/ContentMenu.astro` and `SnippetMenu.astro`.
+    All three menus share `src/lib/menu-controller.ts` (behaviour) and `src/styles/menu.css` (look). When
+    `starlight-openapi` is upgraded, check those two components still match the plugin's contract.
+  - Docs enforcement: `yarn build` runs `scripts/check-no-select.ts` after `astro build`; it fails and names every
+    built HTML file that contains a `<select` element (logic and tests in `scripts/no-native-select.ts`).
+  - Interface enforcement: `packages/ui/eslint.config.js` forbids the JSX `select` element
+    (`no-restricted-syntax`), so `cd packages/ui && yarn lint` fails on one.
+- **Home page hero.** The logos beside the title are `hero.image.html` in `index.mdx` (plain markup, a CSS drift
+  animation in `src/styles/hero-logos.css`, no script). They load lazily from `https://gib.show/image/...`
+  (production, because staging may lack data), are `aria-hidden`, stand still under `prefers-reduced-motion`, and are
+  hidden below 50rem where Starlight stacks the hero. Check each URL answers 200 before changing the set.
 - **Checks.** `yarn workspace docs run check` (types for the scripts and content configuration), `yarn lint` from the
   package, and the `docs` CI job builds the whole site. The build scripts are the only testable code; they sit at
-  100% like every other workspace. `packages/docs` is outside the root `tsconfig.json`.
+  100% like every other workspace (that now includes `src/lib/`, whose DOM tests use `// @vitest-environment jsdom`).
+  `packages/docs` is outside the root `tsconfig.json`.
 
 ### Storybook (`packages/ui`)
 A catalog of the reusable interface components, published inside the documentation site at `/storybook/`

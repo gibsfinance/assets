@@ -1,0 +1,55 @@
+/*
+ * The logos that drift beside the home page title. The markup is in the frontmatter of
+ * src/content/docs/index.mdx (Starlight's `hero.image.html`), so there is no script: the
+ * drift is a CSS animation and the pictures load lazily from the public instance.
+ *
+ * Each logo sets its own place and motion through custom properties:
+ *   --x, --y      centre of the logo, as a share of the box
+ *   --size        width and height of the logo
+ *   --dx, --dy    how far it drifts
+ *   --duration, --delay   the pace of its drift
+ */
+.hero-logos {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.hero-logos img {
+  position: absolute;
+  left: calc(var(--x) - var(--size) / 2);
+  top: calc(var(--y) - var(--size) / 2);
+  width: var(--size);
+  height: var(--size);
+  padding: calc(var(--size) / 9);
+  box-sizing: border-box;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 50%;
+  background: var(--sl-color-bg-nav);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--sl-color-accent) 22%, transparent);
+  object-fit: contain;
+  animation: hero-logo-drift var(--duration) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes hero-logo-drift {
+  from {
+    transform: translate(0, 0) rotate(-3deg);
+  }
+  to {
+    transform: translate(var(--dx), var(--dy)) rotate(3deg);
+  }
+}
+
+/* Below the width where Starlight puts the picture beside the title, the title stays first. */
+@media (max-width: 49.99rem) {
+  .hero-html:has(> .hero-logos) {
+    display: none;
+  }
+}
+
+/* A still arrangement for readers who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-logos img {
+    animation: none;
+  }
+}

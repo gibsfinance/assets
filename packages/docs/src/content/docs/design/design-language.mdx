@@ -1,0 +1,299 @@
+---
+title: Design language
+description: The colours, type, spacing, surfaces, motion and component rules of the Gib interface, taken from its code, with one firm rule - never a native select element.
+sidebar:
+  order: 1
+---
+
+import SwatchGrid from '../../../components/SwatchGrid.astro';
+
+This page describes how the Gib interface looks and behaves. Gib is the open-source engine. gib.show is the public instance that runs it, and the interface you see there is the one described here.
+
+Every value on this page comes from the code. Each section names the file it comes from. If the code and this page disagree, the code is right: fix the page.
+
+Where the code falls short of its own rules, this page says so. Those gaps are marked as **Known gap**.
+
+## Principles
+
+- **Dark first, light equal.** The interface has two full themes. Neither is an afterthought. Every surface, border and text colour has a light value and a dark value.
+- **One accent.** Green (`accent-500`) is the only brand colour. Cyan appears only as a second stop in gradients and glows.
+- **Quiet surfaces, bright edges.** Surfaces are near-black or near-white. Borders are thin. Colour and glow are kept for the one thing that matters on the screen.
+- **Show the product.** Token and network logos are the content. They are drawn on plain, round or square chips so any logo looks right.
+- **Native where it helps, never where it does not.** Links, buttons and inputs are native elements. A choice from a list is a menu. A native `select` element is not allowed.
+- **Fast and calm.** Motion is short and small. It never carries meaning on its own, and people who ask for less motion get less.
+
+## Colour
+
+The tokens live in the `@theme` block of `packages/ui/src/app.css`. Tailwind 4 turns each one into utility classes, for example `--color-accent-500` becomes `bg-accent-500` and `text-accent-500`.
+
+### Accent
+
+Lower numbers are lighter. Higher numbers are darker.
+
+<SwatchGrid
+  swatches={[
+    { token: '--color-accent-400', value: '#33e69b', usage: 'Light accent' },
+    { token: '--color-accent-500', value: '#00dc82', usage: 'The brand colour' },
+    { token: '--color-accent-600', value: '#00b368', usage: 'Dark end of the green gradient' },
+    { token: '--color-cyan-500', value: '#0ea5e9', usage: 'Second stop in gradients and glows' },
+  ]}
+/>
+
+### Dark surfaces
+
+<SwatchGrid
+  swatches={[
+    { token: '--color-surface-base', value: '#09090b', usage: 'Page background' },
+    { token: '--color-surface-1', value: '#111113', usage: 'Cards and panels' },
+    { token: '--color-surface-2', value: '#1a1a1e', usage: 'Inputs, menus, raised rows' },
+    { token: '--color-surface-3', value: '#27272a', usage: 'Hover states and dividers' },
+  ]}
+/>
+
+### Light surfaces
+
+<SwatchGrid
+  swatches={[
+    { token: '--color-surface-light-base', value: '#ffffff', usage: 'Page background' },
+    { token: '--color-surface-light-1', value: '#fafafa', usage: 'Cards and panels' },
+    { token: '--color-surface-light-2', value: '#f4f4f5', usage: 'Inputs, raised rows' },
+    { token: '--color-surface-light-3', value: '#e4e4e7', usage: 'Hover states and dividers' },
+  ]}
+/>
+
+### Borders and glow
+
+<SwatchGrid
+  swatches={[
+    { token: '--color-border-dark', value: 'rgba(255, 255, 255, 0.08)', usage: 'Border on dark surfaces' },
+    { token: '--color-border-light', value: '#e4e4e7', usage: 'Border on light surfaces' },
+    { token: '--shadow-glow-green', value: 'rgba(0, 220, 130, 0.3)', usage: 'Glow colour, 20px blur' },
+    { token: '--shadow-glow-cyan', value: 'rgba(14, 165, 233, 0.3)', usage: 'Glow colour, 20px blur' },
+    { token: '--shadow-glow-green-subtle', value: 'rgba(0, 220, 130, 0.08)', usage: 'Glow colour, 24px blur' },
+  ]}
+/>
+
+### Text colours
+
+Text colours are not tokens. The components use Tailwind's default gray scale (`gray-50` to `gray-900`, defined in the `tailwindcss` package) and white at set opacities.
+
+| Role | Light theme | Dark theme |
+|---|---|---|
+| Body text | `text-gray-900` | `text-gray-100` (`packages/ui/src/Layout.tsx`) |
+| Headings | `text-gray-900` | `text-white` (`packages/ui/src/lib/pages/Home.tsx`) |
+| Navigation, secondary text | `text-gray-500` | `text-gray-400` |
+| Hint and placeholder text | `text-gray-400` | `text-white/30` to `text-white/40` |
+| Links and active items | `text-accent-500`, on hover | `text-accent-500`, on hover |
+
+### Light and dark
+
+The `@custom-variant dark` line in `app.css` sets the rule: a `dark` class on the `html` element turns the dark theme on, and `dark:` utilities apply under it.
+
+- The class is set before the first paint by `themeScript` in `packages/ui/src/prerender/pre-paint.ts`. Without it the page would paint light and then flip.
+- The reader's choice is stored under `theme-mode` (`light`, `dark` or `system`) by `packages/ui/src/lib/contexts/ThemeContext.tsx`. `system` follows the `prefers-color-scheme` setting.
+- `ThemeToggle` (`packages/ui/src/lib/components/ThemeToggle.tsx`) is the control: one button flips light and dark, and one button turns `system` on or off.
+
+### The accent on this documentation site
+
+This site is built with Starlight. `packages/docs/src/styles/theme.css` gives it the same green and changes nothing else:
+
+| Token | Dark theme | Light theme |
+|---|---|---|
+| `--sl-color-accent-low` | `#003d24` | `#c9f5e0` |
+| `--sl-color-accent` | `#00b368` | `#008a50` |
+| `--sl-color-accent-high` | `#33e69b` | `#00623a` |
+
+## Typography
+
+Three families, all with the SIL Open Font License 1.1. They are self-hosted as Latin-subset `woff2` files by `packages/ui/src/fonts.css`, from the `@fontsource` packages. The family names in `fonts.css` must match the `--font-*` tokens in `app.css`.
+
+| Role | Token | Stack | Files loaded |
+|---|---|---|---|
+| Headings | `--font-heading` | `'Space Grotesk', system-ui, sans-serif` | weights 600 and 700 |
+| Body | `--font-body` | `'Inter', system-ui, sans-serif` | weights 400, 500 and 600 |
+| Code and addresses | `--font-mono` | `'JetBrains Mono', monospace` | weight 400 |
+
+The `body` element uses `font-body`. Headings and large numbers add `font-heading`. Token addresses, code and numbers in tables use `font-mono`. Every face sets `font-display: swap`, so text shows at once in the fallback font.
+
+**Known gap.** Components use `font-bold` (700) on Inter text, but `fonts.css` loads Inter only up to 600. The browser then uses the 600 file or draws a heavier copy of it. Either load Inter 700 or use `font-semibold` for Inter.
+
+### Scale
+
+The interface uses Tailwind's default type scale. These are the sizes in use, with how often they appear in `packages/ui/src` (tests excluded):
+
+| Class | Size | Uses |
+|---|---|---|
+| `text-xs` | 0.75rem | 78 |
+| `text-sm` | 0.875rem | 67 |
+| `text-base` | 1rem | 4 |
+| `text-lg` | 1.125rem | 12 |
+| `text-xl` | 1.25rem | 4 |
+| `text-2xl` | 1.5rem | 8 |
+| `text-3xl` | 1.875rem | 3 |
+| `text-4xl` to `text-7xl` | 2.25rem to 4.5rem | 6 |
+
+`text-xs` and `text-sm` carry most of the interface: labels, menu items, panel text, navigation and buttons.
+
+The home page `h1` is `font-heading text-6xl font-bold tracking-tight md:text-7xl` (`Home.tsx`). Section `h2` elements are `font-heading text-3xl font-bold`. `tracking-tight` is -0.025em.
+
+### Weights
+
+`font-medium` (500) is the most common weight, at 56 uses. It marks buttons, navigation and labels. `font-bold` (700) is for headings. `font-semibold` (600) is for the primary button and strong labels. Body text is the normal weight (400).
+
+## Spacing and radius
+
+Spacing is Tailwind's single step: `--spacing: 0.25rem`. Every gap and padding is a multiple of it.
+
+| Use | Classes |
+|---|---|
+| Gap between small items | `gap-1`, `gap-1.5`, `gap-2` (0.25, 0.375 and 0.5rem) |
+| Gap between rows and groups | `gap-3`, `gap-4`, `gap-6` (0.75, 1 and 1.5rem) |
+| Panel padding | `p-4`, `px-4 py-3` |
+| Control padding | `px-3 py-1.5` (compact), `px-4 py-2.5` (field), `px-5 py-2.5` (button) |
+| Page width | `container mx-auto px-4` |
+
+Radius is a small set. `rounded-lg` (0.5rem) is the default for cards, buttons and fields, with 66 uses. Use `rounded-md` (0.375rem) for items inside a menu, so they sit inside the menu's own `rounded-lg` corner. Use `rounded-full` for logos, badges and pills.
+
+| Class | Value | Uses |
+|---|---|---|
+| `rounded-lg` | 0.5rem | 66 |
+| `rounded-full` | 9999px | 49 |
+| `rounded` | 0.25rem | 32 |
+| `rounded-md` | 0.375rem | 29 |
+| `rounded-2xl` | 1rem | 1 |
+
+The breakpoints are Tailwind's defaults: `sm` 40rem, `md` 48rem, `lg` 64rem and `xl` 80rem. The interface is built mobile first and adds layout at `sm` and `md`.
+
+## Surfaces
+
+Three card classes are defined in `packages/ui/src/app.css`. All use `rounded-lg` and a one-pixel border.
+
+| Class | Light theme | Dark theme | Use |
+|---|---|---|---|
+| `.glass-card` | `bg-white`, `border-border-light`, `backdrop-blur-xl` (24px) | `bg-white/[0.03]`, `border-border-dark` | The default card. On dark, the page shows through it. |
+| `.elevated-card` | `bg-white`, `border-border-light`, `shadow-sm` | `bg-surface-1`, `border-border-dark`, `shadow-elevated` | A card that sits above the page. |
+| `.glow-card` | `bg-white`, `border-accent-500/20`, `shadow-sm` | `bg-surface-1`, `shadow-glow-green-subtle` | The one card that needs attention. Use it rarely. |
+
+### Borders and shadows
+
+- **Borders** are one pixel. They are `border-border-light` (`#e4e4e7`) on light surfaces and `border-border-dark` (8 percent white) on dark ones. An accent border (`border-accent-500/20` to `/40`) marks hover and focus.
+- **Shadows** on light surfaces are Tailwind's `shadow-sm` and `shadow-lg`. On dark surfaces depth comes from the surface step and from glow, not from black shadows.
+- `--shadow-elevated` is `0 4px 24px rgba(0, 0, 0, 0.4)`.
+- `--shadow-glow-green` and `--shadow-glow-cyan` are `0 0 20px` at 30 percent. `--shadow-glow-green-subtle` is `0 0 24px` at 8 percent.
+- Menus and popovers use `shadow-lg`, a `border-border-light` or `border-border-dark` border, and `bg-white` or `bg-surface-2` (`ListEditor.tsx`).
+- The sticky header is `bg-white/80` or `bg-surface-base/80` with `backdrop-blur-lg` (16px) and a bottom border (`Layout.tsx`).
+
+### Gradient text
+
+`.text-gradient-brand` runs from `accent-500` to `cyan-500`. `.text-gradient-green` runs from `accent-500` to `accent-600`. Use them for one short phrase in a heading, never for body text.
+
+### Layers
+
+Menus, dialogs and the header sit on `z-50` (14 uses). `z-10` orders content inside a page or a panel. Do not add other values without a reason.
+
+## Motion
+
+Motion is short, and it eases out of the way.
+
+| Kind | Value | Source |
+|---|---|---|
+| Colour and opacity changes | 150 milliseconds, `cubic-bezier(0.4, 0, 0.2, 1)` | Tailwind's default (`--default-transition-duration`) |
+| Hover and state changes on controls | `duration-150` (8 uses), `duration-200` (12 uses) | Components |
+| Large movements | `duration-300` (2 uses) | Components |
+| Button hover | `scale(1.02)` in 150 milliseconds | `.btn-primary` in `app.css` |
+| Icon strip | `scroll-left`, linear, repeats | `.animate-scroll` in `app.css` |
+| Spinner | one turn every 2 seconds, linear | `.icon-spin` in `app.css` |
+| Loading placeholder | `animate-pulse` | Tailwind |
+
+Use `transition-colors` for colour changes (51 uses) and `transition-all` only when size or shadow changes too.
+
+### Reduced motion
+
+`app.css` has a `prefers-reduced-motion: reduce` rule for `.animate-scroll` and for `.icon-spin`. Both stop. `PhysicsCanvas.tsx` draws one still frame when the reader asks for less motion. The loading screen in `packages/ui/src/prerender/route-loader.ts` stops its animation too.
+
+**Known gap.** `animate-pulse` and the hover `transition` classes have no reduced-motion rule. They are small, but a new animation must always come with its own rule.
+
+## Iconography
+
+Icons are Font Awesome Free glyphs (the solid and brand sets, version 7), drawn as inline SVG by `packages/ui/src/lib/components/Icon.tsx`. Import each glyph by name, for example `faChevronDown`, so the build keeps only the glyphs in use.
+
+- A glyph is one em tall and takes its colour from the text around it. Size and tint it with `text-*` classes.
+- The glyph is decoration. It carries `aria-hidden="true"`. The element that holds it carries the accessible name.
+- `spin` turns the glyph with `.icon-spin`.
+- Token and network logos are not icons. They are images from the service, for example `/image/1/<address>` and `/image/<chain id>`, drawn on round chips.
+
+**Note.** `packages/ui/package.json` also lists `@iconify/react`, but no source file imports it. Do not add Iconify icons: use Font Awesome glyphs through `Icon`.
+
+## Components and patterns
+
+### Never a native select
+
+A choice from a list is a menu. Do not use the native `select` element, in the interface or on this site.
+
+Why: a native select cannot be styled to the design, it looks different on every system, it cannot show logos, and its open list is drawn by the system and ignores both themes.
+
+What to use instead:
+
+- **In the interface:** Headless UI. `Menu` (`MenuButton`, `MenuItems`, `MenuItem`) is used in `ListEditor.tsx` and `StudioConfigurator.tsx`. `Popover` and `Dialog` build larger pickers: `NetworkSelect.tsx` opens a `Dialog` with a search field and a virtual list of networks with their logos. `Listbox` is the Headless UI part for a single choice that stays visible as the field's value. Use it when a menu does not fit.
+- **On this documentation site:** the theme menu, `packages/docs/src/components/ThemeMenu.astro`. It replaces the select that Starlight draws for the theme.
+
+How the rule is enforced:
+
+- `packages/ui/eslint.config.js` forbids the JSX `select` element. `yarn lint` fails on it.
+- `packages/docs/scripts/check-no-select.ts` runs after the site is built. It fails the build and names the page if any built page contains a `select` element.
+
+### Menu behaviour
+
+A menu follows the WAI-ARIA menu button pattern. Headless UI does this for you. If you build one by hand, as the theme menu does, it needs all of this:
+
+- The button has `aria-haspopup="menu"` and `aria-expanded`.
+- The list has `role="menu"`. Items are `menuitem`, or `menuitemradio` with `aria-checked` when they set a choice.
+- Arrow keys move between items and wrap. `Home` and `End` go to the first and last item. `Escape` closes the menu and returns focus to the button. A click outside closes it.
+- The current choice has a check mark and a different colour. Colour alone is not enough.
+
+### Buttons
+
+Three button classes are defined in `app.css`. All use `rounded-lg`, `px-5 py-2.5` and `transition-all duration-150`.
+
+| Class | Look | Use |
+|---|---|---|
+| `.btn-primary` | Green gradient (`accent-500` to `accent-600`), black text, semibold, `shadow-glow-green`, grows to 1.02 on hover | The one main action on a screen |
+| `.btn-secondary` | Gray fill (`gray-100`, dark `white/5`), one-pixel border, medium weight | Other actions |
+| `.btn-ghost` | Transparent, `accent-500` text, `border-accent-500/30`, `accent-500/5` fill on hover | Quiet actions beside a primary |
+
+Compact controls inside panels do not use these classes. They use utility classes: `rounded-lg px-3 py-1.5 text-xs font-medium transition-colors` (see the Publish button in `ListEditor.tsx`). Icon-only buttons are `h-8 w-8` or `h-9 w-9`, round to `rounded-lg`, and need an accessible name from `title` or `aria-label`.
+
+### Inputs
+
+Fields are quiet. `TokenSearch.tsx` shows the pattern:
+
+There are two patterns.
+
+- **A field.** `NetworkSelect.tsx` and `pages/Docs.tsx` use `w-full rounded-lg border border-border-light bg-gray-50 py-2 text-sm text-gray-900`. On dark the border is `border-border-dark`, the fill is `bg-surface-2` (or `bg-surface-1` in `Docs.tsx`) and the text is `text-white/90`. A leading search icon sits inside the field, so the field has extra left padding.
+- **A search row.** `TokenSearch.tsx` draws the border on the row (`border-b border-gray-200 bg-gray-50 px-4 py-2`, dark `border-surface-3 bg-surface-2`) and puts a bare `input` in it with `bg-transparent text-sm` and a `text-gray-400` placeholder (dark `white/30`).
+
+**Known gap.** The bare input in `TokenSearch.tsx` removes its outline and the row draws no ring in its place, and so does the stepper input in `NumberStepper.tsx`. Add `focus-within:` styles to the row, as the other fields do with `focus:border-accent-500/60`.
+
+### Dialogs, panels and lists
+
+- Dialogs use Headless UI `Dialog`, `DialogPanel` and a backdrop with `backdrop-blur-sm` (`NetworkSelect.tsx`, `TokenDetailModal.tsx`).
+- Collapsible panels use `Disclosure`.
+- Long lists use a virtual list (`@tanstack/react-virtual`) so only visible rows exist.
+
+## Focus
+
+Every control that takes input must show where focus is.
+
+- On the interface, focus uses the accent: `focus:ring-2 focus:ring-accent-500/50`, or `focus:border-accent-500/40` to `/60` on fields. `focus-visible:` is used where a mouse click must not show a ring.
+- On this site, controls use `outline: 2px solid var(--sl-color-accent)` with a 2 pixel offset, on `:focus-visible` (see `LinkedCard.astro` and `ThemeMenu.astro`).
+- Never remove an outline without giving something else in its place. See the known gap under Inputs for the places that break this rule.
+
+## Accessibility
+
+- **Contrast.** Body text is `gray-900` on white and `gray-100` on `#09090b`. These ratios use the standard relative luminance formula: accent `#00dc82` on `#09090b` is 10.95 to 1, and black on `#00dc82` is 11.56 to 1, so the primary button passes. Accent `#00b368` on `#09090b` is 7.25 to 1.
+- **Known gap.** Accent text on white does not reach 4.5 to 1: `#00dc82` is 1.82 to 1 and `#00b368` is 2.75 to 1. On the light theme, use accent colour for fills, borders and large shapes, not for small text. Where text must be green on light, use a darker green: this site uses `#00623a` for it. A visible hover or focus colour is only a hint: the link must also be readable, by position, an underline or an icon.
+- **Keyboard.** Everything that works with a mouse works with a keyboard. Use native `button` and `a` elements. Do not put a click handler on a `div`.
+- **Names.** An icon-only control needs `aria-label` or `title`. Decoration, including icons and logos beside a name, is `aria-hidden="true"` with an empty `alt`.
+- **Motion.** Follow the reduced-motion rules above.
+- **Not by colour alone.** State is shown with text, an icon or a check mark as well as colour.
+- **Language.** The page sets `lang="en"` (`packages/ui/index.html`).

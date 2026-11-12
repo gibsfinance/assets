@@ -10,7 +10,7 @@ sidebar:
 | `GET /health` | `{"status":"ok"}` with status 200 once migrations and cache warm-up finish. `{"status":"starting"}` with status 503 while the server starts. |
 | `GET /openapi.json` | The OpenAPI 3.1 definition of the public API. The [endpoint reference](/reference/) is built from it. |
 | `GET /llms.txt` | A plain-text index of the public API and the guides, following the `llmstxt.org` convention. |
-| `GET /terms` | The terms and attribution page that every image response links to. |
+| `GET /terms` | The terms and attribution page that every image response links to. On the public instance, these are the terms of `gib.show`. |
 | `GET /skills/{filename}` | The hand-written guides as markdown: `api-reference.md`, `list-management.md` and `self-hosting.md`. An unknown name answers 404. |
 | `GET /docs` | A redirect to the documentation page in the interface. |
 | `GET /studio` | A redirect to the token list studio in the interface. |

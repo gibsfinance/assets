@@ -13,7 +13,7 @@ The image endpoints return image bytes. Options such as `w`, `h` and `as` are ex
 GET /image/{chainId}/{address}
 ```
 
-Returns the highest-priority image for a token. [Image priority](/api-reference/image-priority/) explains how Gib.Show chooses.
+Returns the highest-priority image for a token. [Image priority](/api-reference/image-priority/) explains how Gib chooses.
 
 **Path parameters**
 
@@ -60,7 +60,7 @@ Returns the chain logo. It accepts the same resize options as the token route.
 Two details differ from the token route:
 
 - A path extension on this route is a **source filter**, not a conversion. `/image/eip155-369.png` serves only a `png` source. `/image/eip155-369.webp` answers 404 when no `webp` source exists. On the token route, the extension converts the output instead.
-- A bare number is matched against the chain identifiers Gib.Show actually stores. If one number is shared by two namespaces, the request can still resolve to the one that has an image.
+- A bare number is matched against the chain identifiers the instance actually stores. If one number is shared by two namespaces, the request can still resolve to the one that has an image.
 
 Every success response carries an `x-resolved-chain` header. It names the identifier the request resolved to, in prefixed form (for example `eip155-369`). Use it to tell an exact match from a best guess. Algorand `ARC-25` numbers report `algorand-283`.
 

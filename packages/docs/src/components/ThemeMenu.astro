@@ -1,0 +1,142 @@
+---
+/**
+ * Replaces Starlight's theme picker, which is a native `<select>`. The design language forbids
+ * native selects (see design/design-language), so the choice is a menu button instead.
+ *
+ * It keeps Starlight's behaviour: the choice lives in `localStorage` under `starlight-theme`, the
+ * page theme is `data-theme` on `<html>`, `auto` follows the system setting while the page is
+ * open, and Starlight's inline `ThemeProvider` script still sets the theme before first paint.
+ * Menu behaviour is in `src/lib/menu-controller.ts`, the look in `src/styles/menu.css`, and the
+ * theme rules in `src/lib/theme-menu.ts`.
+ *
+ * Starlight renders this component twice (header and mobile menu), so nothing here may use a
+ * fixed id.
+ */
+import { Icon } from '@astrojs/starlight/components'
+
+const label = Astro.locals.t('themeSelect.accessibleLabel')
+const choices = [
+  { value: 'auto', label: Astro.locals.t('themeSelect.auto'), icon: 'laptop' },
+  { value: 'light', label: Astro.locals.t('themeSelect.light'), icon: 'sun' },
+  { value: 'dark', label: Astro.locals.t('themeSelect.dark'), icon: 'moon' },
+] as const
+---
+
+<gib-theme-menu class="gib-menu" data-choice="auto">
+  <button type="button" class="gib-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label={label}>
+    {choices.map((choice) => <Icon name={choice.icon} class={`trigger-icon ${choice.value}`} />)}
+  </button>
+  <div class="gib-menu-list" role="menu" aria-label={label} hidden>
+    {
+      choices.map((choice) => (
+        <button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-value={choice.value}>
+          <Icon name={choice.icon} class="item-icon" />
+          <span class="gib-menu-label">{choice.label}</span>
+          <Icon name="approve-check" class="gib-menu-check" />
+        </button>
+      ))
+    }
+  </div>
+</gib-theme-menu>
+
+{/* Sets the trigger's icon before first paint, from the same key Starlight's provider reads. */}
+<script is:inline>
+  {
+    const stored = typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme')
+    const menus = document.querySelectorAll('gib-theme-menu')
+    menus[menus.length - 1].dataset.choice = stored === 'light' || stored === 'dark' ? stored : 'auto'
+  }
+</script>
+
+<script>
+  import { attachMenu, markCheckedItem } from '../lib/menu-controller.ts'
+  import {
+    THEME_CHOICES,
+    THEME_STORAGE_KEY,
+    parseThemeChoice,
+    resolveTheme,
+    storedValueFor,
+    type ThemeChoice,
+  } from '../lib/theme-menu.ts'
+
+  const CHANGE_EVENT = 'gib-theme-change'
+  const lightQuery = matchMedia('(prefers-color-scheme: light)')
+
+  const loadChoice = (): ThemeChoice => parseThemeChoice(localStorage.getItem(THEME_STORAGE_KEY))
+
+  /** Show the theme a choice gives, on the page. */
+  const showTheme = (choice: ThemeChoice): void => {
+    document.documentElement.dataset.theme = resolveTheme(choice, { systemPrefersLight: lightQuery.matches })
+  }
+
+  /** Make a choice: show it, keep it, and tell every menu on the page. */
+  const chooseTheme = (choice: ThemeChoice): void => {
+    showTheme(choice)
+    localStorage.setItem(THEME_STORAGE_KEY, storedValueFor(choice))
+    window.dispatchEvent(new CustomEvent<ThemeChoice>(CHANGE_EVENT, { detail: choice }))
+  }
+
+  // Auto follows the system while the page is open.
+  lightQuery.addEventListener('change', () => {
+    if (loadChoice() === 'auto') showTheme('auto')
+  })
+
+  class GibThemeMenu extends HTMLElement {
+    #detach?: () => void
+    #items: HTMLButtonElement[] = []
+
+    connectedCallback(): void {
+      this.#items = [...this.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
+      this.#detach = attachMenu({
+        host: this,
+        trigger: this.querySelector<HTMLButtonElement>('.gib-menu-trigger')!,
+        menu: this.querySelector<HTMLElement>('.gib-menu-list')!,
+        items: this.#items,
+        currentIndex: () => THEME_CHOICES.indexOf(loadChoice()),
+        onSelect: (item) => chooseTheme(parseThemeChoice(item.dataset['value'])),
+      })
+      window.addEventListener(CHANGE_EVENT, this.#onChange)
+
+      const choice = loadChoice()
+      showTheme(choice)
+      this.#markChoice(choice)
+    }
+
+    disconnectedCallback(): void {
+      this.#detach?.()
+      window.removeEventListener(CHANGE_EVENT, this.#onChange)
+    }
+
+    /** Show the current choice on the trigger icon and on the items. */
+    #markChoice(choice: ThemeChoice): void {
+      this.dataset['choice'] = choice
+      markCheckedItem(this.#items, THEME_CHOICES.indexOf(choice))
+    }
+
+    #onChange = (event: Event): void => {
+      this.#markChoice((event as CustomEvent<ThemeChoice>).detail)
+    }
+  }
+
+  customElements.define('gib-theme-menu', GibThemeMenu)
+</script>
+
+<style is:global>
+  /* The icons come from a component, so scoped styles would not reach them. Only the icon of the current choice shows on the trigger. */
+  .trigger-icon {
+    display: none;
+    font-size: 1.125rem;
+  }
+  gib-theme-menu[data-choice='auto'] .trigger-icon.auto,
+  gib-theme-menu[data-choice='light'] .trigger-icon.light,
+  gib-theme-menu[data-choice='dark'] .trigger-icon.dark {
+    display: block;
+  }
+  gib-theme-menu .gib-menu-trigger {
+    width: 2.25rem;
+  }
+  .item-icon {
+    flex: none;
+    font-size: 1rem;
+  }
+</style>

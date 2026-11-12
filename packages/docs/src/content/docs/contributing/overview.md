@@ -1,11 +1,11 @@
 ---
 title: Contributing overview
-description: What Gib.Show is made of, how the repository is laid out, and where to start when you change the code.
+description: What Gib is made of, how the repository is laid out, and where to start when you change the code.
 sidebar:
   order: 1
 ---
 
-Gib.Show collects token metadata and images from more than 30 providers. It stores the images with a priority order, and it serves them over an HTTP API with on-the-fly resizing, sprite sheets and edge caching. This section is for people who work on that code. If you only want to use the service, start with [Getting started](/getting-started/overview/).
+Gib is an open-source engine. It ships with more than 30 provider collectors. It stores the images with a priority order, and it serves them over an HTTP API with on-the-fly resizing, sprite sheets and edge caching. This section is for people who work on that code. If you only want to use Gib, start with [Getting started](/getting-started/overview/).
 
 The code is public at `github.com/gibsfinance/assets`.
 
