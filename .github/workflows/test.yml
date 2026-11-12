@@ -67,7 +67,9 @@ jobs:
   # The documentation site (packages/docs). It is built here on its own, because the root
   # `build` script does not include it: the build reads the server's OpenAPI definition and
   # the guide pages, so a broken page, a broken link in the sidebar configuration or a change
-  # to openapi.ts that the reference cannot render fails here and nowhere else. The check step
+  # to openapi.ts that the reference cannot render fails here and nowhere else. The build also
+  # builds the interface's Storybook, so a story that no longer compiles fails here too (the
+  # vitest and coverage matrices run every story in a smoke test). The check step
   # types the build scripts and the content configuration. Lint runs in the `lint` job, and
   # the build scripts are tested in the `vitest` and `coverage` matrices.
   docs:
@@ -81,7 +83,10 @@ jobs:
           cache: 'yarn'
       - run: yarn install --immutable
       - run: yarn workspace docs run check
+      # The build also builds Storybook (packages/ui) and copies it to dist/storybook.
       - run: yarn workspace docs run build
+      - name: Storybook is in the built site
+        run: test -f packages/docs/dist/storybook/index.html && test -f packages/docs/dist/storybook/iframe.html
 
   # Legacy `node --test` files. The bulk of the suite is vitest — see the
   # `vitest` job below.

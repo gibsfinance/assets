@@ -33,13 +33,18 @@ export const DOCS_SITE_PATH = path.join(currentDirectory, '..', '..', '..', 'doc
 export const isDocsHost = (hostname: string, docsHostnames: readonly string[]): boolean =>
   docsHostnames.includes(hostname.toLowerCase())
 
+/** Directories, relative to the site, whose file names carry a content hash. */
+const HASHED_DIRECTORIES = ['_astro', path.join('storybook', 'assets')]
+
 /**
  * Build the `setHeaders` hook for `express.static` over the documentation site.
  *
  * Astro writes every file under `_astro/` with a content hash in its name, so a given address
- * always returns the same bytes and may be kept for a year. A page names those hashed files, so
- * it must be asked about on every visit: HTML gets `no-cache`. Every other file (the search
- * index, the sitemap, the generated guides) keeps the static handler's default.
+ * always returns the same bytes and may be kept for a year. So is every file under
+ * `storybook/assets/`, which Storybook's build names the same way. A page names those hashed
+ * files, so it must be asked about on every visit: HTML gets `no-cache`, Storybook's
+ * `index.html` and `iframe.html` included. Every other file (the search index, the sitemap,
+ * the generated guides, Storybook's `index.json`) keeps the static handler's default.
  *
  * @param root Absolute path of the directory handed to `express.static`.
  */
@@ -47,7 +52,7 @@ export const docsCacheHeaders =
   (root: string) =>
   (res: ServerResponse, filePath: string): void => {
     const relative = path.relative(root, filePath)
-    if (relative.startsWith(`_astro${path.sep}`)) {
+    if (HASHED_DIRECTORIES.some((directory) => relative.startsWith(`${directory}${path.sep}`))) {
       res.setHeader('Cache-Control', IMMUTABLE_CACHE_CONTROL)
       return
     }

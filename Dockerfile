@@ -53,11 +53,14 @@ RUN yarn workspace ui run build
 
 
 # The documentation site. Its build reads the server's OpenAPI definition (so the endpoint
-# reference cannot drift from the code) and the guide pages, and writes static files. Only
-# those files reach the runtime image; the site's dependencies stay in this stage.
+# reference cannot drift from the code) and the guide pages, and writes static files. It also
+# builds the interface's Storybook (packages/ui) and copies it to dist/storybook, so this stage
+# needs the interface source. Only the built files reach the runtime image; the dependencies of
+# the site and of Storybook stay in this stage.
 FROM build-deps AS docs
 COPY tsconfig.json ./
 COPY packages/server/src/server/openapi.ts packages/server/src/server/openapi.ts
+COPY packages/ui packages/ui
 COPY packages/docs packages/docs
 
 ARG DOCS_SITE_URL
