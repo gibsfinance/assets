@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-A collector reads one provider and writes lists, tokens and images. More than 30 collectors are registered in `packages/server/src/collect/collectables.ts`. **The order in that file is the image priority.** A lower index means a higher priority.
+A collector reads one provider and writes lists, tokens and images. The engine registers more than 30 collectors in `packages/server/src/collect/collectables.ts`. **The order in that file is the image priority.** A lower index means a higher priority.
 
 ```
 0: gibs           5: pulsechain       10: trustwallet

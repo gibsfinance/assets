@@ -2,7 +2,7 @@
 title: Etherscan collector
 description: How the Etherscan collector works, how to check your key, and its settings.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 The `etherscan` collector reads token names, decimals and logos from the Etherscan API V2 (`https://api.etherscan.io/v2/api`).
@@ -40,6 +40,6 @@ A limit that is not a whole number of at least one falls back to its default. A 
 
 Each usable chain publishes one list, `etherscan/top-tokens-<chainId>`. A list gets a new version only when its members change.
 
-The `image` field of an Etherscan answer is the logo. Gib.Show keeps only an absolute address, because a relative one has no known host.
+The `image` field of an Etherscan answer is the logo. Gib keeps only an absolute address, because a relative one has no known host.
 
 Limits and plans are on the Etherscan page: <https://docs.etherscan.io/resources/rate-limits>.

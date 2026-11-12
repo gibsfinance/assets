@@ -2,10 +2,10 @@
 title: Collection
 description: How the collector gathers token data and images, how providers are ranked, and which lists it builds.
 sidebar:
-  order: 4
+  order: 5
 ---
 
-The server collects token metadata and images from more than 30 providers.
+The engine ships with more than 30 collectors. A self-hosted instance chooses which providers it collects from.
 
 ```bash
 # Run collection (fetches from all providers)
@@ -16,7 +16,7 @@ cd packages/server
 npx tsx src/bin/collect --providers=gibs,piteas,trustwallet --logger=raw
 ```
 
-In production the collector runs on a schedule. A run discovers token lists, fetches images and syncs the priority order. Each run works in two phases:
+In a production deployment the collector runs on a schedule. A run discovers token lists, fetches images and syncs the priority order. Each run works in two phases:
 
 1. **Discover.** Create the provider, list and network rows. No images yet.
 2. **Collect.** Fetch tokens and images, clean the images, and store them.

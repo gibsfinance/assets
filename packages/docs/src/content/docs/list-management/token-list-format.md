@@ -1,11 +1,11 @@
 ---
 title: Token list format
-description: The JSON shape of a token list that Gib.Show reads and writes.
+description: The JSON shape of a token list that Gib reads and writes.
 sidebar:
   order: 3
 ---
 
-Gib.Show uses the [Uniswap token list](https://tokenlists.org/) standard:
+Gib uses the [Uniswap token list](https://tokenlists.org/) standard:
 
 ```json
 {
@@ -25,8 +25,8 @@ Gib.Show uses the [Uniswap token list](https://tokenlists.org/) standard:
 }
 ```
 
-Each token has a `chainId`, an `address`, a `name`, a `symbol`, `decimals` and a `logoURI`. A `logoURI` can point at any image. Pointing it at `https://gib.show/image/{chainId}/{address}` lets Gib.Show choose the image for you.
+Each token has a `chainId`, an `address`, a `name`, a `symbol`, `decimals` and a `logoURI`. A `logoURI` can point at any image. Pointing it at `https://gib.show/image/{chainId}/{address}` lets the instance choose the image for you. Use the address of your own instance if you run one.
 
 The version is a semantic version. When the members of a list change, publish a new version.
 
-To read lists from Gib.Show, see [Token lists](/api-reference/token-lists/).
+To read lists from a Gib instance, see [Token lists](/api-reference/token-lists/).

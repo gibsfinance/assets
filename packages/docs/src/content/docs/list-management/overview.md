@@ -1,11 +1,11 @@
 ---
 title: List management overview
-description: Create, edit and publish token lists with the Gib.Show studio.
+description: Create, edit and publish token lists with the Gib studio.
 sidebar:
   order: 1
 ---
 
-The studio at `https://gib.show/#/studio` is a visual editor for token lists. Lists are stored in your browser (in IndexedDB). You can publish them to your own GitHub repository.
+The studio is part of the Gib interface. Every instance serves it at `/#/studio`. On the public instance that is `https://gib.show/#/studio`. It is a visual editor for token lists. Lists are stored in your browser (in IndexedDB). You can publish them to your own GitHub repository.
 
 You do not need an account to use the studio. You need a GitHub sign-in only when you publish.
 
@@ -21,4 +21,4 @@ You do not need an account to use the studio. You need a GitHub sign-in only whe
 | [Token discovery](/list-management/token-discovery/) | Browse, deduplicate and search tokens in the studio |
 | [Local storage](/list-management/local-storage/) | Where your lists live and how to keep them safe |
 
-To send a list to Gib.Show for collection, use the [submission endpoint](/api-reference/submissions/).
+To send a list to an instance for collection, use the [submission endpoint](/api-reference/submissions/).
