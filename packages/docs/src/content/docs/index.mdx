@@ -1,0 +1,31 @@
+---
+title: Gib.Show documentation
+description: Token and network images and token lists for hundreds of blockchains, free to use with no sign-in.
+template: splash
+hero:
+  tagline: Free token logos, network logos and token lists for hundreds of blockchains. Put an address in a URL and get an image back.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: API reference
+      link: /reference/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Images by address" icon="seti:image">
+    Request `/image/1/0x...` and get the best logo for that token. Resize it and change its format with query parameters.
+  </Card>
+  <Card title="Token lists" icon="list-format">
+    Read lists in the Uniswap token list format, one chain at a time, from many providers. Search across every chain.
+  </Card>
+  <Card title="List studio" icon="pencil">
+    Build, fork, import and publish your own token lists in the browser.
+  </Card>
+  <Card title="Run your own" icon="rocket">
+    Host the service yourself, with your choice of image storage. Read the self-hosting guide.
+  </Card>
+</CardGrid>
