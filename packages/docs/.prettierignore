@@ -1,0 +1,5 @@
+dist
+generated
+.astro
+coverage
+src/content/docs

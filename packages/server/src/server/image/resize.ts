@@ -36,7 +36,7 @@ const VALID_FORMATS = new Set(['webp', 'png', 'jpg', 'jpeg', 'avif'])
 /**
  * A name that looks like an output format but cannot be produced by conversion.
  * svg is vector, sharp only rasterizes, so "convert to svg" has no honest
- * answer. The old published guide (docs/skills/api-reference.md) never told
+ * answer. The old published API guide never told
  * anyone to ask for it, so this is not a deprecated-alias case — it is a
  * request that must fail loudly instead of silently serving the original
  * bytes back under a 200.
@@ -106,7 +106,7 @@ export interface ResizeParamsInput {
  * `maybeResize` — Express 5 re-parses `req.query` on every access, so writing
  * a derived format back into it is silently discarded.
  *
- * `?format=` is a deprecated alias for `?as=` — docs/skills/api-reference.md
+ * `?format=` is a deprecated alias for `?as=` — the old published API guide
  * published `format` as the parameter name before the code ever implemented
  * it, so requests written against that guide are honoured rather than
  * silently ignored. `?as=` wins when both are present.

@@ -9,6 +9,8 @@ import { errorMiddleware, notFoundMiddleware, JSON_BODY_LIMIT } from './middlewa
 import { ATTRIBUTION_HEADER_NAMES } from './image/attribution'
 import { RESOLVED_CHAIN_HEADER } from './image/headers'
 import { staticCacheHeaders } from './static-headers'
+import { createDocsSiteHandler, DOCS_SITE_PATH } from './docs-site'
+import config from '../../config'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -51,6 +53,11 @@ app.get('/health', (_req, res) => {
   }
   res.json({ status: 'ok' })
 })
+
+// The documentation site answers first on its own host names (`DOCS_HOSTNAMES`) and answers
+// every request there, so neither the interface nor the API is reachable on those hosts. On any
+// other host this passes the request on, so the site is not reachable on the main host either.
+app.use(createDocsSiteHandler({ hostnames: config.docsHostnames, root: DOCS_SITE_PATH }))
 
 // The interface is served before the router and, critically, before the catch-all below.
 // This registration used to live in index.ts, which appends to the stack after this module

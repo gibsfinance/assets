@@ -2,18 +2,16 @@
  * @module docs
  * Serves the repository's hand-written documentation over http.
  *
- * docs/terms.md and docs/skills/*.md used to be repo-only files nothing pointed
- * at: the interface's own docs page lived behind a hash route (`/#/docs`),
- * which a server never receives, so an external caller had no way to reach
- * them short of reading source in the repository. This module is what lets
- * `/terms` and `/skills/{filename}` answer directly, and what `/llms.txt`
- * links to.
+ * `/terms` answers from docs/terms.md. `/skills/{filename}` answers from the guides the
+ * documentation build generates from the Starlight pages (packages/docs/dist/skills), which
+ * is what `/llms.txt` links to. A guide that has not been built answers the ordinary 404.
  */
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type { NextFunction, RequestHandler, Response } from 'express'
 import config from '../../config'
+import { DOCS_SITE_PATH } from './docs-site'
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -28,8 +26,6 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
  */
 export const DOCS_PATH = path.join(currentDirectory, '..', '..', '..', '..', 'docs')
 
-export const SKILLS_DOCS_PATH = path.join(DOCS_PATH, 'skills')
-
 /**
  * A guide filename: a bare name ending in .md, no path separators and no
  * traversal segments. Matching this before touching the filesystem is what
@@ -38,9 +34,16 @@ export const SKILLS_DOCS_PATH = path.join(DOCS_PATH, 'skills')
 const SKILL_DOC_FILENAME = /^[\w-]+\.md$/
 
 /**
- * Read a markdown file and send it as text/markdown, or hand off to `next()`
- * so the request falls through to the app's ordinary JSON 404 — the same
- * response shape every other unmatched path already answers with.
+ * The directory the documentation build writes the generated guides into
+ * (`packages/docs/dist/skills`, see packages/docs/scripts/guides.ts). The site's pages are the only
+ * copy of the guides' text; the build joins them into these files.
+ */
+export const GENERATED_SKILLS_PATH = path.join(DOCS_SITE_PATH, 'skills')
+
+/**
+ * Read a markdown file and send it as text/markdown, or hand off to `next()` so the request falls
+ * through to the app's ordinary JSON 404 — the same response shape every other unmatched path
+ * already answers with.
  */
 const sendMarkdownFile = async (res: Response, next: NextFunction, filePath: string): Promise<void> => {
   const content = await fs.promises.readFile(filePath, 'utf8').catch(() => null)
@@ -52,15 +55,25 @@ const sendMarkdownFile = async (res: Response, next: NextFunction, filePath: str
   res.type('text/markdown').send(content)
 }
 
-/** GET /skills/:filename — one of the guides under docs/skills/. */
-export const getSkillDoc: RequestHandler = async (req, res, next) => {
-  const filename = req.params.filename
-  if (!SKILL_DOC_FILENAME.test(filename)) {
-    next()
-    return
+/**
+ * Build the handler for GET /skills/:filename. Only the generated guides are served; a guide the
+ * documentation build has not produced falls through to the ordinary 404.
+ *
+ * @param options.generatedDirectory Where the documentation build writes the joined guides.
+ */
+export const createSkillDocHandler =
+  (options: { generatedDirectory: string }): RequestHandler =>
+  async (req, res, next) => {
+    const filename = req.params.filename
+    if (!SKILL_DOC_FILENAME.test(filename)) {
+      next()
+      return
+    }
+    await sendMarkdownFile(res, next, path.join(options.generatedDirectory, filename))
   }
-  await sendMarkdownFile(res, next, path.join(SKILLS_DOCS_PATH, filename))
-}
+
+/** GET /skills/:filename — one of the guides, from the documentation build. */
+export const getSkillDoc: RequestHandler = createSkillDocHandler({ generatedDirectory: GENERATED_SKILLS_PATH })
 
 /** GET /terms — the licence/attribution terms page every image response links to. */
 export const getTerms: RequestHandler = async (_req, res, next) => {
