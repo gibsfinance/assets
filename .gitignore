@@ -38,3 +38,7 @@ coverage/
 
 # Storybook static build
 packages/ui/storybook-static/
+
+# Pages saved by the removed Etherscan page scraper. They hold an API key in
+# their URLs, and this repository is public.
+packages/server/src/harvested/etherscan/
