@@ -29,7 +29,7 @@ Where the code falls short of its own rules, this page says so. Those gaps are m
 **Name a colour by its role, never by its value.** A name that carries a value turns false when a theme changes the value. `--color-cyan-500` is wrong: under another theme it may not be cyan. `--color-accent-secondary` is right: it stays true whatever colour fills the role.
 
 - A token name never holds a hue (`cyan`, `green`, `gray`, `red`), a mode word (`light`, `dark`) or a number from a colour scale (`500`).
-- A number at the end of a name only tells two near duplicates apart (`content-muted-2`). It is not a value.
+- A name never ends in a number. A number tells near duplicates apart, and a near duplicate belongs in the role that does its job. A test fails on a role name that ends in a number.
 - A token holds one value per theme. It is not two tokens, one for each theme.
 
 Two checks hold the rule. The `design/no-raw-palette-classes` lint rule in `packages/ui/eslint.config.js` fails the build on a raw palette class such as `text-gray-400` or `bg-red-50`. A test in `packages/ui/src/design-tokens.test.ts` fails on a token in `app.css` whose name holds a hue, a mode word or a scale number. `white`, `black` and `transparent` are not hues and stay allowed where a fill does not change with the theme, for example `text-white` on a dark tooltip.
@@ -44,7 +44,7 @@ Values refer to Tailwind's palette (`var(--color-gray-900)`). The tables below r
 
 ### Roles in use
 
-The tables are read from `app.css` when this site is built, so they always match the interface. Roles that end in a number are near duplicates: the interface used slightly different values in different places, and each is kept so that no colour changed. Folding them into fewer roles is a design decision for a later change, and it will change pixels.
+The tables are read from `app.css` when this site is built, so they always match the interface. The set is small on purpose. Each role is one job. When two places need almost the same colour, they use the same role.
 
 import ColourRoles from '../../../components/ColourRoles.astro';
 
@@ -86,12 +86,12 @@ Three families, all with the SIL Open Font License 1.1. They are self-hosted as 
 | Role | Token | Stack | Files loaded |
 |---|---|---|---|
 | Headings | `--font-heading` | `'Space Grotesk', system-ui, sans-serif` | weights 600 and 700 |
-| Body | `--font-body` | `'Inter', system-ui, sans-serif` | weights 400, 500 and 600 |
+| Body | `--font-body` | `'Inter', system-ui, sans-serif` | weights 400, 500, 600 and 700 |
 | Code and addresses | `--font-mono` | `'JetBrains Mono', monospace` | weight 400 |
 
 The `body` element uses `font-body`. Headings and large numbers add `font-heading`. Token addresses, code and numbers in tables use `font-mono`. Every face sets `font-display: swap`, so text shows at once in the fallback font.
 
-**Known gap.** Components use `font-bold` (700) on Inter text, but `fonts.css` loads Inter only up to 600. The browser then uses the 600 file or draws a heavier copy of it. Either load Inter 700 or use `font-semibold` for Inter.
+Components use `font-bold` (700) on Inter text, so `fonts.css` loads Inter 700. Load a weight in `fonts.css` before you use it: a browser that lacks the file draws a false bold.
 
 ### Scale
 
@@ -156,12 +156,12 @@ Three card classes are defined in `packages/ui/src/app.css`. All use `rounded-lg
 - **Shadows** on light surfaces are Tailwind's `shadow-sm` and `shadow-lg`. On dark surfaces depth comes from the surface step and from glow, not from black shadows.
 - `--shadow-elevated` is `0 4px 24px rgba(0, 0, 0, 0.4)`.
 - `--shadow-glow-accent` and `--shadow-glow-accent-secondary` are `0 0 20px` at 30 percent. `--shadow-glow-accent-subtle` is `0 0 24px` at 8 percent.
-- Menus and popovers use `shadow-lg`, a `border-border` border, and `bg-surface` or `bg-surface-inset-3` (`ListEditor.tsx`).
+- Menus and popovers use `shadow-lg`, a `border-border` border, and `bg-surface` or `bg-surface-overlay` (`ListEditor.tsx`).
 - The sticky header is `bg-surface/80` with `backdrop-blur-lg` (16px) and a bottom border (`Layout.tsx`).
 
 ### Gradient text
 
-`.text-gradient-brand` runs from `accent` to `accent-secondary`. `.text-gradient-accent` runs from `accent` to `accent-strong`. Use them for one short phrase in a heading, never for body text.
+`.text-gradient-brand` runs from `accent` to `accent-secondary`: the bright brand fills, kept on purpose. It appears only on large bold display text (the logo, the home and docs headings, the 404), where WCAG asks for 3:1 rather than 4.5:1. `.text-gradient-accent` runs from `accent-content` to `accent-content-hover`, the text roles, so it stays readable at any size on the light theme. Use either for one short phrase, never for body text, and never use the brand gradient on small text.
 
 ### Layers
 
@@ -179,7 +179,7 @@ Motion is short, and it eases out of the way.
 | Button hover | `scale(1.02)` in 150 milliseconds | `.btn-primary` in `app.css` |
 | Icon strip | `scroll-left`, linear, repeats | `.animate-scroll` in `app.css` |
 | Spinner | one turn every 2 seconds, linear | `.icon-spin` in `app.css` |
-| Loading placeholder | `animate-pulse` | Tailwind |
+| Loading placeholder | `animate-pulse`, still under reduced motion | Tailwind |
 
 Use `transition-colors` for colour changes (51 uses) and `transition-all` only when size or shadow changes too.
 
@@ -187,7 +187,7 @@ Use `transition-colors` for colour changes (51 uses) and `transition-all` only w
 
 `app.css` has a `prefers-reduced-motion: reduce` rule for `.animate-scroll` and for `.icon-spin`. Both stop. `PhysicsCanvas.tsx` draws one still frame when the reader asks for less motion. The loading screen in `packages/ui/src/prerender/route-loader.ts` stops its animation too.
 
-**Known gap.** `animate-pulse` and the hover `transition` classes have no reduced-motion rule. They are small, but a new animation must always come with its own rule.
+A global rule at the end of `app.css` stops `animate-pulse` and makes every transition instant. A hover that grows an element (`hover:scale-*`) also carries `motion-reduce:hover:scale-100`, because a transform that only stops animating would still jump. A new animation must come with its own rule.
 
 ## Iconography
 
@@ -198,7 +198,7 @@ Icons are Font Awesome Free glyphs (the solid and brand sets, version 7), drawn 
 - `spin` turns the glyph with `.icon-spin`.
 - Token and network logos are not icons. They are images from the service, for example `/image/1/<address>` and `/image/<chain id>`, drawn on round chips.
 
-**Note.** `packages/ui/package.json` also lists `@iconify/react`, but no source file imports it. Do not add Iconify icons: use Font Awesome glyphs through `Icon`.
+Do not add another icon library: use Font Awesome glyphs through `Icon`.
 
 ## Components and patterns
 
@@ -248,7 +248,7 @@ There are two patterns.
 - **A field.** `NetworkSelect.tsx` and `pages/Docs.tsx` use `w-full rounded-lg border border-border bg-surface-inset py-2 text-sm` with a `text-content-strong` text role and a `placeholder:text-content-faint` placeholder. The roles switch with the theme, so a field has one set of classes. A leading search icon sits inside the field, so the field has extra left padding.
 - **A search row.** `TokenSearch.tsx` draws the border on the row (`border-b border-border-strong bg-surface-inset px-4 py-2`) and puts a bare `input` in it with `bg-transparent text-sm` and a `placeholder:text-content-faint` placeholder.
 
-**Known gap.** The bare input in `TokenSearch.tsx` removes its outline and the row draws no ring in its place, and so does the stepper input in `NumberStepper.tsx`. Add `focus-within:` styles to the row, as the other fields do with `focus:border-accent-500/60`.
+A bare input that removes its own outline must give the row around it a ring: `TokenSearch.tsx`, `NumberStepper.tsx` and the list filter in `TokenListFilter.tsx` use `focus-within:ring-2 focus-within:ring-accent/50` on the row. The list name field in `ListEditor.tsx` has no row, so it uses `focus-visible:ring-2 focus-visible:ring-accent/50` on the input.
 
 ### Dialogs, panels and lists
 
@@ -262,12 +262,12 @@ Every control that takes input must show where focus is.
 
 - On the interface, focus uses the accent: `focus:ring-2 focus:ring-accent/50`, or `focus:border-accent/40` to `/60` on fields. `focus-visible:` is used where a mouse click must not show a ring.
 - On this site, controls use `outline: 2px solid var(--sl-color-accent)` with a 2 pixel offset, on `:focus-visible` (see `LinkedCard.astro` and `ThemeMenu.astro`).
-- Never remove an outline without giving something else in its place. See the known gap under Inputs for the places that break this rule.
+- Never remove an outline without giving something else in its place. Bare inputs put the ring on the row around them (see Inputs).
 
 ## Accessibility
 
-- **Contrast.** Body text (`content-strong-2`) is a near-black on white and a near-white on `#09090b`. These ratios use the standard relative luminance formula: accent `#00dc82` on `#09090b` is 10.95 to 1, and black on `#00dc82` is 11.56 to 1, so the primary button passes. Accent `#00b368` on `#09090b` is 7.25 to 1.
-- **Known gap.** Accent text on white does not reach 4.5 to 1: `#00dc82` is 1.82 to 1 and `#00b368` is 2.75 to 1. On the light theme, use accent colour for fills, borders and large shapes, not for small text. Where text must be green on light, use a darker green: this site uses `#00623a` for it. A visible hover or focus colour is only a hint: the link must also be readable, by position, an underline or an icon.
+- **Contrast.** Body text (`content-strong`) is a near-black on white and a near-white on `#09090b`. These ratios use the standard relative luminance formula: accent `#00dc82` on `#09090b` is 10.95 to 1, and black on `#00dc82` is 11.56 to 1, so the primary button passes. Accent `#00b368` on `#09090b` is 7.25 to 1.
+- **Accent text has its own roles.** The raw accent does not reach 4.5 to 1 on white (`#00dc82` is 1.82 to 1 and `#00b368` is 2.75 to 1), so it is for fills, borders and glows. Text and icons use `accent-content` (`#00703f` on light, 6.20 to 1 on white and 5.56 to 1 on the accent tint behind it; the accent itself on dark, 9.55 to 1 or better), `accent-content-hover` for the hover colour and `accent-secondary-content` for the blue accent (`#0369a1` on light, 5.93 to 1). A test in `design-tokens.test.ts` holds all three at 4.5 to 1 or better on every background they sit on. Never put white text on an accent fill: it is 1.82 to 1. Use black, as `btn-primary` does. A visible hover or focus colour is only a hint: the link must also be readable, by position, an underline or an icon.
 - **Keyboard.** Everything that works with a mouse works with a keyboard. Use native `button` and `a` elements. Do not put a click handler on a `div`.
 - **Names.** An icon-only control needs `aria-label` or `title`. Decoration, including icons and logos beside a name, is `aria-hidden="true"` with an empty `alt`.
 - **Motion.** Follow the reduced-motion rules above.

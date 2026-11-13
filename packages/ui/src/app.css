@@ -15,82 +15,53 @@
  * A role that has the same value in both themes has no entry under `.dark`.
  */
 :root {
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  /* Text, from strongest to faintest */
   --ui-content-strong: var(--color-gray-900);
-  --ui-content-strong-2: var(--color-gray-900);
-  --ui-content-strong-3: var(--color-gray-900);
-  --ui-content-strong-4: var(--color-gray-900);
-  --ui-content-strong-5: var(--color-gray-900);
   --ui-content-body: var(--color-gray-800);
-  --ui-content-body-2: var(--color-gray-800);
-  --ui-content-body-3: var(--color-gray-800);
   --ui-content-secondary: var(--color-gray-700);
-  --ui-content-secondary-2: var(--color-gray-700);
-  --ui-content-secondary-3: var(--color-gray-700);
+  --ui-content-control: var(--color-gray-700);
   --ui-content-muted: var(--color-gray-600);
-  --ui-content-muted-2: var(--color-gray-600);
-  --ui-content-muted-3: var(--color-gray-600);
-  --ui-content-muted-4: var(--color-gray-600);
-  --ui-content-muted-5: var(--color-gray-600);
-  --ui-content-muted-6: var(--color-gray-600);
   --ui-content-subtle: var(--color-gray-500);
-  --ui-content-subtle-2: var(--color-gray-500);
-  --ui-content-subtle-3: var(--color-gray-500);
-  --ui-content-subtle-4: var(--color-gray-500);
   --ui-content-faint: var(--color-gray-400);
-  --ui-content-faint-2: var(--color-gray-400);
-  --ui-content-faint-3: var(--color-gray-400);
-  --ui-content-faint-4: var(--color-gray-400);
   --ui-content-ghost: var(--color-gray-300);
-  --ui-content-ghost-2: var(--color-gray-300);
-  --ui-content-ghost-3: var(--color-gray-300);
   --ui-content-inverse: var(--color-white);
-  /* Surfaces, from the page up to hovered and active fills */
+  /* Surfaces: the page, cards, wells, menus, control fills and hovered or active fills */
   --ui-surface: var(--color-white);
   --ui-surface-raised: var(--color-white);
-  --ui-surface-raised-2: #fafafa;
-  --ui-surface-raised-3: #f4f4f5;
   --ui-surface-inset: var(--color-gray-50);
-  --ui-surface-inset-2: var(--color-gray-100);
-  --ui-surface-inset-3: var(--color-white);
-  --ui-surface-inset-4: #f4f4f5;
-  --ui-surface-inset-5: var(--color-gray-200);
-  --ui-surface-inset-6: var(--color-gray-100);
+  --ui-surface-overlay: var(--color-white);
+  --ui-surface-glass: var(--color-white);
+  --ui-surface-control: var(--color-gray-100);
+  --ui-surface-selected: var(--color-white);
   --ui-surface-active: var(--color-gray-200);
-  --ui-surface-active-2: var(--color-gray-100);
-  --ui-surface-active-3: var(--color-gray-50);
-  --ui-surface-active-4: var(--color-white);
-  --ui-surface-active-5: #e4e4e7;
-  --ui-surface-active-6: var(--color-gray-300);
   --ui-surface-wash: var(--color-gray-100);
-  --ui-surface-wash-2: var(--color-gray-50);
-  --ui-surface-wash-3: var(--color-gray-300);
+  --ui-surface-wash-active: var(--color-gray-200);
   --ui-surface-handle: var(--color-gray-400);
-  --ui-surface-handle-2: var(--color-gray-300);
   --ui-surface-sheen: color-mix(in oklab, var(--color-white) 5%, transparent);
   --ui-surface-sheen-faint: color-mix(in oklab, var(--color-white) 2%, transparent);
   --ui-surface-inverse: var(--color-gray-900);
-  --ui-surface-inverse-2: var(--color-gray-900);
   --ui-surface-inverse-hover: var(--color-gray-700);
-  --ui-surface-inverse-3: var(--color-white);
+  --ui-surface-tooltip: var(--color-gray-900);
+  --ui-surface-thumb: var(--color-white);
   --ui-surface-bright: var(--color-gray-200);
   /* Scrims */
   --ui-scrim-soft: color-mix(in oklab, var(--color-black) 20%, transparent);
   /* Borders */
   --ui-border: #e4e4e7;
   --ui-border-strong: var(--color-gray-200);
-  --ui-border-strong-2: var(--color-gray-100);
-  --ui-border-strong-3: var(--color-gray-300);
   --ui-border-subtle: var(--color-gray-200);
   --ui-border-soft: var(--color-gray-300);
   --ui-border-input: var(--color-gray-300);
   --ui-border-input-hover: var(--color-gray-400);
   --ui-border-overlap: #1a1a1e;
-  /* Accent (the same in both themes) */
+  /* Accent: fills and borders are the same in both themes; the content roles are for accent-coloured text and icons */
   --ui-accent: #00dc82;
   --ui-accent-strong: #00b368;
   --ui-accent-soft: #33e69b;
   --ui-accent-secondary: #0ea5e9;
+  --ui-accent-content: #00703f;
+  --ui-accent-content-hover: #00623a;
+  --ui-accent-secondary-content: #0369a1;
   /* Status: danger */
   --ui-danger: var(--color-red-600);
   --ui-danger-hover: var(--color-red-500);
@@ -109,80 +80,48 @@
   /* Status: caution */
   --ui-caution: var(--color-amber-700);
   --ui-caution-soft: var(--color-amber-50);
-  /* Surfaces, from the page up to hovered and active fills */
-  --ui-surface-glass: var(--color-white);
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
-  --ui-content-control: var(--color-gray-700);
-  /* Surfaces, from the page up to hovered and active fills */
-  --ui-surface-wash-active: var(--color-gray-200);
 }
 
 .dark {
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  /* Text, from strongest to faintest */
   --ui-content-strong: var(--color-white);
-  --ui-content-strong-2: var(--color-gray-100);
-  --ui-content-strong-3: color-mix(in oklab, var(--color-white) 80%, transparent);
-  --ui-content-strong-4: color-mix(in oklab, var(--color-white) 90%, transparent);
-  --ui-content-strong-5: color-mix(in oklab, var(--color-white) 95%, transparent);
   --ui-content-body: color-mix(in oklab, var(--color-white) 90%, transparent);
-  --ui-content-body-2: color-mix(in oklab, var(--color-white) 80%, transparent);
-  --ui-content-body-3: var(--color-white);
   --ui-content-secondary: color-mix(in oklab, var(--color-white) 80%, transparent);
-  --ui-content-secondary-2: color-mix(in oklab, var(--color-white) 70%, transparent);
-  --ui-content-secondary-3: var(--color-gray-300);
+  --ui-content-control: var(--color-white);
   --ui-content-muted: var(--color-gray-400);
-  --ui-content-muted-2: var(--color-gray-300);
-  --ui-content-muted-3: color-mix(in oklab, var(--color-white) 70%, transparent);
-  --ui-content-muted-4: color-mix(in oklab, var(--color-white) 60%, transparent);
-  --ui-content-muted-5: color-mix(in oklab, var(--color-white) 80%, transparent);
-  --ui-content-muted-6: color-mix(in oklab, var(--color-white) 50%, transparent);
   --ui-content-subtle: color-mix(in oklab, var(--color-white) 50%, transparent);
-  --ui-content-subtle-2: color-mix(in oklab, var(--color-white) 40%, transparent);
-  --ui-content-subtle-3: var(--color-gray-400);
-  --ui-content-faint: color-mix(in oklab, var(--color-white) 30%, transparent);
-  --ui-content-faint-2: color-mix(in oklab, var(--color-white) 40%, transparent);
-  --ui-content-faint-3: var(--color-gray-500);
+  --ui-content-faint: color-mix(in oklab, var(--color-white) 40%, transparent);
   --ui-content-ghost: color-mix(in oklab, var(--color-white) 20%, transparent);
-  --ui-content-ghost-2: color-mix(in oklab, var(--color-white) 30%, transparent);
-  --ui-content-ghost-3: color-mix(in oklab, var(--color-white) 10%, transparent);
   --ui-content-inverse: var(--color-gray-900);
-  /* Surfaces, from the page up to hovered and active fills */
+  /* Surfaces: the page, cards, wells, menus, control fills and hovered or active fills */
   --ui-surface: #09090b;
   --ui-surface-raised: #111113;
-  --ui-surface-raised-2: #111113;
-  --ui-surface-raised-3: #111113;
   --ui-surface-inset: #1a1a1e;
-  --ui-surface-inset-2: #1a1a1e;
-  --ui-surface-inset-3: #1a1a1e;
-  --ui-surface-inset-4: #1a1a1e;
-  --ui-surface-inset-5: #1a1a1e;
-  --ui-surface-inset-6: var(--color-gray-800);
+  --ui-surface-overlay: #1a1a1e;
+  --ui-surface-glass: color-mix(in oklab, var(--color-white) 3%, transparent);
+  --ui-surface-control: #27272a;
+  --ui-surface-selected: #27272a;
   --ui-surface-active: #27272a;
-  --ui-surface-active-2: #27272a;
-  --ui-surface-active-3: #27272a;
-  --ui-surface-active-4: #27272a;
-  --ui-surface-active-5: #27272a;
-  --ui-surface-active-6: #27272a;
   --ui-surface-wash: color-mix(in oklab, var(--color-white) 5%, transparent);
-  --ui-surface-wash-2: color-mix(in oklab, var(--color-white) 2%, transparent);
-  --ui-surface-wash-3: color-mix(in oklab, var(--color-white) 10%, transparent);
+  --ui-surface-wash-active: color-mix(in oklab, var(--color-white) 10%, transparent);
   --ui-surface-handle: color-mix(in oklab, var(--color-white) 40%, transparent);
-  --ui-surface-handle-2: var(--color-gray-600);
   --ui-surface-inverse: var(--color-white);
-  --ui-surface-inverse-2: var(--color-gray-700);
   --ui-surface-inverse-hover: var(--color-gray-200);
-  --ui-surface-inverse-3: var(--color-gray-200);
+  --ui-surface-tooltip: var(--color-gray-700);
+  --ui-surface-thumb: var(--color-gray-200);
   /* Scrims */
   --ui-scrim-soft: color-mix(in oklab, var(--color-black) 40%, transparent);
   /* Borders */
   --ui-border: rgba(255, 255, 255, 0.08);
   --ui-border-strong: #27272a;
-  --ui-border-strong-2: #27272a;
-  --ui-border-strong-3: #27272a;
   --ui-border-subtle: color-mix(in oklab, var(--color-white) 10%, transparent);
   --ui-border-soft: color-mix(in oklab, var(--color-white) 10%, transparent);
   --ui-border-input: color-mix(in oklab, var(--color-white) 20%, transparent);
   --ui-border-input-hover: color-mix(in oklab, var(--color-white) 30%, transparent);
+  /* Accent: fills and borders are the same in both themes; the content roles are for accent-coloured text and icons */
+  --ui-accent-content: #00dc82;
+  --ui-accent-content-hover: #33e69b;
+  --ui-accent-secondary-content: #0ea5e9;
   /* Status: danger */
   --ui-danger: var(--color-red-400);
   --ui-danger-hover: var(--color-red-400);
@@ -197,91 +136,56 @@
   /* Status: caution */
   --ui-caution: var(--color-amber-400);
   --ui-caution-soft: color-mix(in oklab, var(--color-amber-900) 20%, transparent);
-  /* Surfaces, from the page up to hovered and active fills */
-  --ui-surface-glass: color-mix(in oklab, var(--color-white) 3%, transparent);
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
-  --ui-content-control: var(--color-white);
-  /* Surfaces, from the page up to hovered and active fills */
-  --ui-surface-wash-active: color-mix(in oklab, var(--color-white) 10%, transparent);
 }
 
 @theme inline {
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
+  /* Text, from strongest to faintest */
   --color-content-strong: var(--ui-content-strong);
-  --color-content-strong-2: var(--ui-content-strong-2);
-  --color-content-strong-3: var(--ui-content-strong-3);
-  --color-content-strong-4: var(--ui-content-strong-4);
-  --color-content-strong-5: var(--ui-content-strong-5);
   --color-content-body: var(--ui-content-body);
-  --color-content-body-2: var(--ui-content-body-2);
-  --color-content-body-3: var(--ui-content-body-3);
   --color-content-secondary: var(--ui-content-secondary);
-  --color-content-secondary-2: var(--ui-content-secondary-2);
-  --color-content-secondary-3: var(--ui-content-secondary-3);
+  --color-content-control: var(--ui-content-control);
   --color-content-muted: var(--ui-content-muted);
-  --color-content-muted-2: var(--ui-content-muted-2);
-  --color-content-muted-3: var(--ui-content-muted-3);
-  --color-content-muted-4: var(--ui-content-muted-4);
-  --color-content-muted-5: var(--ui-content-muted-5);
-  --color-content-muted-6: var(--ui-content-muted-6);
   --color-content-subtle: var(--ui-content-subtle);
-  --color-content-subtle-2: var(--ui-content-subtle-2);
-  --color-content-subtle-3: var(--ui-content-subtle-3);
-  --color-content-subtle-4: var(--ui-content-subtle-4);
   --color-content-faint: var(--ui-content-faint);
-  --color-content-faint-2: var(--ui-content-faint-2);
-  --color-content-faint-3: var(--ui-content-faint-3);
-  --color-content-faint-4: var(--ui-content-faint-4);
   --color-content-ghost: var(--ui-content-ghost);
-  --color-content-ghost-2: var(--ui-content-ghost-2);
-  --color-content-ghost-3: var(--ui-content-ghost-3);
   --color-content-inverse: var(--ui-content-inverse);
-  /* Surfaces, from the page up to hovered and active fills */
+  /* Surfaces: the page, cards, wells, menus, control fills and hovered or active fills */
   --color-surface: var(--ui-surface);
   --color-surface-raised: var(--ui-surface-raised);
-  --color-surface-raised-2: var(--ui-surface-raised-2);
-  --color-surface-raised-3: var(--ui-surface-raised-3);
   --color-surface-inset: var(--ui-surface-inset);
-  --color-surface-inset-2: var(--ui-surface-inset-2);
-  --color-surface-inset-3: var(--ui-surface-inset-3);
-  --color-surface-inset-4: var(--ui-surface-inset-4);
-  --color-surface-inset-5: var(--ui-surface-inset-5);
-  --color-surface-inset-6: var(--ui-surface-inset-6);
+  --color-surface-overlay: var(--ui-surface-overlay);
+  --color-surface-glass: var(--ui-surface-glass);
+  --color-surface-control: var(--ui-surface-control);
+  --color-surface-selected: var(--ui-surface-selected);
   --color-surface-active: var(--ui-surface-active);
-  --color-surface-active-2: var(--ui-surface-active-2);
-  --color-surface-active-3: var(--ui-surface-active-3);
-  --color-surface-active-4: var(--ui-surface-active-4);
-  --color-surface-active-5: var(--ui-surface-active-5);
-  --color-surface-active-6: var(--ui-surface-active-6);
   --color-surface-wash: var(--ui-surface-wash);
-  --color-surface-wash-2: var(--ui-surface-wash-2);
-  --color-surface-wash-3: var(--ui-surface-wash-3);
+  --color-surface-wash-active: var(--ui-surface-wash-active);
   --color-surface-handle: var(--ui-surface-handle);
-  --color-surface-handle-2: var(--ui-surface-handle-2);
   --color-surface-sheen: var(--ui-surface-sheen);
   --color-surface-sheen-faint: var(--ui-surface-sheen-faint);
   --color-surface-inverse: var(--ui-surface-inverse);
-  --color-surface-inverse-2: var(--ui-surface-inverse-2);
   --color-surface-inverse-hover: var(--ui-surface-inverse-hover);
-  --color-surface-inverse-3: var(--ui-surface-inverse-3);
+  --color-surface-tooltip: var(--ui-surface-tooltip);
+  --color-surface-thumb: var(--ui-surface-thumb);
   --color-surface-bright: var(--ui-surface-bright);
   /* Scrims */
   --color-scrim-soft: var(--ui-scrim-soft);
   /* Borders */
   --color-border: var(--ui-border);
   --color-border-strong: var(--ui-border-strong);
-  --color-border-strong-2: var(--ui-border-strong-2);
-  --color-border-strong-3: var(--ui-border-strong-3);
   --color-border-subtle: var(--ui-border-subtle);
   --color-border-soft: var(--ui-border-soft);
   --color-border-input: var(--ui-border-input);
   --color-border-input-hover: var(--ui-border-input-hover);
   --color-border-overlap: var(--ui-border-overlap);
-  /* Accent (the same in both themes) */
+  /* Accent: fills and borders are the same in both themes; the content roles are for accent-coloured text and icons */
   --color-accent: var(--ui-accent);
   --color-accent-strong: var(--ui-accent-strong);
   --color-accent-soft: var(--ui-accent-soft);
   --color-accent-secondary: var(--ui-accent-secondary);
+  --color-accent-content: var(--ui-accent-content);
+  --color-accent-content-hover: var(--ui-accent-content-hover);
+  --color-accent-secondary-content: var(--ui-accent-secondary-content);
   /* Status: danger */
   --color-danger: var(--ui-danger);
   --color-danger-hover: var(--ui-danger-hover);
@@ -300,12 +204,6 @@
   /* Status: caution */
   --color-caution: var(--ui-caution);
   --color-caution-soft: var(--ui-caution-soft);
-  /* Surfaces, from the page up to hovered and active fills */
-  --color-surface-glass: var(--ui-surface-glass);
-  /* Text, from strongest to faintest. A numbered variant is a near duplicate kept so no colour changed. */
-  --color-content-control: var(--ui-content-control);
-  /* Surfaces, from the page up to hovered and active fills */
-  --color-surface-wash-active: var(--ui-surface-wash-active);
 }
 
 @theme {
@@ -330,13 +228,19 @@ body {
   @apply font-body;
 }
 
-/* Gradient text utility */
+/*
+ * Gradient text utilities.
+ * The brand gradient keeps the bright brand fills on purpose (owner's choice). It is only used
+ * on large bold display text (the logo, the home and docs headings, the 404), where WCAG asks
+ * for 3:1, not the 4.5:1 that body text needs. Do not use it on small text; use the
+ * accent-content roles there.
+ */
 .text-gradient-brand {
   @apply bg-gradient-to-r from-accent to-accent-secondary bg-clip-text text-transparent;
 }
 
 .text-gradient-accent {
-  @apply bg-gradient-to-r from-accent to-accent-strong bg-clip-text text-transparent;
+  @apply bg-gradient-to-r from-accent-content to-accent-content-hover bg-clip-text text-transparent;
 }
 
 /* Glass card */
@@ -364,7 +268,7 @@ body {
 .btn-primary {
   @apply bg-gradient-to-r from-accent to-accent-strong text-black font-semibold
          px-5 py-2.5 rounded-lg shadow-glow-accent transition-all duration-150
-         hover:scale-[1.02] hover:shadow-glow-accent;
+         hover:scale-[1.02] hover:shadow-glow-accent motion-reduce:hover:scale-100;
 }
 
 .btn-secondary {
@@ -373,7 +277,7 @@ body {
 }
 
 .btn-ghost {
-  @apply bg-transparent text-accent font-medium px-5 py-2.5 rounded-lg
+  @apply bg-transparent text-accent-content font-medium px-5 py-2.5 rounded-lg
          border border-accent/30 transition-all duration-150 hover:bg-accent/5;
 }
 
@@ -424,5 +328,24 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .icon-spin {
     animation: none;
+  }
+}
+
+/*
+ * People who ask for less motion get none that carries no meaning. Loading placeholders hold
+ * still, and every colour or size change is instant. Hover grows (`hover:scale-*`) are
+ * switched off where they are written, with `motion-reduce:hover:scale-100`, because a
+ * transform that only stops animating would still jump.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }

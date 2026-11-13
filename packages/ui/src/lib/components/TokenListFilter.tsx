@@ -46,7 +46,7 @@ export default function TokenListFilter({
 
   return (
     <Popover className="relative flex border-l border-border-strong pl-2">
-      <PopoverButton className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-content-faint-2 transition-colors hover:bg-surface-active-2 hover:text-content-muted-3">
+      <PopoverButton className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-content-faint transition-colors hover:bg-surface-control hover:text-content-muted">
         <Icon icon={faFilter} className="text-[10px]" />
         <span>{count}</span>
       </PopoverButton>
@@ -59,7 +59,7 @@ export default function TokenListFilter({
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold text-content-strong">Token Lists</h3>
             <button
-              className="rounded px-2 py-0.5 text-[10px] text-content-faint-2 transition-colors hover:bg-surface-inset-2 hover:text-content-muted-3"
+              className="rounded px-2 py-0.5 text-[10px] text-content-faint transition-colors hover:bg-surface-inset hover:text-content-muted"
               type="button"
               onClick={handleToggleAll}>
               Toggle All
@@ -67,12 +67,12 @@ export default function TokenListFilter({
           </div>
 
           {/* Search */}
-          <div className="flex items-center gap-2 rounded-md border border-border-strong bg-surface-inset px-2.5 py-1.5">
+          <div className="flex items-center gap-2 rounded-md border border-border-strong bg-surface-inset px-2.5 py-1.5 focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/50">
             <Icon icon={faMagnifyingGlass} className="text-[10px] text-content-faint" />
             <input
               type="search"
               placeholder="Search lists..."
-              className="w-full bg-transparent text-xs text-content-strong-3 outline-none placeholder:text-content-faint"
+              className="w-full bg-transparent text-xs text-content-strong outline-none placeholder:text-content-faint"
               value={listSearchQuery}
               onChange={(e) => setListSearchQuery(e.target.value)}
             />
@@ -88,7 +88,7 @@ export default function TokenListFilter({
                   className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-inset">
                   <div
                     className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
-                      isEnabled ? 'border-accent bg-accent text-white' : 'border-border-strong-3 bg-surface-inset-3'
+                      isEnabled ? 'border-accent bg-accent text-black' : 'border-border-strong bg-surface-overlay'
                     }`}
                     onClick={(e) => {
                       e.preventDefault()
@@ -97,7 +97,7 @@ export default function TokenListFilter({
                     {isEnabled && <Icon icon={faCheck} className="text-[8px]" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium text-content-body-2">{listKey}</div>
+                    <div className="truncate text-xs font-medium text-content-body">{listKey}</div>
                     <div className="text-[10px] text-content-faint">
                       {tokens.filter((token) => token.chainId === selectedChain).length} tokens
                     </div>

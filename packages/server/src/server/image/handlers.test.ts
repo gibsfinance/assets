@@ -51,6 +51,7 @@ import {
   getImageAndFallback,
   getImageByHash,
   bestGuessNetworkImageFromOnOnChainInfo,
+  intersectSourceFilters,
   tryMultiple,
   queryStringToList,
   ignoreNotFound,
@@ -1534,6 +1535,87 @@ describe('image handlers', () => {
 
       expect(db.getChainIdsByReference).not.toHaveBeenCalled()
     })
+
+    describe('?only= source filter', () => {
+      const VECTOR_EXTENSIONS = ['.svg', '.svg+xml', '.xml']
+
+      it('restricts the network icon query to vector sources for ?only=vector', async () => {
+        // Found on production: /image/369?only=vector answered a 200x200 PNG because
+        // this route read only the path extension and never looked at ?only=.
+        const chain = makeDrizzleChain([{ image: makeImage({ ext: '.svg' }), network: { networkId: 'eip155:369' } }])
+        vi.mocked(getDrizzle).mockReturnValue(chain as any)
+        vi.mocked(maybeResize).mockResolvedValue(false as any)
+        vi.mocked(inArray).mockClear()
+
+        await bestGuessNetworkImageFromOnOnChainInfo(
+          mockRequest({ params: { chainId: '369' }, query: { only: 'vector' } }),
+          mockResponse(),
+          vi.fn(),
+        )
+
+        expect(inArray).toHaveBeenCalledWith(expect.anything(), VECTOR_EXTENSIONS)
+      })
+
+      it('answers 404 when the network has no vector icon', async () => {
+        vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([]) as any)
+        const res = mockResponse()
+
+        await expect(
+          bestGuessNetworkImageFromOnOnChainInfo(
+            mockRequest({ params: { chainId: '369' }, query: { only: 'vector' } }),
+            res,
+            vi.fn(),
+          ),
+        ).rejects.toMatchObject({ status: 404 })
+        expect(res.send).not.toHaveBeenCalled()
+      })
+
+      it('answers 404 without a query when the path extension excludes the ?only= type', async () => {
+        const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'eip155:369' } }])
+        vi.mocked(getDrizzle).mockReturnValue(chain as any)
+        const res = mockResponse()
+
+        await expect(
+          bestGuessNetworkImageFromOnOnChainInfo(
+            mockRequest({ params: { chainId: '369.png' }, query: { only: 'vector' } }),
+            res,
+            vi.fn(),
+          ),
+        ).rejects.toMatchObject({ status: 404 })
+        expect(res.send).not.toHaveBeenCalled()
+      })
+
+      it('applies no filter when ?only= is absent or unknown', async () => {
+        const chain = makeDrizzleChain([{ image: makeImage(), network: { networkId: 'eip155:369' } }])
+        vi.mocked(getDrizzle).mockReturnValue(chain as any)
+        vi.mocked(maybeResize).mockResolvedValue(false as any)
+        vi.mocked(inArray).mockClear()
+
+        await bestGuessNetworkImageFromOnOnChainInfo(
+          mockRequest({ params: { chainId: '369' }, query: { only: 'bogus' } }),
+          mockResponse(),
+          vi.fn(),
+        )
+
+        expect(inArray).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('intersectSourceFilters', () => {
+      it('returns undefined when neither filter is given', () => {
+        expect(intersectSourceFilters(undefined, undefined)).toBeUndefined()
+      })
+
+      it('returns whichever filter is given alone', () => {
+        expect(intersectSourceFilters(['.png'], undefined)).toEqual(['.png'])
+        expect(intersectSourceFilters(undefined, ['.svg'])).toEqual(['.svg'])
+      })
+
+      it('keeps only the extensions both filters allow', () => {
+        expect(intersectSourceFilters(['.svg', '.xml'], ['.svg', '.svg+xml'])).toEqual(['.svg'])
+        expect(intersectSourceFilters(['.png'], ['.svg'])).toEqual([])
+      })
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -1715,6 +1797,17 @@ describe('image handlers', () => {
       await tryMultiple(req as any, res, next)
 
       expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }))
+    })
+
+    it('applies ?only=vector to a network entry with no address', async () => {
+      const chain = makeDrizzleChain([{ image: makeImage({ ext: '.svg' }), network: { networkId: 'eip155:369' } }])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      vi.mocked(inArray).mockClear()
+
+      await tryMultiple(mockRequest({ query: { i: ['369'], only: 'vector' } }) as any, mockResponse(), vi.fn())
+
+      expect(inArray).toHaveBeenCalledWith(expect.anything(), ['.svg', '.svg+xml', '.xml'])
     })
 
     it('tries network icon when address is missing', async () => {

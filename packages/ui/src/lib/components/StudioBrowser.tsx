@@ -103,7 +103,7 @@ function VirtualTokenList({
                   isSelected ? 'border-accent bg-accent/10' : 'border-transparent hover:bg-surface-inset'
                 }`}
                 onClick={() => onTokenClick(token)}>
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-inset-2">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-surface-inset">
                   {hasIcon ? (
                     <Image
                       src={tokenRowIconUrl(token)}
@@ -115,7 +115,7 @@ function VirtualTokenList({
                       onError={() => onIconError(token)}
                     />
                   ) : (
-                    <span className="text-xs font-bold text-content-ghost-2">{token.symbol.slice(0, 2)}</span>
+                    <span className="text-xs font-bold text-content-ghost">{token.symbol.slice(0, 2)}</span>
                   )}
                 </div>
 
@@ -127,10 +127,10 @@ function VirtualTokenList({
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-content-faint-2">{token.symbol}</span>
+                    <span className="text-xs text-content-faint">{token.symbol}</span>
                     <button
                       type="button"
-                      className="flex items-center gap-1 truncate text-[10px] text-accent/70 hover:text-accent"
+                      className="flex items-center gap-1 truncate text-[10px] text-accent-content/70 hover:text-accent-content"
                       onClick={(e) => {
                         e.stopPropagation()
                         if (listCount > 1) {
@@ -141,7 +141,7 @@ function VirtualTokenList({
                       }}>
                       <span className="truncate hover:underline">{token.sourceList}</span>
                       {listCount > 1 && (
-                        <span className="flex-shrink-0 rounded bg-surface-inset-2 px-1 py-px text-[9px] text-content-subtle-2">
+                        <span className="flex-shrink-0 rounded bg-surface-inset px-1 py-px text-[9px] text-content-subtle">
                           +{listCount - 1}
                         </span>
                       )}
@@ -153,8 +153,8 @@ function VirtualTokenList({
                   type="button"
                   className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-all ${
                     editorOpen
-                      ? 'text-accent/60 hover:bg-accent/10 hover:text-accent'
-                      : 'text-content-ghost opacity-0 hover:bg-accent/10 hover:text-accent group-hover:opacity-100'
+                      ? 'text-accent-content/60 hover:bg-accent/10 hover:text-accent-content'
+                      : 'text-content-ghost opacity-0 hover:bg-accent/10 hover:text-accent-content group-hover:opacity-100'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -416,14 +416,14 @@ export default function StudioBrowser({
                 <div className="h-3 w-24 animate-pulse rounded bg-surface-active" />
                 <div className="grid grid-cols-2 gap-2">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="h-12 animate-pulse rounded-lg bg-surface-inset-2" />
+                    <div key={i} className="h-12 animate-pulse rounded-lg bg-surface-inset" />
                   ))}
                 </div>
               </div>
             )}
             {popularChains.length > 0 && (
               <div className="w-full">
-                <p className="mb-2 text-xs font-medium text-content-subtle-2">Popular chains</p>
+                <p className="mb-2 text-xs font-medium text-content-subtle">Popular chains</p>
                 <div className="grid grid-cols-2 gap-2">
                   {popularChains.map((chain) => (
                     <button
@@ -440,7 +440,7 @@ export default function StudioBrowser({
                         className="rounded-full"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium text-content-body-2">{chain.name}</div>
+                        <div className="truncate text-xs font-medium text-content-body">{chain.name}</div>
                         <div className="text-[10px] text-content-faint">{chain.tokenCount.toLocaleString()} tokens</div>
                       </div>
                     </button>
@@ -460,13 +460,13 @@ export default function StudioBrowser({
               shape="circle"
               className="rounded-full"
             />
-            <div className="text-sm font-medium text-content-body-2">{logoOnlyNetwork.name}</div>
-            <p className="max-w-xs text-sm text-content-faint-2">This chain has a logo but no tokens to browse yet.</p>
+            <div className="text-sm font-medium text-content-body">{logoOnlyNetwork.name}</div>
+            <p className="max-w-xs text-sm text-content-faint">This chain has a logo but no tokens to browse yet.</p>
           </div>
         )}
 
         {selectedChainId && !logoOnlyNetwork && isLoadingLists && filteredTokens.length === 0 && (
-          <div className="flex h-48 items-center justify-center text-sm text-content-faint-2">
+          <div className="flex h-48 items-center justify-center text-sm text-content-faint">
             <Icon icon={faSpinner} spin className="mr-2" />
             Loading tokens...
           </div>
@@ -483,7 +483,7 @@ export default function StudioBrowser({
          * at a round number reads as "your token is not listed".
          */}
         {isTruncated && (
-          <div className="border-b border-border-strong bg-surface-inset px-4 py-2 text-xs text-content-subtle-2">
+          <div className="border-b border-border-strong bg-surface-inset px-4 py-2 text-xs text-content-subtle">
             <Icon icon={faCircleInfo} className="mr-1" />
             More tokens matched than are shown here. Type more of the name, symbol or address to narrow it down.
           </div>

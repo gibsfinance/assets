@@ -88,7 +88,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             size={48}
             className="rounded-full"
           />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent" />
+          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
         </div>
         <CodeBlock code={displayUrl} />
       </div>
@@ -108,7 +108,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             shape="circle"
             className="rounded-full"
           />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent" />
+          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
         </div>
         <CodeBlock code={displayUrl} />
       </div>
@@ -149,7 +149,7 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             className="rounded-full border-2 border-border-overlap"
           />
         </div>
-        <Icon icon={faArrowRight} className="hidden md:visible text-accent" />
+        <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
       </div>
       <CodeBlock code={displayUrl} />
     </div>
@@ -256,7 +256,7 @@ export default function Home() {
   // "how many networks" here is that we do not know — which is the whole reason
   // the fetchers throw instead of resolving to an empty list.
   const metricPlaceholder = (
-    <span className={`mb-2 block text-5xl font-bold text-content-faint-4 ${metricsFailed ? '' : 'animate-pulse'}`}>
+    <span className={`mb-2 block text-5xl font-bold text-content-faint ${metricsFailed ? '' : 'animate-pulse'}`}>
       ---
     </span>
   )
@@ -266,12 +266,12 @@ export default function Home() {
       {/* Hero Section */}
       <section className="py-16 md:py-24">
         <div className="mx-auto max-w-4xl px-4 text-center">
-          <p className="mb-4 font-heading text-lg font-medium tracking-wide text-content-muted-2">Welcome to</p>
+          <p className="mb-4 font-heading text-lg font-medium tracking-wide text-content-secondary">Welcome to</p>
           <h1 className="font-heading text-6xl font-bold tracking-tight md:text-7xl">
             Gib<span className="text-gradient-brand">.Show</span>
           </h1>
 
-          <div className="mx-auto mt-8 max-w-3xl space-y-2 text-xl font-light text-content-subtle-3">
+          <div className="mx-auto mt-8 max-w-3xl space-y-2 text-xl font-light text-content-subtle">
             <p>A decentralized solution for token metadata and assets across multiple blockchains.</p>
             <p>Stop struggling with missing logos, broken images, and inconsistent token data.</p>
             <p>One API to handle all your token asset needs that you can run yourself.</p>
@@ -303,15 +303,15 @@ export default function Home() {
               {features.map((feature) => (
                 <div
                   key={feature.title}
-                  className="glass-card group p-6 transition-all duration-200 hover:scale-[1.02] hover:shadow-glow-accent-subtle">
+                  className="glass-card group p-6 transition-all duration-200 hover:scale-[1.02] motion-reduce:hover:scale-100 hover:shadow-glow-accent-subtle">
                   <div className="flex items-center gap-4">
                     <Icon
                       icon={feature.icon}
-                      className="mb-4 text-4xl text-accent transition-transform group-hover:scale-110"
+                      className="mb-4 text-4xl text-accent-content transition-transform group-hover:scale-110 motion-reduce:group-hover:scale-100"
                     />
                     <h3 className="mb-2 font-heading text-lg font-bold text-content-strong">{feature.title}</h3>
                   </div>
-                  <p className="text-content-muted-2">{feature.description}</p>
+                  <p className="text-content-secondary">{feature.description}</p>
                 </div>
               ))}
             </div>
@@ -327,7 +327,7 @@ export default function Home() {
                   className="glass-card p-6 transition-all duration-200 hover:shadow-glow-accent-subtle">
                   <div className="grid gap-6 lg:grid-cols-2">
                     {/* Visual Preview */}
-                    <div className="flex items-center justify-center rounded-lg bg-surface-inset-4 p-4">
+                    <div className="flex items-center justify-center rounded-lg bg-surface-inset p-4">
                       <ExamplePreview type={example.type} displayUrl={example.displayUrl} />
                     </div>
 
@@ -335,17 +335,17 @@ export default function Home() {
                     <div className="space-y-4">
                       <div className="flex items-center gap-4">
                         <div className="rounded-lg bg-accent/10 p-3">
-                          <Icon icon={example.icon} className="text-2xl text-accent" />
+                          <Icon icon={example.icon} className="text-2xl text-accent-content" />
                         </div>
                         <h3 className="font-heading text-lg font-bold text-content-strong">{example.title}</h3>
                       </div>
-                      <p className="text-content-muted-2">{example.description}</p>
+                      <p className="text-content-secondary">{example.description}</p>
                       <a
                         href={example.code}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-content-subtle-3">
-                        <Icon icon={faLink} className="text-accent" />
+                        className="flex items-center gap-2 text-sm text-content-subtle">
+                        <Icon icon={faLink} className="text-accent-content" />
                         <code className="break-all font-mono">{example.code}</code>
                       </a>
                     </div>
@@ -368,7 +368,7 @@ export default function Home() {
                 ) : (
                   metricPlaceholder
                 )}
-                <p className="text-lg text-content-muted-2">Total Tokens</p>
+                <p className="text-lg text-content-secondary">Total Tokens</p>
               </div>
               <div className="glass-card group p-6 text-center transition-all duration-200 hover:shadow-glow-accent-subtle">
                 {metricsData ? (
@@ -378,7 +378,7 @@ export default function Home() {
                 ) : (
                   metricPlaceholder
                 )}
-                <p className="text-lg text-content-muted-2">Supported Networks</p>
+                <p className="text-lg text-content-secondary">Supported Networks</p>
               </div>
             </div>
 
@@ -397,10 +397,10 @@ export default function Home() {
                         checked={showTestnets}
                         onChange={(e) => setShowTestnets(e.target.checked)}
                       />
-                      <div className="h-6 w-11 rounded-full bg-surface-active-5 transition-colors peer-checked:bg-accent/20"></div>
-                      <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-inverse-3 transition-all peer-checked:translate-x-5 peer-checked:bg-accent"></div>
+                      <div className="h-6 w-11 rounded-full bg-surface-active transition-colors peer-checked:bg-accent/20"></div>
+                      <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-surface-thumb transition-all peer-checked:translate-x-5 peer-checked:bg-accent"></div>
                     </div>
-                    <span className="text-sm font-medium text-content-muted-2">Show Testnets</span>
+                    <span className="text-sm font-medium text-content-secondary">Show Testnets</span>
                   </label>
                 </div>
 
@@ -410,7 +410,7 @@ export default function Home() {
                       key={network.chainId}
                       type="button"
                       onClick={() => handleNetworkClick(network.chainIdentifier)}
-                      className="group relative cursor-pointer transition-all duration-200 hover:scale-105">
+                      className="group relative cursor-pointer transition-all duration-200 hover:scale-105 motion-reduce:hover:scale-100">
                       <div className="glass-card relative flex h-[160px] flex-col items-center justify-between p-3 transition-all duration-200 hover:border-accent/40 hover:shadow-glow-accent-subtle">
                         <div className="flex flex-1 flex-col items-center">
                           <Image
@@ -429,10 +429,10 @@ export default function Home() {
                               title={network.name}>
                               {network.name}
                             </div>
-                            <div className="mt-1 font-mono text-xs text-content-faint-3">ID: {network.chainId}</div>
+                            <div className="mt-1 font-mono text-xs text-content-faint">ID: {network.chainId}</div>
                           </div>
                         </div>
-                        <div className="mt-2 flex-shrink-0 text-base font-bold text-accent">
+                        <div className="mt-2 flex-shrink-0 text-base font-bold text-accent-content">
                           {network.tokenCount.toLocaleString()}
                         </div>
                       </div>
@@ -440,20 +440,20 @@ export default function Home() {
                   ))}
                 </div>
                 {hiddenCount > 0 && (
-                  <p className="mt-4 text-center text-sm text-content-subtle-3">
+                  <p className="mt-4 text-center text-sm text-content-subtle">
                     and {hiddenCount} more network{hiddenCount === 1 ? '' : 's'}
                   </p>
                 )}
               </div>
             ) : metricsFailed ? (
               <div className="glass-card p-6 text-center">
-                <p className="text-lg text-content-muted-2">
+                <p className="text-lg text-content-secondary">
                   Could not load the network breakdown. Reload to try again.
                 </p>
               </div>
             ) : (
               <div className="glass-card p-6">
-                <div className="h-[400px] animate-pulse rounded-lg bg-surface-inset-4"></div>
+                <div className="h-[400px] animate-pulse rounded-lg bg-surface-inset"></div>
               </div>
             )}
           </section>
@@ -461,7 +461,7 @@ export default function Home() {
           {/* CTA */}
           <section className="mb-8 glass-card space-y-4 p-8 text-center">
             <h2 className="font-heading text-2xl font-bold text-content-strong">Ready to Get Started?</h2>
-            <p className="text-lg text-content-muted-2">
+            <p className="text-lg text-content-secondary">
               Open the Studio to browse tokens, configure URLs, and explore the API.
             </p>
             <div className="flex items-center justify-center gap-3">

@@ -481,10 +481,32 @@ const resolveNetworkChainId = async (chainId: string): Promise<string> => {
   return resolution.chainId
 }
 
+/**
+ * Combine the two source filters the network route accepts: the path extension
+ * (`/image/369.svg`) and `?only=`. Both narrow the same candidate set, so a source
+ * must satisfy both. Returns undefined when neither is given (no filter), and an
+ * empty list when they exclude each other (nothing can match).
+ */
+export const intersectSourceFilters = (
+  pathExts: string[] | undefined,
+  onlyExts: string[] | undefined,
+): string[] | undefined => {
+  if (!pathExts) return onlyExts
+  if (!onlyExts) return pathExts
+  return pathExts.filter((ext) => onlyExts.includes(ext))
+}
+
 const bestGuessNeworkImage = async (
   chainIdParam: string,
+  { typeFilter }: { typeFilter?: string[] } = {},
 ): Promise<{ img: Image & Record<string, unknown>; resolvedChainId: string }> => {
-  const { filename: chainId, exts } = splitExt(chainIdParam)
+  const { filename: chainId, exts: pathExts } = splitExt(chainIdParam)
+  const exts = intersectSourceFilters(pathExts, typeFilter)
+  // An empty list means the two filters exclude each other. getNetworkIcon treats an
+  // empty list as "no filter", so refuse here rather than serve whatever icon exists.
+  if (exts && exts.length === 0) {
+    throw httpErrors.NotFound('best guess network image not found')
+  }
   const resolvedChainId = await resolveNetworkChainId(chainId)
   const { img } = await getNetworkIcon(resolvedChainId, exts)
   if (!img) {
@@ -517,7 +539,9 @@ export const imageSatisfiesLicense = (
 }
 
 export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req, res, _next) => {
-  const { img, resolvedChainId } = await bestGuessNeworkImage(req.params.chainId)
+  const { img, resolvedChainId } = await bestGuessNeworkImage(req.params.chainId, {
+    typeFilter: parseTypeFilter(req.query.only),
+  })
   // A caller who gets a 200 cannot otherwise tell an exact match from an
   // approximation — worse than an outright 404 for a page identifying a chain
   // to a user. Set before serving, so it rides on every success shape below
@@ -566,7 +590,9 @@ export const tryMultiple: RequestHandler<
     }
     const [chainId, address, order] = i.split('/')
     if (!address) {
-      const result = await bestGuessNeworkImage(chainId).catch(ignoreNotFound)
+      const result = await bestGuessNeworkImage(chainId, { typeFilter: parseTypeFilter(req.query.only) }).catch(
+        ignoreNotFound,
+      )
       if (!result) continue
       if (await maybeResize({ res, img: result.img, params })) return
       return sendImage(res, result.img, resolveImageMode(req.query.mode))

@@ -21,7 +21,7 @@ export default function FrameworkSwitcher({ languages, activeLanguage, onSelect 
           className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
             activeLanguage === lang.key
               ? 'bg-accent text-black shadow-glow-accent'
-              : 'bg-surface-inset-4 text-content-muted hover:bg-surface-active-5'
+              : 'bg-surface-inset text-content-muted hover:bg-surface-active'
           }`}>
           {lang.label}
         </button>

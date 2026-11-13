@@ -265,10 +265,10 @@ export default function Docs() {
             href={getApiUrl('/openapi.json')}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-content-muted-2 transition-colors hover:border-accent/40 hover:text-accent">
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-content-secondary transition-colors hover:border-accent/40 hover:text-accent-content">
             <Icon icon={faCode} className="text-xs" />
             OpenAPI definition
-            <span className="font-mono text-xs text-content-faint-3">/openapi.json</span>
+            <span className="font-mono text-xs text-content-faint">/openapi.json</span>
           </a>
         </div>
       </div>
@@ -298,20 +298,20 @@ export default function Docs() {
             <div className="relative">
               <Icon
                 icon={faMagnifyingGlass}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-content-faint-4"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-content-faint"
               />
               <input
                 type="search"
                 placeholder="Filter endpoints…"
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-raised-2 py-2.5 pl-9 pr-4 text-sm text-content-strong placeholder:text-content-faint-4 focus:outline-none focus:ring-2 focus:ring-accent/50"
+                className="w-full rounded-lg border border-border bg-surface-raised py-2.5 pl-9 pr-4 text-sm text-content-strong placeholder:text-content-faint focus:outline-none focus:ring-2 focus:ring-accent/50"
               />
             </div>
 
             {/* Endpoint sections — one per OpenAPI tag */}
             {specLoading && (
-              <p className="text-sm text-content-subtle-3">
+              <p className="text-sm text-content-subtle">
                 <Icon icon={faSpinner} spin className="mr-2" />
                 Loading the API definition…
               </p>
@@ -336,7 +336,7 @@ export default function Docs() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-content-subtle-3">No endpoints match &ldquo;{filterQuery}&rdquo;.</p>
+                  <p className="text-sm text-content-subtle">No endpoints match &ldquo;{filterQuery}&rdquo;.</p>
                 )}
               </section>
             ))}
@@ -349,7 +349,7 @@ export default function Docs() {
                   <div key={feature.title} className="glass-card p-5 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-                        <Icon icon={feature.icon} className="text-accent text-sm" />
+                        <Icon icon={feature.icon} className="text-accent-content text-sm" />
                       </div>
                       <h3 className="font-heading font-semibold text-content-strong">{feature.title}</h3>
                     </div>
