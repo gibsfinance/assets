@@ -161,7 +161,7 @@ Three card classes are defined in `packages/ui/src/app.css`. All use `rounded-lg
 
 ### Gradient text
 
-`.text-gradient-brand` runs from `accent-content` to `accent-secondary-content`. `.text-gradient-accent` runs from `accent-content` to `accent-content-hover`. Both use the text roles, so they stay readable on the light theme. Use them for one short phrase in a heading, never for body text.
+`.text-gradient-brand` runs from `accent` to `accent-secondary`: the bright brand fills, kept on purpose. It appears only on large bold display text (the logo, the home and docs headings, the 404), where WCAG asks for 3:1 rather than 4.5:1. `.text-gradient-accent` runs from `accent-content` to `accent-content-hover`, the text roles, so it stays readable at any size on the light theme. Use either for one short phrase, never for body text, and never use the brand gradient on small text.
 
 ### Layers
 

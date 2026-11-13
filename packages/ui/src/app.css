@@ -228,9 +228,15 @@ body {
   @apply font-body;
 }
 
-/* Gradient text utility */
+/*
+ * Gradient text utilities.
+ * The brand gradient keeps the bright brand fills on purpose (owner's choice). It is only used
+ * on large bold display text (the logo, the home and docs headings, the 404), where WCAG asks
+ * for 3:1, not the 4.5:1 that body text needs. Do not use it on small text; use the
+ * accent-content roles there.
+ */
 .text-gradient-brand {
-  @apply bg-gradient-to-r from-accent-content to-accent-secondary-content bg-clip-text text-transparent;
+  @apply bg-gradient-to-r from-accent to-accent-secondary bg-clip-text text-transparent;
 }
 
 .text-gradient-accent {
