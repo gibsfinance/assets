@@ -81,4 +81,39 @@ describe('createConcurrencyGate', () => {
     for (let index = 0; index < 3 + 3 * GATE_QUEUE_PER_SLOT; index += 1) void gate.run(manualTask(log, `${index}`).task)
     expect([gate.active, gate.waiting]).toEqual([3, 3 * GATE_QUEUE_PER_SLOT])
   })
+
+  it('turns a key away once it holds its places, and gives each place back when its task ends', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 8, maxPerKey: 2 })
+    const log: string[] = []
+    const first = manualTask(log, 'first')
+    const second = manualTask(log, 'second')
+    const held = gate.run(first.task, { key: 'caller' })
+    const waiting = gate.run(second.task, { key: 'caller' })
+    // Two places held: the line has room, but this caller has used its share.
+    expect(await gate.run(async () => 'third', { key: 'caller' })).toBe(GATE_FULL)
+    // Another caller, and a task with no key, are not affected.
+    const other = gate.run(async () => 'other', { key: 'someone-else' })
+    const unkeyed = gate.run(async () => 'unkeyed')
+    first.finish()
+    await held
+    // A place is free again.
+    const again = gate.run(async () => 'again', { key: 'caller' })
+    second.finish()
+    expect(await waiting).toBe('second')
+    expect(await Promise.all([other, unkeyed, again])).toEqual(['other', 'unkeyed', 'again'])
+    expect([gate.active, gate.waiting]).toEqual([0, 0])
+  })
+
+  it('gives a place back when a keyed task throws', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxPerKey: 1 })
+    await expect(
+      gate.run(
+        async () => {
+          throw new Error('boom')
+        },
+        { key: 'caller' },
+      ),
+    ).rejects.toThrow('boom')
+    expect(await gate.run(async () => 'ok', { key: 'caller' })).toBe('ok')
+  })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createRateLimiter, DEFAULT_PER_IMAGE_LIMIT } from './rate-limit'
+import { createRateLimiter, DEFAULT_PER_IMAGE_LIMIT, DEFAULT_WINDOW_MS } from './rate-limit'
 
 /**
  * Every test builds its own controllable clock and passes it in as `now`.
@@ -204,5 +204,43 @@ describe('createRateLimiter', () => {
       expect(limiter.check('image-a')).toBe(true)
     }
     expect(limiter.check('image-a')).toBe(false)
+  })
+
+  describe('canSpend', () => {
+    it('answers what check would, and spends nothing', () => {
+      const clock = clockAt()
+      const limiter = createRateLimiter({ now: clock.now, perImageLimit: 1, globalLimit: 100 })
+
+      for (let look = 0; look < 5; look += 1) expect(limiter.canSpend('image-a')).toBe(true)
+      expect(limiter.check('image-a')).toBe(true)
+      expect(limiter.canSpend('image-a')).toBe(false)
+      expect(limiter.canSpend('image-b')).toBe(true)
+    })
+
+    it('is false when the global budget is spent, and true again once its window has passed', () => {
+      const clock = clockAt()
+      const limiter = createRateLimiter({ now: clock.now, perImageLimit: 10, globalLimit: 1 })
+
+      limiter.check('image-a')
+      expect(limiter.canSpend('image-b')).toBe(false)
+      clock.advance(DEFAULT_WINDOW_MS + 1)
+      expect(limiter.canSpend('image-b')).toBe(true)
+    })
+
+    it('is true again for an image once its own window has passed', () => {
+      const clock = clockAt()
+      const limiter = createRateLimiter({ now: clock.now, perImageLimit: 1, globalLimit: 100 })
+
+      limiter.check('image-a')
+      expect(limiter.canSpend('image-a')).toBe(false)
+      clock.advance(DEFAULT_WINDOW_MS + 1)
+      expect(limiter.canSpend('image-a')).toBe(true)
+    })
+
+    it('is false for a key whose budget is zero, as check is', () => {
+      const limiter = createRateLimiter({ perImageLimit: 0 })
+      expect(limiter.canSpend('image-a')).toBe(false)
+      expect(limiter.check('image-a')).toBe(false)
+    })
   })
 })

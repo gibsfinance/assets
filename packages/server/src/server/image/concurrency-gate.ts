@@ -23,9 +23,11 @@ export const GATE_QUEUE_PER_SLOT = 8
 export interface ConcurrencyGate {
   /**
    * Run `task` when a slot is free, waiting in line if all are busy. Answers `GATE_FULL`, and does
-   * not run `task`, when every slot is busy and the line is full.
+   * not run `task`, when every slot is busy and the line is full. With a `key`, also answers
+   * `GATE_FULL` when that key already holds `maxPerKey` places (running or waiting), so one caller
+   * cannot fill the line for everyone.
    */
-  run: <Result>(task: () => Promise<Result>) => Promise<Result | typeof GATE_FULL>
+  run: <Result>(task: () => Promise<Result>, options?: { key?: string }) => Promise<Result | typeof GATE_FULL>
   /** Tasks running now. */
   readonly active: number
   /** Tasks waiting for a slot. */
@@ -37,12 +39,15 @@ export interface ConcurrencyGate {
  *
  * @param options.limit Tasks that may run at once.
  * @param options.maxQueue Tasks that may wait. Defaults to `GATE_QUEUE_PER_SLOT` for each slot.
+ * @param options.maxPerKey Places (running plus waiting) one key may hold. Unlimited when absent.
  */
 export function createConcurrencyGate({
   limit = DEFAULT_GATE_LIMIT,
   maxQueue = limit * GATE_QUEUE_PER_SLOT,
-}: { limit?: number; maxQueue?: number } = {}): ConcurrencyGate {
+  maxPerKey = Infinity,
+}: { limit?: number; maxQueue?: number; maxPerKey?: number } = {}): ConcurrencyGate {
   let active = 0
+  const placesByKey = new Map<string, number>()
   const line: (() => void)[] = []
 
   // A finished task hands its slot straight to the next in line, so `active` does not drop and
@@ -53,15 +58,25 @@ export function createConcurrencyGate({
     else active -= 1
   }
 
+  const givePlaceBack = (key: string): void => {
+    const remaining = placesByKey.get(key)! - 1
+    if (remaining > 0) placesByKey.set(key, remaining)
+    else placesByKey.delete(key)
+  }
+
   return {
-    async run(task) {
+    async run(task, { key }: { key?: string } = {}) {
+      const held = key === undefined ? 0 : (placesByKey.get(key) ?? 0)
+      if (held >= maxPerKey) return GATE_FULL
+      if (active >= limit && line.length >= maxQueue) return GATE_FULL
+      if (key !== undefined) placesByKey.set(key, held + 1)
       if (active < limit) active += 1
-      else if (line.length >= maxQueue) return GATE_FULL
       else await new Promise<void>((resolve) => line.push(resolve))
       try {
         return await task()
       } finally {
         release()
+        if (key !== undefined) givePlaceBack(key)
       }
     },
     get active() {
