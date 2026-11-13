@@ -80,9 +80,9 @@ const PLATE_PARAMS = [
     name: 'contrast',
     in: 'query' as const,
     description:
-      'Say whether your page is `dark` or `light`. Gib measures how bright the logo is and adds a plate in the ' +
-      'opposite tone (light on dark, dark on light) only when the logo would have less than 3:1 contrast with ' +
-      'that page. Otherwise the image is served as if the parameter were absent. Any other value answers 400.',
+      'Say whether your page is `dark` or `light`. Gib looks at what share of the visible pixels of the logo have ' +
+      'at least 3:1 contrast with that page, and adds a plate in the opposite tone (light on dark, dark on ' +
+      'light) only when that share is under 25 percent, so a logo with some strong parts is left alone. Otherwise the image is served as if the parameter were absent. Any other value answers 400.',
     schema: { type: 'string' as const, enum: ['dark', 'light'] },
   },
 ]

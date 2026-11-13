@@ -16,8 +16,9 @@ import * as db from '../../db'
 import { maybeResize, parseResizeParams, resetRateLimit } from './resize'
 
 const cronosSvg = readFileSync(new URL('./__fixtures__/cronos-web3icons.svg', import.meta.url))
-const ethereumLikeSvg = Buffer.from(
-  '<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M9 16.2 16.5 4v8.9zM16.5 22V28L9 17.6z" fill="white"/></svg>',
+const ethereumSvg = readFileSync(new URL('./__fixtures__/ethereum-smoldapp.svg', import.meta.url))
+const twoToneSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="12" height="24" fill="#000"/><rect x="12" width="12" height="24" fill="#fff"/></svg>',
 )
 const paleSvg = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#f0f0f0"/></svg>',
@@ -107,10 +108,22 @@ describe('a plated vector image', () => {
     expect(sent.headers['x-resize']).toBe('transcoded')
     expect(sent.headers['cache-control']).toContain('max-age=86400')
   })
-  it('leaves the Ethereum-like logo alone on a dark page', async () => {
-    const sent = await request({ content: ethereumLikeSvg, ext: '.svg', query: { contrast: 'dark' } })
+  it('leaves the real Cronos logo plain on a light page', async () => {
+    expect((await request({ content: cronosSvg, ext: '.svg', query: { contrast: 'light' } })).handled).toBe(false)
+  })
+  it('leaves the real Ethereum logo plain on a dark page', async () => {
+    const sent = await request({ content: ethereumSvg, ext: '.svg', query: { contrast: 'dark' } })
     expect(sent.handled).toBe(false)
     expect(sent.body).toBeNull()
+  })
+  it('leaves the real Ethereum logo plain on a light page, where its white glyph vanishes but its disc does not', async () => {
+    const sent = await request({ content: ethereumSvg, ext: '.svg', query: { contrast: 'light' } })
+    expect(sent.handled).toBe(false)
+  })
+  it('leaves a half black, half white logo plain on either page', async () => {
+    for (const contrast of ['dark', 'light']) {
+      expect((await request({ content: twoToneSvg, ext: '.svg', query: { contrast } })).handled).toBe(false)
+    }
   })
   it('plates a pale logo on a light page, with a dark plate', async () => {
     const sent = await request({ content: paleSvg, ext: '.svg', query: { contrast: 'light' } })
@@ -118,7 +131,7 @@ describe('a plated vector image', () => {
   })
   it('paints bg in the chosen shape whatever the logo, and ignores w and h for a vector', async () => {
     const sent = await request({
-      content: ethereumLikeSvg,
+      content: ethereumSvg,
       ext: '.svg',
       query: { bg: 'ff0000', shape: 'rounded', w: '50' },
     })
@@ -130,14 +143,14 @@ describe('a plated vector image', () => {
     expect(sent.contentType).toBe('image/svg+xml')
   })
   it('serves an svg asked for as svg unchanged when contrast needs no plate', async () => {
-    const sent = await request({ content: ethereumLikeSvg, ext: '.svg', query: { as: 'svg', contrast: 'dark' } })
+    const sent = await request({ content: ethereumSvg, ext: '.svg', query: { as: 'svg', contrast: 'dark' } })
     expect(sent.handled).toBe(false)
   })
   it('puts bg in charge of the colour and contrast in charge of whether', async () => {
     const needed = await request({ content: cronosSvg, ext: '.svg', query: { bg: '00ff00', contrast: 'dark' } })
     expect(needed.body!.toString('utf8')).toContain('fill="#00ff00"')
     const notNeeded = await request({
-      content: ethereumLikeSvg,
+      content: ethereumSvg,
       ext: '.svg',
       query: { bg: '00ff00', contrast: 'dark' },
     })
@@ -148,10 +161,10 @@ describe('a plated vector image', () => {
     const first = await request(options)
     // Measured afresh, this bright logo would need no plate. It gets one because the hash was
     // already measured, from the dark logo, and that answer is remembered.
-    const second = await request({ ...options, content: ethereumLikeSvg })
+    const second = await request({ ...options, content: ethereumSvg })
     expect(first.handled).toBe(true)
     expect(second.handled).toBe(true)
-    expect((await request({ content: ethereumLikeSvg, ext: '.svg', query: options.query })).handled).toBe(false)
+    expect((await request({ content: ethereumSvg, ext: '.svg', query: options.query })).handled).toBe(false)
   })
   it('never reads or writes the variant cache, so a plate cannot reach a plain request', async () => {
     await request({ content: cronosSvg, ext: '.svg', query: { contrast: 'dark' } })
@@ -169,7 +182,7 @@ describe('a plated vector image', () => {
 describe('a plated image drawn to pixels', () => {
   it('draws a vector as png when a format is asked for: plate at the corner, logo in the centre', async () => {
     const sent = await request({
-      content: ethereumLikeSvg,
+      content: ethereumSvg,
       ext: '.svg',
       query: { bg: 'ffffff', shape: 'square', as: 'png', w: '128' },
     })
@@ -181,12 +194,12 @@ describe('a plated image drawn to pixels', () => {
     expect((await pixel(sent.body!, 64, 64)).slice(0, 3)).not.toEqual([255, 255, 255])
   })
   it('draws a circle plate with empty corners', async () => {
-    const sent = await request({ content: ethereumLikeSvg, ext: '.svg', query: { bg: 'ffffff', as: 'webp', w: '64' } })
+    const sent = await request({ content: ethereumSvg, ext: '.svg', query: { bg: 'ffffff', as: 'webp', w: '64' } })
     expect(sent.contentType).toBe('image/webp')
     expect((await pixel(sent.body!, 0, 0))[3]).toBe(0)
   })
   it('uses the default vector size when none is asked for', async () => {
-    const sent = await request({ content: ethereumLikeSvg, ext: '.svg', query: { bg: 'ffffff', as: 'png' } })
+    const sent = await request({ content: ethereumSvg, ext: '.svg', query: { bg: 'ffffff', as: 'png' } })
     expect((await sharp(sent.body!).metadata()).width).toBe(256)
   })
   it('keeps a raster source png and its own size plus padding', async () => {

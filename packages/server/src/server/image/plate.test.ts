@@ -2,15 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import sharp from 'sharp'
 import {
-  PAGE_LUMINANCE,
-  PLATE_CONTRAST_THRESHOLD,
+  PLATE_VISIBLE_SHARE_THRESHOLD,
   PLATE_DEFAULT_VECTOR_SIDE,
   CONTRAST_PLATE_COLOUR,
   computePlateSide,
   contrastRatio,
-  createLuminanceCache,
+  createVisibilityCache,
   logoNeedsPlate,
-  measureVisibleLuminance,
+  measureVisibleShares,
   parseHexColour,
   parsePlateRequest,
   plateInnerSide,
@@ -18,16 +17,23 @@ import {
   relativeLuminance,
   renderPlatedRaster,
   resolvePlate,
-  visibleLuminance,
+  visibleShares,
+  type VisibleShares,
   wrapSvgWithPlate,
   type Plate,
 } from './plate'
 
 /** The file https://staging.gib.show/image/25 served (Cronos, web3icons, MIT): a dark navy hexagon. */
 const cronosSvg = readFileSync(new URL('./__fixtures__/cronos-web3icons.svg', import.meta.url))
-/** Reproduces the Ethereum logo's case: a mid-blue disc with a white glyph, as `/image/1` serves it. */
-const ethereumLikeSvg = Buffer.from(
-  '<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M9 16.2 16.5 4v8.9zM16.5 22V28L9 17.6z" fill="white"/></svg>',
+/** The file https://staging.gib.show/image/1 served (Ethereum, SmolDapp tokenAssets, MIT): a blue disc with a white glyph. */
+const ethereumSvg = readFileSync(new URL('./__fixtures__/ethereum-smoldapp.svg', import.meta.url))
+/** Half black, half white: neither half hides the other, so it is visible on any page. */
+const twoToneSvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="12" height="24" fill="#000"/><rect x="12" width="12" height="24" fill="#fff"/></svg>',
+)
+/** One mid-grey square. */
+const greySvg = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#777"/></svg>',
 )
 const white: Plate = { colour: { red: 255, green: 255, blue: 255, alpha: 1 }, shape: 'circle' }
 
@@ -116,35 +122,54 @@ describe('luminance arithmetic', () => {
   })
 })
 
-describe('visibleLuminance', () => {
-  it('counts each pixel in proportion to its alpha', () => {
-    // A white opaque pixel and a black transparent one: the black one adds nothing.
-    expect(visibleLuminance(Uint8Array.of(255, 255, 255, 255, 0, 0, 0, 0))).toBeCloseTo(1)
-    // The same black pixel opaque halves it.
-    expect(visibleLuminance(Uint8Array.of(255, 255, 255, 255, 0, 0, 0, 255))).toBeCloseTo(0.5)
+describe('visibleShares', () => {
+  it('counts the share of visible pixels that stand out against each page, weighted by alpha', () => {
+    // White opaque, black opaque: white stands out on dark, black on light, one each.
+    expect(visibleShares(Uint8Array.of(255, 255, 255, 255, 0, 0, 0, 255))).toEqual({ dark: 0.5, light: 0.5 })
+    // A transparent black pixel adds nothing to either side.
+    expect(visibleShares(Uint8Array.of(255, 255, 255, 255, 0, 0, 0, 0))).toEqual({ dark: 1, light: 0 })
+  })
+  it('weights a half-transparent pixel as half', () => {
+    // 3 parts white (alpha 1) against 1 part black (alpha 1) is 0.75 on dark; halving the black halves its weight.
+    const shares = visibleShares(Uint8Array.of(255, 255, 255, 255, 0, 0, 0, 128))
+    expect(shares!.dark).toBeCloseTo(255 / (255 + 128))
   })
   it('is null when nothing is visible', () => {
-    expect(visibleLuminance(Uint8Array.of(255, 255, 255, 0))).toBeNull()
-    expect(visibleLuminance(new Uint8Array())).toBeNull()
+    expect(visibleShares(Uint8Array.of(255, 255, 255, 0))).toBeNull()
+    expect(visibleShares(new Uint8Array())).toBeNull()
   })
 })
 
-describe('measureVisibleLuminance on real logos', () => {
-  it('finds the Cronos logo nearly black', async () => {
-    const luminance = await measureVisibleLuminance(sharp(cronosSvg, { density: 192 }))
-    expect(luminance).toBeGreaterThan(0.004)
-    expect(luminance).toBeLessThan(0.008)
+describe('measureVisibleShares on real logos', () => {
+  const measure = (svg: Buffer, density: number) => measureVisibleShares(sharp(svg, { density }))
+
+  it('finds the Cronos logo invisible on a dark page and fully visible on a light one', async () => {
+    const shares = await measure(cronosSvg, 192)
+    expect(shares!.dark).toBeLessThan(0.01)
+    expect(shares!.light).toBeGreaterThan(0.99)
   })
-  it('finds an Ethereum-like logo bright enough for a dark page', async () => {
-    const luminance = await measureVisibleLuminance(sharp(ethereumLikeSvg, { density: 144 }))
-    expect(contrastRatio(luminance!, PAGE_LUMINANCE.dark)).toBeGreaterThan(PLATE_CONTRAST_THRESHOLD)
+  it('finds the Ethereum logo visible on a dark page, and mostly visible on a light one', async () => {
+    const shares = await measure(ethereumSvg, 144)
+    expect(shares!.dark).toBeGreaterThan(0.99)
+    // The white glyph vanishes on white, but the blue disc around it does not: the average would hide that.
+    expect(shares!.light).toBeGreaterThan(0.7)
+    expect(shares!.light).toBeLessThan(0.85)
+  })
+  it('finds a half black, half white logo visible on both pages', async () => {
+    const shares = await measure(twoToneSvg, 192)
+    expect(shares!.dark).toBeCloseTo(0.5, 1)
+    expect(shares!.light).toBeCloseTo(0.5, 1)
+  })
+  it('finds a uniform mid-grey visible on both pages', async () => {
+    const shares = await measure(greySvg, 192)
+    expect(shares).toEqual({ dark: 1, light: 1 })
   })
   it('measures a greyscale picture with no alpha channel', async () => {
     const grey = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#ffffff' } })
       .greyscale()
       .png()
       .toBuffer()
-    expect(await measureVisibleLuminance(sharp(grey))).toBeCloseTo(1, 1)
+    expect(await measureVisibleShares(sharp(grey))).toEqual({ dark: 1, light: 0 })
   })
   it('is null for a fully transparent picture', async () => {
     const clear = await sharp({
@@ -152,48 +177,53 @@ describe('measureVisibleLuminance on real logos', () => {
     })
       .png()
       .toBuffer()
-    expect(await measureVisibleLuminance(sharp(clear))).toBeNull()
+    expect(await measureVisibleShares(sharp(clear))).toBeNull()
   })
 })
 
 describe('resolvePlate', () => {
-  const cronos = 0.0057
-  const ethereum = 0.329
+  /** Shares measured from the real files (see above), or the nearest round value. */
+  const cronos: VisibleShares = { dark: 0, light: 1 }
+  const ethereum: VisibleShares = { dark: 1, light: 0.78 }
+  const twoTone: VisibleShares = { dark: 0.5, light: 0.5 }
   const never = vi.fn().mockRejectedValue(new Error('must not measure'))
-  const luminanceOf = (value: number | null) => vi.fn().mockResolvedValue(value)
+  const sharesOf = (value: VisibleShares | null) => vi.fn().mockResolvedValue(value)
   const request = (overrides: Partial<Parameters<typeof resolvePlate>[0]['request']>) => ({
     colour: null,
     shape: 'circle' as const,
     contrast: null,
     ...overrides,
   })
+  const decide = (contrast: 'dark' | 'light', shares: VisibleShares | null) =>
+    resolvePlate({ request: request({ contrast }), measureShares: sharesOf(shares) })
 
-  it('threshold: Cronos needs a plate on a dark page and Ethereum does not', () => {
-    expect(logoNeedsPlate({ luminance: cronos, contrast: 'dark' })).toBe(true)
-    expect(logoNeedsPlate({ luminance: ethereum, contrast: 'dark' })).toBe(false)
+  it('plates Cronos on a dark page and not on a light one', async () => {
+    expect(await decide('dark', cronos)).toEqual({ colour: CONTRAST_PLATE_COLOUR.dark, shape: 'circle' })
+    expect(await decide('light', cronos)).toBeNull()
   })
-  it('adds a light plate to a dark logo on a dark page', async () => {
-    const plate = await resolvePlate({ request: request({ contrast: 'dark' }), measureLuminance: luminanceOf(cronos) })
-    expect(plate).toEqual({ colour: CONTRAST_PLATE_COLOUR.dark, shape: 'circle' })
-    expect(plate!.colour).toMatchObject({ red: 255, green: 255, blue: 255 })
+  it('plates Ethereum on neither page', async () => {
+    expect(await decide('dark', ethereum)).toBeNull()
+    expect(await decide('light', ethereum)).toBeNull()
   })
-  it('adds a dark plate to a bright logo on a light page', async () => {
-    const plate = await resolvePlate({ request: request({ contrast: 'light' }), measureLuminance: luminanceOf(0.9) })
+  it('plates a logo of mixed parts on neither page', async () => {
+    expect(await decide('dark', twoTone)).toBeNull()
+    expect(await decide('light', twoTone)).toBeNull()
+  })
+  it('adds a dark plate to a pale logo on a light page', async () => {
+    const plate = await decide('light', { dark: 1, light: 0 })
     expect(plate!.colour.red).toBeLessThan(50)
   })
-  it('adds nothing when the logo already stands out', async () => {
-    expect(
-      await resolvePlate({ request: request({ contrast: 'dark' }), measureLuminance: luminanceOf(ethereum) }),
-    ).toBeNull()
+  it('draws the line at the named share', () => {
+    const at = (share: number) => logoNeedsPlate({ shares: { dark: share, light: share }, contrast: 'dark' })
+    expect(at(PLATE_VISIBLE_SHARE_THRESHOLD - 0.01)).toBe(true)
+    expect(at(PLATE_VISIBLE_SHARE_THRESHOLD)).toBe(false)
   })
   it('adds nothing when nothing is visible', async () => {
-    expect(
-      await resolvePlate({ request: request({ contrast: 'dark' }), measureLuminance: luminanceOf(null) }),
-    ).toBeNull()
+    expect(await decide('dark', null)).toBeNull()
   })
   it('paints bg without measuring anything', async () => {
     const colour = { red: 1, green: 2, blue: 3, alpha: 1 }
-    const plate = await resolvePlate({ request: request({ colour, shape: 'square' }), measureLuminance: never })
+    const plate = await resolvePlate({ request: request({ colour, shape: 'square' }), measureShares: never })
     expect(plate).toEqual({ colour, shape: 'square' })
     expect(never).not.toHaveBeenCalled()
   })
@@ -201,24 +231,24 @@ describe('resolvePlate', () => {
     const colour = { red: 200, green: 0, blue: 0, alpha: 1 }
     const plate = await resolvePlate({
       request: request({ colour, contrast: 'dark' }),
-      measureLuminance: luminanceOf(cronos),
+      measureShares: sharesOf(cronos),
     })
     expect(plate!.colour).toBe(colour)
   })
   it('lets contrast withhold the bg plate', async () => {
     const colour = { red: 200, green: 0, blue: 0, alpha: 1 }
     expect(
-      await resolvePlate({ request: request({ colour, contrast: 'dark' }), measureLuminance: luminanceOf(ethereum) }),
+      await resolvePlate({ request: request({ colour, contrast: 'dark' }), measureShares: sharesOf(ethereum) }),
     ).toBeNull()
   })
   it('draws nothing for a request that names neither colour nor contrast', async () => {
-    expect(await resolvePlate({ request: request({}), measureLuminance: never })).toBeNull()
+    expect(await resolvePlate({ request: request({}), measureShares: never })).toBeNull()
   })
 })
 
-describe('createLuminanceCache', () => {
+describe('createVisibilityCache', () => {
   it('measures a key once, including a null answer', async () => {
-    const cache = createLuminanceCache()
+    const cache = createVisibilityCache()
     const measure = vi.fn().mockResolvedValue(null)
     expect(await cache.remember('a', measure)).toBeNull()
     expect(await cache.remember('a', measure)).toBeNull()
@@ -226,18 +256,18 @@ describe('createLuminanceCache', () => {
     expect(cache.size).toBe(1)
   })
   it('drops the oldest entry when full', async () => {
-    const cache = createLuminanceCache({ limit: 2 })
-    for (const key of ['a', 'b', 'c']) await cache.remember(key, async () => 0.5)
+    const cache = createVisibilityCache({ limit: 2 })
+    for (const key of ['a', 'b', 'c']) await cache.remember(key, async () => ({ dark: 0.5, light: 0.5 }))
     expect(cache.size).toBe(2)
-    const again = vi.fn().mockResolvedValue(0.1)
+    const again = vi.fn().mockResolvedValue({ dark: 0.1, light: 0.1 })
     await cache.remember('a', again)
     expect(again).toHaveBeenCalledTimes(1)
-    const kept = vi.fn().mockResolvedValue(0.1)
+    const kept = vi.fn().mockResolvedValue({ dark: 0.1, light: 0.1 })
     await cache.remember('c', kept)
     expect(kept).not.toHaveBeenCalled()
   })
   it('works with the default limit', () => {
-    expect(createLuminanceCache().size).toBe(0)
+    expect(createVisibilityCache().size).toBe(0)
   })
 })
 

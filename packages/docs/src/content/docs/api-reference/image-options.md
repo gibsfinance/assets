@@ -40,7 +40,7 @@ Some logos are dark and almost vanish on a dark page. Add a plate, a solid shape
 
 - `bg` is the plate colour. Write 3, 6 or 8 hex digits without `#`. Eight digits end with alpha, so `00000080` is half-transparent black. Any other value answers 400.
 - `shape` is the outline: `circle` (the default), `rounded` or `square`. It has an effect only together with `bg` or `contrast`. On its own it is checked, so a typo still answers 400, and then ignored.
-- `contrast` tells Gib what your page looks like: `dark` or `light`. Gib measures how bright the logo is and compares it with a typical page of that tone. It adds a plate in the opposite tone (white on a dark page, near-black on a light page) only when the contrast ratio is under 3:1, the minimum the Web Content Accessibility Guidelines set for graphics. A logo that already stands out is served unchanged.
+- `contrast` tells Gib what your page looks like: `dark` or `light`. Gib draws the logo small and checks each visible pixel against a typical page of that tone. A pixel stands out when its contrast ratio is at least 3:1, the minimum the Web Content Accessibility Guidelines set for graphics. Gib adds a plate in the opposite tone (white on a dark page, near-black on a light page) only when fewer than a quarter of the visible pixels stand out. A logo with some strong parts, such as a coloured disc with a white symbol, is served unchanged.
 
 When you send `bg` and `contrast` together, `bg` is the plate colour and `contrast` decides whether the plate appears. With `bg` alone the plate is always drawn.
 

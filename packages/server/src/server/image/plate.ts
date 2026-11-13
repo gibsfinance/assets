@@ -53,11 +53,8 @@ export interface Plate {
 }
 
 /**
- * The smallest contrast ratio between a logo and the page behind it that Gib leaves alone.
- * 3:1 is the Web Content Accessibility Guidelines minimum for graphical objects. Measured on the real
- * files staging serves: the Cronos logo (a navy hexagon) has visible luminance 0.0057, which is
- * 1.01:1 on a dark page, so it gets a plate. The Ethereum logo has 0.329: 6.9:1 on a dark page,
- * so no plate there; on a light page it is 2.8:1, so a dark plate is added.
+ * The contrast ratio a logo pixel needs against the page to count as visible. 3:1 is the Web Content
+ * Accessibility Guidelines minimum for graphical objects.
  */
 export const PLATE_CONTRAST_THRESHOLD = 3
 
@@ -66,6 +63,16 @@ export const PLATE_CONTRAST_THRESHOLD = 3
  * dark themes use; light is white.
  */
 export const PAGE_LUMINANCE: Record<PlateContrast, number> = { dark: 0.0052, light: 1 }
+
+/**
+ * The least share of a logo's visible pixels that must reach `PLATE_CONTRAST_THRESHOLD` against the
+ * page, below which the logo gets a plate. A share, not an average, because many logos mix light and
+ * dark parts: the Ethereum logo's blue disc stands out on white even though its white glyph does not,
+ * and an average would hide that. Measured on the real files staging serves (visible pixels at 3:1 or
+ * better): Cronos 0.00 on a dark page and 1.00 on a light one; Ethereum 1.00 on a dark page and 0.78 on
+ * a light one. 0.25 sits well between the faint logo and the weakest logo that should be left alone.
+ */
+export const PLATE_VISIBLE_SHARE_THRESHOLD = 0.25
 
 /** The plate colour used when `contrast` decides the colour: the opposite tone to the page. */
 export const CONTRAST_PLATE_COLOUR: Record<PlateContrast, Rgba> = {
@@ -83,14 +90,14 @@ export const PLATE_PADDING_RATIO: Record<PlateShape, number> = { circle: 0.15, r
 /** Corner radius of the `rounded` plate, in the 100-unit square the plate is drawn in. */
 const ROUNDED_CORNER_RADIUS = 22
 
-/** Side, in pixels, of the picture the logo's brightness is measured on. */
-export const LUMINANCE_SAMPLE_SIDE = 64
+/** Side, in pixels, of the picture  on. */
+export const VISIBILITY_SAMPLE_SIDE = 64
 
 /** Side, in pixels, of a plated vector image drawn to a raster when no size was asked for. */
 export const PLATE_DEFAULT_VECTOR_SIDE = 256
 
 /** Most measured logos kept in memory. */
-export const LUMINANCE_CACHE_LIMIT = 5000
+export const VISIBILITY_CACHE_LIMIT = 5000
 
 const HEX_COLOUR = /^(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 
@@ -164,78 +171,83 @@ export function contrastRatio(first: number, second: number): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
+/** For each page tone, the share (0-1) of a logo's visible pixels that stand out against that page. */
+export type VisibleShares = Record<PlateContrast, number>
+
 /**
- * The mean relative luminance of what is visible in raw 4-channel pixels, each pixel counting in
- * proportion to its alpha. Null when nothing is visible. A transparent background therefore never
- * drags a bright logo toward black.
+ * Read raw 4-channel pixels and say, for each page tone, what share of the visible pixels have at
+ * least `PLATE_CONTRAST_THRESHOLD` contrast against it. Each pixel counts in proportion to its alpha,
+ * so a transparent background counts for nothing. Null when nothing is visible.
  */
-export function visibleLuminance(pixels: Uint8Array): number | null {
-  let weightedSum = 0
+export function visibleShares(pixels: Uint8Array): VisibleShares | null {
+  const standingOut: VisibleShares = { dark: 0, light: 0 }
   let weight = 0
   for (let offset = 0; offset < pixels.length; offset += 4) {
     const alpha = pixels[offset + 3] / 255
-    weightedSum +=
-      alpha * relativeLuminance({ red: pixels[offset], green: pixels[offset + 1], blue: pixels[offset + 2] })
+    const luminance = relativeLuminance({ red: pixels[offset], green: pixels[offset + 1], blue: pixels[offset + 2] })
     weight += alpha
+    for (const tone of PLATE_CONTRASTS) {
+      if (contrastRatio(luminance, PAGE_LUMINANCE[tone]) >= PLATE_CONTRAST_THRESHOLD) standingOut[tone] += alpha
+    }
   }
   if (weight === 0) return null
-  return weightedSum / weight
+  return { dark: standingOut.dark / weight, light: standingOut.light / weight }
 }
 
-/** Draw a source small and read its visible luminance. */
-export async function measureVisibleLuminance(source: Sharp): Promise<number | null> {
+/** Draw a source small and read how visible it is against each page tone. */
+export async function measureVisibleShares(source: Sharp): Promise<VisibleShares | null> {
   const { data } = await source
-    .resize(LUMINANCE_SAMPLE_SIDE, LUMINANCE_SAMPLE_SIDE, { fit: 'inside' })
+    .resize(VISIBILITY_SAMPLE_SIDE, VISIBILITY_SAMPLE_SIDE, { fit: 'inside' })
     .toColourspace('srgb')
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
-  return visibleLuminance(data)
+  return visibleShares(data)
 }
 
-/** Whether a logo of this luminance is too faint against the page tone, so it needs a plate. */
-export function logoNeedsPlate({ luminance, contrast }: { luminance: number; contrast: PlateContrast }): boolean {
-  return contrastRatio(luminance, PAGE_LUMINANCE[contrast]) < PLATE_CONTRAST_THRESHOLD
+/** Whether too little of a logo stands out against the page tone, so it needs a plate. */
+export function logoNeedsPlate({ shares, contrast }: { shares: VisibleShares; contrast: PlateContrast }): boolean {
+  return shares[contrast] < PLATE_VISIBLE_SHARE_THRESHOLD
 }
 
 /**
- * Decide whether to draw a plate and in what colour. `measureLuminance` is only called when
+ * Decide whether to draw a plate and in what colour. `measureShares` is only called when
  * `contrast` is given, because only then does the answer depend on the logo.
  * - `bg` alone: always a plate in that colour.
- * - `contrast` alone: a plate in the opposite tone, only if the logo is faint.
+ * - `contrast` alone: a plate in the opposite tone, only if too little of the logo stands out.
  * - both: the plate is `bg`, and `contrast` decides whether it appears.
  * A logo with nothing visible gets no plate.
  */
 export async function resolvePlate({
   request,
-  measureLuminance,
+  measureShares,
 }: {
   request: PlateRequest
-  measureLuminance: () => Promise<number | null>
+  measureShares: () => Promise<VisibleShares | null>
 }): Promise<Plate | null> {
   const { colour, shape, contrast } = request
   if (!contrast) return colour ? { colour, shape } : null
-  const luminance = await measureLuminance()
-  if (luminance === null) return null
-  if (!logoNeedsPlate({ luminance, contrast })) return null
+  const shares = await measureShares()
+  if (shares === null) return null
+  if (!logoNeedsPlate({ shares, contrast })) return null
   return { colour: colour ?? CONTRAST_PLATE_COLOUR[contrast], shape }
 }
 
 /**
- * A small memory of measured luminances, so the logo is drawn and measured once rather than on
+ * A small memory of measured shares, so the logo is drawn and measured once rather than on
  * every request. When full, the oldest entry goes first. A logo with nothing visible is remembered
  * too (as null).
  */
-export function createLuminanceCache({ limit = LUMINANCE_CACHE_LIMIT }: { limit?: number } = {}) {
-  const entries = new Map<string, number | null>()
+export function createVisibilityCache({ limit = VISIBILITY_CACHE_LIMIT }: { limit?: number } = {}) {
+  const entries = new Map<string, VisibleShares | null>()
   return {
     /** Return the remembered value for `key`, or measure it with `measure` and remember that. */
-    async remember(key: string, measure: () => Promise<number | null>): Promise<number | null> {
+    async remember(key: string, measure: () => Promise<VisibleShares | null>): Promise<VisibleShares | null> {
       if (entries.has(key)) return entries.get(key)!
-      const luminance = await measure()
+      const shares = await measure()
       if (entries.size >= limit) entries.delete(entries.keys().next().value!)
-      entries.set(key, luminance)
-      return luminance
+      entries.set(key, shares)
+      return shares
     },
     /** Number of remembered entries. */
     get size() {

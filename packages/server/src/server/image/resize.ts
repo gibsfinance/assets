@@ -26,12 +26,12 @@ import { attributionHeaders } from './attribution'
 import { createRateLimiter } from './rate-limit'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import {
-  LUMINANCE_SAMPLE_SIDE,
+  VISIBILITY_SAMPLE_SIDE,
   type Plate,
   type PlateRequest,
-  createLuminanceCache,
+  createVisibilityCache,
   computePlateSide,
-  measureVisibleLuminance,
+  measureVisibleShares,
   parsePlateRequest,
   plateInnerSide,
   renderPlatedRaster,
@@ -509,10 +509,10 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
 }
 
 /**
- * Measured luminance by image, so a logo is drawn small and measured once and not on every request
+ * Measured visibility by image, so a logo is drawn small and measured once and not on every request
  * that says `contrast=`. Keyed by the image's own hash.
  */
-const luminanceCache = createLuminanceCache()
+const visibilityCache = createVisibilityCache()
 
 /** Decide whether this request gets a plate, measuring the logo only when `contrast` needs it. */
 async function settlePlate({
@@ -525,12 +525,12 @@ async function settlePlate({
   content: Buffer
 }): Promise<Plate | null> {
   const measure = async () =>
-    measureVisibleLuminance(
-      await openSource({ content, ext: img.ext, target: { w: LUMINANCE_SAMPLE_SIDE, h: LUMINANCE_SAMPLE_SIDE } }),
+    measureVisibleShares(
+      await openSource({ content, ext: img.ext, target: { w: VISIBILITY_SAMPLE_SIDE, h: VISIBILITY_SAMPLE_SIDE } }),
     )
   return resolvePlate({
     request,
-    measureLuminance: () => luminanceCache.remember(img.imageHash, measure),
+    measureShares: () => visibilityCache.remember(img.imageHash, measure),
   })
 }
 

@@ -247,9 +247,10 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   usable image: a current list version beats a superseded one (the lists read current versions only).
 - Plates: `?bg=<hex>`, `?shape=circle|rounded|square`, `?contrast=dark|light` put a shape behind a logo
   (`image/plate.ts`, wired into `maybeResize`, so every image route has them). `parseResizeParams` validates
-  them (400) and a plate request alone makes `params` non-null. `contrast` measures the logo's alpha-weighted
-  mean luminance at 64 px and plates it only under `PLATE_CONTRAST_THRESHOLD` (3:1) against a page of that tone;
-  the measurement is remembered per `imageHash` in memory. Plated output is NOT stored in `image_variant`
+  them (400) and a plate request alone makes `params` non-null. `contrast` draws the logo at 64 px and measures,
+  for each page tone, the alpha-weighted share of visible pixels with at least `PLATE_CONTRAST_THRESHOLD` (3:1)
+  contrast; it plates only when that share is under `PLATE_VISIBLE_SHARE_THRESHOLD` (0.25). A share, not a mean:
+  a mean gave the Ethereum logo a plate on white. The two shares are remembered per `imageHash` in memory. Plated output is NOT stored in `image_variant`
   (its key has no plate field; a stored copy would be served to plain requests) and so needs no migration.
   A vector with a `viewBox` and no `as` stays svg (plate plus the original nested); anything else goes through sharp.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
