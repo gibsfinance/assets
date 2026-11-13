@@ -80,7 +80,10 @@ const EVENT_HANDLER_REGEX = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi
  * bind the xlink namespace to any prefix) with a quoted value. Group 1 is the name and the equals
  * sign, group 2 the opening quote, group 3 the value.
  */
-const LINK_ATTRIBUTE_REGEX = /(\s+(?:[\w.-]+:)?(?:href|src)\s*=\s*)(["'])([^"']*)\2/gi
+// Each quote kind is matched on its own, so a value may hold the other kind
+// (`href="javascript:alert('x')"`). A shared `[^"']*` skipped such a link entirely.
+// Unquoted values are not well-formed XML, so an SVG served as XML never runs one.
+const LINK_ATTRIBUTE_REGEX = /(\s+(?:[\w.-]+:)?(?:href|src)\s*=\s*)("[^"]*"|'[^']*')/gi
 
 /** Named character references a browser decodes that can hide part of a scheme name. */
 const NAMED_REFERENCES: Record<string, string> = { tab: '\t', newline: '\n', colon: ':', amp: '&' }
@@ -130,9 +133,10 @@ export function isScriptUri(value: string): boolean {
 
 /** Replace the value of every link attribute that runs script with `#`, keeping the quotes. */
 function stripScriptLinks(svg: string): string {
-  return svg.replace(LINK_ATTRIBUTE_REGEX, (whole, head, quote, value) =>
-    isScriptUri(value) ? `${head}${quote}#${quote}` : whole,
-  )
+  return svg.replace(LINK_ATTRIBUTE_REGEX, (whole: string, head: string, quoted: string) => {
+    const quote = quoted[0]
+    return isScriptUri(quoted.slice(1, -1)) ? `${head}${quote}#${quote}` : whole
+  })
 }
 
 /** Matches <use> elements with external references (xlink:href="http://..." or href="http://...") */
@@ -142,7 +146,9 @@ const EXTERNAL_USE_REGEX = /<use\s[^>]*(?:xlink:)?href\s*=\s*(?:"|')https?:\/\/[
 const DANGEROUS_DATA_URI_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))data:(?!image\/)[^"']*(?:"|')/gi
 
 /** Matches set/animate elements, whose target attribute is checked after decoding (see `targetsLink`) */
-const ANIMATION_ELEMENT_REGEX = /<(?:set|animate)\s[^>]*>/gi
+// The tag ends at the first `>` outside quotes: an attribute value may hold `>`
+// (`data-x="a>b"`), and ending there would hide the attributes after it.
+const ANIMATION_ELEMENT_REGEX = /<(?:set|animate)\s(?:[^>"']|"[^"]*"|'[^']*')*>/gi
 
 /** Matches a target attribute name that is a link attribute, in the text of an animation element */
 const LINK_TARGET_REGEX = /attributeName\s*=\s*["']\s*(?:[\w.-]+:)?href\s*["']/i

@@ -212,6 +212,9 @@ describe('script links written with character references', () => {
     ['a link attribute under another prefix', 'x:href="&#106;avascript:alert(1)"'],
     ['a src attribute', 'src="&#106;avascript:alert(1)"'],
     ['single quotes', "href='&#106;avascript:alert(1)'"],
+    // A value may hold the other kind of quote; the link must still be checked.
+    ['a single quote inside a double-quoted value', `href="javascript:alert('x')"`],
+    ['a double quote inside a single-quoted value', `href='javascript:alert("x")'`],
   ])('neutralises %s', async (_label, attributes) => {
     const output = await clean(attributes)
     expect(output).toMatch(/="#"|='#'/)
@@ -235,6 +238,17 @@ describe('script links written with character references', () => {
     for (const target of ['&#104;ref', 'xlink:&#104;ref', '&#x78;link:href']) {
       const svg = Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg"><a href="#"><set attributeName="${target}" to="&#106;avascript:alert(1)"/><text>x</text></a></svg>`,
+      )
+      const output = (await sanitizeImage(svg, '.svg')).toString()
+      expect(output).not.toContain('<set')
+      expect(output).not.toContain('alert')
+    }
+  })
+
+  it('strips an animation that targets href when an earlier attribute value holds a ">"', async () => {
+    for (const before of [`data-x="a>b"`, `data-x='a>b'`, `begin="0s" data-y="x>y>z"`]) {
+      const svg = Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg"><a href="#"><set ${before} attributeName="href" to="javascript:alert(1)"/><text>x</text></a></svg>`,
       )
       const output = (await sanitizeImage(svg, '.svg')).toString()
       expect(output).not.toContain('<set')
