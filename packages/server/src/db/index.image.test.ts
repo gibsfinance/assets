@@ -1023,6 +1023,10 @@ describe('fetchImageAndStoreForNetwork', () => {
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-curated' }])
     harness.queueResult([{ imageHash: 'hash-curated' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-fallback', imageProviderKey: 'chainlist' }])
+    harness.queueResult([
+      { imageHash: 'hash-fallback', ext: '.png' },
+      { imageHash: 'hash-curated', ext: '.png' },
+    ])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated' }])
 
     const result = await fetchImageAndStoreForNetwork({
@@ -1043,6 +1047,10 @@ describe('fetchImageAndStoreForNetwork', () => {
     harness.queueResult([{ uri: 'https://x/icon.png', imageHash: 'hash-fallback' }])
     harness.queueResult([{ imageHash: 'hash-fallback' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated', imageProviderKey: 'smoldapp' }])
+    harness.queueResult([
+      { imageHash: 'hash-curated', ext: '.png' },
+      { imageHash: 'hash-fallback', ext: '.png' },
+    ])
 
     const result = await fetchImageAndStoreForNetwork({
       network,
@@ -1053,6 +1061,77 @@ describe('fetchImageAndStoreForNetwork', () => {
 
     expect(harness.queries.filter((query) => query.root === 'update')).toHaveLength(0)
     expect(result?.network).toMatchObject({ imageHash: 'hash-curated', imageProviderKey: 'smoldapp' })
+  })
+
+  describe('vector preference for the network slot', () => {
+    /** Contest the slot on the fresh path: `incumbent` holds it, `candidate` is offered. */
+    const contest = async ({
+      incumbent,
+      candidate,
+    }: {
+      incumbent: { hash: string; ext: string; providerKey: string }
+      candidate: { hash: string; ext: string; providerKey: string }
+    }) => {
+      harness.queueResult([{ uri: 'https://x/icon', imageHash: candidate.hash }])
+      harness.queueResult([{ imageHash: candidate.hash }])
+      harness.queueResult([
+        { networkId: 'network-1', imageHash: incumbent.hash, imageProviderKey: incumbent.providerKey },
+      ])
+      harness.queueResult([
+        { imageHash: incumbent.hash, ext: incumbent.ext },
+        { imageHash: candidate.hash, ext: candidate.ext },
+      ])
+      harness.queueResult([{ networkId: 'network-1', imageHash: candidate.hash }])
+      await fetchImageAndStoreForNetwork({
+        network,
+        uri: 'https://x/icon',
+        originalUri: 'https://x/icon',
+        providerKey: candidate.providerKey,
+      })
+      const [update] = harness.queries.filter((query) => query.root === 'update')
+      return update?.steps.find((step) => step.method === 'set')?.args[0] as Record<string, unknown> | undefined
+    }
+
+    it('lets a lower-priority vector replace a higher-priority raster', async () => {
+      const written = await contest({
+        incumbent: { hash: 'png', ext: '.png', providerKey: 'smoldapp' },
+        candidate: { hash: 'svg', ext: '.svg', providerKey: 'chainlist' },
+      })
+      expect(written).toEqual({ imageHash: 'svg', imageProviderKey: 'chainlist' })
+    })
+
+    it('never lets a higher-priority raster displace a lower-priority vector', async () => {
+      const written = await contest({
+        incumbent: { hash: 'svg', ext: '.svg+xml', providerKey: 'chainlist' },
+        candidate: { hash: 'png', ext: '.png', providerKey: 'smoldapp' },
+      })
+      expect(written).toBeUndefined()
+    })
+
+    it('keeps priority order between two vectors', async () => {
+      const lower = await contest({
+        incumbent: { hash: 'svg-a', ext: '.svg', providerKey: 'smoldapp' },
+        candidate: { hash: 'svg-b', ext: '.svg', providerKey: 'chainlist' },
+      })
+      expect(lower).toBeUndefined()
+      harness.reset?.()
+    })
+
+    it('keeps priority order between two rasters, and lets the better one in', async () => {
+      const written = await contest({
+        incumbent: { hash: 'png-a', ext: '.png', providerKey: 'chainlist' },
+        candidate: { hash: 'png-b', ext: '.webp', providerKey: 'smoldapp' },
+      })
+      expect(written).toEqual({ imageHash: 'png-b', imageProviderKey: 'smoldapp' })
+    })
+
+    it('lets the higher-priority vector replace a lower-priority vector', async () => {
+      const written = await contest({
+        incumbent: { hash: 'svg-a', ext: '.svg', providerKey: 'chainlist' },
+        candidate: { hash: 'svg-b', ext: '.svg', providerKey: 'smoldapp' },
+      })
+      expect(written).toEqual({ imageHash: 'svg-b', imageProviderKey: 'smoldapp' })
+    })
   })
 
   it("reports the caller's own network when the claim writes no row", async () => {
@@ -1114,6 +1193,10 @@ describe('fetchImageAndStoreForNetwork', () => {
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated', imageProviderKey: 'smoldapp' }])
+    harness.queueResult([
+      { imageHash: 'hash-curated', ext: '.png' },
+      { imageHash: 'hash-new', ext: '.png' },
+    ])
 
     const result = await fetchImageAndStoreForNetwork({
       network,
@@ -1140,6 +1223,10 @@ describe('fetchImageAndStoreForNetwork', () => {
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-fallback', imageProviderKey: 'chainlist' }])
+    harness.queueResult([
+      { imageHash: 'hash-fallback', ext: '.png' },
+      { imageHash: 'hash-new', ext: '.png' },
+    ])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
 
     const result = await fetchImageAndStoreForNetwork({
@@ -1168,6 +1255,10 @@ describe('fetchImageAndStoreForNetwork', () => {
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-legacy', imageProviderKey: null }])
+    harness.queueResult([
+      { imageHash: 'hash-legacy', ext: '.png' },
+      { imageHash: 'hash-new', ext: '.png' },
+    ])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-new' }])
 
     const result = await fetchImageAndStoreForNetwork({
