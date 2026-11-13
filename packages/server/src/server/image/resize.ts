@@ -13,6 +13,7 @@
  * address is derived from the content it names) and the shorter, configured lifetime everywhere
  * else, where the same address can later answer with different bytes.
  */
+import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import type { FormatEnum, Sharp } from 'sharp'
 import type { Response } from 'express'
@@ -23,12 +24,15 @@ import config from '../../../config'
 import { imageMode } from '../../db/tables'
 import { failureLog } from '@gibs/utils'
 import { attributionHeaders } from './attribution'
-import { createRateLimiter } from './rate-limit'
+import { setImageSecurityHeaders } from './headers'
+import { createRateLimiter, DEFAULT_WINDOW_MS, type RateLimiter } from './rate-limit'
+import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import {
   VISIBILITY_SAMPLE_SIDE,
   type Plate,
   type PlateRequest,
+  createFailureMemory,
   createVisibilityCache,
   computePlateSide,
   measureVisibleShares,
@@ -274,17 +278,34 @@ export async function openSource({
   content,
   ext,
   target,
+  intrinsic,
 }: {
   content: Buffer
   ext: string
   target: { w: number | null; h: number | null }
+  /** The source's own size, when the caller has already read it, so it is not read twice. */
+  intrinsic?: { width?: number; height?: number }
 }): Promise<Sharp> {
   if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content)
   if (!target.w && !target.h) return sharp(content)
-  const intrinsic = await sharp(content).metadata()
-  const scale = computeSvgScale({ intrinsic, target })
+  const size = intrinsic ?? (await sharp(content).metadata())
+  const scale = computeSvgScale({ intrinsic: size, target })
   if (scale === 1) return sharp(content)
   return sharp(content, { density: densityForScale(scale) })
+}
+
+/**
+ * Open image bytes to measure how visible they are. Only a small picture is read from it
+ * (`VISIBILITY_SAMPLE_SIDE`), so a vector is drawn at a density that puts its long side at about that
+ * size, not at its own size, which a file can set as large as it likes. A raster is opened as it is.
+ */
+export async function openForMeasurement({ content, ext }: { content: Buffer; ext: string }): Promise<Sharp> {
+  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content)
+  const { width, height } = await sharp(content).metadata()
+  // sharp reports a size for every vector it can open; one it cannot open throws here, and the caller treats that as a failed measurement.
+  const longest = Math.max(width!, height!)
+  const density = Math.floor((SVG_BASE_DENSITY * VISIBILITY_SAMPLE_SIDE) / longest)
+  return sharp(content, { density: Math.max(1, Math.min(SVG_BASE_DENSITY, density)) })
 }
 
 /** Map format string to content-type */
@@ -295,6 +316,7 @@ export function formatToContentType(format: string): string {
     case 'png':
       return 'image/png'
     case 'jpg':
+    case 'jpeg':
       return 'image/jpeg'
     case 'avif':
       return 'image/avif'
@@ -365,8 +387,15 @@ export interface MaybeResizeOptions {
   }
   /** Pre-parsed resize/format options from `parseResizeParams`; null = no resize requested */
   params: ResizeParams | null
-  /** Which of the two cache lifetimes a served variant gets. Defaults to `mutable`. */
+  /**
+   * Which of the two cache lifetimes a served variant gets. Defaults to `mutable`. A plated image
+   * ignores it: its bytes depend on this code's constants, so it is always mutable.
+   */
   cachePolicy?: CachePolicy
+  /** Limits how many plates are drawn at once. Defaults to the shared gate; tests pass their own. */
+  plateGate?: ConcurrencyGate
+  /** Limits how often plates of one image are drawn. Defaults to the shared limiter; tests pass their own. */
+  plateLimiter?: RateLimiter
 }
 
 /**
@@ -375,7 +404,14 @@ export interface MaybeResizeOptions {
  * Takes pre-parsed params instead of reading `req.query` so path-extension
  * conversion and query conversion flow through one explicit code path.
  */
-export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }: MaybeResizeOptions): Promise<boolean> {
+export async function maybeResize({
+  res,
+  img,
+  params,
+  cachePolicy = 'mutable',
+  plateGate = sharedPlateGate,
+  plateLimiter = sharedPlateLimiter,
+}: MaybeResizeOptions): Promise<boolean> {
   if (!params) return false
 
   // Now that the source is known, settle a request for a format sharp cannot
@@ -396,6 +432,7 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
 
   // For LINK-mode images, fetch the remote content
   let content = img.content
+  let contentSource: ContentSource = 'stored'
   if (img.mode === imageMode.LINK && (!content || content.length === 0)) {
     if (!img.uri || !img.uri.startsWith('http')) return false
     // A link-only host's terms forbid a copy as much as a derivative, and a
@@ -409,6 +446,7 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
       const fetchRes = await fetch(img.uri, { signal: AbortSignal.timeout(5000) })
       if (!fetchRes.ok) return false
       content = Buffer.from(await fetchRes.arrayBuffer())
+      contentSource = 'fetched'
     } catch {
       return false
     }
@@ -418,10 +456,20 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   // `loadImageBytes`), or a save-mode row holds none. Let the caller redirect or answer 404.
   if (!content || content.length === 0) return false
 
-  // A plate is never stored as a variant (see `servePlated`), so it is settled before the variant
+  // A plate is never stored as a variant (see `renderPlated`), so it is settled before the variant
   // cache is consulted. No plate needed and nothing else asked for: the original is served.
-  const plate = params.plate ? await settlePlate({ request: params.plate, img, content }) : null
-  if (plate) return servePlated({ res, img, content, plate, params, cachePolicy })
+  if (params.plate) {
+    const plateRequest = params.plate
+    const outcome = await plateGate.run(() =>
+      producePlated({ img, content, contentSource, params, plateRequest, plateLimiter }),
+    )
+    if (outcome === GATE_FULL) return turnAway(res, PLATE_BUSY)
+    if (outcome === OVER_BUDGET) return turnAway(res, PLATE_OVER_BUDGET)
+    if (outcome) {
+      sendVariant(res, outcome, attributionOptions({ img, cachePolicy: 'mutable' }))
+      return true
+    }
+  }
   if (!w && !h && !format) return false
 
   // SVG with viewBox and no explicit format conversion → serve as-is
@@ -443,15 +491,7 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
     db.bumpVariantAccess(img.imageHash, targetW || 0, targetH || 0, targetFormat).catch((e: Error) =>
       failureLog('variant op failed: %s', e.message),
     )
-    sendVariant(res, existing, {
-      uri: img.uri,
-      providerKey: img.providerKey,
-      entryLicense: img.license,
-      listLicense: img.listLicense,
-      listLicenseUrl: img.listLicenseUrl,
-      listAttribution: img.listAttribution,
-      cachePolicy,
-    })
+    sendVariant(res, existing, attributionOptions({ img, cachePolicy }))
     return true
   }
 
@@ -494,71 +534,209 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
       createdAt: new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     },
-    {
-      uri: img.uri,
-      providerKey: img.providerKey,
-      entryLicense: img.license,
-      listLicense: img.listLicense,
-      listLicenseUrl: img.listLicenseUrl,
-      listAttribution: img.listAttribution,
-      cachePolicy,
-    },
+    attributionOptions({ img, cachePolicy }),
   )
 
   return true
 }
 
-/**
- * Measured visibility by image, so a logo is drawn small and measured once and not on every request
- * that says `contrast=`. Keyed by the image's own hash.
- */
-const visibilityCache = createVisibilityCache()
+/** The send options that carry an image's provenance and licence, shared by every way a variant is sent. */
+function attributionOptions({
+  img,
+  cachePolicy,
+}: {
+  img: MaybeResizeOptions['img']
+  cachePolicy: CachePolicy
+}): SendVariantOptions {
+  return {
+    uri: img.uri,
+    providerKey: img.providerKey,
+    entryLicense: img.license,
+    listLicense: img.listLicense,
+    listLicenseUrl: img.listLicenseUrl,
+    listAttribution: img.listAttribution,
+    cachePolicy,
+  }
+}
 
-/** Decide whether this request gets a plate, measuring the logo only when `contrast` needs it. */
-async function settlePlate({
-  request,
+// ---------------------------------------------------------------------------
+// Section 4: Plates
+// ---------------------------------------------------------------------------
+
+/** Where the bytes of a source came from: the stored image, or a remote address fetched for this request. */
+type ContentSource = 'stored' | 'fetched'
+
+/**
+ * Plated renders allowed per image, and across all images, in one window. The variant limiter above
+ * only decides whether a resize is stored, so its budgets are small; a plate is refused when its
+ * budget is spent, so these must leave room for one page of distinct logos in a few shapes and sizes,
+ * and no more. The global figure is about ten draws a second, more than one thread can finish.
+ */
+const PLATE_PER_IMAGE_LIMIT = 30
+const PLATE_GLOBAL_LIMIT = 600
+
+/** The shared plate budget, built by the same `createRateLimiter` as the resize budget but spent on its own. */
+const sharedPlateLimiter = createRateLimiter({ perImageLimit: PLATE_PER_IMAGE_LIMIT, globalLimit: PLATE_GLOBAL_LIMIT })
+
+/** The shared gate that holds how many plates are drawn at once. */
+const sharedPlateGate = createConcurrencyGate({ limit: config.plateRenders?.concurrency })
+
+/** Seconds a caller is told to wait when the plate line is full. */
+const PLATE_BUSY_RETRY_SECONDS = 2
+
+/** What `producePlated` answers when the plate budget is spent. */
+const OVER_BUDGET = Symbol('over-budget')
+
+interface Refusal {
+  status: number
+  retryAfterSeconds: number
+  message: string
+}
+
+const PLATE_BUSY: Refusal = {
+  status: 503,
+  retryAfterSeconds: PLATE_BUSY_RETRY_SECONDS,
+  message: 'too many plated images are being drawn; try again shortly',
+}
+
+const PLATE_OVER_BUDGET: Refusal = {
+  status: 429,
+  retryAfterSeconds: DEFAULT_WINDOW_MS / 1000,
+  message: 'too many plated images requested for this image; try again later',
+}
+
+/**
+ * Answer a request that is refused for load, with `Retry-After`, and say so with `true` as the
+ * request is handled. Written here, not thrown: the error funnel turns every 5xx into a generic 500.
+ * Never cacheable, so an edge cache cannot keep a refusal and serve it after the load has passed.
+ */
+function turnAway(res: Response, { status, retryAfterSeconds, message }: Refusal): true {
+  res.set('retry-after', String(retryAfterSeconds)).set('cache-control', 'no-store')
+  res.status(status).json({ error: message })
+  return true
+}
+
+/**
+ * What a measurement or a drawing is remembered under. A stored image is named by its hash, which
+ * is derived from its bytes. A fetched one is named by the hash of the bytes just read, because the
+ * remote file can change under a fixed address and a stale answer would be about other bytes.
+ */
+function sourceKey({
   img,
   content,
+  contentSource,
+}: {
+  img: Pick<Image, 'imageHash'>
+  content: Buffer
+  contentSource: ContentSource
+}): string {
+  if (contentSource === 'stored') return `image:${img.imageHash}`
+  return `bytes:${createHash('sha256').update(content).digest('hex')}`
+}
+
+/** Log a failure with the key it is remembered under; called once per failure window. */
+function logPlateFailure(what: string, key: string, error: unknown): void {
+  failureLog('plate: could not %s %s: %s', what, key, String(error))
+}
+
+/**
+ * Measured visibility by source, so a logo is drawn small and measured once and not on every
+ * request that says `contrast=`. Concurrent requests share one measurement and a source that cannot
+ * be decoded is not decoded again for a minute.
+ */
+const visibilityCache = createVisibilityCache({
+  onFailure: (key, error) => logPlateFailure('measure', key, error),
+})
+
+/** Sources that could not be drawn on a plate, so a broken file is not decoded on every request. */
+const drawFailures = createFailureMemory()
+
+/**
+ * Decide whether this request gets a plate, measuring the logo only when `contrast` needs it.
+ * Null when it gets none, including when the logo cannot be measured: the caller then answers as the
+ * plain request would.
+ */
+async function settlePlate({
+  request,
+  key,
+  content,
+  ext,
 }: {
   request: PlateRequest
-  img: Pick<Image, 'imageHash' | 'ext'>
+  key: string
   content: Buffer
+  ext: string
 }): Promise<Plate | null> {
-  const measure = async () =>
-    measureVisibleShares(
-      await openSource({ content, ext: img.ext, target: { w: VISIBILITY_SAMPLE_SIDE, h: VISIBILITY_SAMPLE_SIDE } }),
-    )
+  const measure = async () => measureVisibleShares(await openForMeasurement({ content, ext }))
+  // A measurement that fails (now or within the failure window) reads as "no plate": the request is
+  // answered as the plain one would be. The cache has already logged the failure, once.
   return resolvePlate({
     request,
-    measureShares: () => visibilityCache.remember(img.imageHash, measure),
+    measureShares: () => visibilityCache.remember(key, measure).catch(() => null),
   })
 }
 
 /**
- * Serve a logo on a plate. A vector source with a `viewBox`, and no `as`, stays a vector: the plate
- * is drawn behind the original, nested whole. Anything else is drawn to pixels, at the requested
- * size (or its own size), in the requested format or the source's.
+ * Settle and draw a plated image. Runs inside the plate gate. Answers:
+ * - the image to send;
+ * - null when there is nothing to plate or the source cannot be drawn (the plain request's answer
+ *   follows, whatever it is);
+ * - `OVER_BUDGET` when this image's plate budget, or the global one, is spent. A request that finds
+ *   no plate is needed costs only a measurement and does not spend the budget.
+ */
+async function producePlated({
+  img,
+  content,
+  contentSource,
+  params,
+  plateRequest,
+  plateLimiter,
+}: {
+  img: MaybeResizeOptions['img']
+  content: Buffer
+  contentSource: ContentSource
+  params: ResizeParams
+  plateRequest: PlateRequest
+  plateLimiter: RateLimiter
+}): Promise<ImageVariant | typeof OVER_BUDGET | null> {
+  const key = sourceKey({ img, content, contentSource })
+  const plate = await settlePlate({ request: plateRequest, key, content, ext: img.ext })
+  if (!plate) return null
+  if (drawFailures.has(key)) return null
+  if (!plateLimiter.check(img.imageHash)) return OVER_BUDGET
+  try {
+    return await renderPlated({ img, content, plate, params })
+  } catch (error) {
+    drawFailures.record(key)
+    logPlateFailure('draw', key, error)
+    return null
+  }
+}
+
+/**
+ * Draw a logo on a plate. A vector source with a `viewBox`, and no `as`, stays a vector: the plate
+ * is drawn behind the original, nested whole, when the wrapper can write it with confidence (see
+ * `wrapSvgWithPlate`). Anything else is drawn to pixels, at the requested size (or its own size, up
+ * to `MAX_DIM`), in the requested format or the source's.
  *
  * A plated image is not stored in `image_variant`. That table is keyed by size and format, so a
- * plated copy would be served to a plain request. Extending the key would need a migration, and
- * the cost here is one small draw per request, while the edge cache holds the answer by its full
- * address, query included. The `ETag` Express adds comes from the body, so it differs with the plate.
+ * plated copy would be served to a plain request. Extending the key would need a migration and a
+ * key for every colour, and the colour is free text from the caller, so storing would let
+ * a caller fill the table. The cost here is one small draw per request, held back by the plate
+ * budget and gate, and the edge cache holds the answer by its full address, query included. The
+ * `ETag` Express adds comes from the body, so it differs with the plate.
  */
-async function servePlated({
-  res,
+async function renderPlated({
   img,
   content,
   plate,
   params,
-  cachePolicy,
 }: {
-  res: Response
   img: MaybeResizeOptions['img']
   content: Buffer
   plate: Plate
   params: ResizeParams
-  cachePolicy: CachePolicy
-}): Promise<true> {
+}): Promise<ImageVariant> {
   const { w, h, format } = params
   const isVector = SVG_SOURCE_EXTS.has(img.ext)
   const wrapped = isVector && !format ? wrapSvgWithPlate({ content, plate }) : null
@@ -567,29 +745,16 @@ async function servePlated({
     ? null
     : await drawPlatedPixels({ content, ext: img.ext, plate, target: { w, h }, format: targetFormat })
   const now = new Date().toISOString()
-  sendVariant(
-    res,
-    {
-      imageHash: img.imageHash,
-      width: pixels?.side ?? 0,
-      height: pixels?.side ?? 0,
-      format: wrapped ? 'svg' : targetFormat,
-      content: wrapped ?? pixels!.body,
-      accessCount: 1,
-      createdAt: now,
-      lastAccessedAt: now,
-    },
-    {
-      uri: img.uri,
-      providerKey: img.providerKey,
-      entryLicense: img.license,
-      listLicense: img.listLicense,
-      listLicenseUrl: img.listLicenseUrl,
-      listAttribution: img.listAttribution,
-      cachePolicy,
-    },
-  )
-  return true
+  return {
+    imageHash: img.imageHash,
+    width: pixels?.side ?? 0,
+    height: pixels?.side ?? 0,
+    format: wrapped ? 'svg' : targetFormat,
+    content: wrapped ?? pixels!.body,
+    accessCount: 1,
+    createdAt: now,
+    lastAccessedAt: now,
+  }
 }
 
 /** Draw a logo on a plate as pixels; returns the bytes and the side of the square they were drawn at. */
@@ -606,14 +771,16 @@ async function drawPlatedPixels({
   target: { w: number | null; h: number | null }
   format: string
 }): Promise<{ body: Buffer; side: number }> {
+  const intrinsic = await sharp(content).metadata()
   const side = computePlateSide({
     target,
-    intrinsic: await sharp(content).metadata(),
+    intrinsic,
     isVector: SVG_SOURCE_EXTS.has(ext),
     shape: plate.shape,
+    maxSide: MAX_DIM,
   })
   const inner = plateInnerSide({ side, shape: plate.shape })
-  const logo = await openSource({ content, ext, target: { w: inner, h: inner } })
+  const logo = await openSource({ content, ext, target: { w: inner, h: inner }, intrinsic })
   const body = await renderPlatedRaster({ logo, side, plate, format: normalizeFormat(format) })
   return { body, side }
 }
@@ -661,5 +828,6 @@ export function sendVariant(
   for (const [name, value] of Object.entries(headers)) {
     r = r.set(name, value)
   }
+  setImageSecurityHeaders(r)
   r.contentType(formatToContentType(variant.format)).send(variant.content)
 }

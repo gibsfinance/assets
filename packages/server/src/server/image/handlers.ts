@@ -41,7 +41,7 @@ import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored, resolveChainIdAlias } from '../../chain-id'
-import { RESOLVED_CHAIN_HEADER } from './headers'
+import { RESOLVED_CHAIN_HEADER, setImageSecurityHeaders } from './headers'
 import { withImageBytes } from '../../image-store/image-bytes'
 import { imageColumnsWithoutStoredBytes } from '../../db/image-columns'
 
@@ -730,5 +730,6 @@ export const sendImage = (
   const rewritable = SVG_EXTS.has(img.ext) && cachePolicy !== 'content-addressed'
   // `classifyImageServe` answered 'serve' only because there are bytes.
   const content = rewritable ? stripRootSvgDimensions(img.content!) : img.content
+  setImageSecurityHeaders(r)
   r.contentType(img.ext).send(content)
 }

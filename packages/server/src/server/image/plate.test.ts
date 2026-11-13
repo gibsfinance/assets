@@ -8,6 +8,10 @@ import {
   computePlateSide,
   contrastRatio,
   createVisibilityCache,
+  createFailureMemory,
+  findTagEnd,
+  plateDocument,
+  VisibilityUnavailableError,
   logoNeedsPlate,
   measureVisibleShares,
   parseHexColour,
@@ -347,15 +351,15 @@ describe('wrapSvgWithPlate', () => {
 
 describe('plate size', () => {
   it('takes the requested side, the smaller of two', () => {
-    const base = { intrinsic: {}, isVector: true, shape: 'circle' as const }
+    const base = { intrinsic: {}, isVector: true, shape: 'circle' as const, maxSide: 2048 }
     expect(computePlateSide({ ...base, target: { w: 128, h: null } })).toBe(128)
     expect(computePlateSide({ ...base, target: { w: null, h: 64 } })).toBe(64)
     expect(computePlateSide({ ...base, target: { w: 128, h: 64 } })).toBe(64)
   })
   it('gives a vector a fixed side when no size is asked for', () => {
-    expect(computePlateSide({ target: { w: null, h: null }, intrinsic: {}, isVector: true, shape: 'circle' })).toBe(
-      PLATE_DEFAULT_VECTOR_SIDE,
-    )
+    expect(
+      computePlateSide({ target: { w: null, h: null }, intrinsic: {}, isVector: true, shape: 'circle', maxSide: 2048 }),
+    ).toBe(PLATE_DEFAULT_VECTOR_SIDE)
   })
   it('leaves a raster at its own size plus the padding', () => {
     expect(
@@ -364,9 +368,18 @@ describe('plate size', () => {
         intrinsic: { width: 70, height: 35 },
         isVector: false,
         shape: 'circle',
+        maxSide: 2048,
       }),
     ).toBe(100)
-    expect(computePlateSide({ target: { w: null, h: null }, intrinsic: {}, isVector: false, shape: 'square' })).toBe(2)
+    expect(
+      computePlateSide({
+        target: { w: null, h: null },
+        intrinsic: {},
+        isVector: false,
+        shape: 'square',
+        maxSide: 2048,
+      }),
+    ).toBe(2)
   })
   it('fits the logo inside the padding', () => {
     expect(plateInnerSide({ side: 100, shape: 'circle' })).toBe(70)
@@ -423,5 +436,190 @@ describe('renderPlatedRaster', () => {
     )
     expect(at(50, 50)).toEqual([0, 255, 0, 255])
     expect(at(30, 50)).toEqual([255, 255, 255, 255])
+  })
+})
+
+describe('plate side is bounded', () => {
+  const raster = { isVector: false, shape: 'circle' as const, target: { w: null, h: null } }
+  it('never draws a raster past maxSide, however large the source', () => {
+    // 8000 px asks for 8000 / 0.7 = 11429 px unbounded, which is a canvas of about 520 MB.
+    expect(computePlateSide({ ...raster, intrinsic: { width: 8000, height: 8000 }, maxSide: 2048 })).toBe(2048)
+  })
+  it('still adds the padding to a raster that fits', () => {
+    expect(computePlateSide({ ...raster, intrinsic: { width: 700, height: 700 }, maxSide: 2048 })).toBe(
+      Math.ceil(700 / 0.7),
+    )
+  })
+  it('bounds a requested side and the vector default too', () => {
+    expect(computePlateSide({ ...raster, intrinsic: {}, target: { w: 4000, h: null }, maxSide: 2048 })).toBe(2048)
+    expect(computePlateSide({ ...raster, intrinsic: {}, isVector: true, maxSide: 100 })).toBe(100)
+  })
+})
+
+describe('findTagEnd', () => {
+  it('skips a > inside a quoted attribute, whichever quote is used', () => {
+    expect(findTagEnd('<svg a="x>y" b=\'p>q\'>', 0)).toBe(20)
+  })
+  it('ends at the first unquoted >', () => {
+    expect(findTagEnd('<svg a="1">text>', 0)).toBe(10)
+  })
+  it('is -1 when the tag, or a quote in it, never ends', () => {
+    expect(findTagEnd('<svg a="1"', 0)).toBe(-1)
+    expect(findTagEnd('<svg a="1>', 0)).toBe(-1)
+  })
+})
+
+describe('wrapSvgWithPlate falls back instead of writing broken markup', () => {
+  const wrap = (content: string | Buffer) => wrapSvgWithPlate({ content: Buffer.from(content), plate: white })
+  const body = '<rect width="1" height="1"/></svg>'
+
+  it('keeps a > inside a quoted root attribute inside the root tag', async () => {
+    const wrapped = wrap(`<svg viewBox="0 0 10 10" data-note="a > b" width="9">${body}`)!.toString('utf8')
+    expect(wrapped).toContain('<svg x="15" y="15" width="70" height="70" viewBox="0 0 10 10" data-note="a > b">')
+    expect(wrapped).not.toContain('width="9"')
+    // The attribute stayed inside its tag, so the whole document is well formed and a renderer opens it.
+    expect((await sharp(Buffer.from(wrapped)).metadata()).format).toBe('svg')
+  })
+  it('refuses a document with a type declaration, whose entities would be lost', () => {
+    expect(wrap(`<!DOCTYPE svg [<!ENTITY c "#f00">]><svg viewBox="0 0 10 10"><rect fill="&c;"/></svg>`)).toBeNull()
+    expect(
+      wrap(
+        `<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd"><svg viewBox="0 0 1 1">${body}`,
+      ),
+    ).toBeNull()
+  })
+  it('refuses an encoding other than UTF-8, in either quote', () => {
+    expect(wrap(`<?xml version="1.0" encoding="ISO-8859-1"?><svg viewBox="0 0 1 1">${body}`)).toBeNull()
+    expect(wrap(`<?xml version='1.0' encoding='UTF-16'?><svg viewBox="0 0 1 1">${body}`)).toBeNull()
+  })
+  it('accepts a declared UTF-8, in any case or spelling', () => {
+    expect(wrap(`<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 1 1">${body}`)).not.toBeNull()
+    expect(wrap(`<?xml version="1.0" encoding="utf8"?><svg viewBox="0 0 1 1">${body}`)).not.toBeNull()
+  })
+  it('refuses a document that is really UTF-16, read here as bytes of UTF-8', () => {
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<svg viewBox="0 0 1 1"></svg>', 'utf16le')])
+    expect(wrap(utf16)).toBeNull()
+  })
+  it('refuses a root tag that only appears inside a comment or after other markup', () => {
+    expect(wrap(`<!-- <svg viewBox="0 0 1 1"> --><p/>${body}`)).toBeNull()
+    expect(wrap(`<p/><svg viewBox="0 0 1 1">${body}`)).toBeNull()
+  })
+  it('refuses markup after the closing tag, other than comments and white space', () => {
+    expect(wrap(`<svg viewBox="0 0 1 1">${body}<p>tail</p>`)).toBeNull()
+    expect(wrap(`<svg viewBox="0 0 1 1">${body}\n<!-- end -->\n`)).not.toBeNull()
+  })
+  it('accepts comments and a byte order mark before the root', () => {
+    expect(wrap(`${String.fromCharCode(0xfeff)}<!-- logo --><svg viewBox="0 0 1 1">${body}`)).not.toBeNull()
+  })
+  it('does not take <svgfoo> for the root', () => {
+    expect(wrap(`<svgfoo viewBox="0 0 1 1">${body}`)).toBeNull()
+  })
+})
+
+describe('plateDocument', () => {
+  it('writes the underlay, then the plate, then the body, and a size only when given', () => {
+    const doc = plateDocument({ plate: white, underlay: '<u/>', body: '<b/>', size: 50 })
+    expect(doc).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 100 100"><u/><circle cx="50" cy="50" r="50" fill="#ffffff"/><b/></svg>',
+    )
+    expect(plateDocument({ plate: white })).not.toContain('width=')
+  })
+})
+
+describe('createFailureMemory', () => {
+  it('remembers a failure until its time is up, then forgets it', () => {
+    let clock = 0
+    const memory = createFailureMemory({ ttlMs: 100, now: () => clock })
+    memory.record('a')
+    expect(memory.has('a')).toBe(true)
+    expect(memory.has('b')).toBe(false)
+    clock = 99
+    expect(memory.has('a')).toBe(true)
+    clock = 100
+    expect(memory.has('a')).toBe(false)
+    expect(memory.size).toBe(0)
+  })
+  it('drops the oldest when full, and a repeat renews the time', () => {
+    let clock = 0
+    const memory = createFailureMemory({ ttlMs: 100, limit: 2, now: () => clock })
+    memory.record('a')
+    memory.record('b')
+    clock = 50
+    memory.record('a')
+    memory.record('c')
+    expect(memory.has('b')).toBe(false)
+    expect(memory.has('a')).toBe(true)
+    expect(memory.has('c')).toBe(true)
+  })
+  it('works with the production defaults', () => {
+    const memory = createFailureMemory()
+    memory.record('x')
+    expect(memory.has('x')).toBe(true)
+  })
+})
+
+describe('createVisibilityCache sharing and failure', () => {
+  const shares = { dark: 0.5, light: 0.5 }
+
+  it('lets requests that arrive together share one measurement', async () => {
+    const cache = createVisibilityCache()
+    let release = () => {}
+    const measure = vi.fn(
+      () =>
+        new Promise<VisibleShares>((resolve) => {
+          release = () => resolve(shares)
+        }),
+    )
+    const first = cache.remember('a', measure)
+    const second = cache.remember('a', measure)
+    release()
+    expect(await Promise.all([first, second])).toEqual([shares, shares])
+    expect(measure).toHaveBeenCalledTimes(1)
+  })
+  it('remembers a failure, rethrows it without measuring again, and logs once', async () => {
+    const onFailure = vi.fn()
+    const cache = createVisibilityCache({ onFailure })
+    const boom = new Error('cannot decode')
+    const measure = vi.fn().mockRejectedValue(boom)
+    await expect(cache.remember('a', measure)).rejects.toBeInstanceOf(VisibilityUnavailableError)
+    await expect(cache.remember('a', measure)).rejects.toBeInstanceOf(VisibilityUnavailableError)
+    expect(measure).toHaveBeenCalledTimes(1)
+    expect(onFailure).toHaveBeenCalledTimes(1)
+    expect(onFailure).toHaveBeenCalledWith('a', boom)
+    expect(cache.size).toBe(0)
+  })
+  it('carries the cause on the error the first caller sees', async () => {
+    const cache = createVisibilityCache()
+    const boom = new Error('cannot decode')
+    const error = await cache.remember('a', () => Promise.reject(boom)).catch((caught) => caught)
+    expect(error.cause).toBe(boom)
+    expect(error.name).toBe('VisibilityUnavailableError')
+  })
+  it('measures again once the failure window has passed', async () => {
+    let clock = 0
+    const cache = createVisibilityCache({ failureTtlMs: 100, now: () => clock })
+    await cache.remember('a', () => Promise.reject(new Error('x'))).catch(() => {})
+    clock = 100
+    expect(await cache.remember('a', async () => shares)).toEqual(shares)
+  })
+  it('lets every request that shared a failing measurement see the failure', async () => {
+    const cache = createVisibilityCache()
+    const measure = () => Promise.reject(new Error('x'))
+    const settled = await Promise.allSettled([cache.remember('a', measure), cache.remember('a', measure)])
+    expect(settled.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+  })
+})
+
+describe('renderPlatedRaster, jpg, drawn once', () => {
+  it('has a white corner and is a real jpeg', async () => {
+    const logo = sharp({ create: { width: 40, height: 40, channels: 3, background: '#ff0000' } }).png()
+    const body = await renderPlatedRaster({ logo, side: 100, plate: { ...white, shape: 'circle' }, format: 'jpeg' })
+    expect((await sharp(body).metadata()).format).toBe('jpeg')
+    const { at } = await pixelsOf(body)
+    expect(
+      at(0, 0)
+        .slice(0, 3)
+        .every((channel) => channel > 245),
+    ).toBe(true)
   })
 })

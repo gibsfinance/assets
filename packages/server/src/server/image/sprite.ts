@@ -9,6 +9,7 @@ import { normalizeProvidedId } from '../../db/provided-id'
 import { chainIdFilterMatch } from '../../chain-id'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { LICENSE_LINK_HEADER } from './attribution'
+import { setImageSecurityHeaders } from './headers'
 import { loadImageBytes } from '../../image-store/image-bytes'
 import { unexportedBytesSql } from '../../db/image-columns'
 import _ from 'lodash'
@@ -297,6 +298,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
     .toBuffer()
 
   res.set('content-type', 'image/webp')
+  setImageSecurityHeaders(res)
   res.set('link', LICENSE_LINK_HEADER)
   res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
   // Grid metadata in headers (small, always fits)

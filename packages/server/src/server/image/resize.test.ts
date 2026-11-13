@@ -430,6 +430,7 @@ describe('formatToContentType', () => {
     expect(formatToContentType('webp')).toBe('image/webp')
     expect(formatToContentType('png')).toBe('image/png')
     expect(formatToContentType('jpg')).toBe('image/jpeg')
+    expect(formatToContentType('jpeg')).toBe('image/jpeg')
     expect(formatToContentType('avif')).toBe('image/avif')
   })
 
@@ -437,7 +438,6 @@ describe('formatToContentType', () => {
     expect(formatToContentType('bmp')).toBe('application/octet-stream')
     expect(formatToContentType('tiff')).toBe('application/octet-stream')
     expect(formatToContentType('')).toBe('application/octet-stream')
-    expect(formatToContentType('jpeg')).toBe('application/octet-stream')
   })
 })
 

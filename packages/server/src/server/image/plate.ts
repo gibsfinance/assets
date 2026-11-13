@@ -90,7 +90,7 @@ export const PLATE_PADDING_RATIO: Record<PlateShape, number> = { circle: 0.15, r
 /** Corner radius of the `rounded` plate, in the 100-unit square the plate is drawn in. */
 const ROUNDED_CORNER_RADIUS = 22
 
-/** Side, in pixels, of the picture  on. */
+/** Side, in pixels, of the square a logo is drawn into when its visibility is measured. */
 export const VISIBILITY_SAMPLE_SIDE = 64
 
 /** Side, in pixels, of a plated vector image drawn to a raster when no size was asked for. */
@@ -233,23 +233,106 @@ export async function resolvePlate({
   return { colour: colour ?? CONTRAST_PLATE_COLOUR[contrast], shape }
 }
 
+/** How long a failure to measure or draw a source is remembered, in milliseconds. */
+export const FAILURE_MEMORY_MS = 60_000
+
+/** Most failures remembered at once. */
+export const FAILURE_MEMORY_LIMIT = 1000
+
 /**
- * A small memory of measured shares, so the logo is drawn and measured once rather than on
- * every request. When full, the oldest entry goes first. A logo with nothing visible is remembered
- * too (as null).
+ * A short memory of sources that could not be measured or drawn, so one undecodable file is not
+ * decoded again on every request. An entry lives `ttlMs`, then the source is tried afresh (a
+ * transient fault should not condemn a logo for good). When full, the oldest goes first.
  */
-export function createVisibilityCache({ limit = VISIBILITY_CACHE_LIMIT }: { limit?: number } = {}) {
-  const entries = new Map<string, VisibleShares | null>()
+export function createFailureMemory({
+  ttlMs = FAILURE_MEMORY_MS,
+  limit = FAILURE_MEMORY_LIMIT,
+  now = () => Date.now(),
+}: { ttlMs?: number; limit?: number; now?: () => number } = {}) {
+  const expiries = new Map<string, number>()
   return {
-    /** Return the remembered value for `key`, or measure it with `measure` and remember that. */
-    async remember(key: string, measure: () => Promise<VisibleShares | null>): Promise<VisibleShares | null> {
-      if (entries.has(key)) return entries.get(key)!
+    /** Whether `key` failed within the last `ttlMs`. */
+    has(key: string): boolean {
+      const expiry = expiries.get(key)
+      if (expiry === undefined) return false
+      if (expiry > now()) return true
+      expiries.delete(key)
+      return false
+    },
+    /** Remember that `key` failed. */
+    record(key: string): void {
+      expiries.delete(key)
+      if (expiries.size >= limit) expiries.delete(expiries.keys().next().value!)
+      expiries.set(key, now() + ttlMs)
+    },
+    /** Number of remembered failures. */
+    get size() {
+      return expiries.size
+    },
+  }
+}
+
+/** Thrown, and remembered, when a source's visibility could not be measured. */
+export class VisibilityUnavailableError extends Error {
+  constructor(key: string, options?: { cause?: unknown }) {
+    super(`visibility of ${key} could not be measured`, options)
+    this.name = 'VisibilityUnavailableError'
+  }
+}
+
+/**
+ * A small memory of measured shares, so the logo is drawn and measured once rather than on every
+ * request. When full, the oldest entry goes first. A logo with nothing visible is remembered too
+ * (as null).
+ *
+ * Two requests for the same key at the same moment share one measurement. A measurement that fails
+ * is remembered for `failureTtlMs` and every request in that time throws
+ * `VisibilityUnavailableError` without decoding again; `onFailure` is called once, when the failure
+ * is first seen, so the caller logs it once.
+ */
+export function createVisibilityCache({
+  limit = VISIBILITY_CACHE_LIMIT,
+  failureTtlMs = FAILURE_MEMORY_MS,
+  now = () => Date.now(),
+  onFailure = () => {},
+}: {
+  limit?: number
+  failureTtlMs?: number
+  now?: () => number
+  onFailure?: (key: string, error: unknown) => void
+} = {}) {
+  const entries = new Map<string, VisibleShares | null>()
+  const inFlight = new Map<string, Promise<VisibleShares | null>>()
+  const failures = createFailureMemory({ ttlMs: failureTtlMs, limit, now })
+
+  const measureAndRemember = async (key: string, measure: () => Promise<VisibleShares | null>) => {
+    try {
       const shares = await measure()
       if (entries.size >= limit) entries.delete(entries.keys().next().value!)
       entries.set(key, shares)
       return shares
+    } catch (error) {
+      failures.record(key)
+      onFailure(key, error)
+      throw new VisibilityUnavailableError(key, { cause: error })
+    } finally {
+      inFlight.delete(key)
+    }
+  }
+
+  return {
+    /**
+     * Return the remembered value for `key`, or measure it with `measure` and remember that.
+     * Throws `VisibilityUnavailableError` when the measurement failed, now or within the failure window.
+     */
+    async remember(key: string, measure: () => Promise<VisibleShares | null>): Promise<VisibleShares | null> {
+      if (entries.has(key)) return entries.get(key)!
+      if (failures.has(key)) throw new VisibilityUnavailableError(key)
+      const pending = inFlight.get(key) ?? measureAndRemember(key, measure)
+      inFlight.set(key, pending)
+      return pending
     },
-    /** Number of remembered entries. */
+    /** Number of remembered measurements. */
     get size() {
       return entries.size
     },
@@ -276,6 +359,29 @@ export function plateShapeMarkup({ colour, shape }: Plate): string {
   return `<rect width="100" height="100" ${paint}/>`
 }
 
+/** A white square under everything, so a format with no transparency (jpg) gets white corners. */
+const WHITE_BACKING = '<rect width="100" height="100" fill="#ffffff"/>'
+
+/**
+ * The one template for a plated image: a 100 by 100 square holding `underlay`, then the plate, then
+ * `body`. `size` gives the pixel size when the document is drawn by sharp; a document that is sent
+ * as a vector leaves it out and scales to whatever box shows it.
+ */
+export function plateDocument({
+  plate,
+  body = '',
+  underlay = '',
+  size,
+}: {
+  plate: Plate
+  body?: string
+  underlay?: string
+  size?: number
+}): string {
+  const dimensions = size === undefined ? '' : ` width="${size}" height="${size}"`
+  return `<svg xmlns="http://www.w3.org/2000/svg"${dimensions} viewBox="0 0 100 100">${underlay}${plateShapeMarkup(plate)}${body}</svg>`
+}
+
 /** Whether the root tag of a document names a usable `viewBox`. */
 function hasUsableViewBox(rootTag: string): boolean {
   const match = /viewBox\s*=\s*["']([^"']*)["']/i.exec(rootTag)
@@ -293,18 +399,56 @@ function withoutAttribute(tag: string, name: string): string {
 }
 
 /**
+ * The index of the `>` that ends the tag opened at `start`, skipping any `>` inside a quoted
+ * attribute value. -1 when the tag never ends.
+ */
+export function findTagEnd(document: string, start: number): number {
+  let quote: string | null = null
+  for (let index = start; index < document.length; index += 1) {
+    const character = document[index]
+    if (quote) {
+      if (character === quote) quote = null
+      continue
+    }
+    if (character === '"' || character === "'") quote = character
+    if (character === '>') return index
+  }
+  return -1
+}
+
+/** What may stand before the root tag: a byte order mark, an XML declaration, comments, white space. */
+const SAFE_PROLOGUE = /^\uFEFF?\s*(?:<\?xml\s[^>]*\?>\s*)?(?:<!--(?:(?!-->)[\s\S])*-->\s*)*$/
+
+/** What may follow the closing tag: white space and comments. */
+const SAFE_EPILOGUE = /^\s*(?:<!--(?:(?!-->)[\s\S])*-->\s*)*$/
+
+/** The encoding named by an XML declaration, or null when there is none. */
+function declaredEncoding(prologue: string): string | null {
+  const match = /^\uFEFF?\s*<\?xml\s[^>]*?encoding\s*=\s*["']([^"']+)["']/i.exec(prologue)
+  return match ? match[1] : null
+}
+
+/**
  * Wrap a scalable vector image in a new one that draws the plate first and the original, nested
  * and centred, on top. The original keeps its own `viewBox`, so it still scales to fill the box it
  * is given; its root `x`, `y`, `width` and `height` are dropped because the box replaces them.
- * Null when the original has no usable `viewBox` or no closing tag, so the caller can fall back
- * to pixels.
+ *
+ * Null whenever the wrapper cannot be sure it would write valid markup, so the caller draws pixels
+ * instead: no usable `viewBox`, no closing tag, a document type declaration (nesting the root would
+ * leave its entity references undefined), an encoding other than UTF-8 (the bytes are read as
+ * UTF-8), or anything but comments and an XML declaration around the root element.
  */
 export function wrapSvgWithPlate({ content, plate }: { content: Buffer; plate: Plate }): Buffer | null {
   const document = content.toString('utf8')
-  const start = document.indexOf('<svg')
-  const rootEnd = document.indexOf('>', start)
+  const start = document.search(/<svg[\s>/]/)
+  if (start === -1) return null
+  const rootEnd = findTagEnd(document, start)
   const closing = document.lastIndexOf('</svg>')
-  if (start === -1 || rootEnd === -1 || closing === -1) return null
+  if (rootEnd === -1 || closing === -1 || closing < rootEnd) return null
+  const prologue = document.slice(0, start)
+  if (!SAFE_PROLOGUE.test(prologue) || !SAFE_EPILOGUE.test(document.slice(closing + 6))) return null
+  const encoding = declaredEncoding(prologue)
+  if (encoding !== null && !/^utf-?8$/i.test(encoding)) return null
   const originalRoot = document.slice(start, rootEnd + 1)
   if (!hasUsableViewBox(originalRoot)) return null
 
@@ -313,33 +457,35 @@ export function wrapSvgWithPlate({ content, plate }: { content: Buffer; plate: P
   const inner = 100 - 2 * padding
   const box = `x="${padding}" y="${padding}" width="${inner}" height="${inner}"`
   const nested = `<svg ${box}${root.slice(4)}${document.slice(rootEnd + 1, closing + 6)}`
-  return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${plateShapeMarkup(plate)}${nested}</svg>`,
-    'utf8',
-  )
+  return Buffer.from(plateDocument({ plate, body: nested }), 'utf8')
 }
 
 /**
  * The side of the square a plated image is drawn at. A requested width or height sets it (both:
  * the smaller). With neither, a vector source gets a fixed side and a raster keeps its own size
- * plus room for the padding, so the logo itself is not rescaled.
+ * plus room for the padding, so the logo is not rescaled unless that would pass `maxSide`. The
+ * side never passes `maxSide`: a small file can hold a very large picture, and the canvas is
+ * square, so an unbounded side would let a few kilobytes ask for hundreds of megabytes of memory.
+ * Past the bound the logo shrinks to fit.
  */
 export function computePlateSide({
   target,
   intrinsic,
   isVector,
   shape,
+  maxSide,
 }: {
   target: { w: number | null; h: number | null }
   intrinsic: { width?: number; height?: number }
   isVector: boolean
   shape: PlateShape
+  maxSide: number
 }): number {
   const requested = [target.w, target.h].filter((side): side is number => side !== null)
-  if (requested.length > 0) return Math.min(...requested)
-  if (isVector) return PLATE_DEFAULT_VECTOR_SIDE
+  if (requested.length > 0) return Math.min(maxSide, ...requested)
+  if (isVector) return Math.min(maxSide, PLATE_DEFAULT_VECTOR_SIDE)
   const longest = Math.max(intrinsic.width ?? 1, intrinsic.height ?? 1)
-  return Math.ceil(longest / (1 - 2 * PLATE_PADDING_RATIO[shape]))
+  return Math.min(maxSide, Math.ceil(longest / (1 - 2 * PLATE_PADDING_RATIO[shape])))
 }
 
 /** Pixel size of the area inside the padding where the logo is fitted. */
@@ -350,7 +496,8 @@ export function plateInnerSide({ side, shape }: { side: number; shape: PlateShap
 /**
  * Draw a logo centred on a plate, as pixels. `logo` is a source opened large enough for
  * `plateInnerSide` (see `openSource`). The logo is fitted inside the padded area and never
- * enlarged. A jpg has no transparency, so its corners are filled white.
+ * enlarged. The plate is drawn once and the logo composited onto it, straight to `format`. A jpg
+ * has no transparency, so the plate sits on a white square and its corners come out white.
  */
 export async function renderPlatedRaster({
   logo,
@@ -366,15 +513,19 @@ export async function renderPlatedRaster({
   const inner = plateInnerSide({ side, shape: plate.shape })
   const { data, info } = await logo
     .resize(inner, inner, { fit: 'inside', withoutEnlargement: true })
-    .png()
+    .ensureAlpha()
+    .raw()
     .toBuffer({ resolveWithObject: true })
-  const plateSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${side}" height="${side}" viewBox="0 0 100 100">${plateShapeMarkup(plate)}</svg>`
-  const composed = await sharp(Buffer.from(plateSvg))
-    .composite([{ input: data, left: Math.round((side - info.width) / 2), top: Math.round((side - info.height) / 2) }])
-    .png()
+  const underlay = format === 'jpeg' ? WHITE_BACKING : ''
+  return sharp(Buffer.from(plateDocument({ plate, underlay, size: side })))
+    .composite([
+      {
+        input: data,
+        raw: { width: info.width, height: info.height, channels: info.channels },
+        left: Math.round((side - info.width) / 2),
+        top: Math.round((side - info.height) / 2),
+      },
+    ])
+    .toFormat(format as keyof FormatEnum)
     .toBuffer()
-  // Flattening has to happen after the logo is on the plate, or it would not reach the corners.
-  const output = sharp(composed)
-  const flattened = format === 'jpeg' ? output.flatten({ background: '#ffffff' }) : output
-  return flattened.toFormat(format as keyof FormatEnum).toBuffer()
 }

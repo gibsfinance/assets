@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import express from 'express'
 import { createDocsSiteHandler, docsCacheHeaders, DOCS_SITE_PATH, isDocsHost } from './docs-site'
+import { IMAGE_SECURITY_HEADERS } from './image/headers'
 
 /** A response, read whole. */
 interface ReadResponse {
@@ -169,6 +170,19 @@ describe('createDocsSiteHandler', () => {
     expect(response.status).toBe(200)
     expect(await response.text()).toBe('<html>docs home</html>')
     expect(response.headers.get('cache-control')).toBe('no-cache')
+  })
+
+  it('does not put the image security headers on the site or on the application beside it', async () => {
+    // The image policy is `sandbox` with no scripts: it would break the site's pages if it leaked.
+    const responses = [
+      await get('/', 'docs.example.test'),
+      await get('/_astro/index.4f9a1c.js', 'docs.example.test'),
+      await get('/nothing-here', 'docs.example.test'),
+      await get('/api/thing', 'gib.example.test', 'POST'),
+    ]
+    for (const response of responses) {
+      for (const name of Object.keys(IMAGE_SECURITY_HEADERS)) expect(response.headers.get(name)).toBeNull()
+    }
   })
 
   it('serves on every configured host, and ignores a port in the Host header', async () => {

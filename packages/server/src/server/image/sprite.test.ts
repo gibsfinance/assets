@@ -198,6 +198,10 @@ describe('sprite endpoints', () => {
       await sheet(mockRequest(), res, vi.fn())
 
       expect(headerValue(res, 'x-sprite-count')).toBe('2')
+      expect(headerValue(res, 'content-security-policy')).toBe(
+        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+      )
+      expect(headerValue(res, 'x-content-type-options')).toBe('nosniff')
       const tokenMap = JSON.parse(headerValue(res, 'x-sprite-tokens')!)
       expect(tokenMap).toEqual({
         [`1-${ADDRESS.toLowerCase()}`]: [0, 0],
