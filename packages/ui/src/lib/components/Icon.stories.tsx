@@ -23,7 +23,7 @@ export const Tinted: Story = { args: { icon: faTrashCan, className: 'text-2xl te
 /** A few glyphs at several sizes. */
 export const Gallery: Story = {
   render: () => (
-    <div className="flex items-center gap-4 text-accent">
+    <div className="flex items-center gap-4 text-accent-content">
       <Icon icon={faCheck} className="text-sm" />
       <Icon icon={faCheck} className="text-xl" />
       <Icon icon={faCheck} className="text-4xl" />

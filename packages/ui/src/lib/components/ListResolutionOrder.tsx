@@ -52,7 +52,7 @@ function ProviderRow({
       onClick={() => onClick(index)}
       onKeyDown={(e) => onKeyDown(e, index)}>
       {/* Grip handle */}
-      <span className="cursor-grab text-content-ghost-2 select-none" aria-hidden="true">
+      <span className="cursor-grab text-content-ghost select-none" aria-hidden="true">
         &#x2807;
       </span>
 
@@ -60,7 +60,7 @@ function ProviderRow({
       <span className="flex-1 text-sm font-medium capitalize text-content-secondary">{provider}</span>
 
       {/* Position badge */}
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-active text-[10px] font-mono text-content-subtle-2">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-active text-[10px] font-mono text-content-subtle">
         {index + 1}
       </span>
     </div>
@@ -178,19 +178,19 @@ export default function ListResolutionOrder() {
       {({ open }) => (
         <div className="elevated-card overflow-hidden">
           {/* Toggle button */}
-          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-wash-2">
+          <DisclosureButton className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-surface-wash">
             <div className="flex items-center gap-2">
-              <Icon icon={faLayerGroup} className="text-xs text-accent" />
+              <Icon icon={faLayerGroup} className="text-xs text-accent-content" />
               <span className="font-heading text-sm font-semibold text-content-body">Resolution Order</span>
               {!isDefault && (
-                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
+                <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent-content">
                   Custom
                 </span>
               )}
             </div>
             <Icon
               icon={faChevronDown}
-              className={`text-xs text-content-faint-2 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              className={`text-xs text-content-faint transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             />
           </DisclosureButton>
 
@@ -200,11 +200,11 @@ export default function ListResolutionOrder() {
               {/* Instruction hint */}
               <p className="mb-1 text-[11px] text-content-faint">
                 Drag or use{' '}
-                <kbd className="rounded border border-border-subtle bg-surface-active-2 px-1 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border border-border-subtle bg-surface-control px-1 py-0.5 font-mono text-[10px]">
                   Enter
                 </kbd>{' '}
                 to select, then{' '}
-                <kbd className="rounded border border-border-subtle bg-surface-active-2 px-1 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border border-border-subtle bg-surface-control px-1 py-0.5 font-mono text-[10px]">
                   ↑↓
                 </kbd>{' '}
                 to move.

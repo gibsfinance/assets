@@ -31,7 +31,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-3 border-b border-border-strong-2 px-4 py-2 bg-surface">
+      className="flex items-center gap-3 border-b border-border-strong px-4 py-2 bg-surface">
       {/* Drag handle */}
       <button
         type="button"
@@ -72,7 +72,7 @@ export default function ListTokenRow({ token, onRemove, onImageClick, onImageUpl
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="min-w-0 truncate text-sm font-medium text-content-body">{token.name || 'Unknown'}</span>
-          <span className="ml-auto flex-shrink-0 text-xs text-content-faint-2">{token.symbol || '???'}</span>
+          <span className="ml-auto flex-shrink-0 text-xs text-content-faint">{token.symbol || '???'}</span>
         </div>
         <div className="flex items-baseline justify-between">
           <span className="font-mono text-[10px] text-content-faint">

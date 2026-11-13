@@ -68,13 +68,13 @@ export default function NumberStepper({
   )
 
   const btnClass =
-    'flex h-full w-5 items-center justify-center text-[9px] text-content-faint hover:text-accent hover:bg-accent/10 transition-colors select-none'
+    'flex h-full w-5 items-center justify-center text-[9px] text-content-faint hover:text-accent-content hover:bg-accent/10 transition-colors select-none'
 
   return (
     <div className="flex items-center gap-1">
-      {label && <span className="text-[10px] font-medium text-content-faint-2">{label}</span>}
+      {label && <span className="text-[10px] font-medium text-content-faint">{label}</span>}
       <div
-        className={`${width} flex h-7 items-stretch rounded-md border border-border bg-surface-inset overflow-hidden`}>
+        className={`${width} flex h-7 items-stretch rounded-md border border-border bg-surface-inset overflow-hidden focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/50`}>
         <button
           type="button"
           onClick={decrement}

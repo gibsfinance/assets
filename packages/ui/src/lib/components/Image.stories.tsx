@@ -29,7 +29,7 @@ export const ErrorWithFallback: Story = {
     src: 'https://example.invalid/missing.png',
     fallback: ({ width, height }) => (
       <span
-        className="flex items-center justify-center rounded-full bg-surface-active text-sm font-semibold text-content-muted-4"
+        className="flex items-center justify-center rounded-full bg-surface-active text-sm font-semibold text-content-muted"
         style={{ width, height }}>
         ?
       </span>

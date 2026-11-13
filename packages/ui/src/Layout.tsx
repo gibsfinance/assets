@@ -7,7 +7,7 @@ export function Layout() {
   const isStudio = location.pathname === '/studio'
 
   return (
-    <div className="min-h-screen bg-surface text-content-strong-2">
+    <div className="min-h-screen bg-surface text-content-strong">
       {!isStudio && (
         <header className="sticky top-0 z-50 border-b border-border bg-surface/80 backdrop-blur-lg">
           <div className="mx-auto flex items-center justify-between px-4 py-3 max-w-7xl">
@@ -19,7 +19,7 @@ export function Layout() {
             <div className="flex items-center gap-4">
               <Link
                 to="/docs"
-                className="text-sm font-medium text-content-subtle-3 hover:text-accent transition-colors">
+                className="text-sm font-medium text-content-subtle hover:text-accent-content transition-colors">
                 Docs
               </Link>
               <Link
