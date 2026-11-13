@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeImage } from './sanitize'
+import { sanitizeImage, decodeCharacterReferences, isScriptUri } from './sanitize'
 
 describe('sanitizeImage', () => {
   describe('SVG sanitization', () => {
@@ -184,5 +184,84 @@ describe('sanitizeImage', () => {
       // sharp can't process this — should return original
       expect(result.length).toBeGreaterThan(0)
     })
+  })
+})
+
+describe('script links written with character references', () => {
+  const clean = async (attributes: string) => {
+    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"><a ${attributes}><text>x</text></a></svg>`)
+    return (await sanitizeImage(svg, '.svg')).toString()
+  }
+
+  it.each([
+    ['a decimal reference for the first letter', 'href="&#106;avascript:alert(1)"'],
+    ['a hex reference for the first letter', 'href="&#x6A;avascript:alert(1)"'],
+    ['references with no semicolon', 'href="&#106avascript:alert(1)"'],
+    ['references for the whole word', 'href="&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)"'],
+    ['a reference for the colon', 'href="javascript&#58;alert(1)"'],
+    ['a named reference for the colon', 'href="javascript&colon;alert(1)"'],
+    ['a tab written as a reference inside the word', 'href="java&#x09;script:alert(1)"'],
+    ['a named tab inside the word', 'href="java&Tab;script:alert(1)"'],
+    ['a named line break inside the word', 'href="java&NewLine;script:alert(1)"'],
+    ['a literal tab and line break inside the word', 'href="java\t\nscript:alert(1)"'],
+    ['leading spaces and control characters', 'href="  \u0001 javascript:alert(1)"'],
+    ['capital letters', 'href="JaVaScRiPt:alert(1)"'],
+    ['a reference inside a reference', 'href="&amp;#106;avascript:alert(1)"'],
+    ['vbscript', 'href="vbscript:msgbox(1)"'],
+    ['a namespaced link attribute', 'xlink:href="&#106;avascript:alert(1)"'],
+    ['a link attribute under another prefix', 'x:href="&#106;avascript:alert(1)"'],
+    ['a src attribute', 'src="&#106;avascript:alert(1)"'],
+    ['single quotes', "href='&#106;avascript:alert(1)'"],
+  ])('neutralises %s', async (_label, attributes) => {
+    const output = await clean(attributes)
+    expect(output).toMatch(/="#"|='#'/)
+    expect(output).not.toMatch(/alert|msgbox/)
+    // The link attribute is still well formed: its closing quote is there.
+    expect(output).toContain('><text>x</text></a>')
+  })
+
+  it('leaves ordinary links alone, including one that mentions javascript in a path', async () => {
+    const output = await clean('href="https://example.com/javascript:tutorial" xlink:href="#icon"')
+    expect(output).toContain('href="https://example.com/javascript:tutorial"')
+    expect(output).toContain('xlink:href="#icon"')
+  })
+
+  it('leaves a reference that is not a scheme, and an unknown or huge one, as written', async () => {
+    const output = await clean('href="/a&amp;b?x=&#1114112;&nbsp;&#x41;"')
+    expect(output).toContain('href="/a&amp;b?x=&#1114112;&nbsp;&#x41;"')
+  })
+
+  it('strips an animation that targets href when the target is written with references', async () => {
+    for (const target of ['&#104;ref', 'xlink:&#104;ref', '&#x78;link:href']) {
+      const svg = Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg"><a href="#"><set attributeName="${target}" to="&#106;avascript:alert(1)"/><text>x</text></a></svg>`,
+      )
+      const output = (await sanitizeImage(svg, '.svg')).toString()
+      expect(output).not.toContain('<set')
+      expect(output).not.toContain('alert')
+    }
+  })
+
+  it('keeps an animation that targets something else', async () => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"><animate attributeName="r" to="5"/></circle></svg>',
+    )
+    const output = (await sanitizeImage(svg, '.svg')).toString()
+    expect(output).toContain('<animate attributeName="r" to="5"/>')
+  })
+})
+
+describe('isScriptUri and decodeCharacterReferences', () => {
+  it('decodes numeric and hex references, with and without a semicolon, and stops when nothing changes', () => {
+    expect(decodeCharacterReferences('&#65;&#x42;&#67&#x44')).toBe('ABCD')
+    expect(decodeCharacterReferences('plain text')).toBe('plain text')
+    expect(decodeCharacterReferences('&amp;amp;amp;amp;')).toBe('&amp;')
+  })
+  it('reads a value the way a browser does', () => {
+    expect(isScriptUri('JAVA\tSCRIPT:1')).toBe(true)
+    expect(isScriptUri('&#106;avascript:1')).toBe(true)
+    expect(isScriptUri('https://example.com')).toBe(false)
+    expect(isScriptUri('#javascript:')).toBe(false)
+    expect(isScriptUri('')).toBe(false)
   })
 })
