@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
-import { detectImageExt, looksLikeSvg } from './image-format'
+import { detectImageExt, looksLikeSvg, servableExt, SERVABLE_IMAGE_EXTS } from './image-format'
 
 const buf = (text: string) => Buffer.from(text, 'utf-8')
 
@@ -71,44 +71,56 @@ describe('looksLikeSvg', () => {
 })
 
 describe('detectImageExt', () => {
-  it('identifies a raster image from its magic bytes, ignoring the uri extension', async () => {
+  const declaredSvg = buf('<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')
+
+  it('identifies a raster image from its magic bytes', async () => {
     const png = await sharp({
       create: { width: 4, height: 4, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
     })
       .png()
       .toBuffer()
-    // The URI lies; the bytes win.
-    expect(await detectImageExt(png, '.svg')).toBe('.png')
+    expect(await detectImageExt(png)).toBe('.png')
   })
 
   it('falls back to the svg sniff when magic bytes yield nothing', async () => {
-    expect(await detectImageExt(buf('<svg xmlns="http://www.w3.org/2000/svg"/>'), '.svg')).toBe('.svg')
+    expect(await detectImageExt(buf('<svg xmlns="http://www.w3.org/2000/svg"/>'))).toBe('.svg')
   })
 
   it('rejects html so it is never stored as an image', async () => {
-    expect(await detectImageExt(IPFS_DIRECTORY_LISTING, '.svg')).toBeNull()
+    expect(await detectImageExt(IPFS_DIRECTORY_LISTING)).toBeNull()
   })
 
   it('rejects unrecognized binary content', async () => {
-    expect(await detectImageExt(Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04]), '.png')).toBeNull()
+    expect(await detectImageExt(Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04]))).toBeNull()
   })
 
-  // An XML declaration followed by an <svg> root parses as generic XML to
-  // file-type — it has no SVG-specific magic bytes of its own — so the source
-  // URI's extension is what disambiguates it from a real (non-image) XML file.
-  it('prefers the source extension over a generic xml classification', async () => {
-    const declaredSvg = buf(
-      '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
-    )
-    expect(await detectImageExt(declaredSvg, '.svg')).toBe('.svg')
+  // The bytes parse as generic markup to file-type, which has no magic bytes of its own for vector images. The root
+  // element decides, and the answer is always `.svg`.
+  it('stores markup with an svg root as .svg', async () => {
+    expect(await detectImageExt(declaredSvg)).toBe('.svg')
   })
 
-  it('keeps the xml classification when the source uri already says xml', async () => {
-    const declaredSvg = buf(
-      '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
-    )
-    // providedExt === detected ext here, so the disambiguation short-circuit
-    // never fires and the raw file-type result passes through.
-    expect(await detectImageExt(declaredSvg, '.xml')).toBe('.xml')
+  // Regression: this answered the source address's extension, so a markup document served from
+  // https://host/x.html was stored as `.html` and sent back as text/html on this origin.
+  it('refuses markup whose root is not svg, whatever its address says', async () => {
+    const page = buf('<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body>hi</body></html>')
+    expect(await detectImageExt(page)).toBeNull()
+  })
+
+  it('refuses a file type that is not a picture format', async () => {
+    // A minimal PDF header: file-type names it `.pdf`.
+    expect(await detectImageExt(buf('%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n'))).toBeNull()
+  })
+})
+
+describe('servableExt', () => {
+  it('keeps every picture extension', () => {
+    for (const ext of SERVABLE_IMAGE_EXTS) expect(servableExt(ext)).toBe(ext)
+  })
+
+  it('turns an extension that is not a picture format into one served as plain bytes', () => {
+    expect(servableExt('.html')).toBe('.bin')
+    expect(servableExt('.xml')).toBe('.bin')
+    expect(servableExt('')).toBe('.bin')
   })
 })
