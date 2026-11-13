@@ -21,7 +21,7 @@ The routes live in `packages/server/src/server/image/`. `index.ts` registers the
 Query options:
 
 - `?as=webp` converts the output format. The `sharp` resize pipeline does it.
-- `?only=vector` filters the source type. The filter works on the extension, before selection.
+- `?only=vector` filters the source type. The filter works on the extension, before selection. It applies to the token routes, the network route (`/:chainId`) and the batch lookup. With `?only=vector` the answer is an SVG source or a 404, never a raster image. A network keeps one icon, so the network route answers 404 when that icon is not a vector.
 - A path extension such as `.webp` on the address does the same as `?as=webp`.
 
 `handlers.ts` holds the routes and the format checks. `resize.ts` holds the resize pipeline and the variant cache. `rate-limit.ts` holds the limiter for new variants. `attribution.ts` decides the licence headers. `headers.ts` names shared headers such as `x-resolved-chain`.

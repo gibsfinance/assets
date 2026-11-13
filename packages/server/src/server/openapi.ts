@@ -93,7 +93,10 @@ const IMAGE_FILTER_PARAMS = [
   {
     name: 'only',
     in: 'query' as const,
-    description: 'Filter source images by type before selection.',
+    description:
+      'Filter source images by type before selection. With only=vector the answer is an SVG source or 404, ' +
+      'never a raster image. A network has one stored icon, so /image/{chainId}?only=vector answers 404 when ' +
+      'that icon is not a vector.',
     schema: { type: 'string' as const, enum: ['vector', 'raster'] },
   },
   {
@@ -590,7 +593,7 @@ export const openapi = {
           'x-resolved-chain, naming the identifier it resolved to in prefixed form (eip155-369), so a ' +
           'caller can tell an exact match from a best guess. Algorand ARC-25 ids (4160, 416001) report algorand-283.',
         'x-example': '/image/eip155-369',
-        parameters: [CHAIN_ID_PARAM, MODE_PARAM, ...RESIZE_PARAMS],
+        parameters: [CHAIN_ID_PARAM, MODE_PARAM, IMAGE_FILTER_PARAMS[0], ...RESIZE_PARAMS],
         responses: {
           ...IMAGE_RESPONSE,
           '200': {
