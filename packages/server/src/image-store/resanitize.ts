@@ -1,0 +1,215 @@
+/**
+ * @module image-store/resanitize
+ * Runs the current vector image sanitizer over the vector images already stored.
+ *
+ * The sanitizer runs when an image is inserted, so a row stored before a fix keeps the bytes the
+ * older sanitizer produced. This operation reads each vector row, sanitizes it again, and where
+ * the result differs it writes the new bytes to the image store and points the row at them.
+ *
+ * Properties an operator can rely on:
+ * - It is a dry run unless told otherwise. A dry run reads everything and changes nothing.
+ * - It never deletes a file. The old file stays in the store until `images gc` finds that no row
+ *   names it and its grace period has passed.
+ * - `image_hash`, the public address of an image, never changes.
+ * - It is safe to stop and to run again. The sanitizer is idempotent, so a row that was rewritten is
+ *   read back as unchanged on the next run, and a run that stopped part way is finished by the next.
+ * - A row is changed only if it is still what was read (a guarded update), so a concurrent writer is
+ *   never overwritten; such a row is counted as skipped and is picked up by the next run.
+ */
+import { and, asc, eq, gt, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
+import { getDrizzle } from '../db/drizzle'
+import { unexportedBytesSql } from '../db/image-columns'
+import * as s from '../db/schema'
+import { log } from '../logger'
+import { sanitizeSvgDocument } from '../svg-sanitize'
+import { DEFAULT_BATCH_SIZE, EXAMPLE_LIMIT, type BackfillDependencies } from './backfill'
+import { getImageStore, hashBytes } from './index'
+import { loadImageBytes } from './image-bytes'
+
+/** The extension of the rows this operation looks at. */
+const VECTOR_EXTENSION = '.svg'
+
+/** Options for {@link resanitizeImages}. */
+export type ResanitizeOptions = BackfillDependencies & {
+  /** When true (the default), report what would change and change nothing. */
+  dryRun?: boolean
+  /** Rows per batch. Defaults to {@link DEFAULT_BATCH_SIZE}. */
+  batchSize?: number
+  /** Pause between batches, in milliseconds. Defaults to 0. */
+  sleepMs?: number
+}
+
+/** What {@link resanitizeImages} did. */
+export type ResanitizeSummary = {
+  /** True when nothing was written. */
+  dryRun: boolean
+  /** Rows read. */
+  examined: number
+  /** Rows whose bytes the sanitizer leaves exactly as they are. */
+  unchanged: number
+  /** Rows whose sanitized bytes differ from the stored ones. In a dry run these are the rows that would be rewritten. */
+  changed: number
+  /** Rows rewritten: the new file is in the store and the row names it. Always 0 in a dry run. */
+  rewritten: number
+  /** Rows that changed between being read and being written, left as they were. */
+  skipped: number
+  /** Rows the sanitizer refuses (the bytes are not well formed). They are left as they are. */
+  rejected: number
+  /** Rows whose file is missing from the store. They are left as they are. */
+  missingFiles: number
+  /** Example `image_hash` values of rejected rows, at most {@link EXAMPLE_LIMIT}. */
+  rejectedExamples: string[]
+  /** True when no row was rejected and no file was missing. */
+  ok: boolean
+}
+
+type VectorRow = {
+  imageHash: string
+  content: Buffer | null
+  contentSha256: string | null
+  holdsDatabaseCopy: boolean
+}
+
+/** The state of one row after it was looked at, as a key of {@link ResanitizeSummary}. */
+type RowOutcome = 'unchanged' | 'changed' | 'rewritten' | 'skipped' | 'rejected' | 'missingFiles'
+
+/**
+ * Sanitizes every stored vector image again.
+ *
+ * @param options See {@link ResanitizeOptions}.
+ * @returns Counts of what was found and done.
+ */
+export async function resanitizeImages(options: ResanitizeOptions = {}): Promise<ResanitizeSummary> {
+  const {
+    database = getDrizzle(),
+    store = getImageStore(),
+    sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
+    dryRun = true,
+    batchSize = DEFAULT_BATCH_SIZE,
+    sleepMs = 0,
+  } = options
+  const summary: ResanitizeSummary = {
+    dryRun,
+    examined: 0,
+    unchanged: 0,
+    changed: 0,
+    rewritten: 0,
+    skipped: 0,
+    rejected: 0,
+    missingFiles: 0,
+    rejectedExamples: [],
+    ok: true,
+  }
+  let cursor = ''
+  for (;;) {
+    const rows: VectorRow[] = await database
+      .select({
+        imageHash: s.image.imageHash,
+        content: unexportedBytesSql,
+        contentSha256: s.image.contentSha256,
+        holdsDatabaseCopy: dsql<boolean>`${s.image.content} IS NOT NULL`,
+      })
+      .from(s.image)
+      .where(
+        and(
+          eq(s.image.ext, VECTOR_EXTENSION),
+          gt(s.image.imageHash, cursor),
+          or(
+            isNotNull(s.image.contentSha256),
+            and(isNotNull(s.image.content), dsql`octet_length(${s.image.content}) > 0`),
+          ),
+        ),
+      )
+      .orderBy(asc(s.image.imageHash))
+      .limit(batchSize)
+    if (rows.length === 0) break
+    for (const row of rows) {
+      summary.examined += 1
+      const outcome = await resanitizeRow(row, { database, store, dryRun })
+      summary[outcome] += 1
+      // A rewritten row, or one that could not be rewritten, was one the sanitizer would change.
+      if (outcome === 'rewritten' || outcome === 'skipped') summary.changed += 1
+      if (outcome === 'rejected' && summary.rejectedExamples.length < EXAMPLE_LIMIT) {
+        summary.rejectedExamples.push(row.imageHash)
+      }
+    }
+    cursor = rows[rows.length - 1].imageHash
+    log(
+      'images resanitize: %d examined, %d changed, %d rewritten, %d rejected',
+      summary.examined,
+      summary.changed,
+      summary.rewritten,
+      summary.rejected,
+    )
+    if (sleepMs > 0) await sleep(sleepMs)
+  }
+  summary.ok = summary.rejected === 0 && summary.missingFiles === 0
+  return summary
+}
+
+/** Reads, sanitizes and, unless it is a dry run, rewrites one row. */
+async function resanitizeRow(
+  row: VectorRow,
+  {
+    database,
+    store,
+    dryRun,
+  }: {
+    database: NonNullable<BackfillDependencies['database']>
+    store: NonNullable<BackfillDependencies['store']>
+    dryRun: boolean
+  },
+): Promise<RowOutcome> {
+  const bytes = await loadImageBytes(row, store)
+  if (bytes === null) return 'missingFiles'
+  const cleaned = sanitizeOrNull(bytes)
+  if (cleaned === null) return 'rejected'
+  if (cleaned.equals(bytes)) return 'unchanged'
+  if (dryRun) return 'changed'
+  return rewriteRow(row, { database, store, previousSha256: hashBytes(bytes), cleaned })
+}
+
+/** The sanitized bytes, or null when the sanitizer refuses the document. It throws nothing else. */
+function sanitizeOrNull(bytes: Buffer): Buffer | null {
+  try {
+    return sanitizeSvgDocument(bytes)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Writes the new file, then moves the row to it. The file goes first, so a row that names a digest
+ * always has its file. The update applies only while the row still holds the bytes that were read.
+ */
+async function rewriteRow(
+  row: VectorRow,
+  {
+    database,
+    store,
+    previousSha256,
+    cleaned,
+  }: {
+    database: NonNullable<BackfillDependencies['database']>
+    store: NonNullable<BackfillDependencies['store']>
+    previousSha256: string
+    cleaned: Buffer
+  },
+): Promise<RowOutcome> {
+  const stored = await store.put(cleaned)
+  const stillWhatWasRead =
+    row.contentSha256 === null
+      ? and(isNull(s.image.contentSha256), dsql`encode(sha256(${s.image.content}), 'hex') = ${previousSha256}`)
+      : eq(s.image.contentSha256, row.contentSha256)
+  // A copy in the database moves with the digest: the guard in the database that clears a digest
+  // that no longer matches `content` compares the two inside this one statement, and they agree.
+  const values = row.holdsDatabaseCopy
+    ? { contentSha256: stored.sha256, byteSize: stored.byteSize, content: cleaned }
+    : { contentSha256: stored.sha256, byteSize: stored.byteSize }
+  const updated = await database
+    .update(s.image)
+    .set(values)
+    .where(and(eq(s.image.imageHash, row.imageHash), stillWhatWasRead))
+    .returning({ imageHash: s.image.imageHash })
+  return updated.length > 0 ? 'rewritten' : 'skipped'
+}

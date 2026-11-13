@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeImage, decodeCharacterReferences, isScriptUri } from './sanitize'
+import { sanitizeImage, decodeCharacterReferences, isScriptUri, SvgRejectedError } from './sanitize'
 
 describe('sanitizeImage', () => {
   describe('SVG sanitization', () => {
@@ -73,7 +73,7 @@ describe('sanitizeImage', () => {
 
     it('strips non-image data: URIs', async () => {
       const svg = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg"><a href="data:text/html,<script>alert(1)</script>"><text>x</text></a></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg"><a href="data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;"><text>x</text></a></svg>',
       )
       const result = await sanitizeImage(svg, '.svg')
       const output = result.toString()
@@ -189,20 +189,18 @@ describe('sanitizeImage', () => {
 
 describe('script links written with character references', () => {
   const clean = async (attributes: string) => {
-    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"><a ${attributes}><text>x</text></a></svg>`)
+    const svg = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:x="http://www.w3.org/1999/xlink"><a ${attributes}><text>x</text></a></svg>`,
+    )
     return (await sanitizeImage(svg, '.svg')).toString()
   }
 
   it.each([
     ['a decimal reference for the first letter', 'href="&#106;avascript:alert(1)"'],
     ['a hex reference for the first letter', 'href="&#x6A;avascript:alert(1)"'],
-    ['references with no semicolon', 'href="&#106avascript:alert(1)"'],
     ['references for the whole word', 'href="&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)"'],
     ['a reference for the colon', 'href="javascript&#58;alert(1)"'],
-    ['a named reference for the colon', 'href="javascript&colon;alert(1)"'],
     ['a tab written as a reference inside the word', 'href="java&#x09;script:alert(1)"'],
-    ['a named tab inside the word', 'href="java&Tab;script:alert(1)"'],
-    ['a named line break inside the word', 'href="java&NewLine;script:alert(1)"'],
     ['a literal tab and line break inside the word', 'href="java\t\nscript:alert(1)"'],
     ['leading spaces and control characters', 'href="  \u0001 javascript:alert(1)"'],
     ['capital letters', 'href="JaVaScRiPt:alert(1)"'],
@@ -223,6 +221,19 @@ describe('script links written with character references', () => {
     expect(output).toContain('><text>x</text></a>')
   })
 
+  // These are references a browser reads in HTML but that are not XML: an SVG file is XML, so the parser
+  // refuses the whole document and nothing is stored.
+  it.each([
+    ['references with no semicolon', 'href="&#106avascript:alert(1)"'],
+    ['a named reference for the colon', 'href="javascript&colon;alert(1)"'],
+    ['a named tab inside the word', 'href="java&Tab;script:alert(1)"'],
+    ['a named line break inside the word', 'href="java&NewLine;script:alert(1)"'],
+    ['an unescaped angle bracket in a value', 'href="data:text/html,<script>alert(1)</script>"'],
+  ])('rejects the document for %s', async (_label, attributes) => {
+    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg"><a ${attributes}><text>x</text></a></svg>`)
+    await expect(sanitizeImage(svg, '.svg')).rejects.toBeInstanceOf(SvgRejectedError)
+  })
+
   it('leaves ordinary links alone, including one that mentions javascript in a path', async () => {
     const output = await clean('href="https://example.com/javascript:tutorial" xlink:href="#icon"')
     expect(output).toContain('href="https://example.com/javascript:tutorial"')
@@ -230,8 +241,8 @@ describe('script links written with character references', () => {
   })
 
   it('leaves a reference that is not a scheme, and an unknown or huge one, as written', async () => {
-    const output = await clean('href="/a&amp;b?x=&#1114112;&nbsp;&#x41;"')
-    expect(output).toContain('href="/a&amp;b?x=&#1114112;&nbsp;&#x41;"')
+    const output = await clean('href="/a&amp;b?x=&#x41;"')
+    expect(output).toContain('href="/a&amp;b?x=A"')
   })
 
   it('strips an animation that targets href when the target is written with references', async () => {

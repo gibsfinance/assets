@@ -1,6 +1,6 @@
 /**
  * @module image-store/images-command
- * The `images` command line: `export`, `verify`, `import`, `gc` and `copy`.
+ * The `images` command line: `export`, `verify`, `import`, `gc`, `copy` and `resanitize`.
  *
  * `bin/images.ts` only hands `process.argv` to {@link runImagesCommand} and sets the exit code
  * from what it returns. Parsing and dispatch live here so they can be tested.
@@ -8,6 +8,7 @@
 import yargs from 'yargs'
 import config from '../../config'
 import { copyBlobs, DEFAULT_COPY_CONCURRENCY, type CopySummary } from './copy'
+import { resanitizeImages, type ResanitizeSummary } from './resanitize'
 import { createBlobStoreFromSpec } from './store-config'
 import { collectGarbage, DEFAULT_GRACE_PERIOD_MS, type GarbageCollectionSummary } from './garbage-collection'
 import {
@@ -29,6 +30,7 @@ export type ImagesOperations = {
   importImages: (options: { batchSize: number; sleepMs: number }) => Promise<ImportSummary>
   collectGarbage: (options: { dryRun: boolean; gracePeriodMs: number }) => Promise<GarbageCollectionSummary>
   copyImages: (options: { from: string; to: string; concurrency: number }) => Promise<CopySummary>
+  resanitizeImages: (options: { dryRun: boolean; batchSize: number; sleepMs: number }) => Promise<ResanitizeSummary>
 }
 
 /** Where the command's output and errors go. Tests collect them. */
@@ -42,6 +44,7 @@ const realOperations: ImagesOperations = {
   verifyImages: (options) => verifyImages(options),
   importImages: (options) => importImages(options),
   collectGarbage: (options) => collectGarbage(options),
+  resanitizeImages: (options) => resanitizeImages(options),
   copyImages: ({ from, to, concurrency }) => {
     const context = { defaultLocalDirectory: config.imageStoreDirectory }
     return copyBlobs({
@@ -94,7 +97,7 @@ export async function runImagesCommand(
       .scriptName('images')
       .exitProcess(false)
       .strict()
-      .demandCommand(1, 'name a command: export, verify, import, gc or copy')
+      .demandCommand(1, 'name a command: export, verify, import, gc, copy or resanitize')
       .command(
         'export',
         'copy the bytes of every image row into the image store and record digest and length; safe to stop and repeat',
@@ -185,6 +188,25 @@ export async function runImagesCommand(
             from: argv.from as string,
             to: argv.to as string,
             concurrency: argv.concurrency as number,
+          })
+          report(summary)
+          if (!summary.ok) exitCode = 1
+        },
+      )
+      .command(
+        'resanitize',
+        'run the current vector image sanitizer over stored vector images and rewrite those that change; a dry run unless --no-dry-run; never deletes a file; exits 1 when a row is refused or a file is missing',
+        (command) =>
+          batchOptions(command).option('dry-run', {
+            type: 'boolean',
+            default: true,
+            describe: 'report what would change and change nothing; pass --no-dry-run to rewrite',
+          }),
+        async (argv) => {
+          const summary = await operations.resanitizeImages({
+            dryRun: argv['dry-run'] as boolean,
+            batchSize: argv['batch-size'] as number,
+            sleepMs: argv['sleep-ms'] as number,
           })
           report(summary)
           if (!summary.ok) exitCode = 1

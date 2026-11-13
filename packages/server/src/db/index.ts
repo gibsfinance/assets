@@ -13,7 +13,7 @@ import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
-import { sanitizeImage } from '../sanitize'
+import { sanitizeImage, type SvgRejectedError } from '../sanitize'
 import {
   isPlaceholderDigest,
   isPlaceholderStoredImage,
@@ -289,7 +289,13 @@ export const insertImage = async (
   }
 
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
-  const sanitized = await sanitizeImage(image, ext)
+  // An SVG that is not well formed XML cannot be made safe, so nothing is stored for it.
+  // `sanitizeImage` throws nothing else: raster failures return the original bytes.
+  const sanitized = await sanitizeImage(image, ext).catch((error: SvgRejectedError) => {
+    failureLog('unsafe svg %o -> %o: %s', providerKey, originalUri, error.message)
+    return null
+  })
+  if (!sanitized) return null
   // One digest of the stored bytes serves the placeholder check, the row, and the file's name.
   const sha256 = hashBytes(sanitized)
   // Some sources answer a logo they do not hold with a generic "no artwork"

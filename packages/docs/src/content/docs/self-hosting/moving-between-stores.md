@@ -39,10 +39,27 @@ Run it again to finish an interrupted copy. Use `--concurrency N` to set how man
 | `import` | Rollback. Copies bytes from the store back into the `content` column. |
 | `gc` | Garbage collection. It is a dry run unless you pass `--no-dry-run`. It keeps files younger than `--grace-days` (default 7). It deletes only through the store's `delete` function. |
 | `copy` | Moves every blob between two stores, as described above. |
+| `resanitize` | Runs the current vector image sanitizer over every stored vector image. It is a dry run unless you pass `--no-dry-run`. It rewrites only the images whose cleaned bytes differ, and it exits with status 1 if a file is missing or the sanitizer refuses an image. See below. |
 
 `export`, `verify`, `import` and `gc` work on whichever store `IMAGE_STORE` names.
 
 A `fallback` store never lets `gc` delete from its read-only side.
+
+## Cleaning stored vector images again
+
+The sanitizer runs when an image is stored. An image stored before a security fix keeps the bytes the older sanitizer left. Run `images resanitize` after you upgrade to make every stored vector image pass the current sanitizer.
+
+```sh
+yarn workspace server run start:images resanitize                # dry run: reports counts only
+yarn workspace server run start:images resanitize --no-dry-run   # rewrites
+```
+
+- A rewritten image gets a new file in the store, and its row gets the new digest and length. Its public address (`image_hash`) does not change.
+- If the row still holds a copy in the database, that copy changes with the digest.
+- The old file stays in the store. Run `images gc` later to remove it, after its grace period.
+- It is safe to stop and to run again. A second run reports every image as unchanged.
+- A row the sanitizer refuses (the file is not well formed) stays as it is and is listed in `rejectedExamples`. Check those rows by hand.
+- Use `--batch-size` and `--sleep-ms` to leave the database room for other work.
 
 ## Image bytes in the database
 

@@ -121,6 +121,22 @@ describe('insertImage', () => {
     expect(harness.queries).toHaveLength(0)
   })
 
+  it('stores nothing for an svg the sanitizer refuses, and returns null so callers treat it as unstorable', async () => {
+    detectImageExt.mockResolvedValue('.svg')
+    sanitizeImage.mockRejectedValue(new Error('svg rejected: missing root element'))
+
+    const result = await insertImage({
+      providerKey: 'user-submit',
+      originalUri: 'submit://anon/1/0xabc',
+      image: Buffer.from('<svg'),
+      listId: null,
+    })
+
+    expect(result).toBeNull()
+    expect(storePut).not.toHaveBeenCalled()
+    expect(harness.queries).toHaveLength(0)
+  })
+
   it('does not apply the minimum-size rule to svg images', async () => {
     detectImageExt.mockResolvedValue('.svg')
     sanitizeImage.mockResolvedValue(Buffer.from('<svg/>'))

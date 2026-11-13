@@ -269,8 +269,13 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   too, and the sprite sheet) sets `Content-Security-Policy: default-src 'none'; img-src data:; style-src
   'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff` through `setImageSecurityHeaders` in
   `image/headers.ts`. Redirects and JSON errors do not carry them, nor does the docs host or the interface. Stored
-  SVGs pass `sanitizeImage`, a filter that can be bypassed, so this is the second wall; the sanitizer also decodes
-  character references and ignores tabs, line breaks and control characters before it tests for `javascript:`.
+  Stored vector images pass `sanitizeImage`, so this is the second wall. The vector sanitizer (`svg-sanitize.ts`) reads
+  the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
+  elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
+  (decoded the way a browser reads it), cleans `@import` and `url()` in styles, and writes the tree back; there is no
+  pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
+  root throws `SvgRejectedError`; `insertImage` then logs it and returns null, so nothing is stored
+  (`POST /api/images/submit` answers 400).
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
@@ -295,7 +300,11 @@ directory.
   `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7), `copy --from <spec>
   --to <spec> [--concurrency N]` (moves every blob between any two stores; resumable, since a blob the destination
   holds with the same length is skipped; each blob is hashed after reading and a mismatch is reported, never written;
-  exits 1 on any problem). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
+  exits 1 on any problem), `resanitize [--no-dry-run] [--batch-size N] [--sleep-ms N]` (runs the current vector
+  sanitizer over stored vector rows; dry run by default; a changed row gets a new file in the store and a new
+  `content_sha256` and `byte_size`, plus a new `content` if it kept a database copy, while `image_hash` stays and the old
+  file stays for `images gc`; safe to repeat because the sanitizer is idempotent; a refused row or a missing file is
+  reported and makes it exit 1). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
   `BlobStore` interface, so they work on whatever `IMAGE_STORE` names; `gc` deletes only through `delete`.
 - The `content` column is dropped in a later migration, after production has run with bytes off.
 
