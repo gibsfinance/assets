@@ -163,4 +163,30 @@ describe('image handlers through a real Express 5 app', () => {
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toContain('image/png')
   })
+
+  describe('plate parameters', () => {
+    it('answers 400 for a bad bg on the token route and on the direct route', async () => {
+      const token = await request(app).get(`/image/1/${TEST_ADDRESS}?bg=nope`)
+      expect(token.status).toBe(400)
+      expect(token.text).toContain('bg must be 3, 6 or 8 hex digits')
+      const direct = await request(app).get(`/image/direct/${'a'.repeat(64)}?contrast=sideways`)
+      expect(direct.status).toBe(400)
+    })
+
+    it('serves a plated image that differs from the plain one, with its own ETag', async () => {
+      const plain = await request(app).get(`/image/1/${TEST_ADDRESS}`)
+      const plated = await request(app).get(`/image/1/${TEST_ADDRESS}?bg=ff0000&shape=square`)
+      expect(plated.status).toBe(200)
+      expect(plated.headers['content-type']).toContain('image/png')
+      expect(plated.headers.etag).toBeDefined()
+      expect(plated.headers.etag).not.toBe(plain.headers.etag)
+      expect(db.insertVariant).not.toHaveBeenCalled()
+    })
+
+    it('leaves the image unchanged when contrast finds no need for a plate', async () => {
+      const res = await request(app).get(`/image/1/${TEST_ADDRESS}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['x-resize']).toBe('original')
+    })
+  })
 })

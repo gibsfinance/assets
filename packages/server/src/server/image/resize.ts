@@ -25,6 +25,19 @@ import { failureLog } from '@gibs/utils'
 import { attributionHeaders } from './attribution'
 import { createRateLimiter } from './rate-limit'
 import { isLinkOnlyHost } from '../../link-only-hosts'
+import {
+  LUMINANCE_SAMPLE_SIDE,
+  type Plate,
+  type PlateRequest,
+  createLuminanceCache,
+  computePlateSide,
+  measureVisibleLuminance,
+  parsePlateRequest,
+  plateInnerSide,
+  renderPlatedRaster,
+  resolvePlate,
+  wrapSvgWithPlate,
+} from './plate'
 
 // ---------------------------------------------------------------------------
 // Section 1: Query param parsing, SVG detection, format helpers
@@ -106,6 +119,12 @@ export interface ResizeParams {
    * `maybeResize`, which is the first place the stored image is in hand.
    */
   unconvertibleFormat: string | null
+  /**
+   * A plate to paint behind the logo (`?bg=`, `?contrast=`, `?shape=`, see `./plate`). Absent when
+   * neither `bg` nor `contrast` was given. Whether it is painted can depend on the logo itself,
+   * so `maybeResize` settles that.
+   */
+  plate?: PlateRequest
 }
 
 export interface ResizeParamsInput {
@@ -153,8 +172,11 @@ export function parseResizeParams({ query, pathExt }: ResizeParamsInput): Resize
   const h = !isNaN(hRaw) && hRaw >= 1 && hRaw <= MAX_DIM ? hRaw : null
   const format = fRaw && VALID_FORMATS.has(fRaw) ? (fRaw === 'jpeg' ? 'jpg' : fRaw) : null
 
-  if (!w && !h && !format && !unconvertibleFormat) return null
-  return { w, h, format, unconvertibleFormat }
+  // Parsed before the early return: a plate request alone is enough to need `maybeResize`, and an
+  // invalid one must answer 400 even when nothing else was asked for.
+  const plate = parsePlateRequest(query)
+  if (!w && !h && !format && !unconvertibleFormat && !plate) return null
+  return { w, h, format, unconvertibleFormat, ...(plate ? { plate } : {}) }
 }
 
 /** Check if SVG content has a viewBox attribute */
@@ -276,6 +298,8 @@ export function formatToContentType(format: string): string {
       return 'image/jpeg'
     case 'avif':
       return 'image/avif'
+    case 'svg':
+      return 'image/svg+xml'
     default:
       return 'application/octet-stream'
   }
@@ -358,12 +382,14 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   // produce. An svg source already satisfies `?as=svg`, so serve it unchanged;
   // a raster source cannot become one, and saying so beats handing back a png
   // that the caller asked not to receive.
-  if (params.unconvertibleFormat) {
-    if (SVG_SOURCE_EXTS.has(img.ext)) return false
+  const isSvgSource = SVG_SOURCE_EXTS.has(img.ext)
+  if (params.unconvertibleFormat && !isSvgSource) {
     throw httpErrors.NotFound(
       `${params.unconvertibleFormat} is not available for this image — its source is ${img.ext.replace('.', '')}, and a raster image cannot be converted to a vector one`,
     )
   }
+  // With a plate the svg still has work to do: it is wrapped and sent as svg.
+  if (params.unconvertibleFormat && !params.plate) return false
 
   const { w, h, format } = params
   const targetFormat = format || extToFormat(img.ext)
@@ -391,6 +417,12 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   // No bytes to convert: the image's file is missing from the image store (already logged by
   // `loadImageBytes`), or a save-mode row holds none. Let the caller redirect or answer 404.
   if (!content || content.length === 0) return false
+
+  // A plate is never stored as a variant (see `servePlated`), so it is settled before the variant
+  // cache is consulted. No plate needed and nothing else asked for: the original is served.
+  const plate = params.plate ? await settlePlate({ request: params.plate, img, content }) : null
+  if (plate) return servePlated({ res, img, content, plate, params, cachePolicy })
+  if (!w && !h && !format) return false
 
   // SVG with viewBox and no explicit format conversion → serve as-is
   if (SVG_SOURCE_EXTS.has(img.ext)) {
@@ -474,6 +506,116 @@ export async function maybeResize({ res, img, params, cachePolicy = 'mutable' }:
   )
 
   return true
+}
+
+/**
+ * Measured luminance by image, so a logo is drawn small and measured once and not on every request
+ * that says `contrast=`. Keyed by the image's own hash.
+ */
+const luminanceCache = createLuminanceCache()
+
+/** Decide whether this request gets a plate, measuring the logo only when `contrast` needs it. */
+async function settlePlate({
+  request,
+  img,
+  content,
+}: {
+  request: PlateRequest
+  img: Pick<Image, 'imageHash' | 'ext'>
+  content: Buffer
+}): Promise<Plate | null> {
+  const measure = async () =>
+    measureVisibleLuminance(
+      await openSource({ content, ext: img.ext, target: { w: LUMINANCE_SAMPLE_SIDE, h: LUMINANCE_SAMPLE_SIDE } }),
+    )
+  return resolvePlate({
+    request,
+    measureLuminance: () => luminanceCache.remember(img.imageHash, measure),
+  })
+}
+
+/**
+ * Serve a logo on a plate. A vector source with a `viewBox`, and no `as`, stays a vector: the plate
+ * is drawn behind the original, nested whole. Anything else is drawn to pixels, at the requested
+ * size (or its own size), in the requested format or the source's.
+ *
+ * A plated image is not stored in `image_variant`. That table is keyed by size and format, so a
+ * plated copy would be served to a plain request. Extending the key would need a migration, and
+ * the cost here is one small draw per request, while the edge cache holds the answer by its full
+ * address, query included. The `ETag` Express adds comes from the body, so it differs with the plate.
+ */
+async function servePlated({
+  res,
+  img,
+  content,
+  plate,
+  params,
+  cachePolicy,
+}: {
+  res: Response
+  img: MaybeResizeOptions['img']
+  content: Buffer
+  plate: Plate
+  params: ResizeParams
+  cachePolicy: CachePolicy
+}): Promise<true> {
+  const { w, h, format } = params
+  const isVector = SVG_SOURCE_EXTS.has(img.ext)
+  const wrapped = isVector && !format ? wrapSvgWithPlate({ content, plate }) : null
+  const targetFormat = format || extToFormat(img.ext)
+  const pixels = wrapped
+    ? null
+    : await drawPlatedPixels({ content, ext: img.ext, plate, target: { w, h }, format: targetFormat })
+  const now = new Date().toISOString()
+  sendVariant(
+    res,
+    {
+      imageHash: img.imageHash,
+      width: pixels?.side ?? 0,
+      height: pixels?.side ?? 0,
+      format: wrapped ? 'svg' : targetFormat,
+      content: wrapped ?? pixels!.body,
+      accessCount: 1,
+      createdAt: now,
+      lastAccessedAt: now,
+    },
+    {
+      uri: img.uri,
+      providerKey: img.providerKey,
+      entryLicense: img.license,
+      listLicense: img.listLicense,
+      listLicenseUrl: img.listLicenseUrl,
+      listAttribution: img.listAttribution,
+      cachePolicy,
+    },
+  )
+  return true
+}
+
+/** Draw a logo on a plate as pixels; returns the bytes and the side of the square they were drawn at. */
+async function drawPlatedPixels({
+  content,
+  ext,
+  plate,
+  target,
+  format,
+}: {
+  content: Buffer
+  ext: string
+  plate: Plate
+  target: { w: number | null; h: number | null }
+  format: string
+}): Promise<{ body: Buffer; side: number }> {
+  const side = computePlateSide({
+    target,
+    intrinsic: await sharp(content).metadata(),
+    isVector: SVG_SOURCE_EXTS.has(ext),
+    shape: plate.shape,
+  })
+  const inner = plateInnerSide({ side, shape: plate.shape })
+  const logo = await openSource({ content, ext, target: { w: inner, h: inner } })
+  const body = await renderPlatedRaster({ logo, side, plate, format: normalizeFormat(format) })
+  return { body, side }
 }
 
 export interface SendVariantOptions {
