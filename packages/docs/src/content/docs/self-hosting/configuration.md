@@ -50,7 +50,8 @@ These values are whole numbers of at least one. A value that is not a whole numb
 | `SHARP_CACHE_MEMORY_MB` | 16 | Size of the `sharp` pixel cache, in megabytes. `sharp` itself would allow 50. |
 | `SHARP_CACHE_ITEMS` | 64 | Most operations that `sharp` keeps in its cache. |
 | `SHARP_CONCURRENCY` | 1 | Threads that `libvips` may use. Both the server and the collector apply these three limits when they start. |
-| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | Plated images (`bg`, `contrast`) the server draws at once. Others wait in a line eight times as long; past that the server answers 503 with `Retry-After`. |
+| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | Plated images (`bg`, `contrast`) the server draws at once. Others wait in a line eight times as long, and one caller may hold four places in it; past that the server answers 503 with `Retry-After`. |
+| `CLIENT_ADDRESS_HEADER` | none | Name of the request header that carries the real address of the caller, for example `cf-connecting-ip` behind the Cloudflare proxy or a Cloudflare Tunnel. Gib uses it to give each caller its own plate budget. Set it only when the server can be reached through that proxy alone, because a caller that reaches the server directly could write the header itself. With no header named, a connection from a private address (a proxy or a tunnel on your network) names no caller, and only the per-image and whole-service budgets apply. |
 
 ## Image storage
 

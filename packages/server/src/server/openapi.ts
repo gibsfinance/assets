@@ -60,7 +60,7 @@ const PLATE_PARAMS = [
     description:
       'Paint a plate of this colour behind the logo: 3, 6 or 8 hex digits without #, the last two of eight being ' +
       'alpha (for example ffffff, f80, 00000080). Any other value answers 400. A vector image stays a vector ' +
-      '(image/svg+xml) unless `as` asks for pixels. A plate drawn to pixels is never wider than 2048 pixels: ' +
+      '(image/svg+xml) unless `as` asks for pixels. With `as=svg`, a vector image that has no usable viewBox cannot take a plate as a vector, and the answer is 404 and not a png. A plate drawn to pixels is never wider than 2048 pixels: ' +
       'a larger logo is shrunk to fit. With `contrast` as well, `bg` is the plate colour and ' +
       '`contrast` decides whether the plate appears.',
     schema: {
@@ -83,7 +83,7 @@ const PLATE_PARAMS = [
     description:
       'Say whether your page is `dark` or `light`. Gib looks at what share of the visible pixels of the logo have ' +
       'at least 3:1 contrast with that page, and adds a plate in the opposite tone (light on dark, dark on ' +
-      'light) only when that share is under 25 percent, so a logo with some strong parts is left alone. Otherwise the image is served as if the parameter were absent. Any other value answers 400.',
+      'light) only when that share is under 25 percent, so a logo with some strong parts is left alone. Otherwise the image is served as if the parameter were absent. If the logo cannot be measured, the plain image is sent with cache-control: no-store. Any other value answers 400.',
     schema: { type: 'string' as const, enum: ['dark', 'light'] },
   },
 ]
@@ -214,7 +214,7 @@ const REFRESH_UNAUTHORIZED_RESPONSE = {
 const IMAGE_RESPONSE = {
   '200': {
     description:
-      "Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known). Every image response also carries content-security-policy (default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox) and x-content-type-options: nosniff, so an image opened directly in a browser cannot run a script. A plated image (bg or contrast) always uses the shorter lifetime, on every route, because its bytes depend on how Gib draws plates.",
+      "Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known). Every image response also carries content-security-policy (default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox) and x-content-type-options: nosniff, so an image opened directly in a browser cannot run a script. A request that carries plate parameters (bg, shape or contrast) always uses the shorter lifetime, on every route, even when no plate was needed, because its answer depends on how Gib draws plates. When a plate was asked for and could not be produced (the logo cannot be measured or drawn), the plain image is sent with cache-control: no-store.",
     content: {
       'image/*': { schema: { type: 'string' as const, format: 'binary' } },
     },
@@ -225,12 +225,12 @@ const IMAGE_RESPONSE = {
   },
   '429': {
     description:
-      'Plated images (bg or contrast) are drawn on demand and never stored, so each image has an allowance of 30 per minute and the whole service 600. Retry-After says how long to wait (60 seconds); the answer is never cached.',
+      'Plated images (bg or contrast) are drawn on demand and never stored, so each image has an allowance of 30 per minute, each caller 120 and the whole service 600. A caller is named by its network address, or by the address a trusted proxy reports; behind a proxy that cannot be told apart, only the other two apply. A linked image is not downloaded for a refused request. Retry-After says how long to wait (60 seconds); the answer is never cached.',
     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
   },
   '503': {
     description:
-      'Too many plated images are being drawn at once. Retry-After says how long to wait (2 seconds); the answer is never cached. Plain images and resizes are not affected.',
+      'Too many plated images are being drawn at once, or this caller already has four waiting. Retry-After says how long to wait (2 seconds); the answer is never cached. Plain images, resizes, and requests that need no plate are not affected.',
     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
   },
 }
