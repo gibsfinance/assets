@@ -6,6 +6,24 @@ import { createElement, type ReactNode } from 'react'
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+/**
+ * Every icon address a preload asked for, across the whole file. `Image` is
+ * replaced once for the file and never restored mid-file: a preload starts after
+ * its fetch settles, which can be after the test that caused it has ended, and a
+ * late `new Image()` must still find a constructor. Restoring it between tests made
+ * such a straggler throw "globalThis.Image is not a constructor" and fail the run
+ * as an unhandled rejection, even with every test passing.
+ */
+const requestedIcons: string[] = []
+vi.stubGlobal(
+  'Image',
+  class {
+    set src(url: string) {
+      requestedIcons.push(url)
+    }
+  },
+)
+
 vi.mock('../utils', async () => {
   const actual = await vi.importActual<typeof import('../utils')>('../utils')
   return { ...actual, getApiUrl: (path: string) => `https://api.test${path}` }
@@ -146,32 +164,20 @@ describe('usePrefetchChainTokens', () => {
 
 describe('usePrefetchChainTokens icon preloading', () => {
   const ICON_RESPONSE = compactBody(10, [{ address: '0xA', name: 'A', symbol: 'AAA', decimals: 18 }])
-  let requested: string[]
 
   beforeEach(() => {
     vi.useFakeTimers()
-    requested = []
     mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(ICON_RESPONSE) })
-    vi.stubGlobal(
-      'Image',
-      class {
-        set src(url: string) {
-          requested.push(url)
-        }
-      },
-    )
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.unstubAllGlobals()
-    vi.stubGlobal('fetch', mockFetch)
   })
 
   // Each test uses its own chain and counts only that chain's icons. A preload an
   // earlier test started can finish late, after its fetch promise settles, and land
   // in the next test's list; on a loaded machine it did, and failed an unrelated test.
-  const requestedFor = (chainId: string) => requested.filter((url) => url.includes(`/image/${chainId}/`))
+  const requestedFor = (chainId: string) => requestedIcons.filter((url) => url.includes(`/image/${chainId}/`))
 
   const setup = (chainId: string) => {
     const { result, unmount } = renderHook(() => usePrefetchChainTokens(), { wrapper: wrapperFor(createClient()) })
@@ -198,7 +204,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     await vi.advanceTimersByTimeAsync(ICON_DWELL_MILLISECONDS)
 
     expect(requestedFor('eip155-11')).toHaveLength(1)
-    expect(requested[0]).toContain('/image/eip155-11/0xA?')
+    expect(requestedFor('eip155-11')[0]).toContain('/image/eip155-11/0xA?')
   })
 
   it('cancels the wait on blur', async () => {
@@ -230,7 +236,7 @@ describe('usePrefetchChainTokens icon preloading', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(requestedFor('eip155-14')).toHaveLength(1)
-    expect(requested[0]).toContain('/image/eip155-14/0xA?')
+    expect(requestedFor('eip155-14')[0]).toContain('/image/eip155-14/0xA?')
   })
 
   it('drops a pending wait when pointerdown arrives, so the icons start only once', async () => {

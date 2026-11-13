@@ -282,7 +282,7 @@ export const insertImage = async (
   }
   // Reject raster images that are too small to be real logos (e.g. CoinGecko thumb placeholders)
   const MIN_RASTER_SIZE = 200
-  const isSvg = ext === '.svg' || ext === '.svg+xml'
+  const isSvg = isVectorExt(ext)
   if (!isSvg && image.length < MIN_RASTER_SIZE) {
     failureLog('image too small (%d bytes) %o -> %o', image.length, providerKey, originalUri)
     return null
@@ -1104,6 +1104,9 @@ export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
   return deleted.map((row) => row.imageHash)
 }
 
+/** Whether an image extension names a vector format (`.svg`, or the `.svg+xml` spelling). */
+export const isVectorExt = (ext: string | null | undefined): boolean => ext === '.svg' || ext === '.svg+xml'
+
 /**
  * Point a network's icon slot at `imageHash` on behalf of `providerKey`, but only if
  * that collector outranks whoever currently holds the slot.
@@ -1115,6 +1118,13 @@ export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
  * so any chain-specific logo outranks it". Under last-write-wins it outranked
  * everything instead, and which icon survived came down to collection order, so two
  * deployments of the same code served different icons for the same chain.
+ *
+ * A vector outranks a raster whoever supplied it, and a raster never displaces a
+ * vector; priority decides only between two icons of the same kind. A network has
+ * one slot, so without this a curated PNG from a high-priority collector kept the
+ * slot against a lower-priority collector's SVG, and `?only=vector` answered 404
+ * for a chain that has a vector. The default icon is therefore the vector whenever
+ * any collector offers one.
  *
  * A row whose provider is unknown — every network written before provenance was
  * recorded — yields to the first collector that claims it, rather than being frozen
@@ -1128,13 +1138,13 @@ const claimNetworkImageSlot = async (
 ) => {
   const db = tx ?? getDrizzle()
   const [current] = await db.select().from(s.network).where(eq(s.network.networkId, network.networkId)).limit(1)
-  if (current?.imageHash && collectablePriority(current.imageProviderKey) < collectablePriority(providerKey)) {
-    return current
-  }
   // Already exactly what we would write. Skipping matters at this scale: every
   // collector revisits every network it knows on every run, so an unconditional
   // update here is thousands of no-op writes per run.
   if (current?.imageHash === imageHash && current.imageProviderKey === providerKey) {
+    return current
+  }
+  if (current?.imageHash && !(await candidateTakesSlot({ current, imageHash, providerKey }, tx))) {
     return current
   }
   const [updated] = await db
@@ -1143,6 +1153,30 @@ const claimNetworkImageSlot = async (
     .where(eq(s.network.networkId, network.networkId))
     .returning()
   return updated
+}
+
+/**
+ * Decide whether a candidate icon replaces the one a network already holds.
+ *
+ * Kind comes first: a vector beats a raster whoever supplied it, and a raster
+ * never displaces a vector. Only when both are the same kind does collector
+ * priority decide, as it always did. See `claimNetworkImageSlot`.
+ */
+const candidateTakesSlot = async (
+  { current, imageHash, providerKey }: { current: Network; imageHash: string; providerKey: string },
+  tx?: DrizzleTx,
+) => {
+  const db = tx ?? getDrizzle()
+  const incumbentHash = current.imageHash as string
+  const rows = await db
+    .select({ imageHash: s.image.imageHash, ext: s.image.ext })
+    .from(s.image)
+    .where(inArray(s.image.imageHash, [incumbentHash, imageHash]))
+  const extOf = (hash: string) => rows.find((row) => row.imageHash === hash)?.ext
+  const incumbentIsVector = isVectorExt(extOf(incumbentHash))
+  const candidateIsVector = isVectorExt(extOf(imageHash))
+  if (incumbentIsVector !== candidateIsVector) return candidateIsVector
+  return collectablePriority(current.imageProviderKey) >= collectablePriority(providerKey)
 }
 
 export const fetchImageAndStoreForNetwork = async (
