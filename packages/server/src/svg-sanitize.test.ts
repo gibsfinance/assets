@@ -1,3 +1,4 @@
+import { DOMParser } from '@xmldom/xmldom'
 import { describe, it, expect } from 'vitest'
 import { sanitizeImage, isScriptUri, SvgRejectedError } from './sanitize'
 import { cleanCss, sanitizeSvgDocument } from './svg-sanitize'
@@ -240,8 +241,8 @@ describe('style', () => {
       ),
     )
     expect(output).not.toMatch(/@import|evil/)
-    expect(output).toContain('.a > .b { fill: red }')
-    expect(output).toContain('<![CDATA[')
+    expect(output).toContain('.a &gt; .b { fill: red }')
+    expect(output).not.toContain('<![CDATA[')
   })
 
   it('removes @import with no semicolon, and in plain text', async () => {
@@ -284,6 +285,53 @@ describe('style', () => {
     const output = await clean(wrap(`<style>.a{fill:red}<circle id="inner"/></style>`))
     expect(output).not.toContain('inner')
     expect(output).toContain('.a{fill:red}')
+  })
+})
+
+describe('markup that is inert as XML but not in a web page', () => {
+  /** Whether no script can start and every style element's closing tag is its own: nothing ends an element early. */
+  const isInlineSafe = (output: string) =>
+    !/<script/i.test(output) &&
+    (output.match(/<\/style/gi) ?? []).length === (output.match(/<style[\s>]/gi) ?? []).length
+
+  const read = (output: string) => new DOMParser().parseFromString(output, 'image/svg+xml')
+
+  it('writes a cdata section in a style element as escaped text, so a closing tag inside it stays text', async () => {
+    const output = await clean(wrap(`<style><![CDATA[ </style><script>alert(1)</script> ]]></style><rect id="kept"/>`))
+    expect(isInlineSafe(output)).toBe(true)
+    expect(output).not.toMatch(/<script|<!\[CDATA\[/)
+    expect(read(output).getElementsByTagName('script')).toHaveLength(0)
+    expect(output).toContain('id="kept"')
+  })
+
+  it('drops style text that still holds a < once cleaned, and keeps the element out of the output', async () => {
+    const output = await clean(
+      wrap(`<style>a{content:"&lt;/style&gt;&lt;script&gt;alert(1)&lt;/script&gt;"}</style><rect/>`),
+    )
+    expect(output).not.toMatch(/alert|&lt;script|<script/)
+    expect(read(output).getElementsByTagName('script')).toHaveLength(0)
+  })
+
+  it('removes a style element inside a title, desc, text, tspan or metadata', async () => {
+    const output = await clean(
+      wrap(
+        `<title><style>a{}</style>t</title><desc><style>b{}</style></desc><text><style>c{}</style>x<tspan><style>d{}</style></tspan></text>` +
+          `<metadata><style>e{}</style></metadata><defs><style>keep{}</style></defs>`,
+      ),
+    )
+    expect(output.match(/<style/g)).toHaveLength(1)
+    expect(output).toContain('keep{}')
+  })
+
+  it('writes a cdata section anywhere else as escaped text', async () => {
+    const output = await clean(
+      wrap(
+        `<title><![CDATA[</title><script>alert(1)</script>]]></title><text><![CDATA[</text><img src=x onerror=alert(2)>]]></text>`,
+      ),
+    )
+    expect(output).not.toMatch(/<!\[CDATA\[|<script|<img/)
+    expect(output).toContain('&lt;/title&gt;')
+    expect(read(output).getElementsByTagName('script')).toHaveLength(0)
   })
 })
 

@@ -113,6 +113,20 @@ const ALLOWED_ELEMENTS: ReadonlySet<string> = new Set([
   'vkern',
 ])
 
+/** Elements a style element may sit in. A style element anywhere else (inside a title, text or metadata) is removed. */
+const STYLE_PARENT_ELEMENTS: ReadonlySet<string> = new Set([
+  'svg',
+  'defs',
+  'g',
+  'symbol',
+  'a',
+  'switch',
+  'pattern',
+  'mask',
+  'clipPath',
+  'marker',
+])
+
 /** Animation elements, which can rewrite another attribute and so are looked at twice. */
 const ANIMATION_ELEMENTS: ReadonlySet<string> = new Set(['animate', 'animateTransform', 'animateMotion', 'set'])
 
@@ -293,6 +307,7 @@ function isRemovedElement(element: Element): boolean {
   const name = element.localName
   if (!ALLOWED_ELEMENTS.has(name)) return true
   if (ANIMATION_ELEMENTS.has(name) && targetsLinkOrHandler(element)) return true
+  if (name === 'style') return !STYLE_PARENT_ELEMENTS.has((element.parentNode as Element).localName)
   if (name !== 'use') return false
   const links = attributesOf(element).filter(isLinkAttribute)
   return links.some((link) => !isLocalLink(link.value))
@@ -312,24 +327,36 @@ function cleanAttribute(element: Element, attribute: Attr): void {
   if (isStyle || /url\(/i.test(attribute.value)) attribute.value = cleanCss(attribute.value)
 }
 
-/** Clean the text inside a style element. Anything but text is removed. */
+/**
+ * Replace the content of a style element with one plain text node holding its cleaned text.
+ *
+ * Text, not a CDATA section: a CDATA section is written back raw, so `</style><script>` inside one is
+ * inert to a markup parser but ends the style element in a web page parser, which matters when a page
+ * inlines the file. A text node has `<` and `&` escaped when it is written. Style sheets never need a
+ * `<`, so text that still has one after cleaning is dropped.
+ */
 function cleanStyleContent(element: Element): void {
-  for (const child of Array.from(element.childNodes)) {
-    const isText = child.nodeType === TEXT_NODE || child.nodeType === CDATA_SECTION_NODE
-    if (!isText) {
-      element.removeChild(child)
-      continue
-    }
-    ;(child as CharacterData).data = cleanCss((child as CharacterData).data)
-  }
+  const text = Array.from(element.childNodes)
+    .filter((child) => child.nodeType === TEXT_NODE || child.nodeType === CDATA_SECTION_NODE)
+    .map((child) => (child as CharacterData).data)
+    .join('')
+  Array.from(element.childNodes).forEach((child) => element.removeChild(child))
+  const cleaned = cleanCss(text)
+  if (cleaned === '' || cleaned.includes('<')) return
+  element.appendChild((element.ownerDocument as Document).createTextNode(cleaned))
 }
 
 /** Clean an element's children, then its attributes. Recurses once per level of nesting. */
 function cleanChildren(parent: Node): void {
   for (const child of Array.from(parent.childNodes)) {
+    if (child.nodeType === CDATA_SECTION_NODE) {
+      // Written as escaped text, so the content can never read as markup in a web page parser.
+      parent.replaceChild((parent.ownerDocument as Document).createTextNode((child as CharacterData).data), child)
+      continue
+    }
     if (child.nodeType !== ELEMENT_NODE) {
-      // Text and CDATA are kept; comments, processing instructions and the like are not.
-      if (child.nodeType !== TEXT_NODE && child.nodeType !== CDATA_SECTION_NODE) parent.removeChild(child)
+      // Text is kept; comments, processing instructions and the like are not.
+      if (child.nodeType !== TEXT_NODE) parent.removeChild(child)
       continue
     }
     const element = child as Element
@@ -347,7 +374,7 @@ function cleanChildren(parent: Node): void {
 // Reading and writing bytes
 // ---------------------------------------------------------------------------
 
-/** Matches the encoding named in an markup declaration at the very start of a document. */
+/** Matches the encoding named in a markup declaration at the very start of a document. */
 const DECLARED_ENCODING_REGEX = /^<\?xml[^>]*?\bencoding\s*=\s*["']([A-Za-z0-9._-]+)["']/
 
 /** Byte order marks that name an encoding. */
