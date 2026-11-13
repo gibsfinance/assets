@@ -41,6 +41,11 @@ export interface RateLimiterOptions {
 export interface RateLimiter {
   /** Records one request against both budgets. Returns false when either is spent. */
   check: (imageHash: string) => boolean
+  /**
+   * Whether `check` would answer true right now, without spending anything. Lets a caller refuse
+   * a request before doing expensive work for it, and spend the budget only when the work is done.
+   */
+  canSpend: (imageHash: string) => boolean
   /** Forgets every window, global and per image. */
   reset: () => void
   /** How many images currently have a window. Housekeeping only. */
@@ -104,10 +109,19 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     return true
   }
 
+  const canSpend = (imageHash: string): boolean => {
+    const at = now()
+    const globalSpent = at - globalWindow.windowStart > windowMs ? 0 : globalWindow.count
+    if (globalSpent >= globalLimit) return false
+    const window = perImageWindows.get(imageHash)
+    const spent = !window || at - window.windowStart > windowMs ? 0 : window.count
+    return spent < perImageLimit
+  }
+
   const reset = (): void => {
     perImageWindows.clear()
     globalWindow = { count: 0, windowStart: now() }
   }
 
-  return { check, reset, trackedImages: () => perImageWindows.size }
+  return { check, canSpend, reset, trackedImages: () => perImageWindows.size }
 }

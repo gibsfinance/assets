@@ -133,6 +133,15 @@ const etherscan = readEtherscanSettings(process.env)
  */
 const docsHostnames = readHostnames(process.env.DOCS_HOSTNAMES)
 
+/**
+ * Lower-case name of the request header that carries the real client address, for example
+ * `cf-connecting-ip` behind the Cloudflare proxy or tunnel (CLIENT_ADDRESS_HEADER). Empty, the
+ * default, trusts no header. Set it only when the server can be reached through that proxy alone:
+ * a client that reaches the server directly could write the header itself. See
+ * `server/image/client-address.ts`.
+ */
+const clientAddressHeader = process.env.CLIENT_ADDRESS_HEADER?.trim().toLowerCase() || undefined
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -149,4 +158,5 @@ export default {
   imageBytesInDatabase,
   etherscan,
   docsHostnames,
+  clientAddressHeader,
 }

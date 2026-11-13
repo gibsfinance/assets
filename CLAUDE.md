@@ -98,7 +98,8 @@ falls back to the default.
 | `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
-| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits, past it 503 + `Retry-After` |
+| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits (4 places per caller), past it 503 + `Retry-After` |
+| `CLIENT_ADDRESS_HEADER` | none | header that carries the real client address (`cf-connecting-ip` behind Cloudflare); read only when named, never trusted by default (`image/client-address.ts`) |
 | `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
 | `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
 | `IMAGE_STORE_S3_PRESET` | `aws` | `s3`: `aws`, `r2`, `hetzner`, `b2`, `wasabi`, `spaces`, `minio` or `custom` |
@@ -257,14 +258,29 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   request would be, never 500. A vector is measured at about 64 px (`openForMeasurement`), not at its declared size.
   Plated output is NOT stored in `image_variant` (its key has no plate field and the colour is free text, so storing
   would let a caller fill the table) and so needs no migration. Because it is drawn per request it is limited: a
-  plate budget (`createRateLimiter`, 30 per image and 600 total a minute, answer 429 + `Retry-After: 60`) spent only
-  when a plate is actually drawn, and `concurrency-gate.ts` (`PLATE_RENDER_CONCURRENCY`, line of 8 per slot, then
-  503 + `Retry-After: 2`). Both refusals are `no-store` JSON written in `maybeResize`, not thrown (the error funnel
-  turns 5xx into a generic 500). A drawn plate never passes `MAX_DIM` (2048) a side; a larger raster shrinks. A plated
-  response is always `mutable`, including on `/image/direct/<hash>`: its bytes depend on code constants, so the
-  year-long immutable lifetime is not honest. A vector with a `viewBox` and no `as` stays svg (plate plus the
+  plate budget (`createRateLimiter`, 30 per image, 120 per caller and 600 total a minute, answer 429 + `Retry-After: 60`)
+  spent only when a plate is actually drawn (`canSpend` looks without spending, so a link-mode request is refused before
+  its download), and `concurrency-gate.ts` (`PLATE_RENDER_CONCURRENCY`, line of 8 per slot, 4 places per caller, then
+  503 + `Retry-After: 2`). The gate wraps only the draw, after the budget check; measurements, no-plate answers and vector
+  wrapping never queue. A caller is `clientAddressOf` (`client-address.ts`): the header named by `CLIENT_ADDRESS_HEADER`
+  when set, else the connection's address, and null (global budget only) when that is private or loopback, which is a
+  tunnel or proxy whose callers cannot be told apart. IPv6 is cut to its first 64 bits. Behind Cloudflare Tunnel the
+  deploy must set `CLIENT_ADDRESS_HEADER=cf-connecting-ip` for the per-caller budget to apply. Both refusals are `no-store` JSON written in `maybeResize`, not thrown (the error funnel
+  turns 5xx into a generic 500). A drawn plate never passes `MAX_DIM` (2048) a side; a larger raster shrinks. A request
+  with plate parameters is always `mutable`, including on `/image/direct/<hash>` and when `contrast` finds no plate is
+  needed (`cachePolicyForOriginal`, used by `respondWithImage` in `handlers.ts`, so every route agrees): its answer depends
+  on code constants, so the year-long immutable lifetime is not honest. A plate that was asked for and cannot be produced
+  (cannot be measured or drawn, or a link-mode image cannot be read) sends the plain image, or the redirect, `no-store`;
+  chosen over 503 because a logo that shows without its plate is better than a broken image, and `no-store` stops a
+  cache keeping that answer. `as=svg` with a plate on a vector with no usable `viewBox` is 404, as `as=svg` on a raster is. A vector with a `viewBox` and no `as` stays svg (plate plus the
   original nested) only when `wrapSvgWithPlate` is sure of valid markup (quote-aware root tag; a DOCTYPE, a non-UTF-8
   declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
+  `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
+- Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
+  512 KB (streamed, dropped as it passes the cap), 5 s timeout, 4 downloads at once with a line of 16, sanitized with
+  `sanitizeImage` before use, kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
+  librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
+  request), so a remote vector cannot make the server fetch more. `sprite.ts` still has its own fetch for link rows.
 - Image security headers: every response that carries image bytes (`sendImage`, `sendVariant`, so plated output
   too, and the sprite sheet) sets `Content-Security-Policy: default-src 'none'; img-src data:; style-src
   'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff` through `setImageSecurityHeaders` in

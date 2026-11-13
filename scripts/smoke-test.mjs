@@ -65,6 +65,7 @@ async function probe(label, path, options = {}) {
     bodyIncludes,
     headerEquals = {},
     headerAbsent = [],
+    headerLacks = {},
     baseUrl = BASE_URL,
   } = options
   const separator = path.includes('?') ? '&' : '?'
@@ -113,6 +114,13 @@ async function probe(label, path, options = {}) {
     if (actual === wanted) continue
     ok = false
     notes.push(`${name} is ${actual}, expected ${wanted}`)
+  }
+
+  for (const [name, forbidden] of Object.entries(headerLacks)) {
+    const actual = response.headers.get(name) ?? ''
+    if (!actual.includes(forbidden)) continue
+    ok = false
+    notes.push(`${name} is ${actual}, which must not contain ${forbidden}`)
   }
 
   for (const name of headerAbsent) {
@@ -190,6 +198,15 @@ await probe('plated vector', '/image/eip155-1?bg=ffffff&shape=rounded', {
 })
 await probe('plated pixels', `/image/eip155-1/${USDC}?bg=ffffff&as=png&w=64`, { type: 'image/png' })
 await probe('contrast', '/image/eip155-1?contrast=dark', { type: 'image/' })
+// An answer that depends on plate parameters is never kept for a year, plated or not.
+await probe('plated lifetime', '/image/eip155-1?bg=ffffff', {
+  type: 'image/svg+xml',
+  headerLacks: { 'cache-control': 'immutable' },
+})
+await probe('contrast lifetime', '/image/eip155-1?contrast=dark', {
+  type: 'image/',
+  headerLacks: { 'cache-control': 'immutable' },
+})
 
 // Image bytes carry the security headers, and nothing else does. The vector-only network icon is an
 // svg, the file type the policy exists for. A plated one is sent by a different code path.

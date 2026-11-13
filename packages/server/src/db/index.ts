@@ -267,7 +267,7 @@ export const insertImage = async (
   },
   tx?: DrizzleTx,
 ) => {
-  const ext = await detectImageExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image)
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
     failureLog('no ext %o -> %o', providerKey, originalUri)
@@ -647,7 +647,7 @@ export const resolveImage = async (
   const image = await fetchImage(uri, signal, providerKey, address)
   if (!image) return null
   const originalUri = Buffer.isBuffer(uri) ? `buffer:${providerKey}:${address}` : uri
-  const ext = await detectImageExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image)
   if (!ext) return null
   return { buffer: image, ext, originalUri }
 }

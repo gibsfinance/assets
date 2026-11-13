@@ -341,8 +341,17 @@ describe('wrapSvgWithPlate', () => {
     ['a viewBox that is not four numbers', '<svg viewBox="0 0 1"></svg>'],
     ['a viewBox with a zero side', '<svg viewBox="0 0 0 5"></svg>'],
     ['a viewBox with text in it', '<svg viewBox="a b c d"></svg>'],
+    // A renderer reads only the attribute named exactly `viewBox`; these would wrap into a nested
+    // root with no scaling box, drawn at the wrong size.
+    ['only a data-viewBox attribute', '<svg data-viewBox="0 0 10 10"></svg>'],
+    ['viewBox text inside another attribute value', '<svg title=\' viewBox="0 0 10 10"\'></svg>'],
+    ['a lower case viewbox', '<svg viewbox="0 0 10 10"></svg>'],
   ])('refuses %s', (_label, content) => {
     expect(wrap(content)).toBeNull()
+  })
+  it('reads a viewBox written with single quotes, and the first of two', () => {
+    expect(wrap("<svg viewBox='0 0 10 10'></svg>")).not.toBeNull()
+    expect(wrap('<svg viewBox="0 0 0 0" viewBox="0 0 10 10"></svg>')).toBeNull()
   })
   it('accepts comma separated viewBox numbers', () => {
     expect(wrap('<svg viewBox="0,0,10,10"></svg>')).not.toBeNull()

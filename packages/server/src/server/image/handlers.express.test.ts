@@ -295,6 +295,76 @@ describe('image handlers through a real Express 5 app', () => {
     })
   })
 
+  // The content-addressed route promises one path, one set of bytes, for a year. A request that
+  // carries plate parameters is a different answer from the plain one, so it must never get that
+  // promise, whether the plate was drawn, not needed, or could not be made.
+  describe('plate parameters on the content-addressed route never get the year-long lifetime', () => {
+    // Each test gets its own hash: a failed measurement or draw is remembered by it for a minute.
+    let hash = ''
+    let counter = 0
+    beforeEach(() => {
+      counter += 1
+      hash = counter.toString(16).padStart(64, 'd')
+    })
+    const rowFor = (image: Record<string, unknown>) => () =>
+      makeDrizzleChain([
+        { imageHash: hash, uri: 'https://example.com/t.png', ext: '.png', mode: 'save', ...image },
+      ]) as never
+
+    /** Noise bright enough that a dark page shows it without a plate. */
+    async function makeBrightNoisePng(): Promise<Buffer> {
+      const raw = Buffer.alloc(32 * 32 * 4, 255)
+      for (let i = 0; i < raw.length; i += 1) if (i % 4 !== 3) raw[i] = 200 + ((i * 2654435761) % 56)
+      return sharp(raw, { raw: { width: 32, height: 32, channels: 4 } })
+        .png()
+        .toBuffer()
+    }
+
+    it('sends no-store when the plate cannot be drawn, and the plain request keeps its year', async () => {
+      // 300 bytes that are not an image: past the serve check, undecodable by sharp.
+      const undecodable = Buffer.from('not an image '.repeat(30))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: undecodable }))
+      const plated = await request(app).get(`/image/direct/${hash}?bg=ffffff`)
+      const plain = await request(app).get(`/image/direct/${hash}`)
+      expect(plated.status).toBe(200)
+      expect(plated.headers['cache-control']).toBe('no-store')
+      expect(plain.headers['cache-control']).toContain('immutable')
+    })
+
+    it('sends no-store when the logo cannot be measured for contrast', async () => {
+      const undecodable = Buffer.from('not an image either '.repeat(20))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: undecodable }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('no-store')
+    })
+
+    it('is mutable, not immutable, when contrast finds no plate is needed', async () => {
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: await makeBrightNoisePng() }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['x-resize']).toBe('original')
+      expect(res.headers['cache-control']).not.toContain('immutable')
+      expect(res.headers['cache-control']).toContain('max-age=86400')
+    })
+
+    it('is mutable when a plate and a size are asked for and no plate is needed', async () => {
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: await makeBrightNoisePng() }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark&w=16`)
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).not.toContain('immutable')
+    })
+
+    it('is no-store, with the redirect, when a linked image cannot be fetched for a plate', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: Buffer.alloc(0), mode: 'link' }))
+      const res = await request(app).get(`/image/direct/${hash}?bg=ffffff`).redirects(0)
+      vi.unstubAllGlobals()
+      expect(res.status).toBe(302)
+      expect(res.headers['cache-control']).toBe('no-store')
+    })
+  })
+
   describe('a jpg through the real app', () => {
     it('is image/jpeg when resized and when plated', async () => {
       const jpg = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#808080' } })
