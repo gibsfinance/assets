@@ -49,6 +49,44 @@ const LIST_KEY_PARAM = {
   schema: { type: 'string' as const },
 }
 
+/**
+ * The plate parameters (`bg`, `shape`, `contrast`). Part of RESIZE_PARAMS, because every route that
+ * serves an image through the resize pipeline serves them. See `image/plate.ts`.
+ */
+const PLATE_PARAMS = [
+  {
+    name: 'bg',
+    in: 'query' as const,
+    description:
+      'Paint a plate of this colour behind the logo: 3, 6 or 8 hex digits without #, the last two of eight being ' +
+      'alpha (for example ffffff, f80, 00000080). Any other value answers 400. A vector image stays a vector ' +
+      '(image/svg+xml) unless `as` asks for pixels. With `contrast` as well, `bg` is the plate colour and ' +
+      '`contrast` decides whether the plate appears.',
+    schema: {
+      type: 'string' as const,
+      pattern: '^([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$',
+      examples: ['ffffff'],
+    },
+  },
+  {
+    name: 'shape',
+    in: 'query' as const,
+    description:
+      'The outline of the plate. Only used together with `bg` or `contrast`; on its own it is checked and ' +
+      'then ignored. Any other value answers 400.',
+    schema: { type: 'string' as const, enum: ['circle', 'rounded', 'square'], default: 'circle' },
+  },
+  {
+    name: 'contrast',
+    in: 'query' as const,
+    description:
+      'Say whether your page is `dark` or `light`. Gib measures how bright the logo is and adds a plate in the ' +
+      'opposite tone (light on dark, dark on light) only when the logo would have less than 3:1 contrast with ' +
+      'that page. Otherwise the image is served as if the parameter were absent. Any other value answers 400.',
+    schema: { type: 'string' as const, enum: ['dark', 'light'] },
+  },
+]
+
 const RESIZE_PARAMS = [
   {
     name: 'as',
@@ -80,6 +118,7 @@ const RESIZE_PARAMS = [
     description: 'Resize height in pixels (1-2048), fit inside, never enlarged.',
     schema: { type: 'integer' as const, minimum: 1, maximum: 2048 },
   },
+  ...PLATE_PARAMS,
 ]
 
 const MODE_PARAM = {
@@ -634,6 +673,7 @@ export const openapi = {
             description: 'Output format. SVG output requires an SVG source.',
             schema: { type: 'string', enum: ['png', 'webp', 'jpg', 'avif', 'svg'] },
           },
+          ...PLATE_PARAMS,
         ],
         responses: {
           ...IMAGE_RESPONSE,

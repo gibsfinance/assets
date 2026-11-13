@@ -146,6 +146,13 @@ await probe('query conversion', `/image/eip155-1/${USDC}?as=webp&width=128`, {
   type: 'image/webp',
 })
 await probe('resize', `/image/eip155-1/${USDC}?width=32`, { type: 'image/' })
+// A plate behind the logo. The Ethereum network icon is a vector, so a plated one stays a vector.
+await probe('plated vector', '/image/eip155-1?bg=ffffff&shape=rounded', {
+  type: 'image/svg+xml',
+  bodyIncludes: 'fill="#ffffff"',
+})
+await probe('plated pixels', `/image/eip155-1/${USDC}?bg=ffffff&as=png&w=64`, { type: 'image/png' })
+await probe('contrast', '/image/eip155-1?contrast=dark', { type: 'image/' })
 await probe('vector only', `/image/eip155-1/${USDC}?only=vector`, {
   type: 'image/',
 })
@@ -171,6 +178,8 @@ await probe('unknown chain', '/image/eip155-99999999', { expect: [400, 404] })
 await probe('unknown token', `/image/eip155-1/0x${'de'.repeat(20)}`, {
   expect: [400, 404],
 })
+await probe('malformed plate colour', '/image/eip155-1?bg=not-a-colour', { expect: [400] })
+await probe('malformed plate contrast', '/image/eip155-1?contrast=sideways', { expect: [400] })
 await probe('malformed address', '/image/eip155-1/not-an-address', {
   expect: [400, 404],
 })
