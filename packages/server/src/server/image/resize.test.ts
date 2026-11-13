@@ -662,10 +662,7 @@ describe('maybeResize', () => {
   // -------------------------------------------------------------------------
   it('fetches remote content for LINK-mode images', async () => {
     const fakeContent = Buffer.from('remote-image-data')
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(fakeContent.buffer),
-    }) as any
+    global.fetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(fakeContent))) as any
 
     const req = mockReq({ w: '72' })
     const res = mockRes()

@@ -29,10 +29,12 @@ import {
   formatToContentType,
   extToFormat,
   resetRateLimit,
+  resetRemoteImageCache,
   type CachePolicy,
 } from './resize'
 import { createRateLimiter, type RateLimiter } from './rate-limit'
 import { createConcurrencyGate, type ConcurrencyGate } from './concurrency-gate'
+import { REMOTE_IMAGE_MAX_BYTES, type RemoteImageLoader } from './remote-image'
 
 const cronosSvg = readFileSync(new URL('./__fixtures__/cronos-web3icons.svg', import.meta.url))
 const ethereumSvg = readFileSync(new URL('./__fixtures__/ethereum-smoldapp.svg', import.meta.url))
@@ -46,6 +48,7 @@ const solid = (side: number, background: string, format: 'png' | 'jpeg' = 'png')
 beforeEach(() => {
   vi.clearAllMocks()
   resetRateLimit()
+  resetRemoteImageCache()
 })
 
 afterEach(() => {
@@ -69,6 +72,9 @@ async function request(options: {
   cachePolicy?: CachePolicy
   plateGate?: ConcurrencyGate
   plateLimiter?: RateLimiter
+  clientLimiter?: RateLimiter
+  clientAddress?: string | null
+  remoteImages?: RemoteImageLoader
   extra?: Record<string, unknown>
 }): Promise<Sent> {
   const headers: Record<string, string> = {}
@@ -109,6 +115,9 @@ async function request(options: {
     cachePolicy: options.cachePolicy,
     plateGate: options.plateGate,
     plateLimiter: options.plateLimiter,
+    clientLimiter: options.clientLimiter,
+    clientAddress: options.clientAddress,
+    remoteImages: options.remoteImages,
   })
   return sent
 }
@@ -255,7 +264,23 @@ describe('plated renders spend a budget (finding 3)', () => {
 
 describe('plated renders are limited to a few at once (finding 3)', () => {
   it('runs one at a time through a gate of one and queues the rest', async () => {
-    const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 8 })
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 8 })
+    // Hold every task at the start of its draw, so the line can be looked at while it is full.
+    let open = () => {}
+    const latch = new Promise<void>((resolve) => (open = resolve))
+    const plateGate: ConcurrencyGate = {
+      run: (task, options) =>
+        gate.run(async () => {
+          await latch
+          return task()
+        }, options),
+      get active() {
+        return gate.active
+      },
+      get waiting() {
+        return gate.waiting
+      },
+    }
     const png = await solid(64, '#050505')
     const pending = [1, 2, 3].map((index) =>
       request({
@@ -266,12 +291,13 @@ describe('plated renders are limited to a few at once (finding 3)', () => {
         plateLimiter: createRateLimiter(),
       }),
     )
-    expect(plateGate.active).toBe(1)
-    expect(plateGate.waiting).toBe(2)
+    await vi.waitFor(() => expect(gate.waiting).toBe(2))
+    expect(gate.active).toBe(1)
+    open()
     const sent = await Promise.all(pending)
     expect(sent.every((one) => one.body !== null)).toBe(true)
-    expect(plateGate.active).toBe(0)
-    expect(plateGate.waiting).toBe(0)
+    expect(gate.active).toBe(0)
+    expect(gate.waiting).toBe(0)
   })
   it('answers 503 with Retry-After when every slot is busy and the line is full', async () => {
     const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 0 })
@@ -386,6 +412,8 @@ describe('what a fetched source is remembered under (finding 9)', () => {
     }
     serve(cronosSvg)
     const dark = await request(options)
+    // The remote reader keeps bytes for a minute; this is the moment after that has passed.
+    resetRemoteImageCache()
     serve(ethereumSvg)
     const bright = await request(options)
     // A cache keyed by the row would have called the second logo as dark as the first.
@@ -403,5 +431,195 @@ describe('what a fetched source is remembered under (finding 9)', () => {
     serve(cronosSvg)
     expect((await request(options)).handled).toBe(true)
     expect((await request({ ...options, imageHash: 'a-different-row' })).handled).toBe(true)
+  })
+})
+
+describe('a plate is asked for per caller as well as in total (second review, finding 5)', () => {
+  it('refuses one caller past its budget while another caller and the unnamed are still served', async () => {
+    const clientLimiter = createRateLimiter({ perImageLimit: 2, globalLimit: Infinity })
+    const png = await solid(64, '#050505')
+    const ask = (clientAddress: string | null, index: number) =>
+      request({
+        content: png,
+        ext: '.png',
+        imageHash: `image-${index}`,
+        query: { bg: 'fff' },
+        clientLimiter,
+        clientAddress,
+      })
+    expect((await ask('203.0.113.1', 1)).body).not.toBeNull()
+    expect((await ask('203.0.113.1', 2)).body).not.toBeNull()
+    const refused = await ask('203.0.113.1', 3)
+    expect(refused.status).toBe(429)
+    expect(refused.headers['retry-after']).toBe('60')
+    expect((await ask('203.0.113.2', 4)).body).not.toBeNull()
+    // Callers that cannot be told apart share only the global budget.
+    expect((await ask(null, 5)).body).not.toBeNull()
+    expect((await ask(null, 6)).body).not.toBeNull()
+    expect((await ask(null, 7)).body).not.toBeNull()
+  })
+  it('does not spend a caller’s budget when contrast finds no plate is needed', async () => {
+    const clientLimiter = createRateLimiter({ perImageLimit: 1, globalLimit: Infinity })
+    const bright = await solid(64, '#ffffff')
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const sent = await request({
+        content: bright,
+        ext: '.png',
+        query: { contrast: 'dark' },
+        clientLimiter,
+        clientAddress: '203.0.113.1',
+      })
+      expect(sent.status).toBeNull()
+    }
+  })
+  it('turns a caller away with 503 when it already holds its places in the line', async () => {
+    const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 8, maxPerKey: 1 })
+    let release = () => {}
+    const holding = plateGate.run(() => new Promise<void>((resolve) => (release = resolve)), { key: '203.0.113.1' })
+    const png = await solid(64, '#050505')
+    const same = await request({
+      content: png,
+      ext: '.png',
+      query: { bg: 'fff' },
+      plateGate,
+      clientAddress: '203.0.113.1',
+    })
+    expect(same.status).toBe(503)
+    // Another caller still waits its turn, and is drawn once the first finishes.
+    const other = request({ content: png, ext: '.png', query: { bg: 'eee' }, plateGate, clientAddress: '203.0.113.2' })
+    release()
+    await holding
+    expect((await other).body).not.toBeNull()
+  })
+})
+
+describe('only the draw waits in the plate gate (second review, finding 7)', () => {
+  const fullGate = () => {
+    const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 0 })
+    let release = () => {}
+    const holding = plateGate.run(() => new Promise<void>((resolve) => (release = resolve)))
+    return { plateGate, finish: async () => (release(), holding) }
+  }
+  it('answers a contrast request that needs no plate while the gate is full', async () => {
+    const { plateGate, finish } = fullGate()
+    const sent = await request({
+      content: await solid(64, '#ffffff'),
+      ext: '.png',
+      query: { contrast: 'dark' },
+      plateGate,
+    })
+    await finish()
+    expect(sent.status).toBeNull()
+    expect(sent.handled).toBe(false)
+  })
+  it('answers a vector that is wrapped, not drawn, while the gate is full', async () => {
+    const { plateGate, finish } = fullGate()
+    const sent = await request({ content: cronosSvg, ext: '.svg', query: { bg: 'fff' }, plateGate })
+    await finish()
+    expect(sent.contentType).toBe('image/svg+xml')
+  })
+  it('answers a measured contrast request from the cache while the gate is full', async () => {
+    const dark = await solid(64, '#050505')
+    const options = { content: dark, ext: '.png', imageHash: 'measured-once', query: { contrast: 'dark' } }
+    expect((await request(options)).body).not.toBeNull()
+    const { plateGate, finish } = fullGate()
+    // Needs a plate, so the draw is refused for load; the measurement did not wait in line to say so.
+    const sent = await request({ ...options, plateGate })
+    await finish()
+    expect(sent.status).toBe(503)
+  })
+})
+
+describe('a vector asked for as svg with a plate (second review, finding 6)', () => {
+  const noViewBox = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#000"/></svg>',
+  )
+  it('answers 404 when the plate cannot be drawn behind it as a vector, not a png', async () => {
+    await expect(request({ content: noViewBox, ext: '.svg', query: { as: 'svg', bg: 'fff' } })).rejects.toThrow(
+      /usable viewBox/,
+    )
+  })
+  it('still answers a vector with a viewBox as a vector', async () => {
+    const sent = await request({ content: cronosSvg, ext: '.svg', query: { as: 'svg', bg: 'fff' } })
+    expect(sent.contentType).toBe('image/svg+xml')
+  })
+  it('draws pixels for the same vector when no vector output was asked for', async () => {
+    const sent = await request({ content: noViewBox, ext: '.svg', query: { bg: 'fff' } })
+    expect(sent.contentType).toBe('image/png')
+  })
+})
+
+describe('a linked image is read with limits (second review, findings 2 and 3)', () => {
+  const linkImage = { content: Buffer.alloc(0), mode: 'link', uri: 'https://example.com/remote.svg' }
+  const serve = (body: Buffer | string) => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array(Buffer.from(body))))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+  const scriptedSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><script>alert(1)</script><rect width="24" height="24" fill="#000" onload="steal()"/></svg>'
+
+  it('sanitizes the fetched bytes before they are wrapped', async () => {
+    serve(scriptedSvg)
+    const sent = await request({ ...{ content: Buffer.alloc(0), ext: '.svg', query: { bg: 'fff' } }, extra: linkImage })
+    const body = sent.body!.toString('utf8')
+    expect(sent.contentType).toBe('image/svg+xml')
+    expect(body).toContain('<rect')
+    expect(body).not.toMatch(/script|alert|onload/i)
+  })
+  it('reads a plain resize of a linked image through the same reader', async () => {
+    const fetchMock = serve(scriptedSvg)
+    const sent = await request({
+      content: Buffer.alloc(0),
+      ext: '.svg',
+      query: { w: '32', as: 'png' },
+      extra: linkImage,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(sent.contentType).toBe('image/png')
+  })
+  it('refuses a body larger than the cap, for a plate and for a plain resize', async () => {
+    serve('a'.repeat(REMOTE_IMAGE_MAX_BYTES + 1))
+    const plated = await request({ content: Buffer.alloc(0), ext: '.svg', query: { bg: 'fff' }, extra: linkImage })
+    expect(plated.handled).toBe(false)
+    expect(plated.body).toBeNull()
+    resetRemoteImageCache()
+    const plain = await request({ content: Buffer.alloc(0), ext: '.svg', query: { w: '32' }, extra: linkImage })
+    expect(plain.handled).toBe(false)
+  })
+  it('does not download anything for a plate whose budget is already spent', async () => {
+    const fetchMock = serve(scriptedSvg)
+    const plateLimiter = createRateLimiter({ perImageLimit: 0, globalLimit: 100 })
+    const sent = await request({
+      content: Buffer.alloc(0),
+      ext: '.svg',
+      query: { bg: 'fff' },
+      extra: linkImage,
+      plateLimiter,
+    })
+    expect(sent.status).toBe(429)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('does not download anything for a caller whose budget is already spent', async () => {
+    const fetchMock = serve(scriptedSvg)
+    const clientLimiter = createRateLimiter({ perImageLimit: 0, globalLimit: Infinity })
+    const sent = await request({
+      content: Buffer.alloc(0),
+      ext: '.svg',
+      query: { bg: 'fff' },
+      extra: linkImage,
+      clientLimiter,
+      clientAddress: '203.0.113.9',
+    })
+    expect(sent.status).toBe(429)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('downloads a linked logo once for a page of different colours', async () => {
+    const fetchMock = serve(scriptedSvg)
+    for (const bg of ['111111', '222222', '333333']) {
+      const sent = await request({ content: Buffer.alloc(0), ext: '.svg', query: { bg }, extra: linkImage })
+      expect(sent.body).not.toBeNull()
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
