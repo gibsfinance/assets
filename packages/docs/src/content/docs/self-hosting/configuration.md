@@ -50,6 +50,7 @@ These values are whole numbers of at least one. A value that is not a whole numb
 | `SHARP_CACHE_MEMORY_MB` | 16 | Size of the `sharp` pixel cache, in megabytes. `sharp` itself would allow 50. |
 | `SHARP_CACHE_ITEMS` | 64 | Most operations that `sharp` keeps in its cache. |
 | `SHARP_CONCURRENCY` | 1 | Threads that `libvips` may use. Both the server and the collector apply these three limits when they start. |
+| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | Plated images (`bg`, `contrast`) the server draws at once. Others wait in a line eight times as long; past that the server answers 503 with `Retry-After`. |
 
 ## Image storage
 

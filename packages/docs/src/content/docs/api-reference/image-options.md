@@ -60,7 +60,10 @@ How the plate is drawn:
 - A vector image with a `viewBox` stays a vector. The answer is `image/svg+xml`: a new image with the plate behind and the original inside it, centred. Gib adds nothing from your query to it except the validated colour. `w` and `h` have no effect on a vector, as before.
 - Any other source, or any request with `as`, is drawn to pixels. The plate is a square, `w` by `w` (or the smaller of `w` and `h`). Without a size, a vector source is drawn 256 pixels wide and a raster source keeps its size plus room for the padding. The logo is fitted inside the shape with space around it, more for `circle` than for `square`, and is never enlarged. A circle or rounded plate has transparent corners, except in `jpg`, which has no transparency and gets white corners.
 - A vector without a `viewBox` is drawn to pixels as `png`, because it has no size to nest it by.
-- Gib does not store plated images, and a plated request never receives a plain image or the other way round. The response `ETag` follows the bytes, and the logo's brightness is measured once and remembered by the server.
+- A plate is never wider than 2048 pixels, the same limit as `w` and `h`. A raster source so large that its own size plus padding passes 2048 is drawn at 2048, with the logo shrunk to fit.
+- Gib does not store plated images, and a plated request never receives a plain image or the other way round. The response `ETag` follows the bytes, and the logo's brightness is measured once and remembered by the server. If Gib cannot decode a source to measure or draw it, you get the same answer as without the plate parameters.
+- A plated image always carries the shorter `cache-control` lifetime, including on `/image/direct/{hash}`. The year-long immutable lifetime is for bytes that cannot change, and the bytes of a plate depend on how Gib draws plates.
+- Drawing is limited, because it is done on demand. Each image may have 30 plated draws a minute and the whole service 600; past that the answer is 429 with `Retry-After: 60`. When too many plates are being drawn at once, the answer is 503 with `Retry-After: 2`. Neither answer is cached. An edge cache that holds the full address, query included, answers repeat requests for the same plate without reaching Gib, so a page that shows the same plates again and again does not spend this allowance.
 - A source that asks that its artwork is not copied is redirected, as described above. It gets no plate.
 
 ## Response headers
@@ -75,6 +78,8 @@ How the plate is drawn:
 | `x-license` | The licence Gib identified, or `unknown`. |
 | `x-license-url` | Where to read that licence. Sent only when the licence is known. |
 | `x-attribution` | The notice you must reproduce, when the licence requires one. |
+| `content-security-policy` | `default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`, on every response that carries image bytes. A stored vector image comes from outside, so a browser that opens it directly must not run anything in it. Images shown in an `img` element or as a CSS background are not affected. |
+| `x-content-type-options` | `nosniff`, on every response that carries image bytes. |
 | `link` | A link to the licence terms page of the instance. On the public instance it is `https://gib.show/terms`. |
 | `x-resolved-chain` | Network image route only. The prefixed identifier the request resolved to. |
 | `cache-control` | See [Caching](/api-reference/caching/). |

@@ -98,6 +98,7 @@ falls back to the default.
 | `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
+| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits, past it 503 + `Retry-After` |
 | `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
 | `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
 | `IMAGE_STORE_S3_PRESET` | `aws` | `s3`: `aws`, `r2`, `hetzner`, `b2`, `wasabi`, `spaces`, `minio` or `custom` |
@@ -250,9 +251,27 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   them (400) and a plate request alone makes `params` non-null. `contrast` draws the logo at 64 px and measures,
   for each page tone, the alpha-weighted share of visible pixels with at least `PLATE_CONTRAST_THRESHOLD` (3:1)
   contrast; it plates only when that share is under `PLATE_VISIBLE_SHARE_THRESHOLD` (0.25). A share, not a mean:
-  a mean gave the Ethereum logo a plate on white. The two shares are remembered per `imageHash` in memory. Plated output is NOT stored in `image_variant`
-  (its key has no plate field; a stored copy would be served to plain requests) and so needs no migration.
-  A vector with a `viewBox` and no `as` stays svg (plate plus the original nested); anything else goes through sharp.
+  a mean gave the Ethereum logo a plate on white. The two shares are remembered in memory, keyed by `image:<imageHash>`
+  for stored bytes and `bytes:<sha256>` for a link-mode body fetched this request; concurrent requests share one
+  measurement and a source that cannot be decoded is remembered for 60 s (logged once) and answered as the plain
+  request would be, never 500. A vector is measured at about 64 px (`openForMeasurement`), not at its declared size.
+  Plated output is NOT stored in `image_variant` (its key has no plate field and the colour is free text, so storing
+  would let a caller fill the table) and so needs no migration. Because it is drawn per request it is limited: a
+  plate budget (`createRateLimiter`, 30 per image and 600 total a minute, answer 429 + `Retry-After: 60`) spent only
+  when a plate is actually drawn, and `concurrency-gate.ts` (`PLATE_RENDER_CONCURRENCY`, line of 8 per slot, then
+  503 + `Retry-After: 2`). Both refusals are `no-store` JSON written in `maybeResize`, not thrown (the error funnel
+  turns 5xx into a generic 500). A drawn plate never passes `MAX_DIM` (2048) a side; a larger raster shrinks. A plated
+  response is always `mutable`, including on `/image/direct/<hash>`: its bytes depend on code constants, so the
+  year-long immutable lifetime is not honest. A vector with a `viewBox` and no `as` stays svg (plate plus the
+  original nested) only when `wrapSvgWithPlate` is sure of valid markup (quote-aware root tag; a DOCTYPE, a non-UTF-8
+  declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
+- Image security headers: every response that carries image bytes (`sendImage`, `sendVariant`, so plated output
+  too, and the sprite sheet) sets `Content-Security-Policy: default-src 'none'; img-src data:; style-src
+  'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff` through `setImageSecurityHeaders` in
+  `image/headers.ts`. Redirects and JSON errors do not carry them, nor does the docs host or the interface. Stored
+  SVGs pass `sanitizeImage`, a filter that can be bypassed, so this is the second wall; the sanitizer also decodes
+  character references and ignores tabs, line breaks and control characters before it tests for `javascript:`.
+  A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
 ### Image Bytes: the Store

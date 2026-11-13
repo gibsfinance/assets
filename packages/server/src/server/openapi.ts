@@ -60,7 +60,8 @@ const PLATE_PARAMS = [
     description:
       'Paint a plate of this colour behind the logo: 3, 6 or 8 hex digits without #, the last two of eight being ' +
       'alpha (for example ffffff, f80, 00000080). Any other value answers 400. A vector image stays a vector ' +
-      '(image/svg+xml) unless `as` asks for pixels. With `contrast` as well, `bg` is the plate colour and ' +
+      '(image/svg+xml) unless `as` asks for pixels. A plate drawn to pixels is never wider than 2048 pixels: ' +
+      'a larger logo is shrunk to fit. With `contrast` as well, `bg` is the plate colour and ' +
       '`contrast` decides whether the plate appears.',
     schema: {
       type: 'string' as const,
@@ -213,13 +214,23 @@ const REFRESH_UNAUTHORIZED_RESPONSE = {
 const IMAGE_RESPONSE = {
   '200': {
     description:
-      'Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known).',
+      "Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known). Every image response also carries content-security-policy (default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox) and x-content-type-options: nosniff, so an image opened directly in a browser cannot run a script. A plated image (bg or contrast) always uses the shorter lifetime, on every route, because its bytes depend on how Gib draws plates.",
     content: {
       'image/*': { schema: { type: 'string' as const, format: 'binary' } },
     },
   },
   '404': {
     description: 'No matching image.',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+  },
+  '429': {
+    description:
+      'Plated images (bg or contrast) are drawn on demand and never stored, so each image has an allowance of 30 per minute and the whole service 600. Retry-After says how long to wait (60 seconds); the answer is never cached.',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+  },
+  '503': {
+    description:
+      'Too many plated images are being drawn at once. Retry-After says how long to wait (2 seconds); the answer is never cached. Plain images and resizes are not affected.',
     content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
   },
 }
