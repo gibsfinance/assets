@@ -27,6 +27,19 @@ describe('createRemoteImageLoader', () => {
     expect(sanitize).toHaveBeenCalledTimes(1)
   })
 
+  // The real sanitizer refuses a vector file it cannot parse by throwing. The loader must
+  // turn that into "cannot be read", which the plate path answers with the plain response,
+  // never pass the unparsed bytes on and never fail the request.
+  it('answers null when the real sanitizer refuses the fetched file, and remembers the failure', async () => {
+    const malformed = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</svg>'
+    const fetchImpl = vi.fn(async () => new Response(bytesOf(malformed))) as unknown as typeof fetch
+    const loader = createRemoteImageLoader({ fetchImpl, now: () => 1 })
+    const request = { uri: 'https://cdn.example/bad.svg', ext: '.svg' }
+    expect(await loader.load(request)).toBeNull()
+    expect(await loader.load(request)).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   it('names a stored vector extension the sanitizer knows', async () => {
     const { loader } = setup()
     expect((await loader.load({ uri: 'https://cdn.example/a', ext: '.svg+xml' }))?.toString()).toBe('.svg:logo')
