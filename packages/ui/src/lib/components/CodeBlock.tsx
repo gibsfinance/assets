@@ -50,7 +50,7 @@ export default function CodeBlock({
   base = 'overflow-x-auto font-mono',
   rounded = 'rounded-lg',
   shadow = '',
-  classes = 'bg-surface-raised-3',
+  classes = 'bg-surface-raised',
   preBase = '',
   prePadding = '[&>pre]:px-4 [&>pre]:py-2 [&>pre]:w-fit',
   preClasses = '',

@@ -64,7 +64,7 @@ export default function TokenImageManager({
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h4 className="text-sm font-medium text-content-strong">Token Image</h4>
-        <button type="button" onClick={onClose} className="text-content-faint-2 hover:text-content-muted-5">
+        <button type="button" onClick={onClose} className="text-content-faint hover:text-content-secondary">
           <Icon icon={faXmark} className="text-xs" />
         </button>
       </div>
@@ -78,7 +78,7 @@ export default function TokenImageManager({
               size={size}
               skeleton
               shape="circle"
-              className="rounded-full border border-border-strong-2"
+              className="rounded-full border border-border-strong"
             />
             <span className="text-[9px] text-content-faint">{size}px</span>
           </div>
@@ -87,7 +87,7 @@ export default function TokenImageManager({
 
       {/* Format badge */}
       <div className="mb-3">
-        <span className="rounded bg-surface-inset-2 px-1.5 py-0.5 text-[10px] font-medium uppercase text-content-subtle-2">
+        <span className="rounded bg-surface-inset px-1.5 py-0.5 text-[10px] font-medium uppercase text-content-subtle">
           {format}
         </span>
       </div>
@@ -98,8 +98,8 @@ export default function TokenImageManager({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="flex w-full items-center gap-2 rounded-lg border border-border-strong px-3 py-2 text-xs text-content-muted-4 transition-colors hover:border-accent/40 hover:bg-accent/5">
-          <Icon icon={faUpload} className="text-content-faint-2" />
+          className="flex w-full items-center gap-2 rounded-lg border border-border-strong px-3 py-2 text-xs text-content-muted transition-colors hover:border-accent/40 hover:bg-accent/5">
+          <Icon icon={faUpload} className="text-content-faint" />
           Upload image
         </button>
         <input
@@ -124,7 +124,7 @@ export default function TokenImageManager({
             type="button"
             onClick={handleUrlSubmit}
             disabled={!customUrl.trim()}
-            className="rounded-lg bg-surface-inset-2 px-2 py-1.5 text-xs text-content-muted-4 hover:bg-surface-active disabled:opacity-50">
+            className="rounded-lg bg-surface-inset px-2 py-1.5 text-xs text-content-muted hover:bg-surface-active disabled:opacity-50">
             Set
           </button>
         </div>
@@ -133,7 +133,7 @@ export default function TokenImageManager({
         <button
           type="button"
           onClick={handleReset}
-          className="w-full rounded-lg border border-border-strong px-3 py-1.5 text-xs text-content-faint transition-colors hover:text-content-muted-4">
+          className="w-full rounded-lg border border-border-strong px-3 py-1.5 text-xs text-content-faint transition-colors hover:text-content-muted">
           Reset to default
         </button>
       </div>

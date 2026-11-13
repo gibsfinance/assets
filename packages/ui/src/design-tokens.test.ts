@@ -54,7 +54,7 @@ describe('explainBadTokenName', () => {
     expect(explainBadTokenName(name)).toBe(reason)
   })
 
-  it.each(['accent', 'accent-secondary', 'content-muted-2', 'surface-raised', 'border-strong', 'danger-soft'])(
+  it.each(['accent', 'accent-secondary', 'content-secondary', 'surface-raised', 'border-strong', 'danger-soft'])(
     'accepts %s',
     (name) => {
       expect(explainBadTokenName(name)).toBeNull()
@@ -92,6 +92,12 @@ describe('app.css', () => {
     for (const [, name] of darkBlock.matchAll(/--ui-([a-z0-9-]+):/g)) {
       expect(lightNames.has(name), name).toBe(true)
     }
+  })
+
+  it('has no role whose name ends in a number', () => {
+    // A numbered role is a near duplicate of another. Fold it into the role that does its job.
+    const roles = [...stylesheet.matchAll(/--ui-([a-z0-9-]+):/g)].map((m) => m[1])
+    expect(roles.filter((role) => /-\d+$/.test(role))).toEqual([])
   })
 
   it('exposes every role to Tailwind', () => {
@@ -135,5 +141,42 @@ describe('the design/no-raw-palette-classes rule', () => {
   it('lets role classes, white, black and non-string values through', () => {
     expect(lint('const a = "text-content-muted bg-surface-raised text-white bg-black/60"')).toEqual([])
     expect(lint('const a = [1, null, `plain`]')).toEqual([])
+  })
+})
+
+describe('accent text contrast', () => {
+  const light = stylesheet.split('.dark {')[0]
+  const dark = stylesheet.split('.dark {')[1].split('\n}')[0]
+  const hexOf = (block: string, role: string) => block.match(new RegExp(`--ui-${role}: (#[0-9a-f]{6});`))?.[1] as string
+  const channel = (value: number) => {
+    const unit = value / 255
+    return unit <= 0.03928 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4
+  }
+  const luminance = (hex: string) => {
+    const [red, green, blue] = [1, 3, 5].map((start) => channel(parseInt(hex.slice(start, start + 2), 16)))
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  }
+  const contrast = (first: string, second: string) => {
+    const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a)
+    return (lighter + 0.05) / (darker + 0.05)
+  }
+  // The accent at 15 percent over white, the strongest tint a control puts behind accent text.
+  const lightBackgrounds = ['#ffffff', '#f9fafb', '#d9faec']
+  const darkBackgrounds = ['#09090b', '#111113', '#1a1a1e']
+
+  it.each(['accent-content', 'accent-content-hover', 'accent-secondary-content'])(
+    '%s reaches 4.5 to 1 on every light and dark background it sits on',
+    (role) => {
+      for (const background of lightBackgrounds) {
+        expect(contrast(hexOf(light, role), background), `${role} on ${background}`).toBeGreaterThanOrEqual(4.5)
+      }
+      for (const background of darkBackgrounds) {
+        expect(contrast(hexOf(dark, role), background), `${role} on ${background}`).toBeGreaterThanOrEqual(4.5)
+      }
+    },
+  )
+
+  it('fails for the raw accent on white, so the check can tell a bad colour from a good one', () => {
+    expect(contrast(hexOf(light, 'accent'), '#ffffff')).toBeLessThan(2)
   })
 })

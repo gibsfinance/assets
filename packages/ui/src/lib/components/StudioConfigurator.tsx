@@ -98,7 +98,9 @@ function SizeControl() {
         type="button"
         onClick={() => setAspectLinked((v) => !v)}
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
-          aspectLinked ? 'bg-accent/15 text-accent' : 'bg-surface-inset-2 text-content-faint hover:text-content-muted-6'
+          aspectLinked
+            ? 'bg-accent/15 text-accent-content'
+            : 'bg-surface-inset text-content-faint hover:text-content-muted'
         }`}
         aria-label={aspectLinked ? 'Unlink aspect ratio' : 'Link aspect ratio'}>
         <Icon icon={aspectLinked ? faLink : faLinkSlash} className="text-[9px]" />
@@ -138,13 +140,13 @@ function ShapeDropdown() {
   return (
     <div className="flex items-center gap-1">
       <Menu>
-        <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-active-2">
+        <MenuButton className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-control">
           {currentLabel}
-          <Icon icon={faChevronDown} className="text-[8px] text-content-faint-2" />
+          <Icon icon={faChevronDown} className="text-[8px] text-content-faint" />
         </MenuButton>
         <MenuItems
           anchor="bottom start"
-          className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-inset-3 p-1 shadow-lg">
+          className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-overlay p-1 shadow-lg">
           {SHAPE_OPTIONS.map((option) => (
             <MenuItem key={option.value}>
               <button
@@ -152,8 +154,8 @@ function ShapeDropdown() {
                 onClick={() => updateAppearance({ shape: option.value })}
                 className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   appearance.shape === option.value
-                    ? 'bg-accent/10 text-accent'
-                    : 'text-content-muted-3 hover:bg-surface-active-3'
+                    ? 'bg-accent/10 text-accent-content'
+                    : 'text-content-muted hover:bg-surface-control'
                 }`}>
                 {option.label}
               </button>
@@ -186,13 +188,13 @@ function ShadowDropdown() {
 
   return (
     <Menu>
-      <MenuButton className="flex items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 py-1 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-active-2">
+      <MenuButton className="flex items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 py-1 text-xs font-medium text-content-secondary transition-colors hover:bg-surface-control">
         {currentLabel}
-        <Icon icon={faChevronDown} className="text-[8px] text-content-faint-2" />
+        <Icon icon={faChevronDown} className="text-[8px] text-content-faint" />
       </MenuButton>
       <MenuItems
         anchor="bottom start"
-        className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-inset-3 p-1 shadow-lg">
+        className="z-50 mt-1 w-32 rounded-lg border border-border bg-surface-overlay p-1 shadow-lg">
         {SHADOW_OPTIONS.map((option) => (
           <MenuItem key={option.value}>
             <button
@@ -200,8 +202,8 @@ function ShadowDropdown() {
               onClick={() => updateAppearance({ shadow: option.value })}
               className={`flex w-full items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 appearance.shadow === option.value
-                  ? 'bg-accent/10 text-accent'
-                  : 'text-content-muted-3 hover:bg-surface-active-3'
+                  ? 'bg-accent/10 text-accent-content'
+                  : 'text-content-muted hover:bg-surface-control'
               }`}>
               {option.label}
             </button>
@@ -248,8 +250,8 @@ function BackgroundPopover() {
       />
       <PopoverPanel
         anchor="bottom start"
-        className="z-50 mt-2 rounded-lg border border-border bg-surface-inset-3 p-3 shadow-lg">
-        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-content-faint-2">Background</p>
+        className="z-50 mt-2 rounded-lg border border-border bg-surface-overlay p-3 shadow-lg">
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-content-faint">Background</p>
         <div className="flex items-center gap-2">
           {BACKGROUND_SWATCHES.map((swatch) => (
             <button
@@ -280,14 +282,14 @@ function BackgroundPopover() {
               type="color"
               value={isCustomBackground ? appearance.backgroundColor : '#666666'}
               onChange={handleCustomColorChange}
-              className="h-7 w-7 cursor-pointer rounded-md border-2 border-border bg-surface-active-3 p-0.5"
+              className="h-7 w-7 cursor-pointer rounded-md border-2 border-border bg-surface-control p-0.5"
               aria-label="Custom background color"
             />
           </div>
         </div>
 
         {isCustomBackground && (
-          <span className="mt-1.5 block font-mono text-[10px] text-content-faint-2">{appearance.backgroundColor}</span>
+          <span className="mt-1.5 block font-mono text-[10px] text-content-faint">{appearance.backgroundColor}</span>
         )}
 
         {appearance.backgroundColor !== 'transparent' && appearance.padding === 0 && (
@@ -329,8 +331,8 @@ function BadgePopover() {
       <PopoverButton
         className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
           badge.enabled
-            ? 'border-accent/30 bg-accent/10 text-accent'
-            : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-active-2'
+            ? 'border-accent/30 bg-accent/10 text-accent-content'
+            : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-control'
         }`}
         aria-label="Badge settings">
         <Icon icon={faLink} className="text-[10px]" />
@@ -369,7 +371,7 @@ function ResolutionOrderPopover() {
   return (
     <Popover className="relative">
       <PopoverButton
-        className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2 text-xs font-medium text-content-subtle transition-colors hover:bg-surface-active-2"
+        className="flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-inset px-2 text-xs font-medium text-content-subtle transition-colors hover:bg-surface-control"
         aria-label="Resolution order">
         <Icon icon={faLayerGroup} className="text-[10px]" />
         <span className="hidden sm:inline">Order</span>
@@ -394,8 +396,8 @@ function CodeToggleButton({ active, onClick }: { active: boolean; onClick: () =>
       onClick={onClick}
       className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors ${
         active
-          ? 'border-accent/30 bg-accent/10 text-accent'
-          : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-active-2'
+          ? 'border-accent/30 bg-accent/10 text-accent-content'
+          : 'border-border bg-surface-inset text-content-subtle hover:bg-surface-control'
       }`}
       aria-label={active ? 'Hide code output' : 'Show code output'}
       aria-pressed={active}>
@@ -548,8 +550,8 @@ function InfiniteCanvas() {
           }}>
           {!hasToken && (
             <div className="flex flex-col items-center gap-3 pointer-events-none">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-inset-2">
-                <Icon icon={faCoins} className="text-2xl text-content-ghost-3" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-surface-inset">
+                <Icon icon={faCoins} className="text-2xl text-content-ghost" />
               </div>
               <p className="text-sm font-medium text-content-faint">Select a token to preview</p>
             </div>
@@ -622,12 +624,12 @@ function InfiniteCanvas() {
       </div>
 
       {/* Zoom controls */}
-      <div className="absolute bottom-3 right-3 flex flex-col items-center gap-0.5 rounded-lg bg-surface-inset-3/80 backdrop-blur shadow-sm">
+      <div className="absolute bottom-3 right-3 flex flex-col items-center gap-0.5 rounded-lg bg-surface-overlay/80 backdrop-blur shadow-sm">
         {/* Reset */}
         <button
           type="button"
           onClick={resetView}
-          className="flex h-7 w-7 items-center justify-center rounded-t-lg text-content-faint transition-colors hover:text-content-secondary-2"
+          className="flex h-7 w-7 items-center justify-center rounded-t-lg text-content-faint transition-colors hover:text-content-secondary"
           aria-label="Reset view"
           title="Reset view">
           <Icon icon={faCrosshairs} className="text-[10px]" />
@@ -637,14 +639,14 @@ function InfiniteCanvas() {
         <button
           type="button"
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom * 1.25) }))}
-          className="flex h-6 w-7 items-center justify-center text-content-faint transition-colors hover:text-content-secondary-2"
+          className="flex h-6 w-7 items-center justify-center text-content-faint transition-colors hover:text-content-secondary"
           aria-label="Zoom in"
           title="Zoom in">
           <Icon icon={faPlus} className="text-[9px]" />
         </button>
 
         {/* Zoom percentage */}
-        <span className="flex h-6 w-7 items-center justify-center font-mono text-[9px] text-content-subtle-2">
+        <span className="flex h-6 w-7 items-center justify-center font-mono text-[9px] text-content-subtle">
           {Math.round(transform.zoom * 100)}
         </span>
 
@@ -652,7 +654,7 @@ function InfiniteCanvas() {
         <button
           type="button"
           onClick={() => setTransform((t) => ({ ...t, zoom: clampZoom(t.zoom / 1.25) }))}
-          className="flex h-6 w-7 items-center justify-center rounded-b-lg text-content-faint transition-colors hover:text-content-secondary-2"
+          className="flex h-6 w-7 items-center justify-center rounded-b-lg text-content-faint transition-colors hover:text-content-secondary"
           aria-label="Zoom out"
           title="Zoom out">
           <Icon icon={faMinus} className="text-[9px]" />

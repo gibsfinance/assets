@@ -32,7 +32,7 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
   ]
 
   return (
-    <div className="flex gap-1 rounded-lg bg-surface-inset-2 p-1">
+    <div className="flex gap-1 rounded-lg bg-surface-inset p-1">
       {tabs.map((tab) => (
         <button
           key={tab.value}
@@ -40,8 +40,8 @@ function FormatTabs({ value, onChange }: FormatTabsProps) {
           onClick={() => onChange(tab.value)}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
             value === tab.value
-              ? 'bg-surface-active-4 text-content-strong shadow-sm'
-              : 'text-content-faint-2 hover:text-content-muted-3'
+              ? 'bg-surface-selected text-content-strong shadow-sm'
+              : 'text-content-faint hover:text-content-muted'
           }`}>
           {tab.label}
         </button>
@@ -57,7 +57,7 @@ interface ModeSwitchProps {
 
 function ModeSwitch({ value, onChange }: ModeSwitchProps) {
   return (
-    <div className="flex gap-1 rounded-lg bg-surface-inset-2 p-1">
+    <div className="flex gap-1 rounded-lg bg-surface-inset p-1">
       {(['snippet', 'component'] as CodeMode[]).map((mode) => (
         <button
           key={mode}
@@ -65,8 +65,8 @@ function ModeSwitch({ value, onChange }: ModeSwitchProps) {
           onClick={() => onChange(mode)}
           className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-all ${
             value === mode
-              ? 'bg-surface-active-4 text-content-strong shadow-sm'
-              : 'text-content-faint-2 hover:text-content-muted-3'
+              ? 'bg-surface-selected text-content-strong shadow-sm'
+              : 'text-content-faint hover:text-content-muted'
           }`}>
           {mode}
         </button>
@@ -101,7 +101,7 @@ function CopyButton({ text, label, variant = 'primary' }: CopyButtonProps) {
   const baseClass =
     variant === 'primary'
       ? 'rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-accent-soft disabled:opacity-50'
-      : 'rounded-lg border border-border bg-surface-inset px-4 py-2 text-sm font-medium text-content-muted-3 transition-colors hover:bg-surface-active-2 hover:text-content-body-3'
+      : 'rounded-lg border border-border bg-surface-inset px-4 py-2 text-sm font-medium text-content-muted transition-colors hover:bg-surface-control hover:text-content-body'
 
   return (
     <button type="button" onClick={handleCopy} className={baseClass}>

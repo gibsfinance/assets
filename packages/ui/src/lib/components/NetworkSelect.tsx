@@ -53,10 +53,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
               shape="circle"
               className="inline-block rounded-full"
             />
-            {selectedNetwork.name} <span className="text-content-faint-2">({selectedNetwork.chainIdentifier})</span>
+            {selectedNetwork.name} <span className="text-content-faint">({selectedNetwork.chainIdentifier})</span>
           </span>
         ) : (
-          <span className="text-content-faint-2">Choose a network...</span>
+          <span className="text-content-faint">Choose a network...</span>
         )}
         <span className="flex flex-shrink-0 items-center gap-1">
           {/*
@@ -65,7 +65,10 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
             Same box, same gap, so the arrow sits where it always has.
           */}
           {selectedNetwork && <span className="h-5 w-5" aria-hidden="true" />}
-          <Icon icon={faChevronDown} className={`text-accent/60 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Icon
+            icon={faChevronDown}
+            className={`text-accent-content/60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
         </span>
       </button>
 
@@ -80,7 +83,7 @@ export default function NetworkSelect({ selectedChainId, onSelect }: NetworkSele
       {selectedNetwork && (
         <button
           type="button"
-          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-content-faint-2 transition-colors hover:bg-surface-active hover:text-content-muted-3"
+          className="absolute right-8 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-content-faint transition-colors hover:bg-surface-active hover:text-content-muted"
           onClick={() => onSelect(null)}
           aria-label="Clear network selection">
           <Icon icon={faXmark} className="text-[10px]" />
@@ -168,7 +171,7 @@ function VirtualNetworkList({
                   shape="circle"
                   className="inline-block rounded-full"
                 />
-                <span className="truncate text-content-strong-4">{network.name}</span>
+                <span className="truncate text-content-strong">{network.name}</span>
               </span>
               <span className="flex-shrink-0 whitespace-nowrap text-sm text-content-faint">
                 {network.isEvm ? `Chain ${network.chainId}` : network.chainIdentifier}
@@ -240,7 +243,7 @@ function NetworkDialog({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={`Search ${sortedNetworks.length.toLocaleString()} networks...`}
                   aria-label="Search networks"
-                  className="w-full rounded-lg border border-border bg-surface-inset py-2 pl-8 pr-3 text-sm text-content-strong-4 placeholder:text-content-faint focus:border-accent/40 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-surface-inset py-2 pl-8 pr-3 text-sm text-content-strong placeholder:text-content-faint focus:border-accent/40 focus:outline-none"
                 />
               </div>
             </div>

@@ -30,8 +30,8 @@ export function ThemeToggle() {
         type="button"
         className={`flex items-center justify-center w-9 h-9 transition-all duration-150 rounded-l-lg ${
           isSystem
-            ? 'bg-surface-inset-4/50 text-content-faint-3'
-            : 'bg-surface-inset-4 text-content-secondary-3 hover:bg-surface-active-5'
+            ? 'bg-surface-inset/50 text-content-faint'
+            : 'bg-surface-inset text-content-secondary hover:bg-surface-active'
         }`}
         onClick={handleThemeClick}
         title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
@@ -40,7 +40,7 @@ export function ThemeToggle() {
       <button
         type="button"
         className={`flex items-center justify-center w-9 h-9 border-l border-border transition-all duration-150 rounded-r-lg ${
-          isSystem ? 'bg-accent/10 text-accent' : 'bg-surface-inset-4 text-content-faint-3 hover:bg-surface-active-5'
+          isSystem ? 'bg-accent/10 text-accent-content' : 'bg-surface-inset text-content-faint hover:bg-surface-active'
         }`}
         onClick={handleSystemClick}
         title={isSystem ? 'Using system theme' : 'Use system theme'}>

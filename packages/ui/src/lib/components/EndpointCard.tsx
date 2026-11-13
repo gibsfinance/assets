@@ -21,7 +21,7 @@ function PathDisplay({ path }: { path: string }) {
     <span className="font-mono text-sm">
       {parts.map((part, index) =>
         part.isParam ? (
-          <span key={index} className="text-accent">
+          <span key={index} className="text-accent-content">
             {part.text}
           </span>
         ) : (
@@ -88,7 +88,7 @@ function StatsPanel({
                 ? 'text-danger-bright'
                 : label === 'Cache' && stats.cacheHit
                   ? 'text-success-bright'
-                  : 'text-content-secondary-2'
+                  : 'text-content-secondary'
             }`}>
             {value}
           </span>
@@ -200,7 +200,7 @@ export default function EndpointCard({ method, path, description, example }: End
     return (
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
+          <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-content ring-1 ring-accent/30">
             {method}
           </span>
           <div className="min-w-0 flex-1 space-y-1">
@@ -217,7 +217,7 @@ export default function EndpointCard({ method, path, description, example }: End
       {({ open }) => (
         <div className="border-b border-border overflow-hidden">
           <DisclosureButton className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-sheen-faint">
-            <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
+            <span className="mt-0.5 shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-content ring-1 ring-accent/30">
               {method}
             </span>
             <div className="min-w-0 flex-1 space-y-1">
@@ -229,9 +229,9 @@ export default function EndpointCard({ method, path, description, example }: End
               className={`mt-1text-[10px] text-content-faint transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
             />
           </DisclosureButton>
-          <DisclosurePanel className="border-t border-border bg-surface-raised-2 p-4 space-y-3">
+          <DisclosurePanel className="border-t border-border bg-surface-raised p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <span className="shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent ring-1 ring-accent/30">
+              <span className="shrink-0 rounded bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase text-accent-content ring-1 ring-accent/30">
                 {method}
               </span>
               <input
@@ -239,7 +239,7 @@ export default function EndpointCard({ method, path, description, example }: End
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="flex-1 rounded border border-border bg-surface-inset-3 px-2.5 py-1.5 font-mono text-xs text-content-strong-3 outline-none focus:ring-1 focus:ring-accent/50"
+                className="flex-1 rounded border border-border bg-surface-overlay px-2.5 py-1.5 font-mono text-xs text-content-strong outline-none focus:ring-1 focus:ring-accent/50"
               />
             </div>
             <ResponsePanel url={url} />

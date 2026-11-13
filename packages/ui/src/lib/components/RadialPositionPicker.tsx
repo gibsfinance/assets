@@ -92,8 +92,8 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
               onClick={() => onChange(preset.angleDeg)}
               className={`absolute z-10 rounded px-1 py-0.5 text-[9px] font-semibold leading-none transition-colors ${positionClasses} ${
                 isActive
-                  ? 'bg-accent/20 text-accent'
-                  : 'bg-surface-active/80 text-content-subtle hover:bg-surface-active-6'
+                  ? 'bg-accent/20 text-accent-content'
+                  : 'bg-surface-active/80 text-content-subtle hover:bg-surface-active'
               }`}
               aria-label={`Snap to ${preset.label} (${preset.angleDeg}°)`}>
               {preset.label}
@@ -104,7 +104,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
         {/* Circle track */}
         <div
           ref={circleRef}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border border-border bg-surface-inset-2 select-none"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border border-border bg-surface-inset select-none"
           style={{ width: CIRCLE_SIZE, height: CIRCLE_SIZE }}
           onPointerDown={handlePointerDown}
           role="slider"
@@ -115,7 +115,7 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
           tabIndex={0}>
           {/* Center dot */}
           <div
-            className="absolute rounded-full bg-surface-wash-3"
+            className="absolute rounded-full bg-surface-wash-active"
             style={{
               width: 4,
               height: 4,
@@ -145,14 +145,14 @@ export default function RadialPositionPicker({ angleDeg, onChange }: RadialPosit
 
       {/* Degree input */}
       <div className="flex flex-col gap-1">
-        <label className="text-[10px] font-medium uppercase tracking-wide text-content-faint-2">Angle</label>
+        <label className="text-[10px] font-medium uppercase tracking-wide text-content-faint">Angle</label>
         <input
           type="number"
           min={0}
           max={359}
           value={Math.round(angleDeg)}
           onChange={handleInputChange}
-          className="w-16 rounded-md border border-border bg-surface-active-3 px-2 py-1 text-center text-sm text-content-body focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/30"
+          className="w-16 rounded-md border border-border bg-surface-control px-2 py-1 text-center text-sm text-content-body focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/30"
           aria-label="Angle in degrees"
         />
         <span className="text-[10px] text-content-faint">degrees</span>

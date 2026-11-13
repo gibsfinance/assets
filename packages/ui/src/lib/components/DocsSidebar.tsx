@@ -30,14 +30,14 @@ function DesktopSidebar({ sections, activeSection, onSectionChange }: Omit<DocsS
   return (
     <aside className="hidden lg:block">
       <nav className="sticky top-24 space-y-1">
-        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-content-subtle-4">On this page</p>
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-widest text-content-subtle">On this page</p>
         {sections.map((section) => (
           <button
             key={section.id}
             onClick={() => handleClick(section.id)}
             className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 ${
               activeSection === section.id
-                ? 'bg-accent/10 text-accent border-l-2 border-accent pl-[10px]'
+                ? 'bg-accent/10 text-accent-content border-l-2 border-accent pl-[10px]'
                 : 'text-content-muted hover:bg-surface-sheen hover:text-content-strong'
             }`}>
             {section.label}
@@ -80,7 +80,7 @@ function MobileSidebar({ sections, activeSection, onSectionChange }: Omit<DocsSi
           className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-150 whitespace-nowrap ${
             activeSection === section.id
               ? 'bg-accent text-black'
-              : 'bg-surface-inset-4 text-content-muted hover:bg-surface-active-5'
+              : 'bg-surface-inset text-content-muted hover:bg-surface-active'
           }`}>
           {section.label}
         </button>

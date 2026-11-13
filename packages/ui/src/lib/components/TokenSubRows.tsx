@@ -26,11 +26,11 @@ export default function TokenSubRows({ references, onNavigateToList }: TokenSubR
             {isLast && <div className="absolute left-0 top-0 h-1/2 w-px bg-surface-active" />}
             <div className="w-3 flex-shrink-0" />
             <Image src={ref.imageUri} size={14} skeleton lazy shape="circle" className="rounded-full" />
-            <span className="flex-1 truncate text-[10px] text-content-subtle-2">{ref.sourceList}</span>
+            <span className="flex-1 truncate text-[10px] text-content-subtle">{ref.sourceList}</span>
             {ref.imageFormat && (
               <span
                 className={`rounded px-1 py-px text-[8px] ${
-                  ref.imageFormat === 'svg' ? 'bg-accent/10 text-accent' : 'bg-surface-wash text-content-faint'
+                  ref.imageFormat === 'svg' ? 'bg-accent/10 text-accent-content' : 'bg-surface-wash text-content-faint'
                 }`}>
                 {ref.imageFormat}
               </span>
@@ -39,7 +39,7 @@ export default function TokenSubRows({ references, onNavigateToList }: TokenSubR
               href={ref.imageUri}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded p-1 text-[10px] text-content-faint transition-colors hover:bg-surface-wash hover:text-accent"
+              className="rounded p-1 text-[10px] text-content-faint transition-colors hover:bg-surface-wash hover:text-accent-content"
               title="Open image"
               onClick={(e) => e.stopPropagation()}>
               <Icon icon={faUpRightFromSquare} />
@@ -47,7 +47,7 @@ export default function TokenSubRows({ references, onNavigateToList }: TokenSubR
             {onNavigateToList && (
               <button
                 type="button"
-                className="rounded p-1 text-[10px] text-content-faint transition-colors hover:bg-surface-wash hover:text-accent"
+                className="rounded p-1 text-[10px] text-content-faint transition-colors hover:bg-surface-wash hover:text-accent-content"
                 title="Open in list editor"
                 onClick={(e) => {
                   e.stopPropagation()

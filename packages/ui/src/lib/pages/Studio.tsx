@@ -147,10 +147,10 @@ export default function Studio() {
                   <button
                     type="button"
                     onClick={openNewEditor}
-                    className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-surface-inset-2 text-content-faint-3 hover:text-accent hover:bg-accent/10"
+                    className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-surface-inset text-content-faint hover:text-accent-content hover:bg-accent/10"
                     title="New List">
                     <Icon icon={faPlus} className="text-sm" />
-                    <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-inverse-2 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                    <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-tooltip px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       New List
                     </span>
                   </button>
@@ -158,11 +158,11 @@ export default function Studio() {
                     type="button"
                     onClick={() => setShowTestnets(!showTestnets)}
                     className={`relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                      showTestnets ? 'bg-accent/10 text-accent' : 'bg-surface-inset-2 text-content-faint-3'
+                      showTestnets ? 'bg-accent/10 text-accent-content' : 'bg-surface-inset text-content-faint'
                     }`}
                     title={showTestnets ? 'Testnets visible' : 'Testnets hidden'}>
                     <Icon icon={faFlask} className="text-sm" />
-                    <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-inverse-2 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                    <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-surface-tooltip px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       {showTestnets ? 'Hide testnets' : 'Show testnets'}
                     </span>
                   </button>
@@ -181,7 +181,7 @@ export default function Studio() {
 
           {/* Right: Studio Canvas / Configurator */}
           <div className="h-full" style={{ width: 'calc(100vw - 380px)' }}>
-            <div className="h-full bg-surface-raised-2 overflow-y-auto">
+            <div className="h-full bg-surface-raised overflow-y-auto">
               <StudioConfigurator />
             </div>
           </div>
@@ -201,7 +201,7 @@ export default function Studio() {
             <button
               type="button"
               onClick={openNewEditor}
-              className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-surface-inset-2 text-content-faint-3 hover:text-accent hover:bg-accent/10"
+              className="relative group w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-surface-inset text-content-faint hover:text-accent-content hover:bg-accent/10"
               title="New List">
               <Icon icon={faPlus} className="text-sm" />
             </button>
@@ -233,8 +233,8 @@ export default function Studio() {
                     shape="circle"
                   />
                 )}
-                <span className="text-sm font-medium text-content-strong-2 truncate">{selectedToken.name}</span>
-                <span className="text-xs text-content-faint-3">{selectedToken.symbol}</span>
+                <span className="text-sm font-medium text-content-strong truncate">{selectedToken.name}</span>
+                <span className="text-xs text-content-faint">{selectedToken.symbol}</span>
               </div>
             ) : undefined
           }>

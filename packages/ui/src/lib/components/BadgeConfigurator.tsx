@@ -35,7 +35,7 @@ function CompactSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent disabled:cursor-not-allowed disabled:opacity-40"
       />
-      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-accent">{displayValue}</span>
+      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-accent-content">{displayValue}</span>
     </div>
   )
 }
@@ -91,8 +91,8 @@ export default function BadgeConfigurator() {
               disabled={isDisabled}
               className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 (badge.badgeShape ?? 'circle') === shape
-                  ? 'bg-accent/10 text-accent'
-                  : 'bg-surface-active-2 text-content-subtle hover:bg-surface-bright'
+                  ? 'bg-accent/10 text-accent-content'
+                  : 'bg-surface-control text-content-subtle hover:bg-surface-bright'
               } disabled:cursor-not-allowed disabled:opacity-40`}>
               {shape.charAt(0).toUpperCase() + shape.slice(1)}
             </button>
@@ -114,7 +114,7 @@ export default function BadgeConfigurator() {
             onChange={(e) => updateBadge({ badgePadding: Number(e.target.value) })}
             className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent disabled:cursor-not-allowed disabled:opacity-40"
           />
-          <span className="w-6 text-right font-mono text-[10px] text-accent">{badge.badgePadding ?? 0}</span>
+          <span className="w-6 text-right font-mono text-[10px] text-accent-content">{badge.badgePadding ?? 0}</span>
           <button
             type="button"
             onClick={() => updateBadge({ badgeBackground: 'transparent' })}
@@ -137,7 +137,7 @@ export default function BadgeConfigurator() {
             value={(badge.badgeBackground ?? 'transparent') !== 'transparent' ? badge.badgeBackground! : '#666666'}
             disabled={isDisabled}
             onChange={(e) => updateBadge({ badgeBackground: e.target.value })}
-            className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-active-3 p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-control p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Badge background color"
           />
         </div>
@@ -169,7 +169,7 @@ export default function BadgeConfigurator() {
               value={badge.ringColor}
               disabled={isDisabled}
               onChange={(e) => updateBadge({ ringColor: e.target.value })}
-              className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-active-3 p-0.5"
+              className="h-6 w-6 cursor-pointer rounded-md border border-border bg-surface-control p-0.5"
               aria-label="Ring color"
             />
             <input
@@ -182,7 +182,7 @@ export default function BadgeConfigurator() {
               onChange={(e) => updateBadge({ ringThickness: Number(e.target.value) })}
               className="h-1 w-16 cursor-pointer appearance-none rounded-full bg-surface-active accent-accent"
             />
-            <span className="font-mono text-[10px] text-accent">{badge.ringThickness}px</span>
+            <span className="font-mono text-[10px] text-accent-content">{badge.ringThickness}px</span>
           </>
         )}
       </div>

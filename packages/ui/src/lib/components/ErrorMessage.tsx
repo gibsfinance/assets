@@ -40,18 +40,18 @@ export default function ErrorMessage({
         <Icon icon={faCircleExclamation} className="text-danger-strong" />
         <div className="flex-1">
           <p className="font-medium text-danger-strong">No icon found</p>
-          <p className="text-sm text-content-subtle-3">
+          <p className="text-sm text-content-subtle">
             There is no {urlType === 'token' ? 'token' : 'network'} icon available for this address yet. You can help by{' '}
             <a
               href={issueUrl}
-              className="text-accent hover:text-accent-soft underline underline-offset-2 transition-colors"
+              className="text-accent-content hover:text-accent-content-hover underline underline-offset-2 transition-colors"
               onClick={onSubmitIssue}>
               submitting an issue
             </a>{' '}
             or contributing directly to the{' '}
             <a
               href={GITHUB_REPO_URL}
-              className="text-accent hover:text-accent-soft underline underline-offset-2 transition-colors"
+              className="text-accent-content hover:text-accent-content-hover underline underline-offset-2 transition-colors"
               target="_blank"
               rel="noopener">
               Gib Assets repository

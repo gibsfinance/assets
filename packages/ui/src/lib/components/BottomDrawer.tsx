@@ -227,11 +227,11 @@ export default function BottomDrawer({ children, handle, enabled = true }: Botto
           aria-label={isOpen ? 'Collapse drawer' : 'Expand drawer'}>
           {/* Drag indicator */}
           <div className="flex justify-center pt-2.5 pb-1">
-            <div className="w-9 h-1 rounded-full bg-surface-handle-2" />
+            <div className="w-9 h-1 rounded-full bg-surface-handle" />
           </div>
           {/* Handle content */}
           <div className="px-4 pb-2.5 min-h-[28px] flex items-center">
-            {handle ?? <span className="text-sm text-content-faint-3">Configure</span>}
+            {handle ?? <span className="text-sm text-content-faint">Configure</span>}
           </div>
         </div>
 
