@@ -382,11 +382,27 @@ export function plateDocument({
   return `<svg xmlns="http://www.w3.org/2000/svg"${dimensions} viewBox="0 0 100 100">${underlay}${plateShapeMarkup(plate)}${body}</svg>`
 }
 
-/** Whether the root tag of a document names a usable `viewBox`. */
+/**
+ * Every attribute of a tag as a name and a quoted value. The values are consumed whole, so text
+ * inside one value is never read as another attribute, and `data-viewBox` is a name of its own.
+ */
+function attributesOf(tag: string): Map<string, string> {
+  const attributes = new Map<string, string>()
+  for (const match of tag.matchAll(/\s([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    if (!attributes.has(match[1])) attributes.set(match[1], match[2] ?? match[3])
+  }
+  return attributes
+}
+
+/**
+ * Whether the root tag of a document names a usable `viewBox`: the attribute is spelled exactly so
+ * (names are case sensitive in this format, and a renderer ignores any other spelling), and it holds
+ * four numbers with a positive width and height.
+ */
 function hasUsableViewBox(rootTag: string): boolean {
-  const match = /viewBox\s*=\s*["']([^"']*)["']/i.exec(rootTag)
-  if (!match) return false
-  const numbers = match[1]
+  const value = attributesOf(rootTag).get('viewBox')
+  if (value === undefined) return false
+  const numbers = value
     .trim()
     .split(/[\s,]+/)
     .map(Number)
@@ -406,11 +422,15 @@ export function findTagEnd(document: string, start: number): number {
   let quote: string | null = null
   for (let index = start; index < document.length; index += 1) {
     const character = document[index]
-    if (quote) {
-      if (character === quote) quote = null
+    if (quote !== null && character !== quote) continue
+    if (quote !== null) {
+      quote = null
       continue
     }
-    if (character === '"' || character === "'") quote = character
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
     if (character === '>') return index
   }
   return -1
