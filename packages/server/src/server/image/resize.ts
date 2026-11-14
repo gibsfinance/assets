@@ -28,7 +28,7 @@ import { setImageSecurityHeaders } from './headers'
 import { createRateLimiter, DEFAULT_WINDOW_MS, type RateLimiter } from './rate-limit'
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
 import { isLinkOnlyHost } from '../../link-only-hosts'
-import { createRemoteImageLoader, type RemoteImageLoader } from './remote-image'
+import { sharedRemoteImages, type RemoteImageLoader } from './remote-image'
 import {
   VISIBILITY_SAMPLE_SIDE,
   type Plate,
@@ -628,9 +628,6 @@ const sharedPlateGate = createConcurrencyGate({
   limit: config.plateRenders?.concurrency,
   maxPerKey: PLATE_PLACES_PER_CLIENT,
 })
-
-/** The shared reader of link-mode images. */
-const sharedRemoteImages = createRemoteImageLoader()
 
 /** Forget every remote image the shared reader holds. A test that serves link-mode images calls this first. */
 export function resetRemoteImageCache(): void {

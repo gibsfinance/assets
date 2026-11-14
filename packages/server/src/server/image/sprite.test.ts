@@ -32,6 +32,8 @@ import sharp from 'sharp'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { manifest, sheet, spriteKey } from './sprite'
+import { IMAGE_SECURITY_HEADERS } from './headers'
+import { REMOTE_IMAGE_CONCURRENCY, REMOTE_IMAGE_MAX_BYTES, sharedRemoteImages } from './remote-image'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { sql } from 'drizzle-orm'
@@ -140,6 +142,8 @@ describe('sprite endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
+    // The shared reader of remote images caches by address; every test starts without that memory.
+    sharedRemoteImages.reset()
   })
 
   /** Same token address listed on two chains — the multi-chain regression input */
@@ -273,7 +277,7 @@ describe('sprite endpoints', () => {
     it('fetches remote content for a LINK-mode token and rasterizes it', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => pngContent.buffer.slice(0) }),
+        vi.fn(async () => new Response(new Uint8Array(pngContent))),
       )
       queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
       const res = mockResponse()
@@ -286,7 +290,7 @@ describe('sprite endpoints', () => {
 
     it('never fetches a link-only host image and leaves its cell empty while other cells render', async () => {
       const debankUri = 'https://static.debank.com/image/token/logo.png'
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => pngContent.buffer.slice(0) })
+      const fetchMock = vi.fn(async () => new Response(new Uint8Array(pngContent)))
       vi.stubGlobal('fetch', fetchMock)
       const stored = linkToken({
         address: '0x00000000000000000000000000000000000000BB',
@@ -319,7 +323,10 @@ describe('sprite endpoints', () => {
     })
 
     it('skips a token when the remote fetch responds not-ok', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('nope', { status: 500 })),
+      )
       queueDrizzleResults([{ listId: 'L1' }], [linkToken()])
       const res = mockResponse()
 
@@ -337,6 +344,119 @@ describe('sprite endpoints', () => {
       // must not fail the whole sheet for every other token in the list.
       await expect(sheet(mockRequest(), res, vi.fn())).resolves.not.toThrow()
       expect(res.send).toHaveBeenCalled()
+    })
+    /** Alpha of the sheet's centre pixel in cell `cellX` of the first row. */
+    async function alphaOfCell(res: Response, cellX: number): Promise<number> {
+      const { data, info } = await sharp((res.send as ReturnType<typeof vi.fn>).mock.calls[0][0])
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      return data[(16 * info.width + cellX * 32 + 16) * 4 + 3]
+    }
+
+    const storedToken = () =>
+      linkToken({ address: '0x00000000000000000000000000000000000000BB', content: pngContent, mode: 'stored', uri: '' })
+
+    it('does not read a remote body past the size cap, and leaves the cell empty', async () => {
+      let pulled = 0
+      const chunk = new Uint8Array(64 * 1024)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled += chunk.length
+          controller.enqueue(chunk)
+        },
+      })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(body)),
+      )
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken(), storedToken()])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(pulled).toBeLessThanOrEqual(REMOTE_IMAGE_MAX_BYTES + 2 * chunk.length)
+      expect(await alphaOfCell(res, 0)).toBe(0)
+      expect(await alphaOfCell(res, 1)).toBeGreaterThan(0)
+      expect(headerValue(res, 'x-sprite-count')).toBe('2')
+    })
+
+    it('leaves a cell empty when the bytes cannot be decoded, and still draws the others', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [linkToken({ content: Buffer.from('not an image at all'), mode: 'stored', uri: '' }), storedToken()],
+      )
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(await alphaOfCell(res, 0)).toBe(0)
+      expect(await alphaOfCell(res, 1)).toBeGreaterThan(0)
+    })
+
+    it('turns a vector file the sanitizer refuses into an empty cell', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('this is not a vector document <<<')),
+      )
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [linkToken({ ext: '.svg', uri: 'https://cdn.example.com/bad.svg' }), storedToken()],
+      )
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(await alphaOfCell(res, 0)).toBe(0)
+      expect(await alphaOfCell(res, 1)).toBeGreaterThan(0)
+    })
+
+    it('shares one download limit across concurrent sheet requests', async () => {
+      let running = 0
+      let peak = 0
+      const release: (() => void)[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          running++
+          peak = Math.max(peak, running)
+          await new Promise<void>((resolve) => release.push(resolve))
+          running--
+          return new Response(new Uint8Array(pngContent))
+        }),
+      )
+      const tokensFor = (group: string) =>
+        Array.from({ length: 4 }, (_, i) =>
+          linkToken({
+            address: `0x${group}${i.toString(16).padStart(39, '0')}`,
+            uri: `https://cdn.example.com/${group}${i}.png`,
+          }),
+        )
+      // Each handler asks the database for its list first, then its tokens, so the two
+      // requests are started with their own queued results, one after the other.
+      const requests: Promise<void>[] = []
+      for (const group of ['a', 'b']) {
+        queueDrizzleResults([{ listId: 'L1' }], tokensFor(group))
+        requests.push(sheet(mockRequest(), mockResponse(), vi.fn()) as Promise<void>)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      await vi.waitFor(() => expect(running).toBe(REMOTE_IMAGE_CONCURRENCY))
+      while (release.length > 0 || running > 0) {
+        release.splice(0).forEach((resolve) => resolve())
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      await Promise.all(requests)
+      // Eight downloads were wanted by two requests; the limit is one budget, not one per request.
+      expect(peak).toBe(REMOTE_IMAGE_CONCURRENCY)
+    })
+
+    it('sets the image security headers on the sheet', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      for (const [name, value] of Object.entries(IMAGE_SECURITY_HEADERS)) expect(headerValue(res, name)).toBe(value)
     })
   })
 

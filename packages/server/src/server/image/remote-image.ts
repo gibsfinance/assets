@@ -172,3 +172,10 @@ export function createRemoteImageLoader({
     },
   }
 }
+
+/**
+ * The one reader of link-mode images that every route shares (resize, plate and sprite). One
+ * instance means one download limit, one cache and one failure memory for all outbound fetches, so
+ * a client cannot multiply the server's outbound work by spreading requests over several routes.
+ */
+export const sharedRemoteImages: RemoteImageLoader = createRemoteImageLoader()

@@ -10,6 +10,7 @@ import { chainIdFilterMatch } from '../../chain-id'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { setImageSecurityHeaders } from './headers'
+import { sharedRemoteImages } from './remote-image'
 import { loadImageBytes } from '../../image-store/image-bytes'
 import { unexportedBytesSql } from '../../db/image-columns'
 import _ from 'lodash'
@@ -55,13 +56,17 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
       // both. Treated as an image that failed to rasterize: the cell stays empty
       // and the grid coordinates do not move.
       if (isLinkOnlyHost(image.uri)) return null
-      const res = await fetch(image.uri, { signal: AbortSignal.timeout(5000) })
-      if (!res.ok) return null
-      buf = Buffer.from(await res.arrayBuffer())
+      // The shared loader caps the size, limits how many downloads run at once, and sanitizes the
+      // bytes. It answers null for anything it refuses, which is the same empty cell.
+      const remote = await sharedRemoteImages.load({ uri: image.uri, ext: image.ext })
+      if (!remote) return null
+      buf = remote
     } else {
       buf = stored
     }
-    return sharp(buf)
+    // Awaited here so that a file sharp cannot decode lands in the catch below and becomes an
+    // empty cell, instead of rejecting the whole sheet.
+    return await sharp(buf)
       .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer()
