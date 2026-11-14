@@ -295,8 +295,12 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes the tree back; there is no
   pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
   root throws `SvgRejectedError`; `insertImage` then logs it and returns null, so nothing is stored
-  (`POST /api/images/submit` answers 400). Checked on the 4,441 files of the smoldapp sample: the old and new
-  sanitizer give byte-identical output for every one, so no rendering changed.
+  (`POST /api/images/submit` answers 400). Rasters follow the same rule (`sanitizeRaster` in `sanitize.ts`): PNG, JPEG,
+  GIF, WebP and AVIF are re-encoded (GIF and WebP with `animated: true`, so their frames survive; sharp reads only the first
+  frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
+  throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
+  so APNG is refused, not flattened. The vector change was checked on the 4,441 files of the smoldapp sample: the old and
+  new sanitizer give byte-identical output for every one, so no rendering changed.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 

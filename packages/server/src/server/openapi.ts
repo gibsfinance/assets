@@ -1071,7 +1071,8 @@ export const openapi = {
             },
           },
           '400': {
-            description: 'Missing fields, invalid data URI, or decoded image over the 512 KB limit.',
+            description:
+              'Missing fields, invalid data URI, decoded image over the 512 KB limit, an unrecognized format, or an image that cannot be cleaned. Gib re-encodes PNG, JPEG, GIF, WebP and AVIF and sanitizes SVG; it refuses any other raster format (APNG, BMP, TIFF, ICO), an undecodable raster and a malformed SVG.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '413': {

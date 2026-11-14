@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeImage, decodeCharacterReferences, isScriptUri, SvgRejectedError } from './sanitize'
+import { ImageRejectedError, SvgRejectedError, sanitizeImage, decodeCharacterReferences, isScriptUri } from './sanitize'
 
 describe('sanitizeImage', () => {
   describe('SVG sanitization', () => {
@@ -172,17 +172,74 @@ describe('sanitizeImage', () => {
       expect(result.toString('ascii', 0, 4)).toBe('RIFF')
     })
 
-    it('returns unknown formats unchanged', async () => {
-      const original = Buffer.from('not a real image format')
-      const result = await sanitizeImage(original, '.xyz')
-      expect(result.equals(original)).toBe(true)
+    it('refuses a raster format that has no re-encoder, instead of storing it as downloaded', async () => {
+      for (const ext of ['.apng', '.bmp', '.tif', '.tiff', '.ico', '.heic', '.jxl', '.xyz']) {
+        await expect(sanitizeImage(Buffer.from('not a real image format'), ext)).rejects.toBeInstanceOf(
+          ImageRejectedError,
+        )
+      }
     })
 
-    it('returns corrupt images unchanged', async () => {
+    it('refuses a raster that sharp cannot decode, instead of storing it as downloaded', async () => {
       const corrupt = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]) // truncated PNG header
-      const result = await sanitizeImage(corrupt, '.png')
-      // sharp can't process this — should return original
-      expect(result.length).toBeGreaterThan(0)
+      await expect(sanitizeImage(corrupt, '.png')).rejects.toThrow(/sharp cannot decode this \.png/)
+      await expect(sanitizeImage(corrupt, '.png')).rejects.toBeInstanceOf(ImageRejectedError)
+    })
+
+    it('throws the same kind of error for a vector file that is not well formed', async () => {
+      await expect(sanitizeImage(Buffer.from('<svg'), '.svg')).rejects.toBeInstanceOf(ImageRejectedError)
+      await expect(sanitizeImage(Buffer.from('<svg'), '.svg')).rejects.toBeInstanceOf(SvgRejectedError)
+    })
+
+    describe('animation', () => {
+      const FRAME_DELAY_MS = 120
+      /** Two solid frames stacked into one tall image, written as an animation with a known delay. */
+      const animated = async (format: 'gif' | 'webp'): Promise<Buffer> => {
+        const sharp = (await import('sharp')).default
+        const frame = (color: string) =>
+          sharp({ create: { width: 8, height: 8, channels: 4, background: color } })
+            .raw()
+            .toBuffer()
+        const stacked = Buffer.concat([await frame('#ff0000'), await frame('#0000ff')])
+        return sharp(stacked, { raw: { width: 8, height: 16, channels: 4, pageHeight: 8 } as never })
+          .toFormat(format, { delay: [FRAME_DELAY_MS, FRAME_DELAY_MS], loop: 0 } as never)
+          .toBuffer()
+      }
+      const pagesOf = async (image: Buffer) => {
+        const sharp = (await import('sharp')).default
+        return (await sharp(image, { animated: true }).metadata()).pages
+      }
+
+      it.each(['gif', 'webp'] as const)('keeps both frames of an animated %s', async (format) => {
+        const original = await animated(format)
+        expect(await pagesOf(original)).toBe(2)
+
+        const result = await sanitizeImage(original, `.${format}`)
+
+        // Without { animated: true } sharp reads one frame and the file comes back as a still.
+        expect(await pagesOf(result)).toBe(2)
+        const sharp = (await import('sharp')).default
+        const meta = await sharp(result, { animated: true }).metadata()
+        expect(meta.delay).toEqual([FRAME_DELAY_MS, FRAME_DELAY_MS])
+        expect(meta.loop).toBe(0)
+      })
+
+      it('keeps the picture of each frame, not only the count', async () => {
+        const sharp = (await import('sharp')).default
+        const result = await sanitizeImage(await animated('gif'), '.gif')
+        const { data, info } = await sharp(result, { animated: true }).raw().toBuffer({ resolveWithObject: true })
+        const pixelOfFrame = (frame: number) => (frame * info.pageHeight! * info.width + 0) * info.channels
+        expect(data[pixelOfFrame(0)]).toBeGreaterThan(200) // red
+        expect(data[pixelOfFrame(1) + 2]).toBeGreaterThan(200) // blue
+      })
+
+      it('does not turn a still gif or webp into an animation', async () => {
+        const sharp = (await import('sharp')).default
+        const still = await sharp({ create: { width: 4, height: 4, channels: 4, background: '#00ff00' } })
+          .gif()
+          .toBuffer()
+        expect(await pagesOf(await sanitizeImage(still, '.gif'))).toBe(1)
+      })
     })
   })
 })

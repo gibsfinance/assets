@@ -137,6 +137,24 @@ describe('insertImage', () => {
     expect(harness.queries).toHaveLength(0)
   })
 
+  it('stores nothing for a raster the sanitizer cannot clean, whatever its format', async () => {
+    for (const ext of ['.apng', '.bmp', '.png']) {
+      detectImageExt.mockResolvedValue(ext)
+      sanitizeImage.mockRejectedValue(new Error(`raster rejected: cannot clean ${ext}`))
+
+      const result = await insertImage({
+        providerKey: 'user-submit',
+        originalUri: 'submit://anon/1/0xdef',
+        image: Buffer.alloc(400, 1),
+        listId: null,
+      })
+
+      expect(result).toBeNull()
+    }
+    expect(storePut).not.toHaveBeenCalled()
+    expect(harness.queries).toHaveLength(0)
+  })
+
   it('does not apply the minimum-size rule to svg images', async () => {
     detectImageExt.mockResolvedValue('.svg')
     sanitizeImage.mockResolvedValue(Buffer.from('<svg/>'))

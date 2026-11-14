@@ -27,6 +27,7 @@
  * A document the parser cannot read is rejected with {@link SvgRejectedError}; it is never stored as is.
  */
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
+import { ImageRejectedError } from './image-rejected'
 
 /** The vector image namespace. An element outside it is removed. */
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
@@ -135,7 +136,7 @@ const STYLE_PARENT_ELEMENTS: ReadonlySet<string> = new Set([
 const ANIMATION_ELEMENTS: ReadonlySet<string> = new Set(['animate', 'animateTransform', 'animateMotion', 'set'])
 
 /** Why an vector image could not be made safe to store. */
-export class SvgRejectedError extends Error {
+export class SvgRejectedError extends ImageRejectedError {
   constructor(reason: string, options?: ErrorOptions) {
     super(`svg rejected: ${reason}`, options)
     this.name = 'SvgRejectedError'

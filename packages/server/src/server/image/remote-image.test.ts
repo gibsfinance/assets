@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import sharp from 'sharp'
 import { createConcurrencyGate } from './concurrency-gate'
 import {
   createRemoteImageLoader,
@@ -219,10 +220,10 @@ describe('createRemoteImageLoader', () => {
   })
 
   it('uses the global network call and the real sanitizer when none are given', async () => {
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
-      'base64',
-    )
+    // A real picture: the sanitizer now refuses a file sharp cannot decode, instead of passing it on.
+    const png = await sharp({ create: { width: 2, height: 2, channels: 4, background: '#ff0000' } })
+      .png()
+      .toBuffer()
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(new Uint8Array(png))),

@@ -13,7 +13,7 @@ import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
-import { sanitizeImage, type SvgRejectedError } from '../sanitize'
+import { sanitizeImage, type ImageRejectedError } from '../sanitize'
 import {
   isPlaceholderDigest,
   isPlaceholderStoredImage,
@@ -289,10 +289,10 @@ export const insertImage = async (
   }
 
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
-  // An SVG that is not well formed XML cannot be made safe, so nothing is stored for it.
-  // `sanitizeImage` throws nothing else: raster failures return the original bytes.
-  const sanitized = await sanitizeImage(image, ext).catch((error: SvgRejectedError) => {
-    failureLog('unsafe svg %o -> %o: %s', providerKey, originalUri, error.message)
+  // An image that cannot be cleaned (a vector file that is not well formed, a raster format with no
+  // re-encoder, a raster sharp cannot decode) is never stored as it came, so nothing is stored for it.
+  const sanitized = await sanitizeImage(image, ext).catch((error: ImageRejectedError) => {
+    failureLog('image cannot be cleaned %o -> %o: %s', providerKey, originalUri, error.message)
     return null
   })
   if (!sanitized) return null
