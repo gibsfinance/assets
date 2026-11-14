@@ -244,3 +244,80 @@ describe('createRateLimiter', () => {
     })
   })
 })
+
+describe('housekeeping cost and memory (third review, finding 5)', () => {
+  it('sweeps at most once per window however many successful spends arrive past the threshold', () => {
+    // If this regresses, every spend with a crowded map walks the whole map again.
+    const clock = clockAt(0)
+    const limiter = createRateLimiter({
+      now: clock.now,
+      perImageLimit: 10,
+      globalLimit: Infinity,
+      windowMs: 1_000,
+      sweepThreshold: 10,
+    })
+    for (let caller = 0; caller < 5_000; caller += 1) limiter.check(`caller-${caller}`)
+    expect(limiter.sweeps()).toBe(0)
+    clock.advance(1_000)
+    // Every one of the next 5,000 calls opens a window past the threshold, within one window length.
+    for (let caller = 0; caller < 5_000; caller += 1) limiter.check(`later-${caller}`)
+    expect(limiter.sweeps()).toBe(1)
+    clock.advance(1_001)
+    limiter.check('again')
+    expect(limiter.sweeps()).toBe(2)
+  })
+
+  it('removes expired windows when it does sweep and keeps live ones', () => {
+    const clock = clockAt(0)
+    const limiter = createRateLimiter({
+      now: clock.now,
+      perImageLimit: 10,
+      globalLimit: Infinity,
+      windowMs: 1_000,
+      sweepThreshold: 2,
+    })
+    limiter.check('old-a')
+    limiter.check('old-b')
+    clock.advance(1_500)
+    limiter.check('live-a')
+    limiter.check('live-b')
+    expect(limiter.trackedImages()).toBe(2)
+  })
+
+  it('bounds the tracked windows, forgetting the oldest first', () => {
+    const clock = clockAt(0)
+    const limiter = createRateLimiter({
+      now: clock.now,
+      perImageLimit: 1,
+      globalLimit: Infinity,
+      maxTrackedImages: 3,
+    })
+    for (const caller of ['a', 'b', 'c', 'd', 'e']) {
+      clock.advance(1)
+      limiter.check(caller)
+    }
+    expect(limiter.trackedImages()).toBe(3)
+    // d and e are still counted; a was forgotten and starts over.
+    expect(limiter.canSpend('e')).toBe(false)
+    expect(limiter.canSpend('d')).toBe(false)
+    expect(limiter.canSpend('a')).toBe(true)
+  })
+
+  it('moves a renewed window to the newest place so a busy caller is not the one evicted', () => {
+    const clock = clockAt(0)
+    const limiter = createRateLimiter({
+      now: clock.now,
+      perImageLimit: 1,
+      globalLimit: Infinity,
+      windowMs: 100,
+      maxTrackedImages: 2,
+    })
+    limiter.check('a')
+    limiter.check('b')
+    clock.advance(200)
+    limiter.check('a') // renewed: now newest
+    limiter.check('c') // evicts b, not a
+    expect(limiter.canSpend('a')).toBe(false)
+    expect(limiter.canSpend('b')).toBe(true)
+  })
+})

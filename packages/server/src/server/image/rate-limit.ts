@@ -34,8 +34,16 @@ export interface RateLimiterOptions {
    * Number of tracked images above which expired entries are swept. The sweep
    * is a housekeeping measure against unbounded growth, not part of the limit:
    * an expired window answers the same way whether or not it is still in the map.
+   * It runs at most once per window, so its cost is spread over every request in that window
+   * instead of being paid by each of them.
    */
   sweepThreshold?: number
+  /**
+   * The most images tracked at once. Past it the oldest windows are forgotten first, which bounds
+   * memory however many distinct callers or images arrive in one window. A forgotten window lets
+   * that one key start a fresh count early; the global budget is not affected.
+   */
+  maxTrackedImages?: number
 }
 
 export interface RateLimiter {
@@ -50,12 +58,15 @@ export interface RateLimiter {
   reset: () => void
   /** How many images currently have a window. Housekeeping only. */
   trackedImages: () => number
+  /** How many sweeps of expired windows have run. Housekeeping only; lets a test count the work done. */
+  sweeps: () => number
 }
 
 export const DEFAULT_PER_IMAGE_LIMIT = 5
 export const DEFAULT_GLOBAL_LIMIT = 100
 export const DEFAULT_WINDOW_MS = 60_000
 export const DEFAULT_SWEEP_THRESHOLD = 1000
+export const DEFAULT_MAX_TRACKED_IMAGES = 50_000
 
 /**
  * Build a limiter with its own counters.
@@ -72,14 +83,28 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     globalLimit = DEFAULT_GLOBAL_LIMIT,
     windowMs = DEFAULT_WINDOW_MS,
     sweepThreshold = DEFAULT_SWEEP_THRESHOLD,
+    maxTrackedImages = DEFAULT_MAX_TRACKED_IMAGES,
   } = options
 
   const perImageWindows = new Map<string, RateWindow>()
   let globalWindow: RateWindow = { count: 0, windowStart: now() }
 
+  let lastSweepAt = now()
+  let sweepCount = 0
+
   const sweepExpired = (at: number): void => {
+    sweepCount += 1
+    lastSweepAt = at
     for (const [key, window] of perImageWindows) {
       if (at - window.windowStart > windowMs) perImageWindows.delete(key)
+    }
+  }
+
+  /** Forget the oldest windows (the map is in the order windows opened) until the cap holds. */
+  const evictOldest = (): void => {
+    for (const key of perImageWindows.keys()) {
+      if (perImageWindows.size <= maxTrackedImages) return
+      perImageWindows.delete(key)
     }
   }
 
@@ -97,14 +122,17 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     let window = perImageWindows.get(imageHash)
     if (!window || at - window.windowStart > windowMs) {
       window = { count: 0, windowStart: at }
+      // Deleted first so a renewed window moves to the end, which keeps the map in opening order.
+      perImageWindows.delete(imageHash)
       perImageWindows.set(imageHash, window)
+      evictOldest()
     }
     if (window.count >= perImageLimit) return false
 
     window.count += 1
     globalWindow.count += 1
 
-    if (perImageWindows.size > sweepThreshold) sweepExpired(at)
+    if (perImageWindows.size > sweepThreshold && at - lastSweepAt >= windowMs) sweepExpired(at)
 
     return true
   }
@@ -123,5 +151,5 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     globalWindow = { count: 0, windowStart: now() }
   }
 
-  return { check, canSpend, reset, trackedImages: () => perImageWindows.size }
+  return { check, canSpend, reset, trackedImages: () => perImageWindows.size, sweeps: () => sweepCount }
 }
