@@ -13,9 +13,9 @@
  * The bytes are sanitized before they are returned, exactly as bytes are before they are stored:
  * a remote file is as untrusted as an upload.
  */
-import { sanitizeImage } from '../../sanitize'
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
 import { createFailureMemory } from './plate'
+import { createInProcessSanitizer, createSanitizerPool, type SanitizerRunner } from './sanitizer-pool'
 
 /** Largest remote image read, in bytes. The same cap as an uploaded image (`image-submit.ts`). */
 export const REMOTE_IMAGE_MAX_BYTES = 512 * 1024
@@ -55,7 +55,13 @@ interface CacheEntry {
 export interface RemoteImageLoaderOptions {
   fetchImpl?: typeof fetch
   now?: () => number
+  /**
+   * Sanitizes on the calling thread, with no time limit. Tests use it. Without it, and without `sanitizer`,
+   * the loader sanitizes on worker threads (see `sanitizer-pool.ts`).
+   */
   sanitize?: (bytes: Buffer, ext: string) => Promise<Buffer>
+  /** Runs the sanitizer. The default is a pool of worker threads, each job under the request's deadline. */
+  sanitizer?: SanitizerRunner
   gate?: ConcurrencyGate
   /** Deadline for one request, from its arrival. Defaults to `REMOTE_IMAGE_TIMEOUT_MS`. */
   timeoutMs?: number
@@ -114,7 +120,8 @@ function sanitizerExtension(ext: string): string {
 export function createRemoteImageLoader({
   fetchImpl = (input, init) => fetch(input, init),
   now = () => Date.now(),
-  sanitize = sanitizeImage,
+  sanitize,
+  sanitizer = sanitize ? createInProcessSanitizer(sanitize) : createSanitizerPool(),
   gate = createConcurrencyGate({ limit: REMOTE_IMAGE_CONCURRENCY, maxQueue: REMOTE_IMAGE_QUEUE }),
   timeoutMs = REMOTE_IMAGE_TIMEOUT_MS,
   maxBytes = REMOTE_IMAGE_MAX_BYTES,
@@ -174,12 +181,16 @@ export function createRemoteImageLoader({
       if (!response.ok) return refuse(cacheKey)
       const raw = await readCapped(response, maxBytes)
       if (!raw || raw.length === 0) return refuse(cacheKey)
-      // Sanitizing runs on this server's processor. A deadline that passes here is the server's load,
-      // not the remote's: the request was already answered as shed, and nothing is recorded against
-      // the address. The bytes are still kept, so a later request needs no download.
-      const bytes = await sanitize(raw, sanitizerExtension(ext))
-      remember(cacheKey, bytes)
-      return bytes
+      const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, deadline)
+      if (attempt.status === 'expired-in-queue') return REMOTE_IMAGE_SHED
+      if (attempt.status === 'sanitized') {
+        // Kept by address even when the request was shed meanwhile, so a later request needs no download.
+        remember(cacheKey, attempt.bytes)
+        return attempt.bytes
+      }
+      // A file the sanitizer refused, or one whose sanitizing the deadline cut off while a worker ran it:
+      // the file's own work caused it, so the address is charged, as a file that fails to download is.
+      return refuse(cacheKey)
     } catch {
       // A deadline that cut the call short counts against the address only when the call had the whole window,
       // that is, it started at arrival. A call that started late, after queueing, was shed: the remote did

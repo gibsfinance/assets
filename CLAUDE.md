@@ -278,10 +278,20 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
   512 KB (streamed, dropped as it passes the cap), one 5 s deadline per request counted from its arrival (it covers
-  the wait in line, the download and the sanitizing. A deadline that passes in line or while the bytes are sanitized is
-  load shedding: `REMOTE_IMAGE_SHED`, and no failure is remembered. A download the deadline aborts, a non-success
-  answer, an oversized or empty body and a refused file are the remote's failures and are remembered 60 s), 4 downloads at once with a line of 16, sanitized with
-  `sanitizeImage` before use, kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
+  the wait in line, the download and the sanitizing). Shed (`REMOTE_IMAGE_SHED`, nothing remembered): a deadline that passes
+  in line; a download that started after queueing and was cut off by the deadline (it did not have the whole window); a
+  sanitizing job that expired while it waited for a worker. Charged (remembered 60 s): a download the deadline cut off
+  that had the whole window (it started at arrival); a non-success answer; an oversized or empty body; a file the
+  sanitizer refused; a sanitizing job the deadline cut off while a worker ran it (the worker is stopped). 4 downloads at
+  once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
+  started on first use and reused, each running one job at a time, each with `--import register-hooks.ts` and a 256 MB heap
+  limit. Measured with the production loader: about 33 MB per worker (the process was 131 MB without one, 207 MB with
+  two); about 200 to 300 ms of main-thread pause each time a worker starts, so a crafted file that cuts off a worker
+  costs one such pause on the next remote load. `sanitize` in the loader options runs in-process with no time limit and
+  is a test seam only. Kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
+  Plain-node check: `sanitizer-pool.plain-node.test.ts` runs `server/image/__testing__/pool-load-check.ts` under
+  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 25 ms (the
+  in-process path blocked the loop for the whole load).
   librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
   request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):
   `sprite.ts` sends a sheet with a cell lost to `REMOTE_IMAGE_SHED` as `no-store`, not for `CACHE_SECONDS`.
@@ -293,8 +303,11 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
   elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
   (decoded the way a browser reads it), cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
-  (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes the tree back; there is no
-  pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
+  (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes a cleaned copy
+  into a new document (`copyChildren` / `copyElement`). The copy is linear: xmldom re-indexes a parent's children on
+  every removal and `setAttributeNS` scans the whole attribute list on every write, so the walk never removes a node and
+  writes attributes with `createAttributeNS` and `setAttributeNode`. The parser runs with `locator: false` (positions
+  are not read, and recording them cost about half the parse). There is no pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
   root throws `SvgRejectedError`; `insertImage` then logs it and returns null, so nothing is stored
   (`POST /api/images/submit` answers 400). Rasters follow the same rule (`sanitizeRaster` in `sanitize.ts`): PNG, JPEG,
   GIF, WebP and AVIF are re-encoded (GIF and WebP with `animated: true`, so their frames survive; sharp reads only the first
@@ -304,10 +317,14 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   `MAX_ATTRIBUTES` (200,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
   check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
   or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
-  changes were checked on the 4,441 files of the smoldapp sample against the sanitizer before the review round: 4,438
-  give byte-identical output. The other 3 (3 to 4 MB each, about 97,000 attributes apiece) were refused when the cap
-  was 50,000; it is 200,000 so they are kept. The collector reads that artwork from disk, so no download cap
-  applies to it. Cleaning time grows with the attribute count, which is what the cap bounds.
+  changes were checked on the 4,441 files of the smoldapp sample: the copy walk gives byte-identical output for every
+  file, against the previous in-place walk and against the sanitizer before the review round. The 3 files of 3 to 4 MB
+  (about 97,000 attributes apiece) are kept by the 200,000 cap. The collector reads that artwork from disk, so no download
+  cap applies to it. Measured with the copy walk, on one element on the development machine: 199,990 kept attributes
+  take about 2.0 to 2.7 seconds, and 199,990 dropped ones about 0.9 to 1.2 seconds (most of it the parse); 150,000
+  siblings to remove take about 1.5 seconds. Before the copy walk, 25,000 handler attributes took 8.6 seconds.
+  The collector's `insertImage` also sanitizes on its own thread; that is left in place because the collector is a
+  batch process with no deadline.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 

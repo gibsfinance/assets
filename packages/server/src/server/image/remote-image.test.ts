@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, type Mock } from 'vitest'
 import sharp from 'sharp'
 import { createConcurrencyGate } from './concurrency-gate'
+import type { SanitizeAttempt, SanitizerRunner } from './sanitizer-pool'
 import {
   createRemoteImageLoader,
   REMOTE_IMAGE_CACHE_TTL_MS,
@@ -294,7 +295,7 @@ describe('one deadline from arrival (third review, finding 7)', () => {
     // The deadline passed during the network call: the request is shed, and the aborted call is the remote's failure.
     expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
     // Let the aborted call settle, then the failure is remembered: the second ask does not download again.
-    await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(await loader.load(request)).toBeNull()
     expect(downloads).toBe(1)
   })
@@ -368,7 +369,51 @@ describe('a download that started late is shed, not charged (fifth review, findi
     const loader = createRemoteImageLoader({ fetchImpl: hanging, sanitize: async (bytes) => bytes, timeoutMs: 40 })
     const request = { uri: 'https://cdn.example/hung.png', ext: '.png' }
     expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
-    await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(await loader.load(request)).toBeNull()
+  })
+})
+
+describe('the sanitizer runner decides what a deadline or a refusal costs (fifth review, finding 2)', () => {
+  /** A runner that answers the given attempts in order, and counts its jobs. */
+  const runnerAnswering = (...attempts: SanitizeAttempt[]): SanitizerRunner & { run: Mock } => {
+    const run = vi.fn(async () => attempts.shift() ?? { status: 'refused' as const, message: 'no answer left' })
+    return { run, workers: () => 0, close: () => undefined }
+  }
+  const request = { uri: 'https://cdn.example/worker.png', ext: '.png' }
+
+  it('charges an address whose sanitizer the deadline cut off, as a refused file is charged', async () => {
+    const sanitizer = runnerAnswering({ status: 'cut-off' })
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+    const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer })
+
+    expect(await loader.load(request)).toBeNull()
+    // The failure is remembered: the second ask does not download or sanitize again.
+    expect(await loader.load(request)).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(sanitizer.run).toHaveBeenCalledTimes(1)
+  })
+
+  it('sheds, and charges nothing, a job that expired while it waited for a worker', async () => {
+    const sanitizer = runnerAnswering(
+      { status: 'expired-in-queue' },
+      { status: 'sanitized', bytes: Buffer.from('logo') },
+    )
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+    const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer })
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    expect((await loader.load(request))?.toString()).toBe('logo')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the sanitized bytes the runner returns, so a later request needs no download', async () => {
+    const sanitizer = runnerAnswering({ status: 'sanitized', bytes: Buffer.from('clean') })
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+    const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer })
+
+    expect((await loader.load(request))?.toString()).toBe('clean')
+    expect((await loader.load(request))?.toString()).toBe('clean')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
