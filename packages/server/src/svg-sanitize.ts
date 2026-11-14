@@ -235,12 +235,12 @@ const CSS_IMPORT_REGEX = /@import\b[^;]*(?:;|$)/gi
 const CSS_URL_REGEX = /url\(\s*((?:"[^"]*"|'[^']*'|[^)]*))\s*(?:\)|$)/gi
 
 /**
- * Finds `image-set(`, which also covers `-webkit-image-set(`. Its candidates may be bare strings,
- * which the `url()` check never sees, and a parenthesis inside a quoted string would end any attempt
- * to cut out just the call. So no cutting is tried: the whole declaration goes (see
- * `dropImageSetDeclarations`).
+ * Finds the functions that take an address as a bare string, which the `url()` check never sees:
+ * `image-set(` (and `-webkit-image-set(`), `image(` (and `-webkit-image(`), `cross-fade(` and
+ * `element(`. A parenthesis inside a quoted string would end any attempt to cut out just the call,
+ * so no cutting is tried: the whole declaration goes (see `dropRemoteFunctionDeclarations`).
  */
-const CSS_IMAGE_SET_REGEX = /image-set\(/i
+const CSS_REMOTE_FUNCTION_REGEX = /(?:image-set|image|cross-fade|element)\(/i
 
 /** Ends a declaration, or the rule that holds it. */
 const CSS_DECLARATION_END_REGEX = /[;}]/
@@ -277,12 +277,12 @@ function isAllowedCssUrl(inside: string): boolean {
 }
 
 /**
- * Remove every declaration that holds `image-set(`, from the start of the declaration (after the
+ * Remove every declaration that holds one of the remote functions, from the start of the declaration (after the
  * previous `;` or `{`) to the next `;` or `}`, or to the end of the text. One pass, no nesting and no
  * quote handling, so it cannot be put out of step by a parenthesis or a quote inside a string.
  */
-function dropImageSetDeclarations(text: string): string {
-  const finder = new RegExp(CSS_IMAGE_SET_REGEX.source, 'gi')
+function dropRemoteFunctionDeclarations(text: string): string {
+  const finder = new RegExp(CSS_REMOTE_FUNCTION_REGEX.source, 'gi')
   const stop = new RegExp(CSS_DECLARATION_END_REGEX.source, 'g')
   const kept: string[] = []
   let cursor = 0
@@ -299,9 +299,9 @@ function dropImageSetDeclarations(text: string): string {
   return kept.join('')
 }
 
-/** Remove `@import` rules, script constructs, `image-set()` declarations, and every `url()` that is not local or an image held in the value. */
+/** Remove `@import` rules, script constructs, remote-function declarations, and every `url()` that is not local or an image held in the value. */
 function cleanCssText(text: string): string {
-  return dropImageSetDeclarations(text)
+  return dropRemoteFunctionDeclarations(text)
     .replace(CSS_IMPORT_REGEX, '')
     .replace(CSS_SCRIPT_CONSTRUCT_REGEX, 'removed(')
     .replace(CSS_URL_REGEX, (whole, inside: string) => (isAllowedCssUrl(inside) ? whole : 'none'))
@@ -316,13 +316,22 @@ function cleanCssText(text: string): string {
  * rewritten, because cutting it correctly would mean parsing style sheet.
  */
 export function cleanCss(text: string): string {
-  if (text.length > MAX_STYLE_TEXT_LENGTH) {
-    throw new SvgRejectedError(`style text is longer than ${MAX_STYLE_TEXT_LENGTH} characters`)
-  }
   const cleaned = cleanCssText(text)
   if (!text.includes('\\')) return cleaned
   const decoded = decodeCssEscapes(text)
   return cleanCssText(decoded) === decoded ? cleaned : ''
+}
+
+/**
+ * Clean the text of a style element or of a `style` attribute. Longer text is refused: a logo's style
+ * sheet is short, and the cleaning is not written for long input. Other attribute values are not
+ * capped, because path data is long and is checked for remote loads like any other value.
+ */
+function cleanStyleText(text: string): string {
+  if (text.length > MAX_STYLE_TEXT_LENGTH) {
+    throw new SvgRejectedError(`style text is longer than ${MAX_STYLE_TEXT_LENGTH} characters`)
+  }
+  return cleanCss(text)
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +363,21 @@ function attributesOf(element: Element): Attr[] {
 function targetsLinkOrHandler(element: Element): boolean {
   const target = normalizeLink(element.getAttribute('attributeName') ?? '')
   const name = localNameOf(target)
-  return name === 'href' || name === 'src' || name.startsWith('on')
+  return name === 'href' || name === 'src' || name === 'base' || name.startsWith('on')
+}
+
+/** The attributes that carry the value an animation sets. */
+const ANIMATED_VALUE_ATTRIBUTES: ReadonlySet<string> = new Set(['to', 'from', 'by', 'values'])
+
+/**
+ * Whether an animation sets a value the style cleaning would change: a remote load, or a declaration
+ * that holds one. A browser applies the value an animation sets whatever the animated attribute is, so
+ * such an animation is removed whatever it targets.
+ */
+function setsRemoteValue(element: Element): boolean {
+  return attributesOf(element).some(
+    (attribute) => ANIMATED_VALUE_ATTRIBUTES.has(attribute.name) && cleanCss(attribute.value) !== attribute.value,
+  )
 }
 
 /** The namespace the reserved `xml` prefix is bound to. */
@@ -371,7 +394,7 @@ function isRemovedElement(element: Element): boolean {
   if (element.namespaceURI !== SVG_NAMESPACE) return true
   const name = element.localName
   if (!ALLOWED_ELEMENTS.has(name)) return true
-  if (ANIMATION_ELEMENTS.has(name) && targetsLinkOrHandler(element)) return true
+  if (ANIMATION_ELEMENTS.has(name) && (targetsLinkOrHandler(element) || setsRemoteValue(element))) return true
   if (name === 'style') return !STYLE_PARENT_ELEMENTS.has((element.parentNode as Element).localName)
   if (name !== 'use') return false
   const links = attributesOf(element).filter(isLinkAttribute)
@@ -398,7 +421,8 @@ function cleanAttribute(element: Element, attribute: Attr, budget: AttributeBudg
   // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
   // can spell `url(` without the raw text ever containing it. A value is one declaration's value, so
   // one that holds `image-set(` is dropped whole.
-  attribute.value = CSS_IMAGE_SET_REGEX.test(attribute.value) ? '' : cleanCss(attribute.value)
+  const cleaned = attribute.name === 'style' ? cleanStyleText(attribute.value) : cleanCss(attribute.value)
+  attribute.value = CSS_REMOTE_FUNCTION_REGEX.test(attribute.value) ? '' : cleaned
 }
 
 /**
@@ -415,7 +439,7 @@ function cleanStyleContent(element: Element): void {
     .map((child) => (child as CharacterData).data)
     .join('')
   Array.from(element.childNodes).forEach((child) => element.removeChild(child))
-  const cleaned = cleanCss(text)
+  const cleaned = cleanStyleText(text)
   if (cleaned === '' || cleaned.includes('<')) return
   element.appendChild((element.ownerDocument as Document).createTextNode(cleaned))
 }

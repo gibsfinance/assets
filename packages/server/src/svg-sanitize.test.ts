@@ -546,12 +546,88 @@ describe('image-set, size caps and adversarial input (review of the third round)
     }
   })
 
-  it('rejects style text over the cap and a document with too many attributes', async () => {
-    expect(() => cleanCss('a'.repeat(MAX_STYLE_TEXT_LENGTH + 1))).toThrow(SvgRejectedError)
+  it('rejects style element text over the cap and a document with too many attributes', async () => {
     await rejects(wrap(`<style>${'a'.repeat(MAX_STYLE_TEXT_LENGTH + 1)}</style>`)).toBeInstanceOf(SvgRejectedError)
+    await rejects(wrap(`<rect style="${'a'.repeat(MAX_STYLE_TEXT_LENGTH + 1)}"/>`)).toBeInstanceOf(SvgRejectedError)
     const crowded = `<rect ${Array.from({ length: 1_000 }, (_, i) => `a${i}="1"`).join(' ')}/>`.repeat(
       MAX_ATTRIBUTES / 1_000 + 1,
     )
     await rejects(wrap(crowded)).toBeInstanceOf(SvgRejectedError)
+  })
+})
+
+describe('fourth review: image functions, long path data, animated bases (findings 3 to 5)', () => {
+  // Finding 3: a bare-string image() loads a remote file as image-set() does; the whole declaration goes.
+  it.each([
+    'background:image("https://evil.example/a.png")',
+    "background:-webkit-image('https://evil.example/a.png')",
+    'background:cross-fade(url(#a), "https://evil.example/b.png" 50%)',
+    'background:element(#evil)',
+    'background:IMAGE("//evil.example/a.png")',
+  ])('drops a declaration that holds %s', (declaration) => {
+    const output = cleanCss(`a{${declaration};fill:red}`)
+    expect(output).not.toContain('evil.example')
+    expect(output).toBe('a{;fill:red}')
+  })
+
+  it('drops an image() declaration from a style attribute and from a presentation attribute', async () => {
+    const output = await clean(
+      wrap(
+        '<rect style="background:image(&quot;https://evil.example/a.png&quot;)" fill="image(\'//evil.example/b\')"/>',
+      ),
+    )
+    expect(output).not.toContain('evil.example')
+  })
+
+  it('drops an image() declaration spelled with a style sheet escape', () => {
+    expect(cleanCss('a{background:ima\\67 e("https://evil.example/a.png")}')).not.toContain('evil.example')
+  })
+
+  // Finding 4: the length cap is for style text only. Long path data is still a valid logo.
+  it('keeps long path data, which is not style text and is capped only by the document size', async () => {
+    const path = `M0 0${' L1 1'.repeat(60_000)}`
+    expect(path.length).toBeGreaterThan(MAX_STYLE_TEXT_LENGTH)
+    const output = await clean(wrap(`<path d="${path}"/>`))
+    expect(output).toContain(`d="${path}"`)
+  })
+
+  it('still checks a remote load in a long presentation attribute', async () => {
+    const output = await clean(wrap(`<rect fill="${'0'.repeat(MAX_STYLE_TEXT_LENGTH)}url(https://evil.example/x)"/>`))
+    expect(output).not.toContain('evil.example')
+  })
+
+  // Finding 5: an animation that sets xml:base rewrites the base address of the document.
+  it.each(['xml:base', 'base', 'xlink:base'])('removes an animation whose attributeName is %s', async (name) => {
+    const output = await clean(wrap(`<g id="x"><animate attributeName="${name}" to="https://evil.example/"/></g>`))
+    expect(output).not.toContain('animate')
+    expect(output).not.toContain('evil.example')
+  })
+
+  // Finding 5: an animation whose value would fail the style check is dropped, whatever it targets.
+  it.each([
+    ['style', "background:image-set('//evil.example/a.png' 1x)"],
+    ['style', 'fill:url(https://evil.example/x)'],
+    ['fill', 'url(https://evil.example/x)'],
+  ])('removes an animation of %s whose value is %s', async (attributeName, value) => {
+    const output = await clean(wrap(`<rect><animate attributeName="${attributeName}" to="${value}"/></rect>`))
+    expect(output).not.toContain('evil.example')
+    expect(output).not.toContain('<animate')
+  })
+
+  it('removes an animation whose values list holds a remote load', async () => {
+    const output = await clean(
+      wrap('<rect><animate attributeName="fill" values="red;url(https://evil.example/x);blue"/></rect>'),
+    )
+    expect(output).not.toContain('<animate')
+  })
+
+  it('keeps an animation of a plain or local value', async () => {
+    const output = await clean(
+      wrap(
+        '<rect><animate attributeName="fill" to="red" values="red;#blue"/><animate attributeName="fill" from="url(#grad)"/></rect>',
+      ),
+    )
+    expect(output).toContain('<animate attributeName="fill" to="red"')
+    expect(output).toContain('from="url(#grad)"')
   })
 })

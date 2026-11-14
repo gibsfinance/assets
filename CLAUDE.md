@@ -278,8 +278,9 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
   512 KB (streamed, dropped as it passes the cap), one 5 s deadline per request counted from its arrival (it covers
-  the wait in line and the download; a request whose deadline passes in line leaves it without downloading and is
-  not remembered as a failure), 4 downloads at once with a line of 16, sanitized with
+  the wait in line, the download and the sanitizing. A deadline that passes in line or while the bytes are sanitized is
+  load shedding: `REMOTE_IMAGE_SHED`, and no failure is remembered. A download the deadline aborts, a non-success
+  answer, an oversized or empty body and a refused file are the remote's failures and are remembered 60 s), 4 downloads at once with a line of 16, sanitized with
   `sanitizeImage` before use, kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
   librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
   request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):
@@ -291,7 +292,7 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   Stored vector images pass `sanitizeImage`, so this is the second wall. The vector sanitizer (`svg-sanitize.ts`) reads
   the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
   elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
-  (decoded the way a browser reads it), cleans `@import`, `image-set()` and `url()` (also an unterminated one) in styles and in every attribute value
+  (decoded the way a browser reads it), cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
   (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes the tree back; there is no
   pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
   root throws `SvgRejectedError`; `insertImage` then logs it and returns null, so nothing is stored
@@ -299,10 +300,13 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   GIF, WebP and AVIF are re-encoded (GIF and WebP with `animated: true`, so their frames survive; sharp reads only the first
   frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
   throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
-  so APNG is refused, not flattened. A style text or attribute value over `MAX_STYLE_TEXT_LENGTH` (256 KiB) or a document over `MAX_ATTRIBUTES` (50,000)
-  is rejected, and a declaration holding `image-set(` is dropped whole (no balanced-parenthesis matching). The vector
-  change was checked on the 4,441 files of the smoldapp sample: 4,432 give byte-identical output from the old and new
-  sanitizer; the other 9 are files of 1.1 MB to 5.1 MB (above the 512 KB image cap) that the caps now reject.
+  so APNG is refused, not flattened. A style element's text or a `style` attribute over `MAX_STYLE_TEXT_LENGTH` (256 KiB), or a document over
+  `MAX_ATTRIBUTES` (50,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
+  check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
+  or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
+  changes were checked on the 4,441 files of the smoldapp sample against the sanitizer before the review round: 4,438
+  give byte-identical output. The other 3 (3 to 4 MB each, about 97,000 attributes apiece) are refused by
+  `MAX_ATTRIBUTES`, which the older sanitizer did not have.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
