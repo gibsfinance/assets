@@ -1,3 +1,4 @@
+import { mkdtempSync, readFileSync } from 'node:fs'
 import * as fileSystem from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -44,6 +45,8 @@ const okResanitize = {
   skipped: 0,
   rejected: 0,
   missingFiles: 0,
+  legacyExtensionRows: 0,
+  rewrittenHashes: [] as string[],
   rejectedExamples: [],
   ok: true,
 }
@@ -208,6 +211,47 @@ describe('runImagesCommand', () => {
 
     expect(exitCode).toBe(1)
     expect(operations.resanitizeImages).toHaveBeenCalledWith({ dryRun: false, batchSize: 5, sleepMs: 20 })
+  })
+
+  it('writes the hash of each rewritten row to --changed-list as it is rewritten', async () => {
+    const { operations, output } = setup()
+    operations.resanitizeImages = vi.fn(async (options) => {
+      options.onRewritten?.('hash-one')
+      options.onRewritten?.('hash-two')
+      return { ...okResanitize, dryRun: false, rewritten: 2, rewrittenHashes: ['hash-one', 'hash-two'] }
+    })
+    const lines: [string, string][] = []
+
+    await runImagesCommand(['resanitize', '--no-dry-run', '--changed-list', '/tmp/changed.txt'], {
+      operations,
+      output,
+      appendLine: (path, line) => lines.push([path, line]),
+    })
+
+    expect(lines).toEqual([
+      ['/tmp/changed.txt', 'hash-one'],
+      ['/tmp/changed.txt', 'hash-two'],
+    ])
+  })
+
+  it('appends a line to a real file by default', async () => {
+    const { operations, output } = setup()
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'changed-list-')), 'changed.txt')
+    operations.resanitizeImages = vi.fn(async (options) => {
+      options.onRewritten?.('hash-a')
+      options.onRewritten?.('hash-b')
+      return okResanitize
+    })
+
+    await runImagesCommand(['resanitize', '--changed-list', file], { operations, output })
+
+    expect(readFileSync(file, 'utf8')).toBe('hash-a\nhash-b\n')
+  })
+
+  it('passes no callback without --changed-list', async () => {
+    const { operations, output } = setup()
+    await runImagesCommand(['resanitize'], { operations, output })
+    expect(vi.mocked(operations.resanitizeImages).mock.calls[0][0]).not.toHaveProperty('onRewritten')
   })
 
   it('refuses copy without both stores named', async () => {

@@ -214,7 +214,7 @@ const REFRESH_UNAUTHORIZED_RESPONSE = {
 const IMAGE_RESPONSE = {
   '200': {
     description:
-      "Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for /image/direct/{hash}), x-resize (original or variant), x-uri (source when known). Every image response also carries content-security-policy (default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox) and x-content-type-options: nosniff, so an image opened directly in a browser cannot run a script. A request that carries plate parameters (bg, shape or contrast) always uses the shorter lifetime, on every route, even when no plate was needed, because its answer depends on how Gib draws plates. When a plate was asked for and could not be produced (the logo cannot be measured or drawn), the plain image is sent with cache-control: no-store.",
+      "Image content. Headers: cache-control (public, max-age=86400 with a seven-day stale-while-revalidate and stale-if-error window; year-long immutable for a raster image at /image/direct/{hash}; a vector image there uses the ordinary lifetime), x-resize (original or variant), x-uri (source when known). Every image response also carries content-security-policy (default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox) and x-content-type-options: nosniff, so an image opened directly in a browser cannot run a script. A request that carries plate parameters (bg, shape or contrast) always uses the shorter lifetime, on every route, even when no plate was needed, because its answer depends on how Gib draws plates. When a plate was asked for and could not be produced (the logo cannot be measured or drawn), the plain image is sent with cache-control: no-store.",
     content: {
       'image/*': { schema: { type: 'string' as const, format: 'binary' } },
     },
@@ -749,12 +749,14 @@ export const openapi = {
         tags: ['Image Endpoints'],
         summary: 'Image by content hash — content-addressed access',
         description:
-          'The hash in the path is the hash of the bytes this route serves, so the response at a given ' +
-          'address can never change — a resized or transcoded variant of it is equally fixed. Because of ' +
-          'that, this is the one route with a year-long cache: cache-control: public, max-age=31536000, ' +
-          'immutable, in place of the shorter, configured lifetime every other route serves. Callers ' +
-          'making many requests for the same set of images should cache through this route rather than ' +
-          're-fetching by chain and address.',
+          'The hash in the path names one download, so the response at a given address does not change ' +
+          'for a raster image — a resized or transcoded variant of it is equally fixed. Because of ' +
+          'that, a raster image here has a year-long cache: cache-control: public, max-age=31536000, ' +
+          'immutable, in place of the shorter, configured lifetime every other route serves. A vector ' +
+          'image (a stored .svg) gets the ordinary lifetime instead, because the operator command ' +
+          '`images resanitize` can rewrite its bytes under the same address when the sanitizer is fixed. ' +
+          'Callers making many requests for the same set of images should cache through this route rather ' +
+          'than re-fetching by chain and address.',
         'x-example': '/image/direct/048d63e01bc0c7079394113db00275c0001b679cd7b8749d17ee87c2efb32a78',
         parameters: [
           {
@@ -773,7 +775,7 @@ export const openapi = {
           ...IMAGE_RESPONSE,
           '200': {
             ...IMAGE_RESPONSE['200'],
-            description: `${IMAGE_RESPONSE['200'].description} cache-control: public, max-age=31536000, immutable.`,
+            description: `${IMAGE_RESPONSE['200'].description} cache-control: public, max-age=31536000, immutable for a raster image; the ordinary lifetime for a vector image.`,
           },
         },
       },

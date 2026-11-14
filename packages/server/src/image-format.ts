@@ -42,6 +42,9 @@ export const looksLikeSvg = (image: Buffer): boolean => {
   return SVG_ROOT_REGEX.test(head.trimStart())
 }
 
+/** An older spelling of `.svg` that some stored rows carry. Served and sanitized as `.svg`. */
+export const LEGACY_VECTOR_EXT = '.svg+xml'
+
 /**
  * The extensions an image may be stored and served under. Every one is a picture format. The read
  * path hands a stored extension to Express to choose the `content-type`, so an extension outside
@@ -63,7 +66,7 @@ export const SERVABLE_IMAGE_EXTS: ReadonlySet<string> = new Set([
   '.heif',
   '.jxl',
   '.svg',
-  '.svg+xml',
+  LEGACY_VECTOR_EXT,
 ])
 
 /**
@@ -71,7 +74,12 @@ export const SERVABLE_IMAGE_EXTS: ReadonlySet<string> = new Set([
  * when it is a picture format, else `.bin`, which Express answers as `application/octet-stream`.
  * A row stored before the allow-list existed may carry any extension, so the read path checks too.
  */
-export const servableExt = (ext: string): string => (SERVABLE_IMAGE_EXTS.has(ext) ? ext : '.bin')
+export const servableExt = (ext: string): string => {
+  // Express has no media type for `.svg+xml`, so it would answer octet-stream and a browser would
+  // not draw the image. It is the same format as `.svg`.
+  if (ext === LEGACY_VECTOR_EXT) return '.svg'
+  return SERVABLE_IMAGE_EXTS.has(ext) ? ext : '.bin'
+}
 
 /**
  * Identify an image's extension from its bytes, falling back to an SVG content

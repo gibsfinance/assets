@@ -458,6 +458,13 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   await respondWithImage({ req, res, img, params })
 }
 
+/**
+ * The cache lifetime for `/image/direct/<hash>`. Immutable for a year only when the stored bytes
+ * can never be rewritten by our own tools, which is every row except a vector one (see
+ * `resanitizeImages`, which rewrites vector bytes and keeps the address).
+ */
+export const directRoutePolicy = (ext: string): CachePolicy => (SVG_EXTS.has(ext) ? 'mutable' : 'content-addressed')
+
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   // The path extension here is a SOURCE filter (hash.svg → serve only if the
   // stored image is an SVG), not an output conversion.
@@ -482,14 +489,14 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     return next(httpErrors.NotFound('image not available under the requested license'))
   }
   const params = parseResizeParams({ query: req.query })
-  // Content-addressed: the key in the URL is derived from the downloaded bytes (and their
-  // source address), so a new download never lands on an old key. A year-long, immutable cache
-  // is honest here in a way it would not be for a token or chain image, which can get new
-  // content at the same address later. Both the un-resized original
-  // below and any resized/transcoded variant maybeResize serves carry the same
-  // policy — a caller who asks for a resized hash-addressed image gets the same
-  // permanent-cache guarantee as one who asks for the original.
-  await respondWithImage({ req, res, img: image, params, routePolicy: 'content-addressed' })
+  // The key in the URL is derived from the downloaded bytes (and their source address), so a new
+  // download never lands on an old key. A year-long, immutable cache is honest for a raster row,
+  // which no tool of ours rewrites. It is not honest for a vector row: `images resanitize` rewrites
+  // a vector row's bytes under the same key whenever the sanitizer is fixed, and a cache holding
+  // the old bytes for a year would keep serving what the fix removed. Vector rows therefore get the
+  // ordinary lifetime. Both the un-resized original and any resized or transcoded variant
+  // maybeResize serves carry the same policy.
+  await respondWithImage({ req, res, img: image, params, routePolicy: directRoutePolicy(image.ext) })
 }
 
 /**
@@ -756,12 +763,10 @@ export const sendImage = (
   // or strip them. Only the root element is ever rewritten — see
   // stripRootSvgDimensions.
   //
-  // The content-addressed route is deliberately excluded. Its contract is that one path
-  // keeps returning the stored bytes, which is what makes a year-long immutable lifetime safe
-  // to promise. (The key in the path is not the sha256 of those bytes; `image.content_sha256`
-  // is that digest.) Rewriting the markup there would change what a path returns, and the
-  // year-long cache would carry the change well past any correction. So the hash route serves
-  // exactly what was stored.
+  // A response promised for a year is excluded: its contract is that one path keeps returning the
+  // stored bytes, and rewriting the markup would change what the path returns. No vector row is
+  // served that way now (see `directRoutePolicy`), so this guard is a safeguard for a policy
+  // passed in by a future route.
   const rewritable = SVG_EXTS.has(img.ext) && cachePolicy !== 'content-addressed'
   // `classifyImageServe` answered 'serve' only because there are bytes.
   const content = rewritable ? stripRootSvgDimensions(img.content!) : img.content

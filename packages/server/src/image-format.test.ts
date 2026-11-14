@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
+import express from 'express'
+import request from 'supertest'
 import { detectImageExt, looksLikeSvg, servableExt, SERVABLE_IMAGE_EXTS } from './image-format'
 
 const buf = (text: string) => Buffer.from(text, 'utf-8')
@@ -115,7 +117,14 @@ describe('detectImageExt', () => {
 
 describe('servableExt', () => {
   it('keeps every picture extension', () => {
-    for (const ext of SERVABLE_IMAGE_EXTS) expect(servableExt(ext)).toBe(ext)
+    for (const ext of SERVABLE_IMAGE_EXTS.difference(new Set(['.svg+xml']))) expect(servableExt(ext)).toBe(ext)
+  })
+
+  it('serves the older .svg+xml spelling as .svg, because Express has no media type for it', async () => {
+    expect(servableExt('.svg+xml')).toBe('.svg')
+    const app = express().get('/', (_req, res) => void res.contentType(servableExt('.svg+xml')).send('<svg/>'))
+    const response = await request(app).get('/')
+    expect(response.headers['content-type']).toMatch(/^image\/svg\+xml/)
   })
 
   it('turns an extension that is not a picture format into one served as plain bytes', () => {

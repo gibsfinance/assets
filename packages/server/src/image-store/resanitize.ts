@@ -16,18 +16,19 @@
  * - A row is changed only if it is still what was read (a guarded update), so a concurrent writer is
  *   never overwritten; such a row is counted as skipped and is picked up by the next run.
  */
-import { and, asc, eq, gt, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
 import { getDrizzle } from '../db/drizzle'
 import { unexportedBytesSql } from '../db/image-columns'
 import * as s from '../db/schema'
 import { log } from '../logger'
+import { LEGACY_VECTOR_EXT } from '../image-format'
 import { sanitizeSvgDocument } from '../svg-sanitize'
 import { DEFAULT_BATCH_SIZE, EXAMPLE_LIMIT, type BackfillDependencies } from './backfill'
 import { getImageStore, hashBytes } from './index'
 import { loadImageBytes } from './image-bytes'
 
-/** The extension of the rows this operation looks at. */
-const VECTOR_EXTENSION = '.svg'
+/** The extensions of the rows this operation looks at: `.svg`, and the older spelling some rows carry. */
+const VECTOR_EXTENSIONS = ['.svg', LEGACY_VECTOR_EXT]
 
 /** Options for {@link resanitizeImages}. */
 export type ResanitizeOptions = BackfillDependencies & {
@@ -37,6 +38,11 @@ export type ResanitizeOptions = BackfillDependencies & {
   batchSize?: number
   /** Pause between batches, in milliseconds. Defaults to 0. */
   sleepMs?: number
+  /**
+   * Called with the `image_hash` of each row the moment it is rewritten, so an operator's list is
+   * complete even when the run stops part way.
+   */
+  onRewritten?: (imageHash: string) => void
 }
 
 /** What {@link resanitizeImages} did. */
@@ -57,6 +63,14 @@ export type ResanitizeSummary = {
   rejected: number
   /** Rows whose file is missing from the store. They are left as they are. */
   missingFiles: number
+  /** Rows examined whose extension is the older `.svg+xml` spelling. They are sanitized like any other. */
+  legacyExtensionRows: number
+  /**
+   * The `image_hash` of every row rewritten, in the order they were rewritten. Their addresses
+   * (`/image/direct/<hash>`) may sit in edge caches, so an operator asks the cache to drop them.
+   * Empty in a dry run.
+   */
+  rewrittenHashes: string[]
   /** Example `image_hash` values of rejected rows, at most {@link EXAMPLE_LIMIT}. */
   rejectedExamples: string[]
   /** True when no row was rejected and no file was missing. */
@@ -65,6 +79,7 @@ export type ResanitizeSummary = {
 
 type VectorRow = {
   imageHash: string
+  ext: string
   content: Buffer | null
   contentSha256: string | null
   holdsDatabaseCopy: boolean
@@ -87,6 +102,7 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
     dryRun = true,
     batchSize = DEFAULT_BATCH_SIZE,
     sleepMs = 0,
+    onRewritten = () => undefined,
   } = options
   const summary: ResanitizeSummary = {
     dryRun,
@@ -97,6 +113,8 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
     skipped: 0,
     rejected: 0,
     missingFiles: 0,
+    legacyExtensionRows: 0,
+    rewrittenHashes: [],
     rejectedExamples: [],
     ok: true,
   }
@@ -105,6 +123,7 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
     const rows: VectorRow[] = await database
       .select({
         imageHash: s.image.imageHash,
+        ext: s.image.ext,
         content: unexportedBytesSql,
         contentSha256: s.image.contentSha256,
         holdsDatabaseCopy: dsql<boolean>`${s.image.content} IS NOT NULL`,
@@ -112,7 +131,7 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
       .from(s.image)
       .where(
         and(
-          eq(s.image.ext, VECTOR_EXTENSION),
+          inArray(s.image.ext, VECTOR_EXTENSIONS),
           gt(s.image.imageHash, cursor),
           or(
             isNotNull(s.image.contentSha256),
@@ -127,6 +146,11 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
       summary.examined += 1
       const outcome = await resanitizeRow(row, { database, store, dryRun })
       summary[outcome] += 1
+      if (row.ext === LEGACY_VECTOR_EXT) summary.legacyExtensionRows += 1
+      if (outcome === 'rewritten') {
+        summary.rewrittenHashes.push(row.imageHash)
+        onRewritten(row.imageHash)
+      }
       // A rewritten row, or one that could not be rewritten, was one the sanitizer would change.
       if (outcome === 'rewritten' || outcome === 'skipped') summary.changed += 1
       if (outcome === 'rejected' && summary.rejectedExamples.length < EXAMPLE_LIMIT) {

@@ -20,7 +20,9 @@ Responses that an operator rebuilds with `refresh` carry `cache-control: no-stor
 
 ## Content-addressed images
 
-`/image/direct/{imageHash}` is content-addressed. The hash in the path is the hash of the bytes it serves, so those bytes can never change at that address. The route carries a one-year `immutable` lifetime for the original and for any resized or converted variant of it.
+`/image/direct/{imageHash}` is content-addressed. The hash in the path names one download, so a raster image (PNG, JPEG, WebP and the like) never changes at that address. The route carries a one-year `immutable` lifetime for the original and for any resized or converted variant of a raster image.
+
+A vector image (SVG) at that address uses the ordinary lifetime instead. The operator command `images resanitize` can rewrite the bytes of a vector image under the same address when the sanitizer is fixed, and a cache that held the old bytes for a year would keep serving what the fix removed.
 
 If you show the same set of images again and again, take the hash from the `logoURI` of a token list and request `/image/direct/{imageHash}`. Do not fetch by chain and address each time.
 

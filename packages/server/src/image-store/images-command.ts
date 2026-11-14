@@ -5,6 +5,7 @@
  * `bin/images.ts` only hands `process.argv` to {@link runImagesCommand} and sets the exit code
  * from what it returns. Parsing and dispatch live here so they can be tested.
  */
+import { appendFileSync } from 'node:fs'
 import yargs from 'yargs'
 import config from '../../config'
 import { copyBlobs, DEFAULT_COPY_CONCURRENCY, type CopySummary } from './copy'
@@ -30,7 +31,12 @@ export type ImagesOperations = {
   importImages: (options: { batchSize: number; sleepMs: number }) => Promise<ImportSummary>
   collectGarbage: (options: { dryRun: boolean; gracePeriodMs: number }) => Promise<GarbageCollectionSummary>
   copyImages: (options: { from: string; to: string; concurrency: number }) => Promise<CopySummary>
-  resanitizeImages: (options: { dryRun: boolean; batchSize: number; sleepMs: number }) => Promise<ResanitizeSummary>
+  resanitizeImages: (options: {
+    dryRun: boolean
+    batchSize: number
+    sleepMs: number
+    onRewritten?: (imageHash: string) => void
+  }) => Promise<ResanitizeSummary>
 }
 
 /** Where the command's output and errors go. Tests collect them. */
@@ -73,9 +79,18 @@ const realOutput: ImagesCommandOutput = {
  */
 export async function runImagesCommand(
   args: string[],
-  dependencies: { operations?: ImagesOperations; output?: ImagesCommandOutput } = {},
+  dependencies: {
+    operations?: ImagesOperations
+    output?: ImagesCommandOutput
+    /** Adds one line to a file. Tests pass a fake; by default it appends to the file on disk. */
+    appendLine?: (path: string, line: string) => void
+  } = {},
 ): Promise<number> {
-  const { operations = realOperations, output = realOutput } = dependencies
+  const {
+    operations = realOperations,
+    output = realOutput,
+    appendLine = (path, line) => appendFileSync(path, `${line}\n`),
+  } = dependencies
   let exitCode = 0
   const report = (summary: object) => output.print(JSON.stringify(summary, null, 2))
 
@@ -195,18 +210,26 @@ export async function runImagesCommand(
       )
       .command(
         'resanitize',
-        'run the current vector image sanitizer over stored vector images and rewrite those that change; a dry run unless --no-dry-run; never deletes a file; exits 1 when a row is refused or a file is missing',
+        'run the current vector image sanitizer over stored vector images and rewrite those that change; a dry run unless --no-dry-run; never deletes a file; lists the rewritten image hashes (also to --changed-list) so their cached addresses can be dropped; exits 1 when a row is refused or a file is missing',
         (command) =>
-          batchOptions(command).option('dry-run', {
-            type: 'boolean',
-            default: true,
-            describe: 'report what would change and change nothing; pass --no-dry-run to rewrite',
-          }),
+          batchOptions(command)
+            .option('dry-run', {
+              type: 'boolean',
+              default: true,
+              describe: 'report what would change and change nothing; pass --no-dry-run to rewrite',
+            })
+            .option('changed-list', {
+              type: 'string',
+              describe:
+                'file that gets the image hash of each rewritten row, one per line, as it is rewritten; ask the edge cache to drop /image/direct/<hash> for each',
+            }),
         async (argv) => {
+          const changedList = argv['changed-list'] as string | undefined
           const summary = await operations.resanitizeImages({
             dryRun: argv['dry-run'] as boolean,
             batchSize: argv['batch-size'] as number,
             sleepMs: argv['sleep-ms'] as number,
+            ...(changedList ? { onRewritten: (imageHash: string) => appendLine(changedList, imageHash) } : {}),
           })
           report(summary)
           if (!summary.ok) exitCode = 1

@@ -403,7 +403,8 @@ describe('image handlers', () => {
       const img = makeImage({ content: Buffer.from('<svg/>'), ext: '.svg+xml' })
       sendImage(res, img, 'save')
 
-      expect(res.contentType).toHaveBeenCalledWith('.svg+xml')
+      // Express has no media type for the older spelling, so it is sent as .svg (see servableExt).
+      expect(res.contentType).toHaveBeenCalledWith('.svg')
       expect(res.send).toHaveBeenCalled()
     })
 
@@ -1235,6 +1236,35 @@ describe('image handlers', () => {
         'cache-control',
         'public, max-age=86400, stale-while-revalidate=604800, stale-if-error=604800',
       )
+    })
+
+    // `images resanitize` rewrites vector bytes under an unchanged address, so a year-long immutable
+    // answer would keep serving bytes the sanitizer has since removed.
+    it.each(['.svg', '.svg+xml'])('serves a %s row with the ordinary lifetime, never immutable', async (ext) => {
+      const img = makeImage({ ext, content: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'.padEnd(300, ' ')) })
+      const chain = makeDrizzleChain([img])
+      vi.mocked(getDrizzle).mockReturnValue(chain as any)
+      vi.mocked(maybeResize).mockResolvedValue(false as any)
+      const res = mockResponse()
+
+      await getImageByHash(mockRequest({ params: { imageHash: 'abc123' }, query: {} }), res, vi.fn())
+
+      expect(res.set).not.toHaveBeenCalledWith('cache-control', 'public, max-age=31536000, immutable')
+      expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('stale-while-revalidate'))
+    })
+
+    it('asks maybeResize for the ordinary policy when the row is a vector, so a variant of it is not immutable either', async () => {
+      const img = makeImage({ ext: '.svg', content: Buffer.from('<svg/>'.padEnd(300, ' ')) })
+      vi.mocked(getDrizzle).mockReturnValue(makeDrizzleChain([img]) as any)
+      vi.mocked(maybeResize).mockResolvedValue(true as any)
+
+      await getImageByHash(
+        mockRequest({ params: { imageHash: 'abc123' }, query: { as: 'webp' } }),
+        mockResponse(),
+        vi.fn(),
+      )
+
+      expect(maybeResize).toHaveBeenCalledWith(expect.objectContaining({ cachePolicy: 'mutable' }))
     })
 
     it('asks maybeResize for the content-addressed cache policy, so a resized variant is equally immutable', async () => {

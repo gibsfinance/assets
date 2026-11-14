@@ -51,7 +51,7 @@ The sanitizer runs when an image is stored. An image stored before a security fi
 
 ```sh
 yarn workspace server run start:images resanitize                # dry run: reports counts only
-yarn workspace server run start:images resanitize --no-dry-run   # rewrites
+yarn workspace server run start:images resanitize --no-dry-run --changed-list rewritten-hashes.txt   # rewrites
 ```
 
 - A rewritten image gets a new file in the store, and its row gets the new digest and length. Its public address (`image_hash`) does not change.
@@ -59,6 +59,9 @@ yarn workspace server run start:images resanitize --no-dry-run   # rewrites
 - The old file stays in the store. Run `images gc` later to remove it, after its grace period.
 - It is safe to stop and to run again. A second run reports every image as unchanged.
 - A row the sanitizer refuses (the file is not well formed) stays as it is and is listed in `rejectedExamples`. Check those rows by hand.
+- It reads rows stored as `.svg` and rows stored as `.svg+xml`, an older spelling of the same format. The summary field `legacyExtensionRows` counts the second kind. Gib serves both as `image/svg+xml`. It does not rename the extension, because the extension is part of the key that makes `image_hash`.
+- The summary lists the `image_hash` of every rewritten row in `rewrittenHashes`. With `--changed-list <path>`, the command also appends each hash to that file, one per line, as it rewrites the row, so the list is complete even if the run stops.
+- **Drop the old copies from your edge cache.** Gib serves a vector image at `/image/direct/<hash>` with the ordinary lifetime, not a year. The ordinary lifetime on `gib.show` is one day, plus a seven-day window that serves the old copy while the cache refreshes. A cache can therefore hold the old bytes for up to eight days. To close that window, ask your content delivery network to drop `/image/direct/<hash>` for each hash in the list. On Cloudflare, give the full addresses to the cache purge by URL call, 30 at a time.
 - Use `--batch-size` and `--sleep-ms` to leave the database room for other work.
 
 ## Image bytes in the database
