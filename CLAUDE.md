@@ -277,10 +277,13 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
-  512 KB (streamed, dropped as it passes the cap), 5 s timeout, 4 downloads at once with a line of 16, sanitized with
+  512 KB (streamed, dropped as it passes the cap), one 5 s deadline per request counted from its arrival (it covers
+  the wait in line and the download; a request whose deadline passes in line leaves it without downloading and is
+  not remembered as a failure), 4 downloads at once with a line of 16, sanitized with
   `sanitizeImage` before use, kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
   librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
-  request), so a remote vector cannot make the server fetch more. `sprite.ts` still has its own fetch for link rows.
+  request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):
+  `sprite.ts` sends a sheet with a cell lost to `REMOTE_IMAGE_SHED` as `no-store`, not for `CACHE_SECONDS`.
 - Image security headers: every response that carries image bytes (`sendImage`, `sendVariant`, so plated output
   too, and the sprite sheet) sets `Content-Security-Policy: default-src 'none'; img-src data:; style-src
   'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff` through `setImageSecurityHeaders` in

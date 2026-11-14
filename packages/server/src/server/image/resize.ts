@@ -28,7 +28,7 @@ import { setImageSecurityHeaders } from './headers'
 import { createRateLimiter, DEFAULT_WINDOW_MS, type RateLimiter } from './rate-limit'
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
 import { isLinkOnlyHost } from '../../link-only-hosts'
-import { sharedRemoteImages, type RemoteImageLoader } from './remote-image'
+import { REMOTE_IMAGE_SHED, sharedRemoteImages, type RemoteImageLoader } from './remote-image'
 import {
   VISIBILITY_SAMPLE_SIDE,
   type Plate,
@@ -733,7 +733,9 @@ async function loadLinkContent({
   // honestly instead of serving a converted copy of it.
   if (isLinkOnlyHost(img.uri)) return null
   if (params.plate && !canSpendPlate(budgets)) return OVER_BUDGET
-  return remoteImages.load({ uri: img.uri, ext: img.ext })
+  const loaded = await remoteImages.load({ uri: img.uri, ext: img.ext })
+  // A request turned away for load reads as an image that cannot be had; this route never caches it.
+  return loaded === REMOTE_IMAGE_SHED ? null : loaded
 }
 
 /**

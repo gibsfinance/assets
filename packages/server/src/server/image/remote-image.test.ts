@@ -4,6 +4,7 @@ import {
   createRemoteImageLoader,
   REMOTE_IMAGE_CACHE_TTL_MS,
   REMOTE_IMAGE_MAX_BYTES,
+  REMOTE_IMAGE_SHED,
   type RemoteImageLoaderOptions,
 } from './remote-image'
 
@@ -128,7 +129,7 @@ describe('createRemoteImageLoader', () => {
   it('accepts a body exactly as large as the cap', async () => {
     const body = () => new Response(new Uint8Array(4096))
     const { loader } = setup({ body, maxBytes: 4096, sanitize: async (bytes) => bytes })
-    expect((await loader.load({ uri: 'https://cdn.example/exact', ext: '.png' }))?.length).toBe(4096)
+    expect(((await loader.load({ uri: 'https://cdn.example/exact', ext: '.png' })) as Buffer).length).toBe(4096)
   })
 
   it.each([
@@ -166,12 +167,12 @@ describe('createRemoteImageLoader', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
-  it('answers null, and does not fetch, when too many downloads are running or waiting', async () => {
+  it('answers shed, not null, and does not fetch, when too many downloads are running or waiting', async () => {
     const gate = createConcurrencyGate({ limit: 1, maxQueue: 0 })
     let release = () => {}
     const holding = gate.run(() => new Promise<void>((resolve) => (release = resolve)))
     const { loader, fetchImpl } = setup({ gate })
-    expect(await loader.load({ uri: 'https://cdn.example/busy', ext: '.png' })).toBeNull()
+    expect(await loader.load({ uri: 'https://cdn.example/busy', ext: '.png' })).toBe(REMOTE_IMAGE_SHED)
     expect(fetchImpl).not.toHaveBeenCalled()
     release()
     await holding
@@ -230,9 +231,68 @@ describe('createRemoteImageLoader', () => {
       const loader = createRemoteImageLoader()
       const bytes = await loader.load({ uri: 'https://cdn.example/one.png', ext: '.png' })
       // Re-encoded by the real sanitizer: still a png.
-      expect(bytes?.subarray(1, 4).toString()).toBe('PNG')
+      expect((bytes as Buffer).subarray(1, 4).toString()).toBe('PNG')
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('one deadline from arrival (third review, finding 7)', () => {
+  it('turns away a request whose deadline passes in line, and never downloads for it', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    let release = () => {}
+    const holding = gate.run(() => new Promise<void>((resolve) => (release = resolve)))
+    const { loader, fetchImpl } = setup({ gate, timeoutMs: 30 })
+
+    const started = Date.now()
+    const outcome = await loader.load({ uri: 'https://cdn.example/queued', ext: '.png' })
+
+    // It leaves when its own deadline passes, not when the line finally reaches it.
+    expect(outcome).toBe(REMOTE_IMAGE_SHED)
+    expect(Date.now() - started).toBeLessThan(1_000)
+    release()
+    await holding
+    // The abandoned place in line is reached later and does not download.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(gate.active).toBe(0)
+    expect(gate.waiting).toBe(0)
+  })
+
+  it('does not remember a deadline passed in line as a failure of the address', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    let release = () => {}
+    const holding = gate.run(() => new Promise<void>((resolve) => (release = resolve)))
+    const { loader, fetchImpl } = setup({ gate, timeoutMs: 20 })
+    expect(await loader.load({ uri: 'https://cdn.example/again', ext: '.png' })).toBe(REMOTE_IMAGE_SHED)
+    release()
+    await holding
+    expect((await loader.load({ uri: 'https://cdn.example/again', ext: '.png' }))?.toString()).toBe('.png:logo')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts the time spent in line against the download, with one signal for both', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    const { loader, fetchImpl } = setup({ gate, timeoutMs: 5_000 })
+    await loader.load({ uri: 'https://cdn.example/a.png', ext: '.png' })
+    const signal = (fetchImpl.mock.calls[0] as unknown as [string, { signal: AbortSignal }])[1].signal
+    expect(signal.aborted).toBe(false)
+  })
+
+  it('remembers a download that is still running at the deadline as a failure of the address', async () => {
+    let downloads = 0
+    const hanging = ((_uri: string, init: { signal: AbortSignal }) => {
+      downloads += 1
+      return new Promise((_resolve, reject) =>
+        init.signal.addEventListener('abort', () => reject(new Error('timed out'))),
+      )
+    }) as unknown as typeof fetch
+    const loader = createRemoteImageLoader({ fetchImpl: hanging, timeoutMs: 20 })
+    const request = { uri: 'https://cdn.example/slow', ext: '.png' }
+    expect(await loader.load(request)).toBeNull()
+    // Remembered: the second ask does not start a second download.
+    expect(await loader.load(request)).toBeNull()
+    expect(downloads).toBe(1)
   })
 })

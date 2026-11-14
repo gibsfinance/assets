@@ -10,7 +10,7 @@ import { chainIdFilterMatch } from '../../chain-id'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { setImageSecurityHeaders } from './headers'
-import { sharedRemoteImages } from './remote-image'
+import { REMOTE_IMAGE_SHED, sharedRemoteImages } from './remote-image'
 import { loadImageBytes } from '../../image-store/image-bytes'
 import { unexportedBytesSql } from '../../db/image-columns'
 import _ from 'lodash'
@@ -46,7 +46,12 @@ export function spriteKey(token: { chainId: string; address: string }): string {
   return `${token.chainId}-${normalizeProvidedId(token.address)}`
 }
 
-async function rasterize(image: SpriteToken, size: number): Promise<Buffer | null> {
+/**
+ * One cell's picture. Null when the image has none to give (missing, refused, not decodable).
+ * `REMOTE_IMAGE_SHED` when its download was turned away for load: the image may be fine, so the
+ * sheet it ends up in must not be kept long.
+ */
+async function rasterize(image: SpriteToken, size: number): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> {
   try {
     let buf: Buffer
     const stored = image.mode === 'link' ? null : await loadImageBytes(image)
@@ -59,6 +64,7 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
       // The shared loader caps the size, limits how many downloads run at once, and sanitizes the
       // bytes. It answers null for anything it refuses, which is the same empty cell.
       const remote = await sharedRemoteImages.load({ uri: image.uri, ext: image.ext })
+      if (remote === REMOTE_IMAGE_SHED) return REMOTE_IMAGE_SHED
       if (!remote) return null
       buf = remote
     } else {
@@ -274,12 +280,17 @@ export const sheet: RequestHandler = async (req, res, _next) => {
 
   // Rasterize in parallel batches
   const composites: OverlayOptions[] = []
+  let cellsShed = 0
   for (let i = 0; i < deduped.length; i += FILE_READ_BATCH_SIZE) {
     const batch = deduped.slice(i, i + FILE_READ_BATCH_SIZE)
     const results = await Promise.all(
       batch.map(async (token, batchIdx) => {
         const idx = i + batchIdx
         const buf = await rasterize(token, size)
+        if (buf === REMOTE_IMAGE_SHED) {
+          cellsShed += 1
+          return null
+        }
         if (!buf) return null
         return { input: buf, left: (idx % cols) * size, top: Math.floor(idx / cols) * size }
       }),
@@ -305,7 +316,9 @@ export const sheet: RequestHandler = async (req, res, _next) => {
   res.set('content-type', 'image/webp')
   setImageSecurityHeaders(res)
   res.set('link', LICENSE_LINK_HEADER)
-  res.set('cache-control', `public, max-age=${config.cacheSeconds}`)
+  // A sheet with a cell that is empty only because the server was busy is not the sheet this list
+  // should have, so it is not kept: a cache holding it would show those logos missing for the full lifetime.
+  res.set('cache-control', cellsShed > 0 ? 'no-store' : `public, max-age=${config.cacheSeconds}`)
   // Grid metadata in headers (small, always fits)
   res.set('x-sprite-size', String(size))
   res.set('x-sprite-cols', String(cols))

@@ -16,6 +16,8 @@ sidebar:
 
 The Gib engine reads its cache setting from `CACHE_SECONDS`. It is one hour (3600) if the operator sets nothing. The public instance `gib.show` sets it to one day (86400). Image lifetimes use the same setting. An instance you host yourself uses whatever you set. See [Configuration](/self-hosting/configuration/).
 
+A sprite sheet is cached like a list. The exception is a sheet drawn while the server was too busy to download every logo it needed: that sheet has empty cells that a later request would fill, so it carries `cache-control: no-store`.
+
 Responses that an operator rebuilds with `refresh` carry `cache-control: no-store`, so no content delivery network keeps them.
 
 ## Content-addressed images

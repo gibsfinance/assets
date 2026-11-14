@@ -20,8 +20,19 @@ import { createFailureMemory } from './plate'
 /** Largest remote image read, in bytes. The same cap as an uploaded image (`image-submit.ts`). */
 export const REMOTE_IMAGE_MAX_BYTES = 512 * 1024
 
-/** How long a download may take, in milliseconds. */
+/**
+ * How long one request may take from the moment it arrives, in milliseconds. One deadline covers
+ * the wait in line and the download, so a request that queued behind others cannot wait several
+ * times as long as one that did not.
+ */
 export const REMOTE_IMAGE_TIMEOUT_MS = 5000
+
+/**
+ * What `load` answers when the request was turned away for load, not because of the image: the
+ * line of downloads was full, or the deadline passed while the request waited. The image may be
+ * perfectly good, so a caller that caches its answer should not keep this one for long.
+ */
+export const REMOTE_IMAGE_SHED = Symbol('remote-image-shed')
 
 /** How long fetched bytes are kept, in milliseconds. */
 export const REMOTE_IMAGE_CACHE_TTL_MS = 60_000
@@ -46,6 +57,8 @@ export interface RemoteImageLoaderOptions {
   now?: () => number
   sanitize?: (bytes: Buffer, ext: string) => Promise<Buffer>
   gate?: ConcurrencyGate
+  /** Deadline for one request, from its arrival. Defaults to `REMOTE_IMAGE_TIMEOUT_MS`. */
+  timeoutMs?: number
   maxBytes?: number
   ttlMs?: number
   maxEntries?: number
@@ -53,8 +66,11 @@ export interface RemoteImageLoaderOptions {
 }
 
 export interface RemoteImageLoader {
-  /** The sanitized bytes at `uri`, or null when they cannot be had (failed, too large, too busy). */
-  load: (request: { uri: string; ext: string }) => Promise<Buffer | null>
+  /**
+   * The sanitized bytes at `uri`. Null when they cannot be had because of the image (failed, refused
+   * or too large). `REMOTE_IMAGE_SHED` when the request was turned away for load.
+   */
+  load: (request: { uri: string; ext: string }) => Promise<Buffer | null | typeof REMOTE_IMAGE_SHED>
   /** Forget every cached download and remembered failure. */
   reset: () => void
   /** Addresses cached now. */
@@ -100,13 +116,14 @@ export function createRemoteImageLoader({
   now = () => Date.now(),
   sanitize = sanitizeImage,
   gate = createConcurrencyGate({ limit: REMOTE_IMAGE_CONCURRENCY, maxQueue: REMOTE_IMAGE_QUEUE }),
+  timeoutMs = REMOTE_IMAGE_TIMEOUT_MS,
   maxBytes = REMOTE_IMAGE_MAX_BYTES,
   ttlMs = REMOTE_IMAGE_CACHE_TTL_MS,
   maxEntries = REMOTE_IMAGE_CACHE_MAX_ENTRIES,
   maxTotalBytes = REMOTE_IMAGE_CACHE_MAX_BYTES,
 }: RemoteImageLoaderOptions = {}): RemoteImageLoader {
   const cache = new Map<string, CacheEntry>()
-  const inFlight = new Map<string, Promise<Buffer | null>>()
+  const inFlight = new Map<string, Promise<Buffer | null | typeof REMOTE_IMAGE_SHED>>()
   let failures = createFailureMemory({ now })
   let cachedBytes = 0
 
@@ -125,24 +142,51 @@ export function createRemoteImageLoader({
     while (cache.size > maxEntries || cachedBytes > maxTotalBytes) forget(cache.keys().next().value!)
   }
 
-  const download = async ({ key, uri, ext }: { key: string; uri: string; ext: string }): Promise<Buffer | null> => {
+  const download = async ({
+    cacheKey,
+    uri,
+    ext,
+    deadline,
+    progress,
+  }: {
+    cacheKey: string
+    uri: string
+    ext: string
+    deadline: AbortSignal
+    progress: { started: boolean }
+  }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    // The deadline passed while this request waited in line: leave without downloading anything.
+    if (deadline.aborted) return REMOTE_IMAGE_SHED
+    progress.started = true
     try {
-      const response = await fetchImpl(uri, { signal: AbortSignal.timeout(REMOTE_IMAGE_TIMEOUT_MS) })
+      const response = await fetchImpl(uri, { signal: deadline })
       if (!response.ok) return null
       const raw = await readCapped(response, maxBytes)
       if (!raw || raw.length === 0) return null
       const bytes = await sanitize(raw, sanitizerExtension(ext))
-      remember(key, bytes)
+      remember(cacheKey, bytes)
       return bytes
     } catch {
       return null
     }
   }
 
-  const fetchOnce = async (request: { key: string; uri: string; ext: string }): Promise<Buffer | null> => {
-    const outcome = await gate.run(() => download(request))
-    if (outcome === GATE_FULL) return null
-    if (outcome === null) failures.record(request.key)
+  const fetchOnce = async (request: {
+    cacheKey: string
+    uri: string
+    ext: string
+  }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    // One deadline from arrival, for the wait in line and the download together.
+    const deadline = AbortSignal.timeout(timeoutMs)
+    const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
+      deadline.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
+    )
+    const progress = { started: false }
+    const raced = await Promise.race([gate.run(() => download({ ...request, deadline, progress })), expired])
+    if (raced === GATE_FULL) return REMOTE_IMAGE_SHED
+    // A deadline that passed after the download began is the image's fault (a slow host), not the line's.
+    const outcome = raced === REMOTE_IMAGE_SHED && progress.started ? null : raced
+    if (outcome === null) failures.record(request.cacheKey)
     return outcome
   }
 
@@ -153,7 +197,7 @@ export function createRemoteImageLoader({
       if (cached && cached.expiresAt > now()) return cached.bytes
       forget(key)
       if (failures.has(key)) return null
-      const pending = inFlight.get(key) ?? fetchOnce({ key, uri, ext })
+      const pending = inFlight.get(key) ?? fetchOnce({ cacheKey: key, uri, ext })
       inFlight.set(key, pending)
       try {
         return await pending

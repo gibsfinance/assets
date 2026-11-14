@@ -33,7 +33,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { manifest, sheet, spriteKey } from './sprite'
 import { IMAGE_SECURITY_HEADERS } from './headers'
-import { REMOTE_IMAGE_CONCURRENCY, REMOTE_IMAGE_MAX_BYTES, sharedRemoteImages } from './remote-image'
+import { REMOTE_IMAGE_CONCURRENCY, REMOTE_IMAGE_MAX_BYTES, REMOTE_IMAGE_SHED, sharedRemoteImages } from './remote-image'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { sql } from 'drizzle-orm'
@@ -392,6 +392,35 @@ describe('sprite endpoints', () => {
 
       expect(await alphaOfCell(res, 0)).toBe(0)
       expect(await alphaOfCell(res, 1)).toBeGreaterThan(0)
+    })
+
+    it('does not keep a sheet that has a cell empty only because the download line was full', async () => {
+      vi.spyOn(sharedRemoteImages, 'load').mockResolvedValueOnce(REMOTE_IMAGE_SHED)
+      queueDrizzleResults([{ listId: 'L1' }], [linkToken(), storedToken()])
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(await alphaOfCell(res, 0)).toBe(0)
+      expect(await alphaOfCell(res, 1)).toBeGreaterThan(0)
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+      expect(res.set).not.toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age'))
+    })
+
+    it('still keeps a sheet whose empty cell is a genuinely refused image', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('this is not a vector document <<<')),
+      )
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [linkToken({ ext: '.svg', uri: 'https://cdn.example.com/bad.svg' }), storedToken()],
+      )
+      const res = mockResponse()
+
+      await sheet(mockRequest(), res, vi.fn())
+
+      expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('max-age'))
     })
 
     it('turns a vector file the sanitizer refuses into an empty cell', async () => {
