@@ -13,6 +13,8 @@ import { runSanitizeJob, type SanitizeJobReply, type SanitizeJobRequest } from '
 const port = parentPort
 if (!port) throw new Error('sanitize-worker must be started as a worker thread')
 
+// Ready once the code has loaded: the pool starts a job's budget only after this message.
+port.postMessage({ ready: true })
 port.on('message', async (request: SanitizeJobRequest) => {
   const reply: SanitizeJobReply = await runSanitizeJob(request)
   // The sanitized bytes move to the caller rather than being copied; `runSanitizeJob` gave them a buffer of their own.

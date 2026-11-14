@@ -277,33 +277,40 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
-  512 KB (streamed, dropped as it passes the cap), one 5 s deadline per request counted from its arrival (it covers
-  the wait in line; the request's arrival deadline only decides the caller's answer). Each download has its own window of
-  `REMOTE_IMAGE_TIMEOUT_MS` from the moment it starts, and that window alone governs the network call, the body and the
-  sanitizing. Shed (`REMOTE_IMAGE_SHED`, nothing remembered): a request whose deadline passed in line (no download
-  starts; a file nobody waits for is dropped from the line); a request shed while its file came in or was sanitized
-  (the file is still kept for the next request); a sanitizing job that expired while it waited for a worker. One fetch
-  per address is in flight at a time: requests for that address join it (`inFlight`), so a slow or silent host cannot be
-  made to serve many parallel downloads. Charged (remembered 60 s): a download
-  whose window ended without an answer (a silent remote, after queueing or not); a non-success answer; an oversized or
-  empty body; a file the sanitizer refused; a sanitizing job the window cut off while a worker ran it (the worker is
-  stopped). A download that is still running when its requests are shed keeps its gate slot until its window ends
-  (it is not aborted, because that would leave a silent host never charged). A successful answer is always kept, even
-  when every request that waited for it was shed. 4 downloads at once with a line of 16. Sanitizing runs in
-  `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first use, running one job
-  at a time, with `--import register-hooks.ts` and a 256 MB heap limit. Idle shutdown: a worker with no job for
-  `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists only while remote files are being cleaned; the next job
-  starts a fresh worker. A job takes its worker's idle stop away, and the idle timer never stops a worker that is running
-  a job. Memory, measured on the development machine with the sanitizer and the loader loaded in a plain script: 131 MB
-  with no worker, 163 MB with one (about 33 MB per worker), 207 MB with two (about 38 MB each). The 250 MB figure in the
-  deployment notes is the owner's measurement of the whole server and was not re-measured here. Each worker start pauses the
-  main thread for about 200 to 360 ms (measured: a worker's first reply takes about 360 ms with the production hooks, and
-  about 19 ms without them), so a remote load that finds no worker waiting pays that once; a crafted file that cuts off the
-  worker costs one such pause on the next remote load. `sanitize` in the loader options runs in-process with no time limit and
-  is a test seam only. Kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
-  Plain-node check: `sanitizer-pool.plain-node.test.ts` runs `server/image/__testing__/pool-load-check.ts` under
-  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 18 ms with one worker (the
-  in-process path blocked the loop for the whole load).
+  512 KB (streamed, dropped as it passes the cap), 4 downloads at once with a line of 16. Each download has its own window
+  of `REMOTE_IMAGE_TIMEOUT_MS` (5 s) from the moment it starts, and that window alone governs the network call and the
+  body. The request's arrival deadline (also 5 s, from arrival) only decides the caller's answer; a file nobody waits for
+  is dropped from the line before it starts. One fetch per address is in flight at a time: requests for that address join
+  it (`inFlight`), so a slow or silent host cannot be made to serve many parallel downloads. A successful answer is always
+  kept, even when every request that waited for it was shed.
+  - Charged (`refuse`, remembered 60 s): a download whose window ended without an answer, after queueing or not; a
+    non-success answer; an oversized or empty body; a file the sanitizer refused (including a worker that ran out of its
+    heap on it); a file whose sanitizing ran out of its budget (`cut-off`).
+  - Shed (`REMOTE_IMAGE_SHED`, nothing charged, the next request tries again): a request whose deadline passed in line; a
+    sanitizing job that expired because no request wanted the file when a worker was granted; and any sanitizer
+    infrastructure failure (`unavailable`): a worker that did not start, did not load, or crashed for reasons that are not
+    the file's, and a closed pool. Infrastructure failures are logged once per distinct message to the failure log.
+  - A download still running when its requests are shed keeps its gate slot until its window ends (it is not aborted,
+    because that would leave a silent host never charged).
+  Sanitizing runs in `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first
+  use, running one job at a time, with `--import register-hooks.ts` and a 256 MB heap limit. The sanitizing budget
+  (`SANITIZE_TIMEOUT_MS`, 5 s) starts when a worker is granted to the file and the worker has reported ready (its code
+  loaded), so neither the wait for a worker nor the worker's start-up is charged to the file. A worker that ends a job
+  stopped (cut off, or failed) is counted against the pool size until it has exited, so a second worker never starts while
+  the first is alive. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
+  only while remote files are being cleaned; the next job starts a fresh worker. A job takes its worker's idle stop away,
+  and the idle timer never stops a worker that is running a job. `close()` answers every waiting job and every later job
+  unavailable, and stops the workers.
+  Memory, measured on the development machine with the sanitizer and the loader loaded in a plain script: 131 MB with no
+  worker, 163 MB with one (about 33 MB per worker), 207 MB with two (about 38 MB each). The 250 MB figure in the deployment
+  notes is the owner's measurement of the whole server and was not re-measured here. A worker's start-up pauses the main
+  thread for a few hundred milliseconds (measured: a worker's first reply takes about 360 ms with the production hooks,
+  and about 19 ms without them), so a remote load that finds no worker waiting pays that once; after an idle stop, or after
+  a worker is stopped for a file, the next remote load pays it again. `sanitize` in the loader options runs in-process with
+  no budget and is a test seam only. Kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered
+  60 s. Plain-node check: `sanitizer-pool.plain-node.test.ts` runs `server/image/__testing__/pool-load-check.ts` under
+  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 18 ms with one
+  worker (the in-process path blocked the loop for the whole load).
   librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
   request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):
   `sprite.ts` sends a sheet with a cell lost to `REMOTE_IMAGE_SHED` as `no-store`, not for `CACHE_SECONDS`.

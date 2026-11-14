@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, type Mock } from 'vitest'
 import sharp from 'sharp'
 import { createConcurrencyGate } from './concurrency-gate'
-import type { SanitizeAttempt, SanitizerRunner } from './sanitizer-pool'
+import { createSanitizerPool, type SanitizeAttempt, type SanitizerRunner } from './sanitizer-pool'
 import {
   createRemoteImageLoader,
   REMOTE_IMAGE_CACHE_TTL_MS,
@@ -303,8 +303,9 @@ describe('one deadline from arrival (third review, finding 7)', () => {
   // Fourth review, finding 1: a deadline that passes while the server sanitizes the bytes is the server's
   // load, not the remote's. Recording it as a failure kept the logo missing for a minute.
   it('answers shed, and remembers no failure, when the deadline passes while the bytes are being sanitized', async () => {
+    // The sanitizing takes ten times the window, so the second ask joins the download still running, whatever the load.
     const slowSanitize = async (bytes: Buffer) => {
-      await new Promise((resolve) => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 400))
       return bytes
     }
     const { loader, fetchImpl } = setup({ sanitize: slowSanitize, timeoutMs: 40 })
@@ -379,7 +380,7 @@ describe('the sanitizer runner decides what a deadline or a refusal costs (fifth
   /** A runner that answers the given attempts in order, and counts its jobs. */
   const runnerAnswering = (...attempts: SanitizeAttempt[]): SanitizerRunner & { run: Mock } => {
     const run = vi.fn(async () => attempts.shift() ?? { status: 'refused' as const, message: 'no answer left' })
-    return { run, workers: () => 0, workersStarted: () => 0, close: () => undefined }
+    return { run, workers: () => 0, workersPeak: () => 0, workersStarted: () => 0, close: () => undefined }
   }
   const request = { uri: 'https://cdn.example/worker.png', ext: '.png' }
 
@@ -543,5 +544,65 @@ describe('a download is shared by the requests for its address, and kept (fifth 
     await sleep(200)
     expect((await loader.load(request))?.toString()).toBe('logo')
     expect(calls.count).toBe(1)
+  })
+})
+
+describe('the sanitizing budget starts when a worker is granted (sixth review, finding 1)', () => {
+  const sleepFor = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+  // The reviewer's scenario, scaled to 1 second: a 400 ms file holds the worker; a 900 ms file is requested 50 ms
+  // later with a 1,000 ms window. It waits 350 ms for the worker, then sanitizes for 900 ms, so it finishes at
+  // 1,300 ms, past its own window (fetch, 1,000 ms) but inside its sanitizing budget (granted at 400 ms, 1,000 ms).
+  // It must not be charged: the file is kept, and the next request is served from it.
+  it('does not charge a file whose wait for a worker used up its window', async () => {
+    const pool = createSanitizerPool({
+      workerUrl: new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url),
+      budgetMs: 1_500,
+    })
+    try {
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
+      await sleepFor(50)
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('SLOW')))
+      const loader = createRemoteImageLoader({
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        sanitizer: pool,
+        timeoutMs: 1_000,
+      })
+      const request = { uri: 'https://cdn.example/slow.svg', ext: '.svg' }
+
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      await holder
+      // The file finishes sanitizing after this request was shed, and is kept; the next request is served from it.
+      await sleepFor(1_500)
+
+      expect((await loader.load(request))?.toString()).toBe('SLOW')
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    } finally {
+      pool.close()
+    }
+  })
+})
+
+describe('an unavailable sanitizer is shed, never charged (sixth review, finding 2)', () => {
+  it('answers shed, and charges nothing, when the sanitizer is unavailable, so the next request tries again', async () => {
+    const attempts: SanitizeAttempt[] = [
+      { status: 'unavailable', message: 'sanitizer worker failed: fixture' },
+      { status: 'sanitized', bytes: Buffer.from('logo') },
+    ]
+    const run = vi.fn(async () => attempts.shift() ?? { status: 'refused' as const, message: 'no answer left' })
+    const sanitizer: SanitizerRunner = {
+      run,
+      workers: () => 0,
+      workersPeak: () => 0,
+      workersStarted: () => 0,
+      close: () => undefined,
+    }
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+    const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer })
+    const request = { uri: 'https://cdn.example/unavailable.png', ext: '.png' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    expect((await loader.load(request))?.toString()).toBe('logo')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,13 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
+import { failures } from '@gibs/utils'
 import {
   createInProcessSanitizer,
   createSanitizerPool,
+  SANITIZE_TIMEOUT_MS,
   SANITIZER_IDLE_MS,
   type SanitizeAttempt,
 } from './sanitizer-pool'
 
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>')
 const fixture = (name: string): URL => new URL(`./__testing__/${name}`, import.meta.url)
+const alwaysWanted = (): boolean => true
 
 /** The text of a sanitized attempt; a test fails when the attempt is anything else. */
 const sanitizedText = (attempt: SanitizeAttempt): string => {
@@ -19,7 +22,7 @@ describe('createSanitizerPool', () => {
   it('sanitizes a file on a worker thread, removing what the sanitizer removes', async () => {
     const pool = createSanitizerPool()
     try {
-      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
       expect(sanitizedText(attempt)).not.toContain('alert')
       expect(pool.workers()).toBe(1)
@@ -31,7 +34,7 @@ describe('createSanitizerPool', () => {
   it('answers the refusal of a file the sanitizer refuses, and keeps the worker', async () => {
     const pool = createSanitizerPool()
     try {
-      const attempt = await pool.run({ bytes: Buffer.from('<svg'), ext: '.svg' }, AbortSignal.timeout(10_000))
+      const attempt = await pool.run({ bytes: Buffer.from('<svg'), ext: '.svg' }, alwaysWanted)
 
       expect(attempt).toEqual({ status: 'refused', message: expect.stringContaining('svg rejected') })
       expect(pool.workers()).toBe(1)
@@ -43,101 +46,207 @@ describe('createSanitizerPool', () => {
   it('reuses an idle worker for the next job rather than starting another', async () => {
     const pool = createSanitizerPool()
     try {
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
-      expect(pool.workers()).toBe(1)
+      expect(pool.workersStarted()).toBe(1)
     } finally {
       pool.close()
     }
   })
 
-  it('runs several jobs at once without starting more workers than the pool size', async () => {
+  it('runs jobs one at a time, never with more workers than the pool size', async () => {
     const pool = createSanitizerPool({ size: 2 })
     try {
-      const attempts = await Promise.all(
-        [0, 1, 2, 3].map(() => pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))),
-      )
+      const attempts = await Promise.all([0, 1, 2, 3].map(() => pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)))
 
       expect(attempts.map(sanitizedText).every((text) => !text.includes('alert'))).toBe(true)
-      expect(pool.workers()).toBeLessThanOrEqual(2)
+      expect(pool.workersPeak()).toBeLessThanOrEqual(2)
     } finally {
       pool.close()
     }
   })
 
-  it('stops a worker that is still running when the deadline passes, and answers cut off', async () => {
-    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts') })
+  it('the default pool size is one worker', async () => {
+    const pool = createSanitizerPool()
     try {
-      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(100))
+      await Promise.all([0, 1, 2].map(() => pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)))
+
+      expect(pool.workersPeak()).toBe(1)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('stops a worker still running when its budget runs out, and answers cut off', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts'), budgetMs: 100 })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
       expect(attempt).toEqual({ status: 'cut-off' })
-      await vi.waitFor(() => expect(pool.workers()).toBe(0))
-    } finally {
-      pool.close()
-    }
-  })
-
-  it('answers expired-in-queue, without running the job, when the deadline passes while it waits for a worker', async () => {
-    const pool = createSanitizerPool({ size: 1, workerUrl: fixture('silent-sanitize-worker.ts') })
-    try {
-      const holder = pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(150))
-      const waiting = pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(30))
-
-      expect(await holder).toEqual({ status: 'cut-off' })
-      expect(await waiting).toEqual({ status: 'expired-in-queue' })
-      await vi.waitFor(() => expect(pool.workers()).toBe(0))
-    } finally {
-      pool.close()
-    }
-  })
-
-  it('answers a refusal, not a hang, when the worker throws out of a job', async () => {
-    const pool = createSanitizerPool({ workerUrl: fixture('crashing-sanitize-worker.ts') })
-    try {
-      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-
-      expect(attempt).toEqual({ status: 'refused', message: expect.stringContaining('fixture crash') })
-      await vi.waitFor(() => expect(pool.workers()).toBe(0))
-    } finally {
-      pool.close()
-    }
-  })
-
-  it('answers a refusal when the worker stops while it has a job', async () => {
-    const pool = createSanitizerPool({ workerUrl: fixture('stopping-sanitize-worker.ts') })
-    try {
-      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-
-      expect(attempt).toEqual({ status: 'refused', message: 'sanitizer worker stopped' })
       expect(pool.workers()).toBe(0)
     } finally {
       pool.close()
     }
   })
 
-  it('forgets an idle worker that stops, so the next job starts a fresh one', async () => {
-    const pool = createSanitizerPool({ workerUrl: fixture('exits-after-reply-sanitize-worker.ts') })
+  // Fifth review, finding 1: the budget for sanitizing starts when a worker is granted, not when the request started.
+  it('starts the sanitizing budget when a worker is granted, so a wait for a worker is not charged to the file', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('slow-sanitize-worker.ts'), budgetMs: 500 })
     try {
-      const first = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-      expect(first).toEqual({ status: 'refused', message: 'refused by the fixture' })
-      await vi.waitFor(() => expect(pool.workers()).toBe(0))
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, alwaysWanted)
+      // The file needs 300 ms of sanitizing, which is inside the budget; the wait for the holder is 400 ms.
+      const queued = pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)
 
-      const second = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-      expect(second).toEqual({ status: 'refused', message: 'refused by the fixture' })
+      expect((await holder).status).toBe('sanitized')
+      expect((await queued).status).toBe('sanitized')
     } finally {
       pool.close()
     }
   })
 
-  it('stops every worker on close', async () => {
-    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts') })
-    const running = pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+  it('answers expired-in-queue, without running the job, when no request wants it by the time a worker is free', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('slow-sanitize-worker.ts'), budgetMs: 5_000 })
+    try {
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, alwaysWanted)
+      let wanted = true
+      const timer = setTimeout(() => (wanted = false), 50)
+      const queued = pool.run({ bytes: SVG, ext: '.svg' }, () => wanted)
+
+      expect(await queued).toEqual({ status: 'expired-in-queue' })
+      expect((await holder).status).toBe('sanitized')
+      clearTimeout(timer)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // Fifth review, finding 3: a stopped worker counts against the pool until it has exited.
+  it('never has more workers alive than the pool size, across a cut-off followed by a queued job', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts'), budgetMs: 100 })
+    try {
+      const first = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+      const second = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(await first).toEqual({ status: 'cut-off' })
+      expect(await second).toEqual({ status: 'cut-off' })
+      expect(pool.workersPeak()).toBe(1)
+      expect(pool.workers()).toBe(0)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // Fifth review, finding 2: a worker that fails for its own reasons is unavailable, not a charge on the file.
+  it('answers unavailable, not refused, when the worker crashes on a job', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('crashing-sanitize-worker.ts') })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(attempt).toEqual({ status: 'unavailable', message: expect.stringContaining('fixture crash') })
+      expect(pool.workers()).toBe(0)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('answers unavailable when the worker cannot load its code', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('failing-import-sanitize-worker.ts') })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(attempt).toEqual({ status: 'unavailable', message: expect.stringContaining('fixture cannot load') })
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('answers unavailable when the worker file is missing', async () => {
+    const pool = createSanitizerPool({ workerUrl: new URL('file:///nonexistent/sanitize-worker.ts') })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(attempt.status).toBe('unavailable')
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('answers unavailable when the worker is stopped while it has a job', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('stopping-sanitize-worker.ts') })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(attempt).toEqual({ status: 'unavailable', message: 'sanitizer worker stopped' })
+      expect(pool.workers()).toBe(0)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // The file caused this one: the worker ran out of the heap it was given, so the job is refused and charged.
+  it('answers refused when the worker runs out of memory on a job', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('memory-hog-sanitize-worker.ts') })
+    try {
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      expect(attempt).toEqual({ status: 'refused', message: 'sanitizer worker ran out of memory' })
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('reports a worker that is unavailable once in the failure log, whatever the number of jobs', async () => {
+    const before = failures.length
+    const pool = createSanitizerPool({ workerUrl: fixture('crashing-sanitize-worker.ts') })
+    try {
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+      const reports = failures.slice(before).filter((entry) => String(entry[0]).startsWith('sanitizer unavailable'))
+      expect(reports).toHaveLength(1)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // Fifth review, finding 4: a closed pool answers unavailable, and a job waiting for a worker does not start one.
+  it('answers unavailable, and starts no worker, for a job whose slot was granted before close was called', async () => {
+    const pool = createSanitizerPool()
+    const job = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+    pool.close()
+
+    expect(await job).toEqual({ status: 'unavailable', message: 'sanitizer pool closed' })
+    expect(pool.workersStarted()).toBe(0)
+  })
+
+  it('answers unavailable, not refused, for a job that is running when the pool closes', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts'), budgetMs: 5_000 })
+    const running = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+    // Long enough for the worker to load and take the job; the silent worker never answers it.
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+
+    pool.close()
+
+    expect(await running).toEqual({ status: 'unavailable', message: 'sanitizer pool closed' })
+  })
+
+  it('answers unavailable for a job run after close, and for every job waiting when close is called', async () => {
+    const pool = createSanitizerPool({ workerUrl: fixture('silent-sanitize-worker.ts'), budgetMs: 5_000 })
+    const running = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+    const waiting = pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
     await vi.waitFor(() => expect(pool.workers()).toBe(1))
 
     pool.close()
 
-    expect(await running).toEqual({ status: 'refused', message: 'sanitizer worker stopped' })
+    expect(await waiting).toEqual({ status: 'unavailable', message: 'sanitizer pool closed' })
+    expect(await running).toEqual({ status: 'unavailable', message: 'sanitizer pool closed' })
+    expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({
+      status: 'unavailable',
+      message: 'sanitizer pool closed',
+    })
+    expect(pool.workersStarted()).toBe(1)
     await vi.waitFor(() => expect(pool.workers()).toBe(0))
   })
 })
@@ -147,12 +256,13 @@ describe('createInProcessSanitizer', () => {
     const sanitize = vi.fn(async (bytes: Buffer) => Buffer.from(`clean:${bytes.toString()}`))
     const runner = createInProcessSanitizer(sanitize)
 
-    const attempt = await runner.run({ bytes: Buffer.from('x'), ext: '.png' }, AbortSignal.timeout(10_000))
+    const attempt = await runner.run({ bytes: Buffer.from('x'), ext: '.png' }, alwaysWanted)
 
     expect(attempt).toEqual({ status: 'sanitized', bytes: Buffer.from('clean:x') })
     expect(sanitize).toHaveBeenCalledWith(Buffer.from('x'), '.png')
     expect(runner.workers()).toBe(0)
     expect(runner.workersStarted()).toBe(0)
+    expect(runner.workersPeak()).toBe(0)
     runner.close()
   })
 
@@ -161,9 +271,13 @@ describe('createInProcessSanitizer', () => {
       throw new Error('refused in process')
     })
 
-    await expect(runner.run({ bytes: Buffer.from('x'), ext: '.png' }, AbortSignal.timeout(10_000))).rejects.toThrow(
+    await expect(runner.run({ bytes: Buffer.from('x'), ext: '.png' }, alwaysWanted)).rejects.toThrow(
       'refused in process',
     )
+  })
+
+  it('has the named sanitizing budget of five seconds', () => {
+    expect(SANITIZE_TIMEOUT_MS).toBe(5_000)
   })
 })
 
@@ -201,7 +315,7 @@ describe('an idle worker is stopped after the idle window (fifth review, memory)
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })
     try {
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
       expect(pool.workers()).toBe(1)
       expect(timers.pending()).toBe(1)
 
@@ -221,8 +335,8 @@ describe('an idle worker is stopped after the idle window (fifth review, memory)
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })
     try {
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
       expect(pool.workersStarted()).toBe(1)
       expect(pool.workers()).toBe(1)
@@ -237,11 +351,11 @@ describe('an idle worker is stopped after the idle window (fifth review, memory)
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })
     try {
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
       timers.fire()
       await vi.waitFor(() => expect(pool.workers()).toBe(0))
 
-      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
       expect(sanitizedText(attempt)).not.toContain('alert')
       expect(pool.workersStarted()).toBe(2)
@@ -255,12 +369,12 @@ describe('an idle worker is stopped after the idle window (fifth review, memory)
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })
     try {
-      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
       // A file large enough to run for a few hundred milliseconds, so the job is still running below.
       const large = Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg">${Array.from({ length: 8_000 }, (_, i) => `<path d="M${i} 0L${i + 1} 1Z"/>`).join('')}</svg>`,
       )
-      const running = pool.run({ bytes: large, ext: '.svg' }, AbortSignal.timeout(10_000))
+      const running = pool.run({ bytes: large, ext: '.svg' }, alwaysWanted)
       await new Promise((resolve) => setImmediate(resolve))
 
       timers.fireStale()
@@ -275,7 +389,7 @@ describe('an idle worker is stopped after the idle window (fifth review, memory)
   it('stops the idle worker on close, and leaves no timer pending', async () => {
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })
-    await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+    await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
     pool.close()
 

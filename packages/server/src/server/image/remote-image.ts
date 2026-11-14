@@ -177,20 +177,24 @@ export function createRemoteImageLoader({
     uri: string
     ext: string
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    // The window covers the network call and the body. Sanitizing has its own budget, which starts when a worker
+    // is granted (see `sanitizer-pool.ts`), so a wait for a worker is not charged to the file.
     const window = AbortSignal.timeout(timeoutMs)
     try {
       const response = await fetchImpl(uri, { signal: window })
       if (!response.ok) return refuse(cacheKey)
       const raw = await readCapped(response, maxBytes)
       if (!raw || raw.length === 0) return refuse(cacheKey)
-      const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, window)
-      if (attempt.status === 'expired-in-queue') return REMOTE_IMAGE_SHED
+      const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, () => isWanted(cacheKey))
       if (attempt.status === 'sanitized') {
         remember(cacheKey, attempt.bytes)
         return attempt.bytes
       }
-      // A file the sanitizer refused, or one whose sanitizing the window cut off while a worker ran it: the
-      // file's own work caused it, so the address is charged, as a file that fails to download is.
+      // Nobody waits for the file any more, or the sanitizer could not run it for reasons that are not the
+      // file's: nothing is charged, and the next request tries again.
+      if (attempt.status === 'expired-in-queue' || attempt.status === 'unavailable') return REMOTE_IMAGE_SHED
+      // A file the sanitizer refused, or one whose sanitizing ran out of its budget: the file's own work caused
+      // it, so the address is charged, as a file that fails to download is.
       return refuse(cacheKey)
     } catch {
       // A failed call, or a window that ended before the answer: the remote had its full window and did not
@@ -212,7 +216,7 @@ export function createRemoteImageLoader({
       .run(async () => {
         // Nobody waits for this file any more (its requests were shed while queued): it is not fetched. The entry
         // goes at once, so a request that arrives now starts a fetch of its own instead of joining this one.
-        if ((waiting.get(cacheKey) ?? 0) === 0) {
+        if (!isWanted(cacheKey)) {
           inFlight.delete(cacheKey)
           return REMOTE_IMAGE_SHED
         }
@@ -225,6 +229,9 @@ export function createRemoteImageLoader({
     })
     return fetching
   }
+
+  /** Whether a request is still waiting for the file at `key`. */
+  const isWanted = (key: string): boolean => (waiting.get(key) ?? 0) > 0
 
   /** A request starts waiting for `key`. */
   const join = (key: string): void => {
