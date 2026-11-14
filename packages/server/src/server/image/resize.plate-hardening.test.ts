@@ -623,3 +623,78 @@ describe('a linked image is read with limits (second review, findings 2 and 3)',
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('a refusal does not charge the budgets it did not reach (third review, finding 2)', () => {
+  it('leaves the caller’s budget whole when the shared budget refuses', async () => {
+    const clientLimiter = createRateLimiter({ perImageLimit: 3, globalLimit: Infinity })
+    const plateLimiter = createRateLimiter({ perImageLimit: 0, globalLimit: 100 })
+    const png = await solid(64, '#050505')
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const refused = await request({
+        content: png,
+        ext: '.png',
+        imageHash: 'spent-image',
+        query: { bg: 'fff' },
+        plateLimiter,
+        clientLimiter,
+        clientAddress: '203.0.113.9',
+      })
+      expect(refused.status).toBe(429)
+    }
+    // Ten refusals by the image budget must leave all three of the caller's places.
+    expect(clientLimiter.canSpend('203.0.113.9')).toBe(true)
+    const other = await request({
+      content: png,
+      ext: '.png',
+      imageHash: 'other-image',
+      query: { bg: 'fff' },
+      plateLimiter: createRateLimiter(),
+      clientLimiter,
+      clientAddress: '203.0.113.9',
+    })
+    expect(other.body).not.toBeNull()
+  })
+  it('spends nothing when the line is full and answers 503', async () => {
+    const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 0 })
+    let release = () => {}
+    const holding = plateGate.run(() => new Promise<void>((resolve) => (release = resolve)))
+    const plateLimiter = createRateLimiter({ perImageLimit: 1, globalLimit: 1 })
+    const clientLimiter = createRateLimiter({ perImageLimit: 1, globalLimit: Infinity })
+    const png = await solid(64, '#050505')
+    const sent = await request({
+      content: png,
+      ext: '.png',
+      imageHash: 'busy-image',
+      query: { bg: 'fff' },
+      plateGate,
+      plateLimiter,
+      clientLimiter,
+      clientAddress: '203.0.113.9',
+    })
+    expect(sent.status).toBe(503)
+    expect(plateLimiter.canSpend('busy-image')).toBe(true)
+    expect(clientLimiter.canSpend('203.0.113.9')).toBe(true)
+    release()
+    await holding
+  })
+  it('refuses a request whose budget was spent while it waited in line', async () => {
+    const plateGate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    let release = () => {}
+    const holding = plateGate.run(() => new Promise<void>((resolve) => (release = resolve)))
+    const plateLimiter = createRateLimiter({ perImageLimit: 1, globalLimit: 100 })
+    const png = await solid(64, '#050505')
+    const waiting = request({
+      content: png,
+      ext: '.png',
+      imageHash: 'queued',
+      query: { bg: 'fff' },
+      plateGate,
+      plateLimiter,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    plateLimiter.check('queued')
+    release()
+    await holding
+    expect((await waiting).status).toBe(429)
+  })
+})

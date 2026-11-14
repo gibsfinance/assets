@@ -684,10 +684,16 @@ function canSpendPlate({ imageHash, plateLimiter, clientLimiter, clientAddress }
   return clientAddress === null || clientLimiter.canSpend(clientAddress)
 }
 
-/** Spend one plate from every budget. False, with the caller's budget spent first, when any is spent. */
-function spendPlate({ imageHash, plateLimiter, clientLimiter, clientAddress }: PlateBudgets): boolean {
-  if (clientAddress !== null && !clientLimiter.check(clientAddress)) return false
-  return plateLimiter.check(imageHash)
+/**
+ * Spend one plate from every budget together. Every budget is read first and none is charged when
+ * any is spent, so a refusal by the shared budget never costs the caller a place in their own.
+ */
+function spendPlate(budgets: PlateBudgets): boolean {
+  if (!canSpendPlate(budgets)) return false
+  const { imageHash, plateLimiter, clientLimiter, clientAddress } = budgets
+  if (clientAddress !== null) clientLimiter.check(clientAddress)
+  plateLimiter.check(imageHash)
+  return true
 }
 
 /**
@@ -836,11 +842,15 @@ async function producePlated({
       `${params.unconvertibleFormat} with a plate is not available for this image — it has no usable viewBox, so a plate cannot be drawn behind it as a vector`,
     )
   }
-  if (!spendPlate(budgets)) return OVER_BUDGET
-  if (wrapped) return wrapped
-  return plateGate.run(() => drawPlated({ img, content, plate, params, key }), {
-    key: budgets.clientAddress ?? undefined,
-  })
+  // Refused before any drawing, whatever the source (a fetched one was refused earlier still).
+  if (!canSpendPlate(budgets)) return OVER_BUDGET
+  if (wrapped) return spendPlate(budgets) ? wrapped : OVER_BUDGET
+  // The budgets are charged once the gate admits the draw, so a request turned away because the
+  // line is full spends nothing. A budget spent while this request waited in line still refuses it.
+  return plateGate.run(
+    async () => (spendPlate(budgets) ? drawPlated({ img, content, plate, params, key }) : OVER_BUDGET),
+    { key: budgets.clientAddress ?? undefined },
+  )
 }
 
 /** A plated image as a variant record, which is how every answer is sent. Never stored. */
