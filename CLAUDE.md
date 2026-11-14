@@ -278,12 +278,15 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
   512 KB (streamed, dropped as it passes the cap), one 5 s deadline per request counted from its arrival (it covers
-  the wait in line, the download and the sanitizing). Shed (`REMOTE_IMAGE_SHED`, nothing remembered): a deadline that passes
-  in line; a download that started after queueing and was cut off by the deadline (it did not have the whole window); a
-  sanitizing job that expired while it waited for a worker. Charged (remembered 60 s): a download the deadline cut off
-  that had the whole window (it started at arrival); a non-success answer; an oversized or empty body; a file the
-  sanitizer refused; a sanitizing job the deadline cut off while a worker ran it (the worker is stopped). 4 downloads at
-  once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
+  the wait in line; the request's arrival deadline only decides the caller's answer). Each download has its own window of
+  `REMOTE_IMAGE_TIMEOUT_MS` from the moment it starts, and that window alone governs the network call, the body and the
+  sanitizing. Shed (`REMOTE_IMAGE_SHED`, nothing remembered): a request whose deadline passed in line (no download
+  starts); a request shed while its file came in or was sanitized (the bytes are not kept, so the next request
+  downloads again); a sanitizing job that expired while it waited for a worker. Charged (remembered 60 s): a download
+  whose window ended without an answer (a silent remote, after queueing or not); a non-success answer; an oversized or
+  empty body; a file the sanitizer refused; a sanitizing job the window cut off while a worker ran it (the worker is
+  stopped). A download that is still running when its request is shed keeps its gate slot until its window ends. 4
+  downloads at once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
   started on first use and reused, each running one job at a time, each with `--import register-hooks.ts` and a 256 MB heap
   limit. Measured with the production loader: about 33 MB per worker (the process was 131 MB without one, 207 MB with
   two); about 200 to 300 ms of main-thread pause each time a worker starts, so a crafted file that cuts off a worker

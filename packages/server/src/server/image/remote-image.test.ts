@@ -417,3 +417,81 @@ describe('the sanitizer runner decides what a deadline or a refusal costs (fifth
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('each download has its own window from its start (fifth review, finding 3, second round)', () => {
+  /** A remote that never answers, and honours the signal it is given, as a real fetch does. */
+  const silentHost = () => {
+    const calls = { count: 0 }
+    const fetchImpl = ((_uri: string, init: { signal: AbortSignal }) => {
+      calls.count += 1
+      return new Promise<Response>((_resolve, reject) =>
+        init.signal.addEventListener('abort', () => reject(new Error('aborted'))),
+      )
+    }) as unknown as typeof fetch
+    return { fetchImpl, calls }
+  }
+  const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+
+  // (a) The reviewer's late-start scenario. The download starts at 250 ms, so it has 50 ms of the arrival
+  // deadline left and is shed for the first request. Its bytes are not kept: a request that was shed leaves
+  // nothing behind, so the second request, at 400 ms, downloads again and succeeds.
+  it('sheds a late-started download, keeps nothing from it, and lets the next request download and succeed', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    const holding = gate.run(() => sleep(250))
+    const healthyHost = vi.fn(
+      (_uri: string, init: { signal: AbortSignal }) =>
+        new Promise<Response>((resolve, reject) => {
+          const answer = setTimeout(() => resolve(new Response(bytesOf('logo'))), 100)
+          init.signal.addEventListener('abort', () => {
+            clearTimeout(answer)
+            reject(new Error('aborted'))
+          })
+        }),
+    ) as unknown as typeof fetch
+    const loader = createRemoteImageLoader({
+      fetchImpl: healthyHost,
+      sanitize: async (bytes) => bytes,
+      gate,
+      timeoutMs: 300,
+    })
+    const request = { uri: 'https://cdn.example/healthy.png', ext: '.png' }
+
+    const first = loader.load(request)
+    expect(await first).toBe(REMOTE_IMAGE_SHED)
+    await holding
+    const second = await loader.load(request)
+
+    expect(second?.toString()).toBe('logo')
+    expect(healthyHost).toHaveBeenCalledTimes(2)
+  })
+
+  // (b) A remote that never answers, after queueing. The download starts at 100 ms with the whole 300 ms window,
+  // so the arrival deadline at 300 ms sheds the request while the download still has its window. When that
+  // window ends, at 400 ms, the address is charged, and the next request makes no new fetch.
+  it('charges a silent remote once its full window has passed, even though the request was shed before', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    const holding = gate.run(() => sleep(100))
+    const { fetchImpl, calls } = silentHost()
+    const loader = createRemoteImageLoader({ fetchImpl, sanitize: async (bytes) => bytes, gate, timeoutMs: 300 })
+    const request = { uri: 'https://cdn.example/silent-queued.png', ext: '.png' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    await holding
+    await sleep(250)
+    expect(await loader.load(request)).toBeNull()
+    expect(calls.count).toBe(1)
+  })
+
+  // (c) The same remote with no queueing: the download starts at arrival, so its window and the arrival
+  // deadline end together, and the address is charged as before.
+  it('charges a silent remote that started at arrival, and makes no new fetch afterwards', async () => {
+    const { fetchImpl, calls } = silentHost()
+    const loader = createRemoteImageLoader({ fetchImpl, sanitize: async (bytes) => bytes, timeoutMs: 100 })
+    const request = { uri: 'https://cdn.example/silent-now.png', ext: '.png' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    await sleep(150)
+    expect(await loader.load(request)).toBeNull()
+    expect(calls.count).toBe(1)
+  })
+})

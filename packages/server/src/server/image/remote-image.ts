@@ -159,43 +159,49 @@ export function createRemoteImageLoader({
     return null
   }
 
+  /**
+   * Download one file. The download has its own window of `timeoutMs` from the moment it starts, and that window
+   * alone governs the network call, the body and the sanitizing. The request's arrival deadline does not cut a
+   * download short: it only decides the answer the caller gets. So a remote that is slow under a queue still
+   * has its whole window, and a remote that never answers is charged when the window ends, as a remote that
+   * never answers is charged when it starts at once.
+   */
   const download = async ({
     cacheKey,
     uri,
     ext,
-    deadline,
-    arrivedAt,
+    arrival,
   }: {
     cacheKey: string
     uri: string
     ext: string
-    deadline: AbortSignal
-    /** When the request arrived; its deadline is this plus `timeoutMs`. */
-    arrivedAt: number
+    /** The request's arrival deadline. */
+    arrival: AbortSignal
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
-    // The deadline passed while this request waited in line: leave without downloading anything.
-    if (deadline.aborted) return REMOTE_IMAGE_SHED
-    const startedAt = now()
+    // Queued past the request's deadline: the request was answered as shed, so the file is not fetched.
+    if (arrival.aborted) return REMOTE_IMAGE_SHED
+    const window = AbortSignal.timeout(timeoutMs)
     try {
-      const response = await fetchImpl(uri, { signal: deadline })
+      const response = await fetchImpl(uri, { signal: window })
       if (!response.ok) return refuse(cacheKey)
       const raw = await readCapped(response, maxBytes)
       if (!raw || raw.length === 0) return refuse(cacheKey)
-      const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, deadline)
+      // The request was shed while the file came in. Nobody is waiting for it and nothing is kept from it, so
+      // the next request downloads the file again.
+      if (arrival.aborted) return REMOTE_IMAGE_SHED
+      const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, window)
       if (attempt.status === 'expired-in-queue') return REMOTE_IMAGE_SHED
       if (attempt.status === 'sanitized') {
-        // Kept by address even when the request was shed meanwhile, so a later request needs no download.
-        remember(cacheKey, attempt.bytes)
+        // Kept by address, unless the request was shed while the file was being sanitized.
+        if (!arrival.aborted) remember(cacheKey, attempt.bytes)
         return attempt.bytes
       }
-      // A file the sanitizer refused, or one whose sanitizing the deadline cut off while a worker ran it:
-      // the file's own work caused it, so the address is charged, as a file that fails to download is.
+      // A file the sanitizer refused, or one whose sanitizing the window cut off while a worker ran it: the
+      // file's own work caused it, so the address is charged, as a file that fails to download is.
       return refuse(cacheKey)
     } catch {
-      // A deadline that cut the call short counts against the address only when the call had the whole window,
-      // that is, it started at arrival. A call that started late, after queueing, was shed: the remote did
-      // not fail, the line did. It is not charged, so the next request downloads the healthy file.
-      if (deadline.aborted && startedAt > arrivedAt) return REMOTE_IMAGE_SHED
+      // A failed call, or a window that ended before the answer: the remote had its full window and did not
+      // answer in it, so the address is charged.
       return refuse(cacheKey)
     }
   }
@@ -205,15 +211,13 @@ export function createRemoteImageLoader({
     uri: string
     ext: string
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
-    // One deadline from arrival, for the wait in line and the download together.
-    const arrivedAt = now()
-    const deadline = AbortSignal.timeout(timeoutMs)
+    // The request's deadline, from its arrival. It answers the caller; the download runs on its own window.
+    const arrival = AbortSignal.timeout(timeoutMs)
     const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
-      deadline.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
+      arrival.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
     )
-    const outcome = await Promise.race([gate.run(() => download({ ...request, deadline, arrivedAt })), expired])
-    // A full line, or a deadline that passes before the answer, is load shedding. A download that is still
-    // running when its request is shed finishes on its own, and its bytes or failure are recorded there.
+    const outcome = await Promise.race([gate.run(() => download({ ...request, arrival })), expired])
+    // A full line, or a deadline that passes before the answer, is load shedding.
     return outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome
   }
 
