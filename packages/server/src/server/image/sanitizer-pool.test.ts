@@ -258,18 +258,32 @@ describe('createSanitizerPool', () => {
 describe('the sanitizer queue is bounded (sixth review, queue)', () => {
   const slowWorker = new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url)
 
-  it('sheds a job at once, and charges nothing, when the queue is full', async () => {
+  it('reserves no more places than the queue limit, and a released place can be reserved again', () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker, queueLimit: 2 })
+    try {
+      const first = pool.reserve()
+      const second = pool.reserve()
+      expect(first).not.toBeNull()
+      expect(second).not.toBeNull()
+      expect(pool.reserve()).toBeNull()
+
+      first?.release()
+
+      expect(pool.reserve()).not.toBeNull()
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('releases a place once, however often release is called', () => {
     const pool = createSanitizerPool({ workerUrl: slowWorker, queueLimit: 1 })
     try {
-      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, alwaysWanted)
-      const queued = pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)
+      const place = pool.reserve()
+      place?.release()
+      place?.release()
 
-      // The queue holds one job already. This one is shed without waiting for the holder to finish.
-      expect(await pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)).toEqual({
-        status: 'expired-in-queue',
-      })
-      expect((await holder).status).toBe('sanitized')
-      expect((await queued).status).toBe('sanitized')
+      expect(pool.reserve()).not.toBeNull()
+      expect(pool.reserve()).toBeNull()
     } finally {
       pool.close()
     }

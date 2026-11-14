@@ -83,8 +83,21 @@ export type SanitizeAttempt =
   /** No request wanted the file by the time a worker was granted, so it was not run. Nothing is charged. */
   | { status: 'expired-in-queue' }
 
+/**
+ * A place in the sanitizer's queue, held from before a file is downloaded until it is cleaned or dropped. A place is
+ * released exactly once: `release` is safe to call again.
+ */
+export interface SanitizerPlace {
+  release: () => void
+}
+
 /** Runs sanitizing jobs for the remote loader. */
 export interface SanitizerRunner {
+  /**
+   * Hold a place in the queue for a file that is about to be downloaded. Null when every place is in use, in which
+   * case the file must not be downloaded at all. The place counts against the queue limit until released.
+   */
+  reserve: () => SanitizerPlace | null
   /**
    * Sanitize `bytes`, once a worker is granted to them and `wanted` still answers true at that moment.
    *
@@ -135,6 +148,7 @@ function attemptOf(reply: SanitizeJobReply): SanitizeAttempt {
 export function createInProcessSanitizer(sanitize: (bytes: Buffer, ext: string) => Promise<Buffer>): SanitizerRunner {
   return {
     run: async ({ bytes, ext }) => ({ status: 'sanitized', bytes: await sanitize(bytes, ext) }),
+    reserve: () => ({ release: () => undefined }),
     workers: () => 0,
     workersPeak: () => 0,
     workersStarted: () => 0,
@@ -180,6 +194,8 @@ export function createSanitizerPool({
   let peak = 0
   let closed = false
   let freeSlots = size
+  /** Places held by reservations: files being downloaded, waiting for a worker, or being cleaned. */
+  let reserved = 0
   /** A job waiting for a worker, and the timer that sheds it if it waits too long. */
   interface Waiter {
     answer: (answer: SlotAnswer) => void
@@ -190,7 +206,7 @@ export function createSanitizerPool({
   const reported = new Set<string>()
 
   // A slot passes straight to the next job in line, so a newcomer cannot take it ahead of the line. A job waits
-  // at most `queueMaxWaitMs`, and a job that finds `queueLimit` jobs already waiting is not queued at all. A job
+  // at most `queueMaxWaitMs`; how many files may wait at all is bounded by the reservations (see `reserve`). A job
   // waiting for a slot is answered closed when the pool closes.
   const takeSlot = (): Promise<SlotAnswer> => {
     if (closed) return Promise.resolve('closed')
@@ -198,7 +214,6 @@ export function createSanitizerPool({
       freeSlots -= 1
       return Promise.resolve('granted')
     }
-    if (waitingForSlot.length >= queueLimit) return Promise.resolve('expired')
     return new Promise<SlotAnswer>((resolve) => {
       const waiter: Waiter = {
         answer: resolve,
@@ -364,8 +379,22 @@ export function createSanitizerPool({
     }
   }
 
+  const reserve = (): SanitizerPlace | null => {
+    if (reserved >= queueLimit) return null
+    reserved += 1
+    let released = false
+    return {
+      release: () => {
+        if (released) return
+        released = true
+        reserved -= 1
+      },
+    }
+  }
+
   return {
     run,
+    reserve,
     workers: () => alive.size,
     workersPeak: () => peak,
     workersStarted: () => started,

@@ -294,11 +294,14 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
     the file's, and a closed pool. Infrastructure failures are logged once per distinct message to the failure log.
   - A download still running when its requests are shed keeps its gate slot until its window ends (it is not aborted,
     because that would leave a silent host never charged).
-  The sanitizer queue is bounded: at most `SANITIZER_QUEUE_LIMIT` (8) files wait for a worker, and a file that finds the
-  queue full is shed at once; a file that waits longer than `SANITIZER_QUEUE_MAX_WAIT_MS` (5 s) is shed. Both answer
-  `expired-in-queue`, nothing is charged, and the fetched bytes are dropped: they were never cleaned, so they are never
-  served or kept, and the next request fetches again. A job that is already running is not aborted when its waiters leave;
-  its budget bounds it, and its result is kept.
+  The sanitizer queue is bounded by places. Before a file is downloaded its request reserves one place
+  (`sanitizer.reserve()`, see `sanitizer-pool.ts`); at most `SANITIZER_QUEUE_LIMIT` (8) places are held at once, and a
+  request that finds none is shed at once with no download and no fetch. A place is held while the file is downloaded,
+  waits for a worker and is cleaned, and it is released on every path that does not clean the file: a failed or refused
+  download, a shed download, and a finished cleaning (`release` is idempotent). A file that waits longer than
+  `SANITIZER_QUEUE_MAX_WAIT_MS` (5 s) for a worker is shed as `expired-in-queue`, nothing is charged, and its fetched bytes
+  are dropped: they were never cleaned, so they are never served or kept, and the next request fetches again. A job that is
+  already running is not aborted when its waiters leave; its budget bounds it, and its result is kept.
   Sanitizing runs in `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first
   use, running one job at a time, with `--import register-hooks.ts` and a 256 MB heap limit. The sanitizing budget
   (`SANITIZE_TIMEOUT_MS`, 5 s) starts when a worker is granted to the file and the worker has reported ready (its code

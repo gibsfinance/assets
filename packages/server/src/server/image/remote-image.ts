@@ -15,7 +15,12 @@
  */
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
 import { createFailureMemory } from './plate'
-import { createInProcessSanitizer, createSanitizerPool, type SanitizerRunner } from './sanitizer-pool'
+import {
+  createInProcessSanitizer,
+  createSanitizerPool,
+  type SanitizerPlace,
+  type SanitizerRunner,
+} from './sanitizer-pool'
 
 /** Largest remote image read, in bytes. The same cap as an uploaded image (`image-submit.ts`). */
 export const REMOTE_IMAGE_MAX_BYTES = 512 * 1024
@@ -190,14 +195,15 @@ export function createRemoteImageLoader({
   }
 
   /**
-   * Clean the fetched bytes. This runs outside the fetch gate, in the sanitizer's queue, which is bounded (see
-   * `sanitizer-pool.ts`). A success is kept. Bytes that were not cleaned are never served and never kept: when the
+   * Clean the fetched bytes, in the queue place reserved for them. The place is released when the cleaning is over,
+   * whatever its outcome. A success is kept. Bytes that were not cleaned are never served and never kept: when the
    * queue sheds them, or the sanitizer is unavailable, they are dropped and the next request fetches again.
    */
   const cleanFetched = async (
     cacheKey: string,
     ext: string,
     raw: Buffer,
+    place: SanitizerPlace,
   ): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
     try {
       const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, () => isWanted(cacheKey))
@@ -205,8 +211,8 @@ export function createRemoteImageLoader({
         remember(cacheKey, attempt.bytes)
         return attempt.bytes
       }
-      // Nobody waits for the file any more, the queue was full or too long, or the sanitizer could not run it for
-      // reasons that are not the file's: nothing is charged, and the next request tries again.
+      // Nobody waits for the file any more, the wait for a worker was too long, or the sanitizer could not run it
+      // for reasons that are not the file's: nothing is charged, and the next request tries again.
       if (attempt.status === 'expired-in-queue' || attempt.status === 'unavailable') return REMOTE_IMAGE_SHED
       // A file the sanitizer refused, or one whose sanitizing ran out of its budget: the file's own work caused
       // it, so the address is charged, as a file that fails to download is.
@@ -214,24 +220,35 @@ export function createRemoteImageLoader({
     } catch {
       // A sanitizer that throws (the test seam sanitizes in-process) has refused the file.
       return refuse(cacheKey)
+    } finally {
+      place.release()
     }
   }
 
   /**
-   * Start the one fetch for an address. It stays in `inFlight` until it settles, so the requests that arrive
-   * meanwhile join it instead of starting another. A full fetch line answers shed.
+   * Start the one fetch for an address. A queue place is reserved first: when none is free the file is not
+   * downloaded at all, and the request is shed. The place is released on every path that does not clean the file.
+   * The fetch stays in `inFlight` until it settles, so the requests that arrive meanwhile join it.
    */
   const startFetch = (
     cacheKey: string,
     uri: string,
     ext: string,
   ): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    const place = sanitizer.reserve()
+    if (!place) return Promise.resolve(REMOTE_IMAGE_SHED)
     const fetching = gate
       .run(() => fetchBytes(cacheKey, uri))
       .then((fetched) => {
-        if (fetched === GATE_FULL || fetched.status === 'shed') return REMOTE_IMAGE_SHED
-        if (fetched.status === 'refused') return refuse(cacheKey)
-        return cleanFetched(cacheKey, ext, fetched.raw)
+        if (fetched === GATE_FULL || fetched.status === 'shed') {
+          place.release()
+          return REMOTE_IMAGE_SHED
+        }
+        if (fetched.status === 'refused') {
+          place.release()
+          return refuse(cacheKey)
+        }
+        return cleanFetched(cacheKey, ext, fetched.raw, place)
       })
     inFlight.set(cacheKey, fetching)
     void fetching.finally(() => {

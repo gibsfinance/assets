@@ -380,7 +380,14 @@ describe('the sanitizer runner decides what a deadline or a refusal costs (fifth
   /** A runner that answers the given attempts in order, and counts its jobs. */
   const runnerAnswering = (...attempts: SanitizeAttempt[]): SanitizerRunner & { run: Mock } => {
     const run = vi.fn(async () => attempts.shift() ?? { status: 'refused' as const, message: 'no answer left' })
-    return { run, workers: () => 0, workersPeak: () => 0, workersStarted: () => 0, close: () => undefined }
+    return {
+      run,
+      workers: () => 0,
+      reserve: () => ({ release: () => undefined }),
+      workersPeak: () => 0,
+      workersStarted: () => 0,
+      close: () => undefined,
+    }
   }
   const request = { uri: 'https://cdn.example/worker.png', ext: '.png' }
 
@@ -593,6 +600,7 @@ describe('an unavailable sanitizer is shed, never charged (sixth review, finding
     const sanitizer: SanitizerRunner = {
       run,
       workers: () => 0,
+      reserve: () => ({ release: () => undefined }),
       workersPeak: () => 0,
       workersStarted: () => 0,
       close: () => undefined,
@@ -707,5 +715,80 @@ describe('the fetch gate covers only the fetch, not the wait for a sanitizer (si
     expect(await loader.load(request)).toBeNull()
     expect(await loader.load(request)).toBeNull()
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a download reserves a place in the sanitizer queue first (sixth review, outbound amplification)', () => {
+  const slowWorker = () => new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url)
+
+  // With every place in use, a new address is shed at once: it is not downloaded, so no fetch is made for it.
+  it('answers shed, and makes no fetch, for a new address while the queue is full', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 1 })
+    try {
+      const holderPlace = pool.reserve()
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('MID')))
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool })
+
+      expect(await loader.load({ uri: 'https://cdn.example/new.svg', ext: '.svg' })).toBe(REMOTE_IMAGE_SHED)
+      expect(fetchImpl).not.toHaveBeenCalled()
+
+      holderPlace?.release()
+      await holder
+    } finally {
+      pool.close()
+    }
+  })
+
+  // Every failure and every shed must give its place back: after many of them, the queue still accepts work.
+  it('gives every place back after refusals and sheds, so the queue still accepts work', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 2, queueMaxWaitMs: 50 })
+    try {
+      const refusing = createRemoteImageLoader({
+        fetchImpl: vi.fn(async () => new Response('no', { status: 500 })) as unknown as typeof fetch,
+        sanitizer: pool,
+      })
+      for (let index = 0; index < 5; index += 1) {
+        expect(await refusing.load({ uri: `https://cdn.example/refused-${index}.svg`, ext: '.svg' })).toBeNull()
+      }
+      const holderPlace = pool.reserve()
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
+      const shedding = createRemoteImageLoader({
+        fetchImpl: vi.fn(async () => new Response(bytesOf('MID'))) as unknown as typeof fetch,
+        sanitizer: pool,
+      })
+      for (let index = 0; index < 5; index += 1) {
+        expect(await shedding.load({ uri: `https://cdn.example/shed-${index}.svg`, ext: '.svg' })).toBe(
+          REMOTE_IMAGE_SHED,
+        )
+      }
+
+      // The holder keeps one place; the five refusals and five sheds gave theirs back, so one more is free.
+      const probe = pool.reserve()
+      expect(probe).not.toBeNull()
+      expect(pool.reserve()).toBeNull()
+
+      probe?.release()
+      holderPlace?.release()
+      await holder
+    } finally {
+      pool.close()
+    }
+  })
+
+  // A download that reserved its place is cleaned in it, and its place is released after the cleaning.
+  it('cleans a file it downloaded in the place it reserved, and frees the place afterwards', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 1 })
+    try {
+      const loader = createRemoteImageLoader({
+        fetchImpl: vi.fn(async () => new Response(bytesOf('logo'))) as unknown as typeof fetch,
+        sanitizer: pool,
+      })
+
+      expect((await loader.load({ uri: 'https://cdn.example/cleaned.svg', ext: '.svg' }))?.toString()).toBe('logo')
+      expect(pool.reserve()).not.toBeNull()
+    } finally {
+      pool.close()
+    }
   })
 })
