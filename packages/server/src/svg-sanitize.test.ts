@@ -449,3 +449,60 @@ describe('output', () => {
     expect(output).toContain('xlink:href="#a"')
   })
 })
+
+describe('remote loads that hid from the first checks (third review, finding 6)', () => {
+  it('removes a url spelled with a style sheet escape in a presentation attribute', async () => {
+    const output = await clean(wrap('<rect fill="\\75rl(https://evil.example/x)" width="1" height="1"/>'))
+    expect(output).not.toContain('evil.example')
+    expect(output).not.toContain('75rl')
+  })
+
+  it('removes an escaped url in any attribute, not only the style attribute', async () => {
+    const output = await clean(wrap('<rect filter="\\75 rl(http://evil.example/f)" mask="u\\72l(//evil.example/m)"/>'))
+    expect(output).not.toContain('evil.example')
+  })
+
+  it('keeps a presentation attribute that has no escape and no remote load', async () => {
+    const output = await clean(wrap('<rect fill="url(#grad)" stroke="red" width="1" height="1"/>'))
+    expect(output).toContain('fill="url(#grad)"')
+    expect(output).toContain('stroke="red"')
+  })
+
+  it('removes a url with no closing parenthesis, which reads to the end of the text', async () => {
+    const output = await clean(wrap('<style>rect { fill: url(https://evil.example/x</style><rect/>'))
+    expect(output).not.toContain('evil.example')
+    expect(cleanCss('a{background:url("https://evil.example/q')).not.toContain('evil.example')
+    expect(cleanCss('a{background:url(https://evil.example/q')).not.toContain('evil.example')
+  })
+
+  it('keeps an unterminated url that points inside the document', () => {
+    expect(cleanCss('a{fill:url(#local')).toContain('url(#local')
+  })
+
+  it.each([
+    'image-set(url(https://evil.example/a.png) 1x)',
+    'image-set("https://evil.example/a.png" 1x)',
+    '-webkit-image-set("//evil.example/a.png" 1x, "//evil.example/b.png" 2x)',
+    'IMAGE-SET("https://evil.example/a.png" 1x',
+  ])('removes %s, including its bare string candidates', (value) => {
+    expect(cleanCss(`a{background:${value}}`)).not.toContain('evil.example')
+  })
+
+  it('removes a remote font source and a remote import from a style element', async () => {
+    const output = await clean(
+      wrap(
+        '<style>@font-face{font-family:f;src:url(https://evil.example/f.woff2) format("woff2")}@import "https://evil.example/s.css";</style><text>x</text>',
+      ),
+    )
+    expect(output).not.toContain('evil.example')
+  })
+
+  it('removes xml:base from the root and from inner elements, so #x cannot resolve elsewhere', async () => {
+    const output = await clean(
+      `<svg ${NS} xml:base="https://evil.example/doc.svg"><defs><g id="x"><rect/></g></defs><g xml:base="http://evil.example/"><use href="#x"/></g></svg>`,
+    )
+    expect(output).not.toContain('xml:base')
+    expect(output).not.toContain('evil.example')
+    expect(output).toContain('<use href="#x"')
+  })
+})

@@ -14,8 +14,12 @@
  *   any prefix) that runs script, reads a file, or holds a data address that is not an image is
  *   replaced by `#`. A `use` with a link that is not local is removed.
  * - Animation: an animation element that targets a link or an `on*` attribute is removed.
- * - Styles: `@import` rules and `url()` values that are not local or `data:image` are removed from
- *   style elements and from every attribute.
+ * - Styles: `@import` rules, `image-set()` values and `url()` values that are not local or `data:image` are
+ *   removed from style elements and from every attribute. Every attribute value is checked, because a
+ *   browser reads a presentation attribute as style sheet text, escapes included (`\75rl(` is `url(`).
+ *   A `url(` that is never closed reads to the end of the text, so it is checked as well.
+ * - Base address: `xml:base` is removed everywhere, because it makes a reference such as `#x` resolve
+ *   against another document.
  * - Document: comments, processing instructions and the document type (with its entity
  *   declarations) are removed. The parser never expands an entity, so a document that uses one is
  *   rejected as unreadable instead of expanded.
@@ -222,8 +226,18 @@ const NEUTRAL_LINK = '#'
 /** Matches a style sheet `@import` rule up to its semicolon, or to the end of the text when it has none. */
 const CSS_IMPORT_REGEX = /@import\b[^;]*(?:;|$)/gi
 
-/** Matches a style sheet `url()` value, quoted or not. Group 1 is what is inside the parentheses. */
-const CSS_URL_REGEX = /url\(\s*((?:"[^"]*"|'[^']*'|[^)]*))\s*\)/gi
+/**
+ * Matches a style sheet `url()` value, quoted or not. Group 1 is what is inside the parentheses. A
+ * `url(` with no closing parenthesis runs to the end of the text, as a browser reads it, so the end
+ * of the text closes it here.
+ */
+const CSS_URL_REGEX = /url\(\s*((?:"[^"]*"|'[^']*'|[^)]*))\s*(?:\)|$)/gi
+
+/**
+ * Matches `image-set(` and `-webkit-image-set(`, up to its closing parenthesis or the end of the text.
+ * Its candidates may be bare strings, which `url()` checks never see, so the whole value is removed.
+ */
+const CSS_IMAGE_SET_REGEX = /(?:-webkit-)?image-set\((?:[^()]|\([^)]*\))*(?:\)|$)/gi
 
 /** Matches constructs older browsers run script through. */
 const CSS_SCRIPT_CONSTRUCT_REGEX = /expression\s*\(|-moz-binding|behavior\s*:/gi
@@ -251,6 +265,7 @@ function cleanCssText(text: string): string {
   return text
     .replace(CSS_IMPORT_REGEX, '')
     .replace(CSS_SCRIPT_CONSTRUCT_REGEX, 'removed(')
+    .replace(CSS_IMAGE_SET_REGEX, 'none')
     .replace(CSS_URL_REGEX, (whole, inside: string) => (isAllowedCssUrl(inside) ? whole : 'none'))
 }
 
@@ -301,6 +316,15 @@ function targetsLinkOrHandler(element: Element): boolean {
   return name === 'href' || name === 'src' || name.startsWith('on')
 }
 
+/** The namespace the reserved `xml` prefix is bound to. */
+const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace'
+
+/** Whether an attribute is `xml:base`, which changes what every reference below it resolves against. */
+function isBaseAttribute(attribute: Attr): boolean {
+  if (attribute.namespaceURI === XML_NAMESPACE && attribute.localName === 'base') return true
+  return attribute.name.toLowerCase() === 'xml:base'
+}
+
 /** Whether an element is removed with everything inside it. */
 function isRemovedElement(element: Element): boolean {
   if (element.namespaceURI !== SVG_NAMESPACE) return true
@@ -315,7 +339,7 @@ function isRemovedElement(element: Element): boolean {
 
 /** Clean one attribute of a kept element, in place. */
 function cleanAttribute(element: Element, attribute: Attr): void {
-  if (isHandlerAttribute(attribute)) {
+  if (isHandlerAttribute(attribute) || isBaseAttribute(attribute)) {
     element.removeAttributeNode(attribute)
     return
   }
@@ -323,8 +347,9 @@ function cleanAttribute(element: Element, attribute: Attr): void {
     if (isUnsafeLink(attribute.value)) attribute.value = NEUTRAL_LINK
     return
   }
-  const isStyle = attribute.name === 'style'
-  if (isStyle || /url\(/i.test(attribute.value)) attribute.value = cleanCss(attribute.value)
+  // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
+  // can spell `url(` without the raw text ever containing it.
+  attribute.value = cleanCss(attribute.value)
 }
 
 /**
