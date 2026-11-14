@@ -606,3 +606,40 @@ describe('an unavailable sanitizer is shed, never charged (sixth review, finding
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('a worker failure is charged to the file only after the worker was ready (sixth review, crash gap)', () => {
+  const workerAt = (name: string) => new URL(`./__testing__/${name}`, import.meta.url)
+
+  // A file whose job throws out of a worker that had loaded. Charged: the next request is refused from memory, with
+  // no new fetch and no new worker, so the file cannot restart the worker on every request.
+  it('charges a file whose job crashes a loaded worker, so the next request makes no new fetch', async () => {
+    const pool = createSanitizerPool({ workerUrl: workerAt('crashing-sanitize-worker.ts') })
+    try {
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('crash-me')))
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool })
+      const request = { uri: 'https://cdn.example/crashes-worker.svg', ext: '.svg' }
+
+      expect(await loader.load(request)).toBeNull()
+      expect(await loader.load(request)).toBeNull()
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // A worker that fails while loading never took a file: nothing is charged, and the next request tries again.
+  it('sheds, and retries, when the worker fails while loading', async () => {
+    const pool = createSanitizerPool({ workerUrl: workerAt('failing-import-sanitize-worker.ts') })
+    try {
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool })
+      const request = { uri: 'https://cdn.example/fails-to-load.svg', ext: '.svg' }
+
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    } finally {
+      pool.close()
+    }
+  })
+})

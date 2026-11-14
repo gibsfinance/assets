@@ -138,12 +138,14 @@ describe('createSanitizerPool', () => {
   })
 
   // Fifth review, finding 2: a worker that fails for its own reasons is unavailable, not a charge on the file.
-  it('answers unavailable, not refused, when the worker crashes on a job', async () => {
+  // The worker had reported ready and was running this file when it threw: the file is charged, so that a crafted
+  // file that crashes the worker is not retried on every request.
+  it('answers refused, and charges the file, when the worker throws out of a job after it was ready', async () => {
     const pool = createSanitizerPool({ workerUrl: fixture('crashing-sanitize-worker.ts') })
     try {
       const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
-      expect(attempt).toEqual({ status: 'unavailable', message: expect.stringContaining('fixture crash') })
+      expect(attempt).toEqual({ status: 'refused', message: expect.stringContaining('fixture crash') })
       expect(pool.workers()).toBe(0)
     } finally {
       pool.close()
@@ -172,12 +174,12 @@ describe('createSanitizerPool', () => {
     }
   })
 
-  it('answers unavailable when the worker is stopped while it has a job', async () => {
+  it('answers refused when the worker stops by itself while it has a job after it was ready', async () => {
     const pool = createSanitizerPool({ workerUrl: fixture('stopping-sanitize-worker.ts') })
     try {
       const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
 
-      expect(attempt).toEqual({ status: 'unavailable', message: 'sanitizer worker stopped' })
+      expect(attempt).toEqual({ status: 'refused', message: 'sanitizer worker stopped while running this file' })
       expect(pool.workers()).toBe(0)
     } finally {
       pool.close()
@@ -198,7 +200,7 @@ describe('createSanitizerPool', () => {
 
   it('reports a worker that is unavailable once in the failure log, whatever the number of jobs', async () => {
     const before = failures.length
-    const pool = createSanitizerPool({ workerUrl: fixture('crashing-sanitize-worker.ts') })
+    const pool = createSanitizerPool({ workerUrl: fixture('failing-import-sanitize-worker.ts') })
     try {
       await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
       await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)

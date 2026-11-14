@@ -274,17 +274,24 @@ export function createSanitizerPool({
         resolve(result)
       }
       const onMessage = (reply: SanitizeJobReply): void => finish({ attempt: attemptOf(reply), reusable: true })
-      // A worker stopped by its heap limit ran out of memory on this file, so the file caused it. Any other
-      // failure of the worker is not the file's: the worker did not start, did not load, or crashed.
+      // The worker had reported ready, so it was running this file's job when it failed. A crash then is charged to
+      // the file, whatever the error: otherwise a crafted file that crashes the worker would be retried on every
+      // request, restarting the worker each time. A worker stopped by its heap limit ran out of memory on the file.
+      // A failure before ready is not reached here (see `readiness`).
       const onError = (error: Error & { code?: string }): void =>
-        finish(
-          error.code === OUT_OF_MEMORY
-            ? { attempt: { status: 'refused', message: 'sanitizer worker ran out of memory' }, reusable: false }
-            : { attempt: unavailable(`sanitizer worker failed: ${error.message}`), reusable: false },
-        )
+        finish({
+          attempt:
+            error.code === OUT_OF_MEMORY
+              ? { status: 'refused', message: 'sanitizer worker ran out of memory' }
+              : { status: 'refused', message: `sanitizer worker crashed on this file: ${error.message}` },
+          reusable: false,
+        })
+      // A pool closed while the job ran answers unavailable; any other stop of a running worker crashed on the file.
       const onExit = (): void =>
         finish({
-          attempt: unavailable(closed ? CLOSED : 'sanitizer worker stopped'),
+          attempt: closed
+            ? unavailable(CLOSED)
+            : { status: 'refused', message: 'sanitizer worker stopped while running this file' },
           reusable: false,
         })
       const onAbort = (): void => finish({ attempt: { status: 'cut-off' }, reusable: false })
