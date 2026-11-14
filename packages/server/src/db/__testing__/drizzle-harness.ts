@@ -85,6 +85,7 @@ export type RecordedStep = { method: string; args: unknown[] }
 export type RecordedQuery = { root: string; steps: RecordedStep[] }
 
 const chainMethods = [
+  'for',
   'from',
   'innerJoin',
   'leftJoin',

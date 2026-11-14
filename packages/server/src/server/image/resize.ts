@@ -554,7 +554,10 @@ export async function maybeResize({
 
   // Persist if under rate limit
   if (checkRateLimit(img.imageHash)) {
-    db.insertVariant(variantRecord).catch((e: Error) => failureLog('variant op failed: %s', e.message))
+    // Stored only against the digest of the bytes it was drawn from (see `insertVariant`).
+    db.insertVariant({ variant: variantRecord, sourceSha256: img.contentSha256 }).catch((e: Error) =>
+      failureLog('variant op failed: %s', e.message),
+    )
   }
 
   sendVariant(

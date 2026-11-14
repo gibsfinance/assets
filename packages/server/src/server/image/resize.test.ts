@@ -73,10 +73,12 @@ function makeImage(
     uri: string
     mode: string
     createdAt: Date
+    contentSha256: string | null
   }> = {},
 ): any {
   return {
     imageHash: 'abc123',
+    contentSha256: null,
     content: Buffer.from('fake-image-data'),
     ext: '.png',
     uri: 'https://example.com/image.png',
@@ -804,6 +806,33 @@ describe('maybeResize', () => {
     const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
+  })
+
+  // Fourth review, finding 2: the variant is stored only against the digest of the bytes it was drawn from.
+  it('passes the digest of the bytes the variant was drawn from to insertVariant', async () => {
+    const digest = 'd'.repeat(64)
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'digest-carried-' + Date.now(), contentSha256: digest })
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: { w: '72', as: 'webp' } }) })
+
+    await vi.waitFor(() =>
+      expect(db.insertVariant).toHaveBeenCalledWith({
+        variant: expect.objectContaining({ imageHash: img.imageHash, width: 72 }),
+        sourceSha256: digest,
+      }),
+    )
+  })
+
+  it('passes a null digest for bytes that have none, such as a link-mode image', async () => {
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'no-digest-' + Date.now(), contentSha256: null })
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: { w: '72', as: 'webp' } }) })
+
+    await vi.waitFor(() =>
+      expect(db.insertVariant).toHaveBeenCalledWith(expect.objectContaining({ sourceSha256: null })),
+    )
   })
 
   // -------------------------------------------------------------------------

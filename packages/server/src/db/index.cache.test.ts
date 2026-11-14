@@ -50,12 +50,54 @@ describe('getVariant', () => {
 })
 
 describe('insertVariant', () => {
-  it('refreshes content and last-accessed time on a re-generated variant', async () => {
+  const variant = { imageHash: 'hash-1', width: 32, height: 32, format: 'webp', content: Buffer.from('bytes') }
+  const insertsOf = () => harness.queries.filter((query) => query.root === 'insert')
+
+  // Fourth review, finding 2: a variant drawn from bytes that a resanitize rewrite has since replaced
+  // must not be stored after the rewrite deleted the row's variants.
+  it('stores the variant while the image still holds the bytes it was drawn from, under a share lock', async () => {
+    harness.queueResult([{ contentSha256: 'digest-a' }])
     harness.queueResult(undefined)
 
-    await insertVariant({ imageHash: 'hash-1', width: 32, height: 32, format: 'webp', content: Buffer.from('bytes') })
+    expect(await insertVariant({ variant, sourceSha256: 'digest-a' })).toBe(true)
 
-    const insertQuery = harness.queries[0]
+    const lock = harness.queries.find((query) => query.root === 'select')!
+    expect(lock.steps.find((step) => step.method === 'for')?.args).toEqual(['share'])
+    expect(insertsOf()).toHaveLength(1)
+  })
+
+  it('stores nothing when the image was rewritten after the bytes were read', async () => {
+    harness.queueResult([{ contentSha256: 'digest-b' }])
+
+    expect(await insertVariant({ variant, sourceSha256: 'digest-a' })).toBe(false)
+    expect(insertsOf()).toHaveLength(0)
+  })
+
+  it('matches a row with no digest only while it still has none', async () => {
+    harness.queueResult([{ contentSha256: null }])
+    harness.queueResult(undefined)
+    expect(await insertVariant({ variant, sourceSha256: null })).toBe(true)
+
+    harness.reset()
+    harness.queueResult([{ contentSha256: 'digest-now-set' }])
+    expect(await insertVariant({ variant, sourceSha256: null })).toBe(false)
+    expect(insertsOf()).toHaveLength(0)
+  })
+
+  it('stores nothing when the image row is gone', async () => {
+    harness.queueResult([])
+
+    expect(await insertVariant({ variant, sourceSha256: 'digest-a' })).toBe(false)
+    expect(insertsOf()).toHaveLength(0)
+  })
+
+  it('refreshes content and last-accessed time on a re-generated variant', async () => {
+    harness.queueResult([{ contentSha256: 'digest-a' }])
+    harness.queueResult(undefined)
+
+    await insertVariant({ variant, sourceSha256: 'digest-a' })
+
+    const insertQuery = insertsOf()[0]
     const conflictStep = insertQuery.steps.find((step) => step.method === 'onConflictDoUpdate')
     const conflictArgs = conflictStep?.args[0] as { target: unknown[]; set: Record<string, unknown> }
     expect(conflictArgs.target).toHaveLength(4)
