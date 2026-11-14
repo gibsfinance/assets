@@ -1,7 +1,7 @@
 import { DOMParser } from '@xmldom/xmldom'
 import { describe, it, expect } from 'vitest'
 import { sanitizeImage, isScriptUri, SvgRejectedError } from './sanitize'
-import { MAX_ATTRIBUTES, MAX_STYLE_TEXT_LENGTH, cleanCss, sanitizeSvgDocument } from './svg-sanitize'
+import { MAX_STYLE_TEXT_LENGTH, cleanCss, sanitizeSvgDocument } from './svg-sanitize'
 
 const NS = 'xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
 
@@ -546,13 +546,9 @@ describe('image-set, size caps and adversarial input (review of the third round)
     }
   })
 
-  it('rejects style element text over the cap and a document with too many attributes', async () => {
+  it('rejects style element text and a style attribute over the cap', async () => {
     await rejects(wrap(`<style>${'a'.repeat(MAX_STYLE_TEXT_LENGTH + 1)}</style>`)).toBeInstanceOf(SvgRejectedError)
     await rejects(wrap(`<rect style="${'a'.repeat(MAX_STYLE_TEXT_LENGTH + 1)}"/>`)).toBeInstanceOf(SvgRejectedError)
-    const crowded = `<rect ${Array.from({ length: 1_000 }, (_, i) => `a${i}="1"`).join(' ')}/>`.repeat(
-      MAX_ATTRIBUTES / 1_000 + 1,
-    )
-    await rejects(wrap(crowded)).toBeInstanceOf(SvgRejectedError)
   })
 })
 

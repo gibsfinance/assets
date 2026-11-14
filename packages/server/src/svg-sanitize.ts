@@ -26,7 +26,7 @@
  *
  * A document the parser cannot read is rejected with {@link SvgRejectedError}; it is never stored as is.
  */
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
+import { DOMImplementation, DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import { ImageRejectedError } from './image-rejected'
 
 /** The vector image namespace. An element outside it is removed. */
@@ -253,10 +253,12 @@ const CSS_DECLARATION_END_REGEX = /[;}]/
 export const MAX_STYLE_TEXT_LENGTH = 256 * 1024
 
 /**
- * The most attributes one document may hold. A document with more is rejected. Cleaning costs
- * time in proportion to the attribute count, so this bounds work, not correctness. Three real
- * logos in the SmolDapp artwork (read from disk by the collector, so the 512 KB download cap
- * never applies) carry about 97,000 each; 50,000 refused them.
+ * The most attributes one document may hold. A document with more is rejected. Cleaning costs time in
+ * proportion to the attribute count (no removal from a list, so no quadratic step), so this bounds the
+ * work as well as the correctness. Measured on one element with 199,990 attributes: about 2.0 to 2.7 seconds
+ * when every attribute is kept, and 0.9 to 1.2 seconds when every attribute is dropped, on the development
+ * machine (three runs each). Most of the time is the parse. Three real logos in the SmolDapp artwork (read from disk by the
+ * collector, so the 512 KB download cap never applies) carry about 97,000 each; 50,000 refused them.
  */
 export const MAX_ATTRIBUTES = 200_000
 
@@ -411,65 +413,79 @@ interface AttributeBudget {
   remaining: number
 }
 
-/** Clean one attribute of a kept element, in place. */
-function cleanAttribute(element: Element, attribute: Attr, budget: AttributeBudget): void {
-  budget.remaining -= 1
-  if (budget.remaining < 0) throw new SvgRejectedError(`the document has more than ${MAX_ATTRIBUTES} attributes`)
-  if (isHandlerAttribute(attribute) || isBaseAttribute(attribute)) {
-    element.removeAttributeNode(attribute)
-    return
-  }
-  if (isLinkAttribute(attribute)) {
-    if (isUnsafeLink(attribute.value)) attribute.value = NEUTRAL_LINK
-    return
-  }
-  // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
-  // can spell `url(` without the raw text ever containing it. A value is one declaration's value, so
-  // one that holds `image-set(` is dropped whole.
-  const cleaned = attribute.name === 'style' ? cleanStyleText(attribute.value) : cleanCss(attribute.value)
-  attribute.value = CSS_REMOTE_FUNCTION_REGEX.test(attribute.value) ? '' : cleaned
+/**
+ * Where a cleaned copy is written, and how many attributes are left to look at. The source tree is only
+ * read. Nothing is removed from a list: xmldom re-indexes a parent's children on every removal and shifts
+ * an element's attributes on every attribute removal, so removing one at a time costs time in proportion
+ * to the square of the count. Appending to a fresh parent costs the same for every node.
+ */
+interface CopyContext {
+  output: Document
+  budget: AttributeBudget
 }
 
 /**
- * Replace the content of a style element with one plain text node holding its cleaned text.
- *
- * Text, not a CDATA section: a CDATA section is written back raw, so `</style><script>` inside one is
- * inert to a markup parser but ends the style element in a web page parser, which matters when a page
- * inlines the file. A text node has `<` and `&` escaped when it is written. Style sheets never need a
- * `<`, so text that still has one after cleaning is dropped.
+ * The value an attribute keeps in the cleaned copy, or null when the attribute is dropped. Every
+ * attribute counts against the budget, dropped or not.
  */
-function cleanStyleContent(element: Element): void {
-  const text = Array.from(element.childNodes)
+function cleanedAttributeValue(attribute: Attr, budget: AttributeBudget): string | null {
+  budget.remaining -= 1
+  if (budget.remaining < 0) throw new SvgRejectedError(`the document has more than ${MAX_ATTRIBUTES} attributes`)
+  if (isHandlerAttribute(attribute) || isBaseAttribute(attribute)) return null
+  if (isLinkAttribute(attribute)) return isUnsafeLink(attribute.value) ? NEUTRAL_LINK : attribute.value
+  // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
+  // can spell `url(` without the raw text ever containing it. A value is one declaration's value, so
+  // one that holds a remote function is dropped whole.
+  const cleaned = attribute.name === 'style' ? cleanStyleText(attribute.value) : cleanCss(attribute.value)
+  return CSS_REMOTE_FUNCTION_REGEX.test(attribute.value) ? '' : cleaned
+}
+
+/**
+ * The text a style element keeps: its cleaned text as one plain text node. Text, not a CDATA section: a
+ * CDATA section is written back raw, so `</style><script>` inside one is inert to a markup parser but ends
+ * the style element in a web page parser, which matters when a page inlines the file. A text node has `<`
+ * and `&` escaped when it is written. Style sheets never need a `<`, so text that still has one after
+ * cleaning is dropped.
+ */
+function copyStyleContent(source: Element, copy: Element, context: CopyContext): void {
+  const text = Array.from(source.childNodes)
     .filter((child) => child.nodeType === TEXT_NODE || child.nodeType === CDATA_SECTION_NODE)
     .map((child) => (child as CharacterData).data)
     .join('')
-  Array.from(element.childNodes).forEach((child) => element.removeChild(child))
   const cleaned = cleanStyleText(text)
   if (cleaned === '' || cleaned.includes('<')) return
-  element.appendChild((element.ownerDocument as Document).createTextNode(cleaned))
+  copy.appendChild(context.output.createTextNode(cleaned))
 }
 
-/** Clean an element's children, then its attributes. Recurses once per level of nesting. */
-function cleanChildren(parent: Node, budget: AttributeBudget): void {
-  for (const child of Array.from(parent.childNodes)) {
-    if (child.nodeType === CDATA_SECTION_NODE) {
-      // Written as escaped text, so the content can never read as markup in a web page parser.
-      parent.replaceChild((parent.ownerDocument as Document).createTextNode((child as CharacterData).data), child)
-      continue
+/** Copy one kept element with its cleaned attributes and children, or nothing when it is removed. */
+function copyElement(element: Element, parent: Node, context: CopyContext): void {
+  if (isRemovedElement(element)) return
+  const copy = context.output.createElementNS(element.namespaceURI, element.nodeName)
+  for (const attribute of attributesOf(element)) {
+    const value = cleanedAttributeValue(attribute, context.budget)
+    if (value === null) continue
+    // `setAttributeNode` finds an existing attribute through the element's index. `setAttributeNS` looks
+    // it up by scanning the whole list, which makes writing n attributes cost n squared.
+    const kept = context.output.createAttributeNS(attribute.namespaceURI, attribute.name)
+    kept.value = kept.nodeValue = value
+    copy.setAttributeNode(kept)
+  }
+  parent.appendChild(copy)
+  if (element.localName === 'style') copyStyleContent(element, copy, context)
+  else copyChildren(element, copy, context)
+}
+
+/**
+ * Copy an element's children into `parent`. Text and CDATA become escaped text, so the content can never
+ * read as markup in a web page parser. Comments, processing instructions and the like are dropped.
+ */
+function copyChildren(source: Node, parent: Node, context: CopyContext): void {
+  for (const child of Array.from(source.childNodes)) {
+    if (child.nodeType === CDATA_SECTION_NODE || child.nodeType === TEXT_NODE) {
+      parent.appendChild(context.output.createTextNode((child as CharacterData).data))
+    } else if (child.nodeType === ELEMENT_NODE) {
+      copyElement(child as Element, parent, context)
     }
-    if (child.nodeType !== ELEMENT_NODE) {
-      // Text is kept; comments, processing instructions and the like are not.
-      if (child.nodeType !== TEXT_NODE) parent.removeChild(child)
-      continue
-    }
-    const element = child as Element
-    if (isRemovedElement(element)) {
-      parent.removeChild(element)
-      continue
-    }
-    attributesOf(element).forEach((attribute) => cleanAttribute(element, attribute, budget))
-    if (element.localName === 'style') cleanStyleContent(element)
-    else cleanChildren(element, budget)
   }
 }
 
@@ -517,16 +533,23 @@ function rejectOnError(level: string, message: string): void {
 export function sanitizeSvgDocument(image: Buffer): Buffer {
   try {
     const text = decodeDocument(image).replace(/^\ufeff/, '')
-    const document = new DOMParser({ onError: rejectOnError }).parseFromString(text, 'image/svg+xml')
+    // Positions are not read, and recording one per node costs about half the parse time.
+    const document = new DOMParser({ onError: rejectOnError, locator: false }).parseFromString(text, 'image/svg+xml')
     const root = document.documentElement
     if (!root || root.namespaceURI !== SVG_NAMESPACE || root.localName !== ROOT_ELEMENT) {
       throw new SvgRejectedError('the root element is not an svg element in the SVG namespace')
     }
-    // The parser's document type is narrower than the browser's, but it has the members used here.
-    cleanChildren(document as unknown as Node, { remaining: MAX_ATTRIBUTES })
-    // The root is an element of the document node, so this also cleans its attributes; a document type,
-    // comment or processing instruction beside it is removed here too.
-    return Buffer.from(new XMLSerializer().serializeToString(document), 'utf-8')
+    // The cleaned document holds what the walk keeps at the top level: the root, and the whitespace the parser
+    // leaves before and after it. A document type, comment or processing instruction beside the root is not
+    // copied, so it is removed here too.
+    // An empty qualified name makes no root element; the root is copied in below.
+    const xmlOutput = new DOMImplementation().createDocument(null, '', null)
+    const output = xmlOutput as unknown as Document
+    copyChildren(document as unknown as Node, output, {
+      output,
+      budget: { remaining: MAX_ATTRIBUTES },
+    })
+    return Buffer.from(new XMLSerializer().serializeToString(xmlOutput), 'utf-8')
   } catch (error) {
     if (error instanceof SvgRejectedError) throw error
     throw new SvgRejectedError('the document could not be read', { cause: error })
