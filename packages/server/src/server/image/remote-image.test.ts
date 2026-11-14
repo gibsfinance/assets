@@ -291,9 +291,35 @@ describe('one deadline from arrival (third review, finding 7)', () => {
     }) as unknown as typeof fetch
     const loader = createRemoteImageLoader({ fetchImpl: hanging, timeoutMs: 20 })
     const request = { uri: 'https://cdn.example/slow', ext: '.png' }
-    expect(await loader.load(request)).toBeNull()
-    // Remembered: the second ask does not start a second download.
+    // The deadline passed during the network call: the request is shed, and the aborted call is the remote's failure.
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    // Let the aborted call settle, then the failure is remembered: the second ask does not download again.
+    await new Promise((resolve) => setTimeout(resolve, 5))
     expect(await loader.load(request)).toBeNull()
     expect(downloads).toBe(1)
+  })
+
+  // Fourth review, finding 1: a deadline that passes while the server sanitizes the bytes is the server's
+  // load, not the remote's. Recording it as a failure kept the logo missing for a minute.
+  it('answers shed, and remembers no failure, when the deadline passes while the bytes are being sanitized', async () => {
+    const slowSanitize = async (bytes: Buffer) => {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      return bytes
+    }
+    const { loader, fetchImpl } = setup({ sanitize: slowSanitize, timeoutMs: 40 })
+    const request = { uri: 'https://cdn.example/cpu-bound.png', ext: '.png' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    // No failure was remembered, so the second ask downloads again instead of answering null at once.
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('still remembers a refused body as a failure when the deadline has not passed', async () => {
+    const { loader, fetchImpl } = setup({ body: () => new Response(bytesOf('x'.repeat(20))), maxBytes: 4 })
+    const request = { uri: 'https://cdn.example/big.png', ext: '.png' }
+    expect(await loader.load(request)).toBeNull()
+    expect(await loader.load(request)).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })

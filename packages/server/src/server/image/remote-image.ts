@@ -142,32 +142,42 @@ export function createRemoteImageLoader({
     while (cache.size > maxEntries || cachedBytes > maxTotalBytes) forget(cache.keys().next().value!)
   }
 
+  /**
+   * Remember that the remote failed to give a usable file, and answer the caller with no image. Only
+   * the remote's failures come here: a network error or an aborted call, a non-success answer, an
+   * oversized or empty body, or a refused file.
+   */
+  const refuse = (cacheKey: string): null => {
+    failures.record(cacheKey)
+    return null
+  }
+
   const download = async ({
     cacheKey,
     uri,
     ext,
     deadline,
-    progress,
   }: {
     cacheKey: string
     uri: string
     ext: string
     deadline: AbortSignal
-    progress: { started: boolean }
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
     // The deadline passed while this request waited in line: leave without downloading anything.
     if (deadline.aborted) return REMOTE_IMAGE_SHED
-    progress.started = true
     try {
       const response = await fetchImpl(uri, { signal: deadline })
-      if (!response.ok) return null
+      if (!response.ok) return refuse(cacheKey)
       const raw = await readCapped(response, maxBytes)
-      if (!raw || raw.length === 0) return null
+      if (!raw || raw.length === 0) return refuse(cacheKey)
+      // Sanitizing runs on this server's processor. A deadline that passes here is the server's load,
+      // not the remote's: the request was already answered as shed, and nothing is recorded against
+      // the address. The bytes are still kept, so a later request needs no download.
       const bytes = await sanitize(raw, sanitizerExtension(ext))
       remember(cacheKey, bytes)
       return bytes
     } catch {
-      return null
+      return refuse(cacheKey)
     }
   }
 
@@ -181,13 +191,10 @@ export function createRemoteImageLoader({
     const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
       deadline.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
     )
-    const progress = { started: false }
-    const raced = await Promise.race([gate.run(() => download({ ...request, deadline, progress })), expired])
-    if (raced === GATE_FULL) return REMOTE_IMAGE_SHED
-    // A deadline that passed after the download began is the image's fault (a slow host), not the line's.
-    const outcome = raced === REMOTE_IMAGE_SHED && progress.started ? null : raced
-    if (outcome === null) failures.record(request.cacheKey)
-    return outcome
+    const outcome = await Promise.race([gate.run(() => download({ ...request, deadline })), expired])
+    // A full line, or a deadline that passes before the answer, is load shedding. A download that is still
+    // running when its request is shed finishes on its own, and its bytes or failure are recorded there.
+    return outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome
   }
 
   return {
