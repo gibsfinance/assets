@@ -40,7 +40,7 @@ const ELEMENT_NODE = 1
 const TEXT_NODE = 3
 const CDATA_SECTION_NODE = 4
 
-/** Elements the walk keeps. Anything else in an vector image document is removed. */
+/** Elements the walk keeps. Anything else in a vector image document is removed. */
 const ALLOWED_ELEMENTS: ReadonlySet<string> = new Set([
   // structure
   'svg',
@@ -135,7 +135,7 @@ const STYLE_PARENT_ELEMENTS: ReadonlySet<string> = new Set([
 /** Animation elements, which can rewrite another attribute and so are looked at twice. */
 const ANIMATION_ELEMENTS: ReadonlySet<string> = new Set(['animate', 'animateTransform', 'animateMotion', 'set'])
 
-/** Why an vector image could not be made safe to store. */
+/** Why a vector image could not be made safe to store. */
 export class SvgRejectedError extends ImageRejectedError {
   constructor(reason: string, options?: ErrorOptions) {
     super(`svg rejected: ${reason}`, options)
@@ -525,7 +525,7 @@ function rejectOnError(level: string, message: string): void {
 }
 
 /**
- * Parse an vector image, remove everything unsafe, and write it back.
+ * Parse a vector image, remove everything unsafe, and write it back.
  *
  * @param image The vector image bytes.
  * @returns The sanitized document as eight-bit Unicode encoding. It has no declaration, document type, comment or processing instruction.

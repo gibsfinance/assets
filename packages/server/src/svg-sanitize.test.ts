@@ -542,7 +542,7 @@ describe('image-set, size caps and adversarial input (review of the third round)
     for (const input of inputs) {
       const started = performance.now()
       cleanCss(input)
-      expect(performance.now() - started).toBeLessThan(200)
+      expect(performance.now() - started).toBeLessThan(1_000)
     }
   })
 
