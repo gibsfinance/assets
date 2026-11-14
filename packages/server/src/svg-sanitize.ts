@@ -252,8 +252,13 @@ const CSS_DECLARATION_END_REGEX = /[;}]/
  */
 export const MAX_STYLE_TEXT_LENGTH = 256 * 1024
 
-/** The most attributes one document may hold. A document with more is rejected. */
-export const MAX_ATTRIBUTES = 50_000
+/**
+ * The most attributes one document may hold. A document with more is rejected. Cleaning costs
+ * time in proportion to the attribute count, so this bounds work, not correctness. Three real
+ * logos in the SmolDapp artwork (read from disk by the collector, so the 512 KB download cap
+ * never applies) carry about 97,000 each; 50,000 refused them.
+ */
+export const MAX_ATTRIBUTES = 200_000
 
 /** Matches constructs older browsers run script through. */
 const CSS_SCRIPT_CONSTRUCT_REGEX = /expression\s*\(|-moz-binding|behavior\s*:/gi

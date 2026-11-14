@@ -301,12 +301,13 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
   throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
   so APNG is refused, not flattened. A style element's text or a `style` attribute over `MAX_STYLE_TEXT_LENGTH` (256 KiB), or a document over
-  `MAX_ATTRIBUTES` (50,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
+  `MAX_ATTRIBUTES` (200,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
   check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
   or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
   changes were checked on the 4,441 files of the smoldapp sample against the sanitizer before the review round: 4,438
-  give byte-identical output. The other 3 (3 to 4 MB each, about 97,000 attributes apiece) are refused by
-  `MAX_ATTRIBUTES`, which the older sanitizer did not have.
+  give byte-identical output. The other 3 (3 to 4 MB each, about 97,000 attributes apiece) were refused when the cap
+  was 50,000; it is 200,000 so they are kept. The collector reads that artwork from disk, so no download cap
+  applies to it. Cleaning time grows with the attribute count, which is what the cap bounds.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
