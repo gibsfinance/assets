@@ -299,8 +299,10 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   GIF, WebP and AVIF are re-encoded (GIF and WebP with `animated: true`, so their frames survive; sharp reads only the first
   frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
   throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
-  so APNG is refused, not flattened. The vector change was checked on the 4,441 files of the smoldapp sample: the old and
-  new sanitizer give byte-identical output for every one, so no rendering changed.
+  so APNG is refused, not flattened. A style text or attribute value over `MAX_STYLE_TEXT_LENGTH` (256 KiB) or a document over `MAX_ATTRIBUTES` (50,000)
+  is rejected, and a declaration holding `image-set(` is dropped whole (no balanced-parenthesis matching). The vector
+  change was checked on the 4,441 files of the smoldapp sample: 4,432 give byte-identical output from the old and new
+  sanitizer; the other 9 are files of 1.1 MB to 5.1 MB (above the 512 KB image cap) that the caps now reject.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 

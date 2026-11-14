@@ -1,7 +1,7 @@
 import { DOMParser } from '@xmldom/xmldom'
 import { describe, it, expect } from 'vitest'
 import { sanitizeImage, isScriptUri, SvgRejectedError } from './sanitize'
-import { cleanCss, sanitizeSvgDocument } from './svg-sanitize'
+import { MAX_ATTRIBUTES, MAX_STYLE_TEXT_LENGTH, cleanCss, sanitizeSvgDocument } from './svg-sanitize'
 
 const NS = 'xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
 
@@ -504,5 +504,54 @@ describe('remote loads that hid from the first checks (third review, finding 6)'
     expect(output).not.toContain('xml:base')
     expect(output).not.toContain('evil.example')
     expect(output).toContain('<use href="#x"')
+  })
+})
+
+describe('image-set, size caps and adversarial input (review of the third round)', () => {
+  it('removes every remote address when a quoted string holds a closing parenthesis', () => {
+    const output = cleanCss(
+      'a{background:image-set("http://host.example/a.png?)" 1x, "http://host.example/b.png" 1x)}b{fill:red}',
+    )
+    expect(output).not.toContain('host.example')
+    expect(output).toContain('b{fill:red}')
+  })
+
+  it('drops only the declaration that holds image-set, not its neighbours', () => {
+    const output = cleanCss('a{fill:red;background:-webkit-image-set("//h.example/a" 1x);stroke:blue}')
+    expect(output).toBe('a{fill:red;;stroke:blue}')
+  })
+
+  it('drops an image-set spelled with a style sheet escape', () => {
+    expect(cleanCss('a{background:image\\2d set("//h.example/a" 1x)}')).toBe('')
+  })
+
+  it('drops a presentation attribute that holds image-set', async () => {
+    const output = await clean(wrap('<rect fill="image-set(&quot;http://h.example/a)&quot; 1x)" width="1"/>'))
+    expect(output).not.toContain('h.example')
+    expect(output).toContain('fill=""')
+  })
+
+  it('cleans 100 KB of repeated adversarial text quickly', () => {
+    const inputs = [
+      'image-set('.repeat(10_000),
+      'a{b:image-set("x)" 1x'.repeat(5_000),
+      'url('.repeat(25_000),
+      `url(${' '.repeat(100_000)}`,
+      '((((('.repeat(20_000) + 'image-set(',
+    ]
+    for (const input of inputs) {
+      const started = performance.now()
+      cleanCss(input)
+      expect(performance.now() - started).toBeLessThan(200)
+    }
+  })
+
+  it('rejects style text over the cap and a document with too many attributes', async () => {
+    expect(() => cleanCss('a'.repeat(MAX_STYLE_TEXT_LENGTH + 1))).toThrow(SvgRejectedError)
+    await rejects(wrap(`<style>${'a'.repeat(MAX_STYLE_TEXT_LENGTH + 1)}</style>`)).toBeInstanceOf(SvgRejectedError)
+    const crowded = `<rect ${Array.from({ length: 1_000 }, (_, i) => `a${i}="1"`).join(' ')}/>`.repeat(
+      MAX_ATTRIBUTES / 1_000 + 1,
+    )
+    await rejects(wrap(crowded)).toBeInstanceOf(SvgRejectedError)
   })
 })

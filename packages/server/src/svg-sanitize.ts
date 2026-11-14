@@ -235,10 +235,25 @@ const CSS_IMPORT_REGEX = /@import\b[^;]*(?:;|$)/gi
 const CSS_URL_REGEX = /url\(\s*((?:"[^"]*"|'[^']*'|[^)]*))\s*(?:\)|$)/gi
 
 /**
- * Matches `image-set(` and `-webkit-image-set(`, up to its closing parenthesis or the end of the text.
- * Its candidates may be bare strings, which `url()` checks never see, so the whole value is removed.
+ * Finds `image-set(`, which also covers `-webkit-image-set(`. Its candidates may be bare strings,
+ * which the `url()` check never sees, and a parenthesis inside a quoted string would end any attempt
+ * to cut out just the call. So no cutting is tried: the whole declaration goes (see
+ * `dropImageSetDeclarations`).
  */
-const CSS_IMAGE_SET_REGEX = /(?:-webkit-)?image-set\((?:[^()]|\([^)]*\))*(?:\)|$)/gi
+const CSS_IMAGE_SET_REGEX = /image-set\(/i
+
+/** Ends a declaration, or the rule that holds it. */
+const CSS_DECLARATION_END_REGEX = /[;}]/
+
+/**
+ * The most style sheet text, in characters, that one style element or attribute value may hold. Text
+ * over it is not worth cleaning: a real logo has a few hundred characters, and a document that
+ * carries more is rejected like any other document that cannot be read.
+ */
+export const MAX_STYLE_TEXT_LENGTH = 256 * 1024
+
+/** The most attributes one document may hold. A document with more is rejected. */
+export const MAX_ATTRIBUTES = 50_000
 
 /** Matches constructs older browsers run script through. */
 const CSS_SCRIPT_CONSTRUCT_REGEX = /expression\s*\(|-moz-binding|behavior\s*:/gi
@@ -261,12 +276,34 @@ function isAllowedCssUrl(inside: string): boolean {
   return target.startsWith('#') || target.startsWith('data:image/')
 }
 
-/** Remove `@import` rules, script constructs, and every `url()` that is not local or an image held in the value. */
+/**
+ * Remove every declaration that holds `image-set(`, from the start of the declaration (after the
+ * previous `;` or `{`) to the next `;` or `}`, or to the end of the text. One pass, no nesting and no
+ * quote handling, so it cannot be put out of step by a parenthesis or a quote inside a string.
+ */
+function dropImageSetDeclarations(text: string): string {
+  const finder = new RegExp(CSS_IMAGE_SET_REGEX.source, 'gi')
+  const stop = new RegExp(CSS_DECLARATION_END_REGEX.source, 'g')
+  const kept: string[] = []
+  let cursor = 0
+  for (let found = finder.exec(text); found; found = finder.exec(text)) {
+    let start = found.index
+    while (start > cursor && text[start - 1] !== ';' && text[start - 1] !== '{') start -= 1
+    stop.lastIndex = found.index
+    const end = stop.exec(text)?.index ?? text.length
+    kept.push(text.slice(cursor, start))
+    cursor = end
+    finder.lastIndex = end
+  }
+  kept.push(text.slice(cursor))
+  return kept.join('')
+}
+
+/** Remove `@import` rules, script constructs, `image-set()` declarations, and every `url()` that is not local or an image held in the value. */
 function cleanCssText(text: string): string {
-  return text
+  return dropImageSetDeclarations(text)
     .replace(CSS_IMPORT_REGEX, '')
     .replace(CSS_SCRIPT_CONSTRUCT_REGEX, 'removed(')
-    .replace(CSS_IMAGE_SET_REGEX, 'none')
     .replace(CSS_URL_REGEX, (whole, inside: string) => (isAllowedCssUrl(inside) ? whole : 'none'))
 }
 
@@ -279,6 +316,9 @@ function cleanCssText(text: string): string {
  * rewritten, because cutting it correctly would mean parsing style sheet.
  */
 export function cleanCss(text: string): string {
+  if (text.length > MAX_STYLE_TEXT_LENGTH) {
+    throw new SvgRejectedError(`style text is longer than ${MAX_STYLE_TEXT_LENGTH} characters`)
+  }
   const cleaned = cleanCssText(text)
   if (!text.includes('\\')) return cleaned
   const decoded = decodeCssEscapes(text)
@@ -338,8 +378,15 @@ function isRemovedElement(element: Element): boolean {
   return links.some((link) => !isLocalLink(link.value))
 }
 
+/** How many attributes the walk may still look at. */
+interface AttributeBudget {
+  remaining: number
+}
+
 /** Clean one attribute of a kept element, in place. */
-function cleanAttribute(element: Element, attribute: Attr): void {
+function cleanAttribute(element: Element, attribute: Attr, budget: AttributeBudget): void {
+  budget.remaining -= 1
+  if (budget.remaining < 0) throw new SvgRejectedError(`the document has more than ${MAX_ATTRIBUTES} attributes`)
   if (isHandlerAttribute(attribute) || isBaseAttribute(attribute)) {
     element.removeAttributeNode(attribute)
     return
@@ -349,8 +396,9 @@ function cleanAttribute(element: Element, attribute: Attr): void {
     return
   }
   // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
-  // can spell `url(` without the raw text ever containing it.
-  attribute.value = cleanCss(attribute.value)
+  // can spell `url(` without the raw text ever containing it. A value is one declaration's value, so
+  // one that holds `image-set(` is dropped whole.
+  attribute.value = CSS_IMAGE_SET_REGEX.test(attribute.value) ? '' : cleanCss(attribute.value)
 }
 
 /**
@@ -373,7 +421,7 @@ function cleanStyleContent(element: Element): void {
 }
 
 /** Clean an element's children, then its attributes. Recurses once per level of nesting. */
-function cleanChildren(parent: Node): void {
+function cleanChildren(parent: Node, budget: AttributeBudget): void {
   for (const child of Array.from(parent.childNodes)) {
     if (child.nodeType === CDATA_SECTION_NODE) {
       // Written as escaped text, so the content can never read as markup in a web page parser.
@@ -390,9 +438,9 @@ function cleanChildren(parent: Node): void {
       parent.removeChild(element)
       continue
     }
-    attributesOf(element).forEach((attribute) => cleanAttribute(element, attribute))
+    attributesOf(element).forEach((attribute) => cleanAttribute(element, attribute, budget))
     if (element.localName === 'style') cleanStyleContent(element)
-    else cleanChildren(element)
+    else cleanChildren(element, budget)
   }
 }
 
@@ -446,7 +494,7 @@ export function sanitizeSvgDocument(image: Buffer): Buffer {
       throw new SvgRejectedError('the root element is not an svg element in the SVG namespace')
     }
     // The parser's document type is narrower than the browser's, but it has the members used here.
-    cleanChildren(document as unknown as Node)
+    cleanChildren(document as unknown as Node, { remaining: MAX_ATTRIBUTES })
     // The root is an element of the document node, so this also cleans its attributes; a document type,
     // comment or processing instruction beside it is removed here too.
     return Buffer.from(new XMLSerializer().serializeToString(document), 'utf-8')
