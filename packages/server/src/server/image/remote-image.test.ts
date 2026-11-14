@@ -323,3 +323,52 @@ describe('one deadline from arrival (third review, finding 7)', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('a download that started late is shed, not charged (fifth review, finding 3)', () => {
+  // The reviewer's scenario: the line has one place, a holder keeps it 250 ms, the deadline is 300 ms after arrival,
+  // and a healthy host answers in 100 ms. Request 1 waits in line, starts at 250 ms with 50 ms left, and is cut off:
+  // it is shed. Request 2 at 400 ms downloads, and must succeed; a failure charged to the address would refuse it.
+  it('sheds a request whose download started late and was cut off, and lets the next request succeed', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    const holding = gate.run(() => new Promise<void>((resolve) => setTimeout(resolve, 250)))
+    const healthyHost = vi.fn(
+      (_uri: string, init: { signal: AbortSignal }) =>
+        new Promise<Response>((resolve, reject) => {
+          const answer = setTimeout(() => resolve(new Response(bytesOf('logo'))), 100)
+          init.signal.addEventListener('abort', () => {
+            clearTimeout(answer)
+            reject(new Error('aborted'))
+          })
+        }),
+    ) as unknown as typeof fetch
+    const loader = createRemoteImageLoader({
+      fetchImpl: healthyHost,
+      sanitize: async (bytes) => bytes,
+      gate,
+      timeoutMs: 300,
+    })
+    const request = { uri: 'https://cdn.example/healthy.png', ext: '.png' }
+
+    const first = loader.load(request)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(await first).toBe(REMOTE_IMAGE_SHED)
+    await holding
+
+    const second = await loader.load(request)
+    expect(second).not.toBeNull()
+    expect(second).not.toBe(REMOTE_IMAGE_SHED)
+    expect(healthyHost).toHaveBeenCalledTimes(2)
+  })
+
+  it('still charges a download that started at arrival and was cut off by the deadline', async () => {
+    const hanging = ((_uri: string, init: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) =>
+        init.signal.addEventListener('abort', () => reject(new Error('timed out'))),
+      )) as unknown as typeof fetch
+    const loader = createRemoteImageLoader({ fetchImpl: hanging, sanitize: async (bytes) => bytes, timeoutMs: 40 })
+    const request = { uri: 'https://cdn.example/hung.png', ext: '.png' }
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(await loader.load(request)).toBeNull()
+  })
+})

@@ -157,14 +157,18 @@ export function createRemoteImageLoader({
     uri,
     ext,
     deadline,
+    arrivedAt,
   }: {
     cacheKey: string
     uri: string
     ext: string
     deadline: AbortSignal
+    /** When the request arrived; its deadline is this plus `timeoutMs`. */
+    arrivedAt: number
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
     // The deadline passed while this request waited in line: leave without downloading anything.
     if (deadline.aborted) return REMOTE_IMAGE_SHED
+    const startedAt = now()
     try {
       const response = await fetchImpl(uri, { signal: deadline })
       if (!response.ok) return refuse(cacheKey)
@@ -177,6 +181,10 @@ export function createRemoteImageLoader({
       remember(cacheKey, bytes)
       return bytes
     } catch {
+      // A deadline that cut the call short counts against the address only when the call had the whole window,
+      // that is, it started at arrival. A call that started late, after queueing, was shed: the remote did
+      // not fail, the line did. It is not charged, so the next request downloads the healthy file.
+      if (deadline.aborted && startedAt > arrivedAt) return REMOTE_IMAGE_SHED
       return refuse(cacheKey)
     }
   }
@@ -187,11 +195,12 @@ export function createRemoteImageLoader({
     ext: string
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
     // One deadline from arrival, for the wait in line and the download together.
+    const arrivedAt = now()
     const deadline = AbortSignal.timeout(timeoutMs)
     const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
       deadline.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
     )
-    const outcome = await Promise.race([gate.run(() => download({ ...request, deadline })), expired])
+    const outcome = await Promise.race([gate.run(() => download({ ...request, deadline, arrivedAt })), expired])
     // A full line, or a deadline that passes before the answer, is load shedding. A download that is still
     // running when its request is shed finishes on its own, and its bytes or failure are recorded there.
     return outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome
