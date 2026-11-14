@@ -277,7 +277,8 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
-  512 KB (streamed, dropped as it passes the cap), 4 downloads at once with a line of 16. Each download has its own window
+  512 KB (streamed, dropped as it passes the cap). The fetch gate (4 downloads at once, a line of 16) covers only the network
+  call and the body: a file waiting for a sanitizer worker holds no fetch slot. Each download has its own window
   of `REMOTE_IMAGE_TIMEOUT_MS` (5 s) from the moment it starts, and that window alone governs the network call and the
   body. The request's arrival deadline (also 5 s, from arrival) only decides the caller's answer; a file nobody waits for
   is dropped from the line before it starts. One fetch per address is in flight at a time: requests for that address join
@@ -287,11 +288,17 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
     non-success answer; an oversized or empty body; a file the sanitizer refused (including a worker that ran out of its
     heap on it); a file whose sanitizing ran out of its budget (`cut-off`).
   - Shed (`REMOTE_IMAGE_SHED`, nothing charged, the next request tries again): a request whose deadline passed in line; a
-    sanitizing job that expired because no request wanted the file when a worker was granted; and any sanitizer
+    sanitizing job that expired because no request wanted the file when a worker was granted, or because it was shed by
+    the sanitizer queue (see below); and any sanitizer
     infrastructure failure (`unavailable`): a worker that did not start, did not load, or crashed for reasons that are not
     the file's, and a closed pool. Infrastructure failures are logged once per distinct message to the failure log.
   - A download still running when its requests are shed keeps its gate slot until its window ends (it is not aborted,
     because that would leave a silent host never charged).
+  The sanitizer queue is bounded: at most `SANITIZER_QUEUE_LIMIT` (8) files wait for a worker, and a file that finds the
+  queue full is shed at once; a file that waits longer than `SANITIZER_QUEUE_MAX_WAIT_MS` (5 s) is shed. Both answer
+  `expired-in-queue`, nothing is charged, and the fetched bytes are dropped: they were never cleaned, so they are never
+  served or kept, and the next request fetches again. A job that is already running is not aborted when its waiters leave;
+  its budget bounds it, and its result is kept.
   Sanitizing runs in `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first
   use, running one job at a time, with `--import register-hooks.ts` and a 256 MB heap limit. The sanitizing budget
   (`SANITIZE_TIMEOUT_MS`, 5 s) starts when a worker is granted to the file and the worker has reported ready (its code

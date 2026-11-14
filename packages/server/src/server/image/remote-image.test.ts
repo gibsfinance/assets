@@ -643,3 +643,69 @@ describe('a worker failure is charged to the file only after the worker was read
     }
   })
 })
+
+describe('the fetch gate covers only the fetch, not the wait for a sanitizer (sixth review, gate)', () => {
+  const slowWorker = () => new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url)
+
+  // Gate limit one. The first file's fetch finishes at once, then it waits behind a 400 ms holder for the worker.
+  // The second address must still fetch while that wait lasts: the first file holds no fetch slot while it waits.
+  it('lets a second address fetch while the first address waits for the sanitizer', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker() })
+    try {
+      let holderDone = false
+      const holder = pool
+        .run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
+        .then(() => {
+          holderDone = true
+        })
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('MID')))
+      const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool, gate })
+
+      const first = loader.load({ uri: 'https://cdn.example/first.svg', ext: '.svg' })
+      const second = loader.load({ uri: 'https://cdn.example/second.svg', ext: '.svg' })
+
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2))
+      expect(holderDone).toBe(false)
+      expect((await first)?.toString()).toBe('MID')
+      expect((await second)?.toString()).toBe('MID')
+      await holder
+    } finally {
+      pool.close()
+    }
+  })
+
+  // A file the queue sheds was never cleaned, so it is dropped: the next request fetches again, and is not served
+  // the uncleaned bytes from memory.
+  it('drops the bytes of a file the queue sheds, and the next request fetches again', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueMaxWaitMs: 100 })
+    try {
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('MID')))
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool })
+      const request = { uri: 'https://cdn.example/shed.svg', ext: '.svg' }
+
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      await holder
+      expect((await loader.load(request))?.toString()).toBe('MID')
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('refuses a file that an in-process sanitizer throws on, and charges the address', async () => {
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('bad')))
+    const loader = createRemoteImageLoader({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sanitize: async () => {
+        throw new Error('refused in process')
+      },
+    })
+    const request = { uri: 'https://cdn.example/throws.svg', ext: '.svg' }
+
+    expect(await loader.load(request)).toBeNull()
+    expect(await loader.load(request)).toBeNull()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})

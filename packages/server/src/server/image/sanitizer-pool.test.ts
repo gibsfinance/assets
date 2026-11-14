@@ -5,6 +5,8 @@ import {
   createSanitizerPool,
   SANITIZE_TIMEOUT_MS,
   SANITIZER_IDLE_MS,
+  SANITIZER_QUEUE_LIMIT,
+  SANITIZER_QUEUE_MAX_WAIT_MS,
   type SanitizeAttempt,
 } from './sanitizer-pool'
 
@@ -250,6 +252,59 @@ describe('createSanitizerPool', () => {
     })
     expect(pool.workersStarted()).toBe(1)
     await vi.waitFor(() => expect(pool.workers()).toBe(0))
+  })
+})
+
+describe('the sanitizer queue is bounded (sixth review, queue)', () => {
+  const slowWorker = new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url)
+
+  it('sheds a job at once, and charges nothing, when the queue is full', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker, queueLimit: 1 })
+    try {
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, alwaysWanted)
+      const queued = pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)
+
+      // The queue holds one job already. This one is shed without waiting for the holder to finish.
+      expect(await pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)).toEqual({
+        status: 'expired-in-queue',
+      })
+      expect((await holder).status).toBe('sanitized')
+      expect((await queued).status).toBe('sanitized')
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('sheds a job that waits longer than the maximum wait, and the running job still finishes', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker, queueMaxWaitMs: 100 })
+    try {
+      const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, alwaysWanted)
+      const waited = await pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, alwaysWanted)
+
+      expect(waited).toEqual({ status: 'expired-in-queue' })
+      expect((await holder).status).toBe('sanitized')
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('lets a running job finish when no request wants its file any more', async () => {
+    const pool = createSanitizerPool({ workerUrl: slowWorker })
+    try {
+      let wanted = true
+      const running = pool.run({ bytes: Buffer.from('MID'), ext: '.svg' }, () => wanted)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      wanted = false
+
+      expect((await running).status).toBe('sanitized')
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('the default queue limit is eight, and the default maximum wait five seconds', () => {
+    expect(SANITIZER_QUEUE_LIMIT).toBe(8)
+    expect(SANITIZER_QUEUE_MAX_WAIT_MS).toBe(5_000)
   })
 })
 

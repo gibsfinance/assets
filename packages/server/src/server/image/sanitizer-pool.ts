@@ -38,6 +38,12 @@ export const SANITIZER_IDLE_MS = 60_000
  */
 export const SANITIZE_TIMEOUT_MS = 5_000
 
+/** Most files that may wait for a worker at once. A file past it is shed at once, and nothing is charged. */
+export const SANITIZER_QUEUE_LIMIT = 8
+
+/** Longest a file may wait for a worker, in milliseconds. A file that waits longer is shed, and nothing is charged. */
+export const SANITIZER_QUEUE_MAX_WAIT_MS = 5_000
+
 /** Schedules the idle stop. Tests inject a clock; the default is the process timer, which does not keep it alive. */
 export interface SanitizerTimers {
   set: (callback: () => void, milliseconds: number) => unknown
@@ -103,6 +109,9 @@ const DEFAULT_WORKER_URL = new URL('../../bin/sanitize-worker.ts', import.meta.u
 /** The loader the server runs under, so a worker resolves its imports exactly as the server does. */
 const REGISTER_HOOKS = fileURLToPath(new URL('../../bin/register-hooks.ts', import.meta.url))
 
+/** How a job's wait for a worker ended. */
+type SlotAnswer = 'granted' | 'closed' | 'expired'
+
 /** What one job reports when it is finished with its worker. */
 interface JobResult {
   attempt: SanitizeAttempt
@@ -146,12 +155,16 @@ export function createSanitizerPool({
   workerUrl = DEFAULT_WORKER_URL,
   idleMs = SANITIZER_IDLE_MS,
   budgetMs = SANITIZE_TIMEOUT_MS,
+  queueLimit = SANITIZER_QUEUE_LIMIT,
+  queueMaxWaitMs = SANITIZER_QUEUE_MAX_WAIT_MS,
   timers = processTimers,
 }: {
   size?: number
   workerUrl?: URL
   idleMs?: number
   budgetMs?: number
+  queueLimit?: number
+  queueMaxWaitMs?: number
   timers?: SanitizerTimers
 } = {}): SanitizerRunner {
   const alive = new Set<Worker>()
@@ -167,24 +180,44 @@ export function createSanitizerPool({
   let peak = 0
   let closed = false
   let freeSlots = size
-  const waitingForSlot: ((granted: boolean) => void)[] = []
+  /** A job waiting for a worker, and the timer that sheds it if it waits too long. */
+  interface Waiter {
+    answer: (answer: SlotAnswer) => void
+    handle: unknown
+  }
+  const waitingForSlot: Waiter[] = []
   /** Messages already reported to the failure log, so a fault that repeats is reported once. */
   const reported = new Set<string>()
 
-  // A slot passes straight to the next job in line, so a newcomer cannot take it ahead of the line. A job
-  // waiting for a slot is answered false when the pool closes.
-  const takeSlot = (): Promise<boolean> => {
-    if (closed) return Promise.resolve(false)
+  // A slot passes straight to the next job in line, so a newcomer cannot take it ahead of the line. A job waits
+  // at most `queueMaxWaitMs`, and a job that finds `queueLimit` jobs already waiting is not queued at all. A job
+  // waiting for a slot is answered closed when the pool closes.
+  const takeSlot = (): Promise<SlotAnswer> => {
+    if (closed) return Promise.resolve('closed')
     if (freeSlots > 0) {
       freeSlots -= 1
-      return Promise.resolve(true)
+      return Promise.resolve('granted')
     }
-    return new Promise<boolean>((resolve) => waitingForSlot.push(resolve))
+    if (waitingForSlot.length >= queueLimit) return Promise.resolve('expired')
+    return new Promise<SlotAnswer>((resolve) => {
+      const waiter: Waiter = {
+        answer: resolve,
+        handle: timers.set(() => {
+          waitingForSlot.splice(waitingForSlot.indexOf(waiter), 1)
+          resolve('expired')
+        }, queueMaxWaitMs),
+      }
+      waitingForSlot.push(waiter)
+    })
   }
   const giveSlot = (): void => {
     const next = waitingForSlot.shift()
-    if (next) next(true)
-    else freeSlots += 1
+    if (next) {
+      timers.clear(next.handle)
+      next.answer('granted')
+    } else {
+      freeSlots += 1
+    }
   }
 
   const unavailable = (message: string): SanitizeAttempt => {
@@ -306,7 +339,9 @@ export function createSanitizerPool({
     })
 
   const run = async (request: { bytes: Buffer; ext: string }, wanted: () => boolean): Promise<SanitizeAttempt> => {
-    if (!(await takeSlot())) return unavailable(CLOSED)
+    const answer = await takeSlot()
+    if (answer === 'closed') return unavailable(CLOSED)
+    if (answer === 'expired') return { status: 'expired-in-queue' }
     try {
       // The pool may have closed while this job held a slot, between the grant and this line.
       if (closed) return unavailable(CLOSED)
@@ -336,7 +371,10 @@ export function createSanitizerPool({
     workersStarted: () => started,
     close: () => {
       closed = true
-      for (const resolve of waitingForSlot.splice(0)) resolve(false)
+      for (const waiter of waitingForSlot.splice(0)) {
+        timers.clear(waiter.handle)
+        waiter.answer('closed')
+      }
       for (const handle of idleStops.values()) timers.clear(handle)
       idleStops.clear()
       for (const worker of alive) void worker.terminate()

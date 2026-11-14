@@ -162,50 +162,64 @@ export function createRemoteImageLoader({
     return null
   }
 
+  /** What the network call and the body gave, before any sanitizing. */
+  type Fetched = { status: 'fetched'; raw: Buffer } | { status: 'refused' } | { status: 'shed' }
+
   /**
-   * Fetch one file. It has its own window of `timeoutMs` from the moment it starts, and that window alone governs
-   * the network call, the body and the sanitizing. A download is charged to its address when its window ends
-   * without an answer, whether or not anyone is still waiting. A successful answer is always kept, so a request that
-   * arrives later is served from it.
+   * Fetch one file's bytes. The window of `timeoutMs`, from the moment the call starts, covers the network call and
+   * the body. Only this step runs under the fetch gate: a file waiting for a sanitizer worker holds no fetch slot.
+   * A file nobody waits for is not fetched; its entry goes at once, so a request that arrives now starts its own.
    */
-  const fetchFile = async ({
-    cacheKey,
-    uri,
-    ext,
-  }: {
-    cacheKey: string
-    uri: string
-    ext: string
-  }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
-    // The window covers the network call and the body. Sanitizing has its own budget, which starts when a worker
-    // is granted (see `sanitizer-pool.ts`), so a wait for a worker is not charged to the file.
+  const fetchBytes = async (cacheKey: string, uri: string): Promise<Fetched> => {
+    if (!isWanted(cacheKey)) {
+      inFlight.delete(cacheKey)
+      return { status: 'shed' }
+    }
     const window = AbortSignal.timeout(timeoutMs)
     try {
       const response = await fetchImpl(uri, { signal: window })
-      if (!response.ok) return refuse(cacheKey)
+      if (!response.ok) return { status: 'refused' }
       const raw = await readCapped(response, maxBytes)
-      if (!raw || raw.length === 0) return refuse(cacheKey)
+      if (!raw || raw.length === 0) return { status: 'refused' }
+      return { status: 'fetched', raw }
+    } catch {
+      // A failed call, or a window that ended before the answer: the remote had its full window and did not
+      // answer in it, so the address is charged.
+      return { status: 'refused' }
+    }
+  }
+
+  /**
+   * Clean the fetched bytes. This runs outside the fetch gate, in the sanitizer's queue, which is bounded (see
+   * `sanitizer-pool.ts`). A success is kept. Bytes that were not cleaned are never served and never kept: when the
+   * queue sheds them, or the sanitizer is unavailable, they are dropped and the next request fetches again.
+   */
+  const cleanFetched = async (
+    cacheKey: string,
+    ext: string,
+    raw: Buffer,
+  ): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    try {
       const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, () => isWanted(cacheKey))
       if (attempt.status === 'sanitized') {
         remember(cacheKey, attempt.bytes)
         return attempt.bytes
       }
-      // Nobody waits for the file any more, or the sanitizer could not run it for reasons that are not the
-      // file's: nothing is charged, and the next request tries again.
+      // Nobody waits for the file any more, the queue was full or too long, or the sanitizer could not run it for
+      // reasons that are not the file's: nothing is charged, and the next request tries again.
       if (attempt.status === 'expired-in-queue' || attempt.status === 'unavailable') return REMOTE_IMAGE_SHED
       // A file the sanitizer refused, or one whose sanitizing ran out of its budget: the file's own work caused
       // it, so the address is charged, as a file that fails to download is.
       return refuse(cacheKey)
     } catch {
-      // A failed call, or a window that ended before the answer: the remote had its full window and did not
-      // answer in it, so the address is charged.
+      // A sanitizer that throws (the test seam sanitizes in-process) has refused the file.
       return refuse(cacheKey)
     }
   }
 
   /**
    * Start the one fetch for an address. It stays in `inFlight` until it settles, so the requests that arrive
-   * meanwhile join it instead of starting another. A full line answers shed.
+   * meanwhile join it instead of starting another. A full fetch line answers shed.
    */
   const startFetch = (
     cacheKey: string,
@@ -213,16 +227,12 @@ export function createRemoteImageLoader({
     ext: string,
   ): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
     const fetching = gate
-      .run(async () => {
-        // Nobody waits for this file any more (its requests were shed while queued): it is not fetched. The entry
-        // goes at once, so a request that arrives now starts a fetch of its own instead of joining this one.
-        if (!isWanted(cacheKey)) {
-          inFlight.delete(cacheKey)
-          return REMOTE_IMAGE_SHED
-        }
-        return fetchFile({ cacheKey, uri, ext })
+      .run(() => fetchBytes(cacheKey, uri))
+      .then((fetched) => {
+        if (fetched === GATE_FULL || fetched.status === 'shed') return REMOTE_IMAGE_SHED
+        if (fetched.status === 'refused') return refuse(cacheKey)
+        return cleanFetched(cacheKey, ext, fetched.raw)
       })
-      .then((outcome) => (outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome))
     inFlight.set(cacheKey, fetching)
     void fetching.finally(() => {
       if (inFlight.get(cacheKey) === fetching) inFlight.delete(cacheKey)
