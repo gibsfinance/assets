@@ -281,12 +281,15 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   the wait in line; the request's arrival deadline only decides the caller's answer). Each download has its own window of
   `REMOTE_IMAGE_TIMEOUT_MS` from the moment it starts, and that window alone governs the network call, the body and the
   sanitizing. Shed (`REMOTE_IMAGE_SHED`, nothing remembered): a request whose deadline passed in line (no download
-  starts); a request shed while its file came in or was sanitized (the bytes are not kept, so the next request
-  downloads again); a sanitizing job that expired while it waited for a worker. Charged (remembered 60 s): a download
+  starts; a file nobody waits for is dropped from the line); a request shed while its file came in or was sanitized
+  (the file is still kept for the next request); a sanitizing job that expired while it waited for a worker. One fetch
+  per address is in flight at a time: requests for that address join it (`inFlight`), so a slow or silent host cannot be
+  made to serve many parallel downloads. Charged (remembered 60 s): a download
   whose window ended without an answer (a silent remote, after queueing or not); a non-success answer; an oversized or
   empty body; a file the sanitizer refused; a sanitizing job the window cut off while a worker ran it (the worker is
-  stopped). A download that is still running when its request is shed keeps its gate slot until its window ends. 4
-  downloads at once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
+  stopped). A download that is still running when its requests are shed keeps its gate slot until its window ends
+  (it is not aborted, because that would leave a silent host never charged). A successful answer is always kept, even
+  when every request that waited for it was shed. 4 downloads at once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
   started on first use and reused, each running one job at a time, each with `--import register-hooks.ts` and a 256 MB heap
   limit. Measured with the production loader: about 33 MB per worker (the process was 131 MB without one, 207 MB with
   two); about 200 to 300 ms of main-thread pause each time a worker starts, so a crafted file that cuts off a worker

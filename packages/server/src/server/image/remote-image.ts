@@ -130,7 +130,10 @@ export function createRemoteImageLoader({
   maxTotalBytes = REMOTE_IMAGE_CACHE_MAX_BYTES,
 }: RemoteImageLoaderOptions = {}): RemoteImageLoader {
   const cache = new Map<string, CacheEntry>()
+  /** The fetch for each address that is running. */
   const inFlight = new Map<string, Promise<Buffer | null | typeof REMOTE_IMAGE_SHED>>()
+  /** How many requests are waiting for each address. */
+  const waiting = new Map<string, number>()
   let failures = createFailureMemory({ now })
   let cachedBytes = 0
 
@@ -160,40 +163,30 @@ export function createRemoteImageLoader({
   }
 
   /**
-   * Download one file. The download has its own window of `timeoutMs` from the moment it starts, and that window
-   * alone governs the network call, the body and the sanitizing. The request's arrival deadline does not cut a
-   * download short: it only decides the answer the caller gets. So a remote that is slow under a queue still
-   * has its whole window, and a remote that never answers is charged when the window ends, as a remote that
-   * never answers is charged when it starts at once.
+   * Fetch one file. It has its own window of `timeoutMs` from the moment it starts, and that window alone governs
+   * the network call, the body and the sanitizing. A download is charged to its address when its window ends
+   * without an answer, whether or not anyone is still waiting. A successful answer is always kept, so a request that
+   * arrives later is served from it.
    */
-  const download = async ({
+  const fetchFile = async ({
     cacheKey,
     uri,
     ext,
-    arrival,
   }: {
     cacheKey: string
     uri: string
     ext: string
-    /** The request's arrival deadline. */
-    arrival: AbortSignal
   }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
-    // Queued past the request's deadline: the request was answered as shed, so the file is not fetched.
-    if (arrival.aborted) return REMOTE_IMAGE_SHED
     const window = AbortSignal.timeout(timeoutMs)
     try {
       const response = await fetchImpl(uri, { signal: window })
       if (!response.ok) return refuse(cacheKey)
       const raw = await readCapped(response, maxBytes)
       if (!raw || raw.length === 0) return refuse(cacheKey)
-      // The request was shed while the file came in. Nobody is waiting for it and nothing is kept from it, so
-      // the next request downloads the file again.
-      if (arrival.aborted) return REMOTE_IMAGE_SHED
       const attempt = await sanitizer.run({ bytes: raw, ext: sanitizerExtension(ext) }, window)
       if (attempt.status === 'expired-in-queue') return REMOTE_IMAGE_SHED
       if (attempt.status === 'sanitized') {
-        // Kept by address, unless the request was shed while the file was being sanitized.
-        if (!arrival.aborted) remember(cacheKey, attempt.bytes)
+        remember(cacheKey, attempt.bytes)
         return attempt.bytes
       }
       // A file the sanitizer refused, or one whose sanitizing the window cut off while a worker ran it: the
@@ -206,19 +199,43 @@ export function createRemoteImageLoader({
     }
   }
 
-  const fetchOnce = async (request: {
-    cacheKey: string
-    uri: string
-    ext: string
-  }): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
-    // The request's deadline, from its arrival. It answers the caller; the download runs on its own window.
-    const arrival = AbortSignal.timeout(timeoutMs)
-    const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
-      arrival.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
-    )
-    const outcome = await Promise.race([gate.run(() => download({ ...request, arrival })), expired])
-    // A full line, or a deadline that passes before the answer, is load shedding.
-    return outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome
+  /**
+   * Start the one fetch for an address. It stays in `inFlight` until it settles, so the requests that arrive
+   * meanwhile join it instead of starting another. A full line answers shed.
+   */
+  const startFetch = (
+    cacheKey: string,
+    uri: string,
+    ext: string,
+  ): Promise<Buffer | null | typeof REMOTE_IMAGE_SHED> => {
+    const fetching = gate
+      .run(async () => {
+        // Nobody waits for this file any more (its requests were shed while queued): it is not fetched. The entry
+        // goes at once, so a request that arrives now starts a fetch of its own instead of joining this one.
+        if ((waiting.get(cacheKey) ?? 0) === 0) {
+          inFlight.delete(cacheKey)
+          return REMOTE_IMAGE_SHED
+        }
+        return fetchFile({ cacheKey, uri, ext })
+      })
+      .then((outcome) => (outcome === GATE_FULL ? REMOTE_IMAGE_SHED : outcome))
+    inFlight.set(cacheKey, fetching)
+    void fetching.finally(() => {
+      if (inFlight.get(cacheKey) === fetching) inFlight.delete(cacheKey)
+    })
+    return fetching
+  }
+
+  /** A request starts waiting for `key`. */
+  const join = (key: string): void => {
+    waiting.set(key, (waiting.get(key) ?? 0) + 1)
+  }
+
+  /** A request stops waiting for `key`: its answer is given, or it was shed. */
+  const leave = (key: string): void => {
+    const remaining = waiting.get(key)! - 1
+    if (remaining > 0) waiting.set(key, remaining)
+    else waiting.delete(key)
   }
 
   return {
@@ -228,18 +245,25 @@ export function createRemoteImageLoader({
       if (cached && cached.expiresAt > now()) return cached.bytes
       forget(key)
       if (failures.has(key)) return null
-      const pending = inFlight.get(key) ?? fetchOnce({ cacheKey: key, uri, ext })
-      inFlight.set(key, pending)
+      // The request is waiting before its file is started, so that the file is fetched only if someone waits for it.
+      join(key)
       try {
-        return await pending
+        // The request's deadline, from its arrival. It answers this caller; the fetch runs on its own window.
+        const arrival = AbortSignal.timeout(timeoutMs)
+        const expired = new Promise<typeof REMOTE_IMAGE_SHED>((resolve) =>
+          arrival.addEventListener('abort', () => resolve(REMOTE_IMAGE_SHED), { once: true }),
+        )
+        const fetching = inFlight.get(key) ?? startFetch(key, uri, ext)
+        return await Promise.race([fetching, expired])
       } finally {
-        inFlight.delete(key)
+        leave(key)
       }
     },
     reset() {
       cache.clear()
       cachedBytes = 0
       inFlight.clear()
+      waiting.clear()
       failures = createFailureMemory({ now })
     },
     get size() {

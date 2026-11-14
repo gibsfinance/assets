@@ -311,9 +311,9 @@ describe('one deadline from arrival (third review, finding 7)', () => {
     const request = { uri: 'https://cdn.example/cpu-bound.png', ext: '.png' }
 
     expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
-    // No failure was remembered, so the second ask downloads again instead of answering null at once.
+    // No failure was remembered. The second ask joins the download still running, so it makes no new fetch.
     expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
-    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
   it('still remembers a refused body as a failure when the deadline has not passed', async () => {
@@ -358,7 +358,8 @@ describe('a download that started late is shed, not charged (fifth review, findi
     const second = await loader.load(request)
     expect(second).not.toBeNull()
     expect(second).not.toBe(REMOTE_IMAGE_SHED)
-    expect(healthyHost).toHaveBeenCalledTimes(2)
+    // The late answer was kept, so the second request needed no fetch.
+    expect(healthyHost).toHaveBeenCalledTimes(1)
   })
 
   it('still charges a download that started at arrival and was cut off by the deadline', async () => {
@@ -432,10 +433,10 @@ describe('each download has its own window from its start (fifth review, finding
   }
   const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-  // (a) The reviewer's late-start scenario. The download starts at 250 ms, so it has 50 ms of the arrival
-  // deadline left and is shed for the first request. Its bytes are not kept: a request that was shed leaves
-  // nothing behind, so the second request, at 400 ms, downloads again and succeeds.
-  it('sheds a late-started download, keeps nothing from it, and lets the next request download and succeed', async () => {
+  // (a) The reviewer's late-start scenario. The download starts at 250 ms, so the arrival deadline at 300 ms sheds
+  // the first request. The download still has its window, its answer at 350 ms is kept, and the second request,
+  // at 400 ms, is served from it with no new fetch.
+  it('sheds a late-started download, keeps its late answer, and serves the next request from it', async () => {
     const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
     const holding = gate.run(() => sleep(250))
     const healthyHost = vi.fn(
@@ -462,7 +463,7 @@ describe('each download has its own window from its start (fifth review, finding
     const second = await loader.load(request)
 
     expect(second?.toString()).toBe('logo')
-    expect(healthyHost).toHaveBeenCalledTimes(2)
+    expect(healthyHost).toHaveBeenCalledTimes(1)
   })
 
   // (b) A remote that never answers, after queueing. The download starts at 100 ms with the whole 300 ms window,
@@ -492,6 +493,55 @@ describe('each download has its own window from its start (fifth review, finding
     expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
     await sleep(150)
     expect(await loader.load(request)).toBeNull()
+    expect(calls.count).toBe(1)
+  })
+})
+
+describe('a download is shared by the requests for its address, and kept (fifth review, denial of service)', () => {
+  const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+  /** A host that answers after `milliseconds`, honouring the signal it is given. */
+  const slowHost = (milliseconds: number) => {
+    const calls = { count: 0 }
+    const fetchImpl = vi.fn((_uri: string, init: { signal: AbortSignal }) => {
+      calls.count += 1
+      return new Promise<Response>((resolve, reject) => {
+        const answer = setTimeout(() => resolve(new Response(bytesOf('logo'))), milliseconds)
+        init.signal.addEventListener('abort', () => {
+          clearTimeout(answer)
+          reject(new Error('aborted'))
+        })
+      })
+    }) as unknown as typeof fetch
+    return { fetchImpl, calls }
+  }
+
+  // (a) Requests for one address during one window join the download that is running. They do not start more.
+  it('makes exactly one fetch for many requests for one address during one window', async () => {
+    const { fetchImpl, calls } = slowHost(100)
+    const loader = createRemoteImageLoader({ fetchImpl, sanitize: async (bytes) => bytes, timeoutMs: 300 })
+    const request = { uri: 'https://cdn.example/shared.png', ext: '.png' }
+
+    const results = await Promise.all(Array.from({ length: 10 }, () => loader.load(request)))
+
+    expect(results.every((result) => result?.toString() === 'logo')).toBe(true)
+    expect(calls.count).toBe(1)
+  })
+
+  // (b) A download the request left is not stopped and its late answer is kept: the next request is served from
+  // the cache. The download queues for 100 ms, so its window (400 ms) ends after the arrival deadline (400 ms)
+  // only if it starts late; here it starts at 100 ms, the request is shed at 400 ms, and the answer at 450 ms is
+  // inside the window (100 + 400 = 500 ms).
+  it('keeps a late answer, and serves the next request from it with no new fetch', async () => {
+    const gate = createConcurrencyGate({ limit: 1, maxQueue: 4 })
+    const holding = gate.run(() => sleep(100))
+    const { fetchImpl, calls } = slowHost(350)
+    const loader = createRemoteImageLoader({ fetchImpl, sanitize: async (bytes) => bytes, gate, timeoutMs: 400 })
+    const request = { uri: 'https://cdn.example/late.png', ext: '.png' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    await holding
+    await sleep(200)
+    expect((await loader.load(request))?.toString()).toBe('logo')
     expect(calls.count).toBe(1)
   })
 })
