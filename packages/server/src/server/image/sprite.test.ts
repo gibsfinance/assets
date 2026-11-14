@@ -470,11 +470,17 @@ describe('sprite endpoints', () => {
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
       await vi.waitFor(() => expect(running).toBe(REMOTE_IMAGE_CONCURRENCY))
-      while (release.length > 0 || running > 0) {
+      // Released until every request has finished. Stopping when nothing is running would race the
+      // next queued download, which starts a moment after the last one ends, and leave it held.
+      let finished = false
+      const allDone = Promise.all(requests).then(() => {
+        finished = true
+      })
+      while (!finished) {
         release.splice(0).forEach((resolve) => resolve())
         await new Promise((resolve) => setTimeout(resolve, 5))
       }
-      await Promise.all(requests)
+      await allDone
       // Eight downloads were wanted by two requests; the limit is one budget, not one per request.
       expect(peak).toBe(REMOTE_IMAGE_CONCURRENCY)
     })

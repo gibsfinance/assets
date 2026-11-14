@@ -846,7 +846,10 @@ async function producePlated({
   }
   // Refused before any drawing, whatever the source (a fetched one was refused earlier still).
   if (!canSpendPlate(budgets)) return OVER_BUDGET
-  if (wrapped) return spendPlate(budgets) ? wrapped : OVER_BUDGET
+  if (wrapped) {
+    spendPlate(budgets)
+    return wrapped
+  }
   // The budgets are charged once the gate admits the draw, so a request turned away because the
   // line is full spends nothing. A budget spent while this request waited in line still refuses it.
   return plateGate.run(

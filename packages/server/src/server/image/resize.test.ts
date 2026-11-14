@@ -39,6 +39,7 @@ import * as db from '../../db'
 import * as path from 'path'
 import { submodules } from '../../paths'
 import sharp from 'sharp'
+import { REMOTE_IMAGE_SHED, createRemoteImageLoader, type RemoteImageLoader } from './remote-image'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -672,7 +673,10 @@ describe('maybeResize', () => {
       uri: 'https://cdn.example.com/token.png',
     })
 
-    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+    // Sharp is mocked in this file, so the real sanitizer could not decode the stand-in bytes; it is
+    // replaced here and tested on its own (see `sanitize.test.ts`).
+    const remoteImages = createRemoteImageLoader({ sanitize: async (bytes) => bytes })
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }), remoteImages })
 
     expect(result).toBe(true)
     expect(global.fetch).toHaveBeenCalledWith(
@@ -680,6 +684,27 @@ describe('maybeResize', () => {
       expect.objectContaining({ signal: expect.anything() }),
     )
     expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
+  })
+
+  it('treats a download turned away for load as an image that cannot be had, and leaves the original answer to the caller', async () => {
+    const remoteImages: RemoteImageLoader = {
+      load: vi.fn(async (): ReturnType<RemoteImageLoader['load']> => REMOTE_IMAGE_SHED),
+      reset: vi.fn(),
+      size: 0,
+    }
+    const res = mockRes()
+    const img = makeImage({ mode: 'link', content: Buffer.from(''), uri: 'https://cdn.example.com/busy.png' })
+
+    const result = await maybeResize({
+      res,
+      img,
+      params: parseResizeParams({ query: { w: '72' } }),
+      remoteImages,
+    })
+
+    expect(result).toBe(false)
+    expect(vi.mocked(remoteImages.load)).toHaveBeenCalledTimes(1)
+    expect(res.send).not.toHaveBeenCalled()
   })
 
   it.each([
