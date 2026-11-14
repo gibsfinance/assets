@@ -289,14 +289,20 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   empty body; a file the sanitizer refused; a sanitizing job the window cut off while a worker ran it (the worker is
   stopped). A download that is still running when its requests are shed keeps its gate slot until its window ends
   (it is not aborted, because that would leave a silent host never charged). A successful answer is always kept, even
-  when every request that waited for it was shed. 4 downloads at once with a line of 16. Sanitizing runs in `server/image/sanitizer-pool.ts`: two worker threads (`SANITIZER_POOL_SIZE`),
-  started on first use and reused, each running one job at a time, each with `--import register-hooks.ts` and a 256 MB heap
-  limit. Measured with the production loader: about 33 MB per worker (the process was 131 MB without one, 207 MB with
-  two); about 200 to 300 ms of main-thread pause each time a worker starts, so a crafted file that cuts off a worker
-  costs one such pause on the next remote load. `sanitize` in the loader options runs in-process with no time limit and
+  when every request that waited for it was shed. 4 downloads at once with a line of 16. Sanitizing runs in
+  `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first use, running one job
+  at a time, with `--import register-hooks.ts` and a 256 MB heap limit. Idle shutdown: a worker with no job for
+  `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists only while remote files are being cleaned; the next job
+  starts a fresh worker. A job takes its worker's idle stop away, and the idle timer never stops a worker that is running
+  a job. Memory, measured on the development machine with the sanitizer and the loader loaded in a plain script: 131 MB
+  with no worker, 163 MB with one (about 33 MB per worker), 207 MB with two (about 38 MB each). The 250 MB figure in the
+  deployment notes is the owner's measurement of the whole server and was not re-measured here. Each worker start pauses the
+  main thread for about 200 to 360 ms (measured: a worker's first reply takes about 360 ms with the production hooks, and
+  about 19 ms without them), so a remote load that finds no worker waiting pays that once; a crafted file that cuts off the
+  worker costs one such pause on the next remote load. `sanitize` in the loader options runs in-process with no time limit and
   is a test seam only. Kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered 60 s.
   Plain-node check: `sanitizer-pool.plain-node.test.ts` runs `server/image/__testing__/pool-load-check.ts` under
-  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 25 ms (the
+  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 18 ms with one worker (the
   in-process path blocked the loop for the whole load).
   librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
   request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):

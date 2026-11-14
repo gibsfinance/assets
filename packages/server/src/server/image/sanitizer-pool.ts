@@ -9,14 +9,38 @@
  *
  * Each worker runs one job at a time. At most `size` jobs run at once, and a job waiting for a slot
  * waits without limit: the number of waiting jobs is bounded by the remote loader's download limit,
- * which is the only caller. A worker is started on first use and reused, so an idle server holds none.
+ * which is the only caller. A worker is started on first use, and it is stopped after `SANITIZER_IDLE_MS`
+ * with no job, so the memory a worker holds exists only while remote files are being cleaned. A worker
+ * that is running a job is never stopped by the idle timer.
  */
 import { Worker } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import { copyToOwnBuffer, type SanitizeJobReply, type SanitizeJobRequest } from './sanitize-job'
 
-/** Workers that may sanitize at once. Two keeps a single crafted file from holding every slot for long. */
-export const SANITIZER_POOL_SIZE = 2
+/**
+ * Workers that may sanitize at once. One worker costs about 33 megabytes while it exists (measured under the
+ * production loader; see CLAUDE.md), so it is the default. With one worker, a crafted file holds remote
+ * sanitizing until its window ends, so the window is the bound on that.
+ */
+export const SANITIZER_POOL_SIZE = 1
+
+/** How long a worker may sit with no job before it is stopped, in milliseconds. */
+export const SANITIZER_IDLE_MS = 60_000
+
+/** Schedules the idle stop. Tests inject a clock; the default is the process timer, which does not keep it alive. */
+export interface SanitizerTimers {
+  set: (callback: () => void, milliseconds: number) => unknown
+  clear: (handle: unknown) => void
+}
+
+const processTimers: SanitizerTimers = {
+  set: (callback, milliseconds) => {
+    const handle = setTimeout(callback, milliseconds)
+    handle.unref()
+    return handle
+  },
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+}
 
 /**
  * Heap a worker may grow to, in megabytes. A worker past it is stopped by the runtime, and the job is
@@ -46,6 +70,8 @@ export interface SanitizerRunner {
   run: (request: { bytes: Buffer; ext: string }, deadline: AbortSignal) => Promise<SanitizeAttempt>
   /** Worker threads alive now, busy or idle. Housekeeping and tests. */
   workers: () => number
+  /** Worker threads started since the runner was built, including those since stopped. Tests. */
+  workersStarted: () => number
   /** Stops every worker. A job still running is refused. */
   close: () => void
 }
@@ -80,6 +106,7 @@ export function createInProcessSanitizer(sanitize: (bytes: Buffer, ext: string) 
   return {
     run: async ({ bytes, ext }) => ({ status: 'sanitized', bytes: await sanitize(bytes, ext) }),
     workers: () => 0,
+    workersStarted: () => 0,
     close: () => undefined,
   }
 }
@@ -94,9 +121,19 @@ export function createInProcessSanitizer(sanitize: (bytes: Buffer, ext: string) 
 export function createSanitizerPool({
   size = SANITIZER_POOL_SIZE,
   workerUrl = DEFAULT_WORKER_URL,
-}: { size?: number; workerUrl?: URL } = {}): SanitizerRunner {
+  idleMs = SANITIZER_IDLE_MS,
+  timers = processTimers,
+}: {
+  size?: number
+  workerUrl?: URL
+  idleMs?: number
+  timers?: SanitizerTimers
+} = {}): SanitizerRunner {
   const alive = new Set<Worker>()
   const idle: Worker[] = []
+  /** The idle stop scheduled for each worker in `idle`. A worker that takes a job has its stop cancelled. */
+  const idleStops = new Map<Worker, unknown>()
+  let started = 0
   let freeSlots = size
   const waitingForSlot: (() => void)[] = []
 
@@ -122,6 +159,7 @@ export function createSanitizerPool({
     // Not kept alive by the worker: a server that is stopping should not wait for an idle sanitizer.
     worker.unref()
     alive.add(worker)
+    started += 1
     // A failure is reported to the job that was running on the worker (see `runJob`). With no job running,
     // the error has nowhere to go, and an unhandled one would stop the process.
     worker.on('error', () => undefined)
@@ -129,7 +167,45 @@ export function createSanitizerPool({
       alive.delete(worker)
       const index = idle.indexOf(worker)
       if (index >= 0) idle.splice(index, 1)
+      cancelIdleStop(worker)
     })
+    return worker
+  }
+
+  /** Cancel the idle stop of `worker`, if one is scheduled. */
+  const cancelIdleStop = (worker: Worker): void => {
+    const handle = idleStops.get(worker)
+    if (handle === undefined) return
+    timers.clear(handle)
+    idleStops.delete(worker)
+  }
+
+  /**
+   * Stop an idle worker. The stop is a no-op for a worker that is not idle: a worker running a job is never
+   * stopped here, and the stop of a worker that took a job is cancelled when the job took it.
+   */
+  const stopIdleWorker = (worker: Worker): void => {
+    idleStops.delete(worker)
+    const index = idle.indexOf(worker)
+    if (index < 0) return
+    idle.splice(index, 1)
+    void worker.terminate()
+  }
+
+  /** Put a worker back in line for the next job, with its idle stop scheduled. */
+  const parkWorker = (worker: Worker): void => {
+    idle.push(worker)
+    idleStops.set(
+      worker,
+      timers.set(() => stopIdleWorker(worker), idleMs),
+    )
+  }
+
+  /** The worker for the next job: an idle one, whose stop is cancelled, else a new one. */
+  const takeWorker = (): Worker => {
+    const worker = idle.pop()
+    if (!worker) return startWorker()
+    cancelIdleStop(worker)
     return worker
   }
 
@@ -166,9 +242,9 @@ export function createSanitizerPool({
     await takeSlot()
     try {
       if (deadline.aborted) return { status: 'expired-in-queue' }
-      const worker = idle.pop() ?? startWorker()
+      const worker = takeWorker()
       const result = await runJob(worker, request, deadline)
-      if (result.reusable) idle.push(worker)
+      if (result.reusable) parkWorker(worker)
       else void worker.terminate()
       return result.attempt
     } finally {
@@ -179,7 +255,10 @@ export function createSanitizerPool({
   return {
     run,
     workers: () => alive.size,
+    workersStarted: () => started,
     close: () => {
+      for (const handle of idleStops.values()) timers.clear(handle)
+      idleStops.clear()
       for (const worker of alive) void worker.terminate()
     },
   }

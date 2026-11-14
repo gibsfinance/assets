@@ -257,7 +257,9 @@ export const MAX_STYLE_TEXT_LENGTH = 256 * 1024
  * proportion to the attribute count (no removal from a list, so no quadratic step), so this bounds the
  * work as well as the correctness. Measured on one element with 199,990 attributes: about 2.0 to 2.7 seconds
  * when every attribute is kept, and 0.9 to 1.2 seconds when every attribute is dropped, on the development
- * machine (three runs each). Most of the time is the parse. Three real logos in the SmolDapp artwork (read from disk by the
+ * machine (three runs each). Most of the time is the parse. Remote files are cleaned on a worker thread under
+ * the request's window (see `sanitizer-pool.ts`), so the main thread is never held for this work; the collector
+ * cleans on its own thread, with no window. Three real logos in the SmolDapp artwork (read from disk by the
  * collector, so the 512 KB download cap never applies) carry about 97,000 each; 50,000 refused them.
  */
 export const MAX_ATTRIBUTES = 200_000

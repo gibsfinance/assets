@@ -379,7 +379,7 @@ describe('the sanitizer runner decides what a deadline or a refusal costs (fifth
   /** A runner that answers the given attempts in order, and counts its jobs. */
   const runnerAnswering = (...attempts: SanitizeAttempt[]): SanitizerRunner & { run: Mock } => {
     const run = vi.fn(async () => attempts.shift() ?? { status: 'refused' as const, message: 'no answer left' })
-    return { run, workers: () => 0, close: () => undefined }
+    return { run, workers: () => 0, workersStarted: () => 0, close: () => undefined }
   }
   const request = { uri: 'https://cdn.example/worker.png', ext: '.png' }
 

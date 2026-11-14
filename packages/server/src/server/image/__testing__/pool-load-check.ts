@@ -3,10 +3,10 @@
  * (`node --import ./src/bin/register-hooks.ts`), by `sanitizer-pool.plain-node.test.ts`, which reads the
  * report on the last line of standard output.
  *
- * It first starts both workers with two small logos, because a worker's start-up pauses the main thread
- * for a few hundred milliseconds, once per worker, and a server pays that once. Then it loads two logos of
- * about 360 KB at once, and a timer records the longest pause between its ticks. A sanitizer that runs on
- * the main thread shows as one long pause; one that runs in a worker does not.
+ * It first loads two small logos, so the worker has started: a worker's start-up pauses the main thread for a
+ * few hundred milliseconds, once, and a server pays that once. Then it loads two logos of about 360 KB at once,
+ * which the one worker cleans in turn, and a timer records the longest pause between its ticks. A sanitizer that
+ * runs on the main thread shows as one long pause; one that runs in a worker does not.
  */
 import { createRemoteImageLoader } from '../remote-image'
 

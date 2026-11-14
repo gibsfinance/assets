@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createInProcessSanitizer, createSanitizerPool, type SanitizeAttempt } from './sanitizer-pool'
+import {
+  createInProcessSanitizer,
+  createSanitizerPool,
+  SANITIZER_IDLE_MS,
+  type SanitizeAttempt,
+} from './sanitizer-pool'
 
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>')
 const fixture = (name: string): URL => new URL(`./__testing__/${name}`, import.meta.url)
@@ -147,6 +152,7 @@ describe('createInProcessSanitizer', () => {
     expect(attempt).toEqual({ status: 'sanitized', bytes: Buffer.from('clean:x') })
     expect(sanitize).toHaveBeenCalledWith(Buffer.from('x'), '.png')
     expect(runner.workers()).toBe(0)
+    expect(runner.workersStarted()).toBe(0)
     runner.close()
   })
 
@@ -158,5 +164,122 @@ describe('createInProcessSanitizer', () => {
     await expect(runner.run({ bytes: Buffer.from('x'), ext: '.png' }, AbortSignal.timeout(10_000))).rejects.toThrow(
       'refused in process',
     )
+  })
+})
+
+/**
+ * Timers a test drives by hand. `fire` runs a pending callback; `fireStale` runs one even after it was cleared, the
+ * way a timer that was already due when it was cleared would run.
+ */
+const fakeTimers = () => {
+  const scheduled: { callback: () => void; cleared: boolean; fired: boolean }[] = []
+  return {
+    set: (callback: () => void) => {
+      scheduled.push({ callback, cleared: false, fired: false })
+      return scheduled.length - 1
+    },
+    clear: (handle: unknown) => {
+      const entry = scheduled[handle as number]
+      if (entry) entry.cleared = true
+    },
+    pending: () => scheduled.filter((entry) => !entry.cleared && !entry.fired).length,
+    fire: () => {
+      for (const entry of scheduled) {
+        if (entry.cleared || entry.fired) continue
+        entry.fired = true
+        entry.callback()
+      }
+    },
+    fireStale: () => {
+      for (const entry of scheduled) entry.callback()
+    },
+  }
+}
+
+describe('an idle worker is stopped after the idle window (fifth review, memory)', () => {
+  it('stops a worker that has had no job for the idle window', async () => {
+    const timers = fakeTimers()
+    const pool = createSanitizerPool({ timers })
+    try {
+      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      expect(pool.workers()).toBe(1)
+      expect(timers.pending()).toBe(1)
+
+      timers.fire()
+
+      await vi.waitFor(() => expect(pool.workers()).toBe(0))
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('uses the named idle window of sixty seconds by default', () => {
+    expect(SANITIZER_IDLE_MS).toBe(60_000)
+  })
+
+  it('reuses the worker for a job inside the idle window, without starting another', async () => {
+    const timers = fakeTimers()
+    const pool = createSanitizerPool({ timers })
+    try {
+      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+
+      expect(pool.workersStarted()).toBe(1)
+      expect(pool.workers()).toBe(1)
+      // The window restarts when the job ends: one timer is pending, the one from the first job was cleared.
+      expect(timers.pending()).toBe(1)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('starts a fresh worker for a job after the idle worker was stopped', async () => {
+    const timers = fakeTimers()
+    const pool = createSanitizerPool({ timers })
+    try {
+      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      timers.fire()
+      await vi.waitFor(() => expect(pool.workers()).toBe(0))
+
+      const attempt = await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+
+      expect(sanitizedText(attempt)).not.toContain('alert')
+      expect(pool.workersStarted()).toBe(2)
+      expect(pool.workers()).toBe(1)
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('never stops a worker that is running a job, even when a stale idle timer fires', async () => {
+    const timers = fakeTimers()
+    const pool = createSanitizerPool({ timers })
+    try {
+      await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+      // A file large enough to run for a few hundred milliseconds, so the job is still running below.
+      const large = Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg">${Array.from({ length: 8_000 }, (_, i) => `<path d="M${i} 0L${i + 1} 1Z"/>`).join('')}</svg>`,
+      )
+      const running = pool.run({ bytes: large, ext: '.svg' }, AbortSignal.timeout(10_000))
+      await new Promise((resolve) => setImmediate(resolve))
+
+      timers.fireStale()
+
+      expect(pool.workers()).toBe(1)
+      expect(sanitizedText(await running)).toContain('<path')
+    } finally {
+      pool.close()
+    }
+  })
+
+  it('stops the idle worker on close, and leaves no timer pending', async () => {
+    const timers = fakeTimers()
+    const pool = createSanitizerPool({ timers })
+    await pool.run({ bytes: SVG, ext: '.svg' }, AbortSignal.timeout(10_000))
+
+    pool.close()
+
+    expect(timers.pending()).toBe(0)
+    await vi.waitFor(() => expect(pool.workers()).toBe(0))
   })
 })
