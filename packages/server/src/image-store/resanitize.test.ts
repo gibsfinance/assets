@@ -40,6 +40,7 @@ describe('resanitizeImages', () => {
     const { sha256 } = await store.put(old)
     store.puts.length = 0
     harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
     harness.queueResult([])
 
     const summary = await resanitizeImages({ database: fakeDatabase, store })
@@ -53,15 +54,18 @@ describe('resanitizeImages', () => {
     const store = createMemoryBlobStore()
     const { sha256 } = await store.put(old)
     const filesWhenUpdated: number[] = []
-    const database = {
+    const database: never = {
       ...harness.db,
       update: (...args: Parameters<typeof harness.db.update>) => {
         filesWhenUpdated.push(store.blobs.size)
         return harness.db.update(...args)
       },
+      // The row is written inside a transaction; its callback gets this same wrapped database.
+      transaction: (callback: (transaction: unknown) => unknown) => harness.db.transaction(() => callback(database)),
     } as never
     harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
     harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
     harness.queueResult([])
 
     const summary = await resanitizeImages({ database, store, dryRun: false })
@@ -81,6 +85,7 @@ describe('resanitizeImages', () => {
     const { sha256 } = await store.put(old)
     harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
     harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
     harness.queueResult([])
 
     await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
@@ -94,6 +99,7 @@ describe('resanitizeImages', () => {
     const { sha256 } = await store.put(old)
     harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: true }])
     harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
     harness.queueResult([])
 
     await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
@@ -110,6 +116,7 @@ describe('resanitizeImages', () => {
     const store = createMemoryBlobStore()
     harness.queueResult([{ imageHash: 'a', content: old, contentSha256: null, holdsDatabaseCopy: true }])
     harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
     harness.queueResult([])
 
     const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
@@ -253,6 +260,7 @@ describe('resanitizeImages: the rows it rewrote and the older extension (third r
       },
     ])
     harness.queueResult([{ imageHash: 'rewritten-one' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
     harness.queueResult([])
 
     const summary = await resanitizeImages({
@@ -272,6 +280,7 @@ describe('resanitizeImages: the rows it rewrote and the older extension (third r
     harness.queueResult([
       { imageHash: 'a', ext: '.svg', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
     ])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
     harness.queueResult([])
     expect((await resanitizeImages({ database: fakeDatabase, store })).rewrittenHashes).toEqual([])
 
@@ -291,10 +300,87 @@ describe('resanitizeImages: the rows it rewrote and the older extension (third r
     harness.queueResult([
       { imageHash: 'legacy', ext: '.svg+xml', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
     ])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
     harness.queueResult([])
 
     const summary = await resanitizeImages({ database: fakeDatabase, store })
 
     expect(summary).toMatchObject({ examined: 1, changed: 1, legacyExtensionRows: 1 })
+  })
+})
+
+describe('resanitizeImages: resized variants go with the bytes they were drawn from', () => {
+  const rowFor = (sha256: string, imageHash = 'a') => ({
+    imageHash,
+    ext: '.svg',
+    content: null,
+    contentSha256: sha256,
+    holdsDatabaseCopy: false,
+  })
+
+  it('deletes the variants of a rewritten row inside the same transaction, after the row is updated, and counts them', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([{ imageHash: 'a' }]) // the update
+    harness.queueResult([{ imageHash: 'a' }, { imageHash: 'a' }, { imageHash: 'a' }]) // three variants deleted
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ rewritten: 1, variantsDeleted: 3 })
+    const roots = harness.queries.map((query) => query.root)
+    expect(roots.slice(roots.indexOf('transaction'))).toEqual(['transaction', 'update', 'delete', 'select'])
+    const deletion = harness.queries.find((query) => query.root === 'delete')!
+    expect(renderedWhere(deletion)).toContain('"image_variant"."image_hash" = $')
+    expect(sqlParams(stepOf(deletion, 'where')?.args[0])).toEqual(['a'])
+  })
+
+  it('keeps the variants of a row it leaves unchanged', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(alreadyClean)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ unchanged: 1, rewritten: 0, variantsDeleted: 0 })
+    expect(harness.queries.some((query) => query.root === 'delete')).toBe(false)
+  })
+
+  it('keeps the variants of a row it skipped because the row changed under it', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([]) // the guarded update matched nothing
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ skipped: 1, variantsDeleted: 0 })
+    expect(harness.queries.some((query) => query.root === 'delete')).toBe(false)
+  })
+
+  it('in a dry run counts the variants that would go and deletes nothing', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([{ total: 7 }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store })
+
+    expect(summary).toMatchObject({ dryRun: true, changed: 1, variantsDeleted: 7 })
+    expect(harness.queries.some((query) => query.root === 'delete' || query.root === 'update')).toBe(false)
+  })
+
+  it('counts zero when the count query answers nothing', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([])
+    harness.queueResult([])
+
+    expect((await resanitizeImages({ database: fakeDatabase, store })).variantsDeleted).toBe(0)
   })
 })

@@ -16,8 +16,8 @@
  * - A row is changed only if it is still what was read (a guarded update), so a concurrent writer is
  *   never overwritten; such a row is counted as skipped and is picked up by the next run.
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
-import { getDrizzle } from '../db/drizzle'
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
+import { getDrizzle, type DrizzleDB } from '../db/drizzle'
 import { unexportedBytesSql } from '../db/image-columns'
 import * as s from '../db/schema'
 import { log } from '../logger'
@@ -30,8 +30,12 @@ import { loadImageBytes } from './image-bytes'
 /** The extensions of the rows this operation looks at: `.svg`, and the older spelling some rows carry. */
 const VECTOR_EXTENSIONS = ['.svg', LEGACY_VECTOR_EXT]
 
+/** The database calls this operation makes. A row and its variants change in one transaction. */
+type ResanitizeDatabase = Pick<DrizzleDB, 'select' | 'update' | 'delete' | 'execute' | 'transaction'>
+
 /** Options for {@link resanitizeImages}. */
-export type ResanitizeOptions = BackfillDependencies & {
+export type ResanitizeOptions = Omit<BackfillDependencies, 'database'> & {
+  database?: ResanitizeDatabase
   /** When true (the default), report what would change and change nothing. */
   dryRun?: boolean
   /** Rows per batch. Defaults to {@link DEFAULT_BATCH_SIZE}. */
@@ -57,6 +61,11 @@ export type ResanitizeSummary = {
   changed: number
   /** Rows rewritten: the new file is in the store and the row names it. Always 0 in a dry run. */
   rewritten: number
+  /**
+   * Resized variants (`image_variant` rows) deleted with the rows that were rewritten, so none built
+   * from the old bytes is served again. In a dry run, how many would be deleted.
+   */
+  variantsDeleted: number
   /** Rows that changed between being read and being written, left as they were. */
   skipped: number
   /** Rows the sanitizer refuses (the bytes are not well formed). They are left as they are. */
@@ -110,6 +119,7 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
     unchanged: 0,
     changed: 0,
     rewritten: 0,
+    variantsDeleted: 0,
     skipped: 0,
     rejected: 0,
     missingFiles: 0,
@@ -144,8 +154,9 @@ export async function resanitizeImages(options: ResanitizeOptions = {}): Promise
     if (rows.length === 0) break
     for (const row of rows) {
       summary.examined += 1
-      const outcome = await resanitizeRow(row, { database, store, dryRun })
+      const { outcome, variants } = await resanitizeRow(row, { database, store, dryRun })
       summary[outcome] += 1
+      summary.variantsDeleted += variants
       if (row.ext === LEGACY_VECTOR_EXT) summary.legacyExtensionRows += 1
       if (outcome === 'rewritten') {
         summary.rewrittenHashes.push(row.imageHash)
@@ -179,18 +190,30 @@ async function resanitizeRow(
     store,
     dryRun,
   }: {
-    database: NonNullable<BackfillDependencies['database']>
+    database: ResanitizeDatabase
     store: NonNullable<BackfillDependencies['store']>
     dryRun: boolean
   },
-): Promise<RowOutcome> {
+): Promise<RowResult> {
   const bytes = await loadImageBytes(row, store)
-  if (bytes === null) return 'missingFiles'
+  if (bytes === null) return { outcome: 'missingFiles', variants: 0 }
   const cleaned = sanitizeOrNull(bytes)
-  if (cleaned === null) return 'rejected'
-  if (cleaned.equals(bytes)) return 'unchanged'
-  if (dryRun) return 'changed'
+  if (cleaned === null) return { outcome: 'rejected', variants: 0 }
+  if (cleaned.equals(bytes)) return { outcome: 'unchanged', variants: 0 }
+  if (dryRun) return { outcome: 'changed', variants: await countVariants(database, row.imageHash) }
   return rewriteRow(row, { database, store, previousSha256: hashBytes(bytes), cleaned })
+}
+
+/** What was done to one row, and how many variants went (or would go) with it. */
+type RowResult = { outcome: RowOutcome; variants: number }
+
+/** How many resized variants are stored for an image. */
+async function countVariants(database: ResanitizeDatabase, imageHash: string): Promise<number> {
+  const [found] = await database
+    .select({ total: count() })
+    .from(s.imageVariant)
+    .where(eq(s.imageVariant.imageHash, imageHash))
+  return Number(found?.total ?? 0)
 }
 
 /** The sanitized bytes, or null when the sanitizer refuses the document. It throws nothing else. */
@@ -214,12 +237,12 @@ async function rewriteRow(
     previousSha256,
     cleaned,
   }: {
-    database: NonNullable<BackfillDependencies['database']>
+    database: ResanitizeDatabase
     store: NonNullable<BackfillDependencies['store']>
     previousSha256: string
     cleaned: Buffer
   },
-): Promise<RowOutcome> {
+): Promise<RowResult> {
   const stored = await store.put(cleaned)
   const stillWhatWasRead =
     row.contentSha256 === null
@@ -230,10 +253,19 @@ async function rewriteRow(
   const values = row.holdsDatabaseCopy
     ? { contentSha256: stored.sha256, byteSize: stored.byteSize, content: cleaned }
     : { contentSha256: stored.sha256, byteSize: stored.byteSize }
-  const updated = await database
-    .update(s.image)
-    .set(values)
-    .where(and(eq(s.image.imageHash, row.imageHash), stillWhatWasRead))
-    .returning({ imageHash: s.image.imageHash })
-  return updated.length > 0 ? 'rewritten' : 'skipped'
+  // The row and its variants change in one transaction: a variant drawn from the old bytes must not
+  // outlive the bytes, and a row that was not rewritten keeps the variants that still match it.
+  return database.transaction(async (transaction) => {
+    const updated = await transaction
+      .update(s.image)
+      .set(values)
+      .where(and(eq(s.image.imageHash, row.imageHash), stillWhatWasRead))
+      .returning({ imageHash: s.image.imageHash })
+    if (updated.length === 0) return { outcome: 'skipped' as const, variants: 0 }
+    const removed = await transaction
+      .delete(s.imageVariant)
+      .where(eq(s.imageVariant.imageHash, row.imageHash))
+      .returning({ imageHash: s.imageVariant.imageHash })
+    return { outcome: 'rewritten' as const, variants: removed.length }
+  })
 }

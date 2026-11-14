@@ -42,6 +42,7 @@ const okResanitize = {
   unchanged: 1,
   changed: 2,
   rewritten: 0,
+  variantsDeleted: 0,
   skipped: 0,
   rejected: 0,
   missingFiles: 0,

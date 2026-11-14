@@ -332,7 +332,7 @@ directory.
   serves both as `image/svg+xml`, and the extension is not renamed because it is part of the `image_hash` key); the summary's
   `rewrittenHashes` and the `--changed-list` file name every rewritten row, so an operator can purge exactly
   `/image/direct/<hash>` at the edge. `/image/direct/<hash>` is `immutable` for a year only for non-vector rows
-  (`directRoutePolicy`); a vector row gets the ordinary lifetime because this command rewrites its bytes under the same address; dry run by default; a changed row gets a new file in the store and a new
+  (`directRoutePolicy`); a vector row gets the ordinary lifetime because this command rewrites its bytes under the same address; dry run by default; a changed row also loses its `image_variant` rows in the same transaction (`variantsDeleted`; a dry run counts them, an unchanged or skipped row keeps its variants) and gets a new file in the store and a new
   `content_sha256` and `byte_size`, plus a new `content` if it kept a database copy, while `image_hash` stays and the old
   file stays for `images gc`; safe to repeat because the sanitizer is idempotent; a refused row or a missing file is
   reported and makes it exit 1). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
