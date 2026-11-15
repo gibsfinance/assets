@@ -158,6 +158,7 @@ describe('insertImage', () => {
   it('does not apply the minimum-size rule to svg images', async () => {
     detectImageExt.mockResolvedValue('.svg')
     sanitizeImage.mockResolvedValue(Buffer.from('<svg/>'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-1' }])
     harness.queueResult([{ uri: 'https://x/icon.svg' }])
     const tiny = Buffer.from('<svg/>')
@@ -176,6 +177,7 @@ describe('insertImage', () => {
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     checkShouldSave.mockReturnValue(true)
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-1', content: Buffer.from('sanitized'), mode: 'save' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
 
@@ -191,6 +193,7 @@ describe('insertImage', () => {
 
     harness.reset()
     checkShouldSave.mockReturnValue(false)
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-2', content: Buffer.from([]), mode: 'link' }])
     harness.queueResult([{ uri: 'https://x/icon2.png' }])
 
@@ -210,6 +213,7 @@ describe('insertImage', () => {
   it('refreshes content/mode/uri on a re-collected image, keyed on the conflicting image hash', async () => {
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-1' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
 
@@ -240,6 +244,7 @@ describe('insertImage', () => {
     beforeEach(() => {
       detectImageExt.mockResolvedValue('.png')
       sanitizeImage.mockResolvedValue(SANITIZED)
+      harness.queueResult([]) // upsert: lock read of the stored digest
       harness.queueResult([{ imageHash: 'hash-1' }])
       harness.queueResult([{ uri: 'https://x/icon.png' }])
     })
@@ -368,6 +373,82 @@ describe('insertImage', () => {
 // ---------------------------------------------------------------------------
 // fetchImage
 // ---------------------------------------------------------------------------
+
+describe('resized copies when an image is written again', () => {
+  const sanitized = Buffer.from('sanitized')
+  const digest = hashBytes(sanitized)
+
+  /**
+   * Write the image once. `queued` is one entry per query the write issues, in order: the lock read, the image insert,
+   * the variant delete when the digest changes, and the link insert.
+   */
+  const writeImage = async (queued: unknown[][], tx?: Parameters<typeof insertImage>[1]) => {
+    detectImageExt.mockResolvedValue('.png')
+    sanitizeImage.mockResolvedValue(sanitized)
+    for (const rows of queued) harness.queueResult(rows)
+    await insertImage(
+      { providerKey: 'trustwallet', originalUri: 'https://x/icon.png', image: PNG_BYTES, listId: null },
+      tx,
+    )
+  }
+
+  /** The `image_hash` the image row was written under. */
+  const writtenImageHash = (): string => {
+    const insert = harness.queries.find((query) => query.root === 'insert')
+    return (insert?.steps.find((step) => step.method === 'values')?.args[0] as { imageHash: string }).imageHash
+  }
+
+  /** The variant deletes that ran, each with the `image_hash` it targeted. */
+  const variantDeletes = (): string[] =>
+    harness.queries
+      .filter((query) => query.root === 'delete' && query.steps[0].args[0] === s.imageVariant)
+      .map((query) => sqlParams(query.steps.find((step) => step.method === 'where')?.args[0])[0] as string)
+
+  it('reads the stored digest under a row lock, then drops the copies when the digest changes', async () => {
+    await writeImage([
+      [{ contentSha256: 'a'.repeat(64) }], // lock read: the stored digest
+      [{ imageHash: 'hash-1' }], // image insert
+      [], // variant delete
+      [{ uri: 'https://x/icon.png' }], // link insert
+    ])
+
+    const lock = harness.queries[1].steps
+    expect(lock.map((step) => step.method)).toEqual(['select', 'from', 'where', 'for'])
+    expect(lock.find((step) => step.method === 'for')?.args).toEqual(['update'])
+    expect(harness.queries.map((query) => query.root)).toEqual(['transaction', 'select', 'insert', 'delete', 'insert'])
+    expect(variantDeletes()).toEqual([writtenImageHash()])
+  })
+
+  it('keeps the copies when the digest is unchanged', async () => {
+    await writeImage([[{ contentSha256: digest }], [{ imageHash: 'hash-1' }], [{ uri: 'https://x/icon.png' }]])
+
+    expect(harness.queries.map((query) => query.root)).toEqual(['transaction', 'select', 'insert', 'insert'])
+    expect(variantDeletes()).toEqual([])
+  })
+
+  it('drops the copies when a link-only row first gains stored bytes', async () => {
+    await writeImage([[{ contentSha256: null }], [{ imageHash: 'hash-1' }], [], [{ uri: 'https://x/icon.png' }]])
+
+    expect(variantDeletes()).toEqual([writtenImageHash()])
+  })
+
+  it('has no copies to drop for a row that does not exist yet', async () => {
+    await writeImage([[], [{ imageHash: 'hash-1' }], [{ uri: 'https://x/icon.png' }]])
+
+    expect(harness.queries.map((query) => query.root)).toEqual(['transaction', 'select', 'insert', 'insert'])
+    expect(variantDeletes()).toEqual([])
+  })
+
+  it('runs inside the transaction it is given, rather than opening one of its own', async () => {
+    await writeImage(
+      [[{ contentSha256: 'a'.repeat(64) }], [{ imageHash: 'hash-1' }], [], [{ uri: 'https://x/icon.png' }]],
+      harness.db as unknown as Parameters<typeof insertImage>[1],
+    )
+
+    expect(harness.queries.some((query) => query.root === 'transaction')).toBe(false)
+    expect(variantDeletes()).toEqual([writtenImageHash()])
+  })
+})
 
 describe('purgePlaceholderNetworkIcons', () => {
   it('releases a slot whose stored icon is a known placeholder', async () => {
@@ -933,6 +1014,7 @@ describe('fetchImageAndStoreForList', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage: link insert
     harness.queueResult([{ listId: 'list-1', imageHash: 'hash-new' }]) // list update
@@ -983,6 +1065,7 @@ describe('fetchImageAndStoreForList', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ listId: 'list-1', imageHash: 'hash-new' }])
@@ -1196,6 +1279,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     // The incumbent lookup: this network holds no icon yet, so the write proceeds.
@@ -1224,6 +1308,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-curated', imageProviderKey: 'smoldapp' }])
@@ -1254,6 +1339,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-fallback', imageProviderKey: 'chainlist' }])
@@ -1286,6 +1372,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: 'hash-legacy', imageProviderKey: null }])
@@ -1311,6 +1398,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     const buffer = PNG_BYTES
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'buffer:chainlist:chain-id:eip155-1' }])
     harness.queueResult([{ networkId: 'network-1', imageHash: null, imageProviderKey: null }])
@@ -1326,13 +1414,13 @@ describe('fetchImageAndStoreForNetwork', () => {
     // A Buffer source (already-fetched bytes) has no link/url to look up a
     // fresh cache entry by — the freshness check only makes sense for a uri.
     expect(fetchMock).not.toHaveBeenCalled()
-    // The only select is the incumbent-icon lookup the write path does inside its
-    // transaction. Naming the table rather than counting keeps this pinned to the
-    // absence of the `link` freshness lookup, which is what the case is about.
+    // The selects are the lock read of the image row inside the image write, then the incumbent-icon
+    // lookup. Naming the tables rather than counting keeps this pinned to the absence of the `link`
+    // freshness lookup, which is what the case is about.
     const selectedTables = harness.queries
       .filter((query) => query.root === 'select')
       .map((query) => query.steps.find((step) => step.method === 'from')?.args[0])
-    expect(selectedTables).toEqual([s.network])
+    expect(selectedTables).toEqual([s.image, s.network])
     expect(result?.network).toMatchObject({ imageHash: 'hash-new' })
   })
 
@@ -1341,6 +1429,7 @@ describe('fetchImageAndStoreForNetwork', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage's link insert
     harness.queueResult([{ networkId: 'network-1', imageHash: null, imageProviderKey: null }])
@@ -1419,6 +1508,7 @@ describe('fetchAndInsertHeader', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/header.png' }])
     harness.queueResult([{ listTokenId: 'lt-1', imageHash: 'hash-new' }])
@@ -1440,6 +1530,7 @@ describe('fetchAndInsertHeader', () => {
     const buffer = PNG_BYTES
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'buffer:trustwallet:lt-1' }])
     harness.queueResult([{ listTokenId: 'lt-1', imageHash: 'hash-new' }])
@@ -1452,7 +1543,11 @@ describe('fetchAndInsertHeader', () => {
     })
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(harness.queries.filter((query) => query.root === 'select')).toHaveLength(0)
+    // The only select is the lock read of the image row inside the write; no `link` freshness lookup runs.
+    const selectedTables = harness.queries
+      .filter((query) => query.root === 'select')
+      .map((query) => query.steps.find((step) => step.method === 'from')?.args[0])
+    expect(selectedTables).toEqual([s.image])
     expect(harness.queries.some((query) => query.root === 'transaction')).toBe(true)
   })
 
@@ -1519,6 +1614,7 @@ describe('batchFetchImagesForTokens', () => {
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([]) // getFreshImageFromLink: no cached link, so the download runs
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ listTokenId: 'lt-1' }]) // update .set(imageHash).where(...)
@@ -1544,6 +1640,7 @@ describe('batchFetchImagesForTokens', () => {
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
     harness.queueResult([]) // getFreshImageFromLink: no cached link, so the download runs
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://raw.githubusercontent.com/trustwallet/assets/master/logo.png' }])
     harness.queueResult([{ listTokenId: 'lt-1' }]) // update .set(imageHash, license).where(...)
@@ -1576,6 +1673,7 @@ describe('batchFetchImagesForTokens', () => {
     // One freshness miss per item — both are checked before either downloads.
     harness.queueResult([])
     harness.queueResult([])
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon-2.png' }])
     harness.queueResult([{ listTokenId: 'lt-2' }])
@@ -1713,6 +1811,7 @@ describe('batchFetchImagesForTokens', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ listTokenId: 'lt-1' }])
@@ -1740,6 +1839,7 @@ describe('batchFetchImagesForTokens', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }])
     harness.queueResult([{ uri: 'https://x/icon.png' }])
     harness.queueResult([{ listTokenId: 'lt-1' }])
@@ -1944,6 +2044,7 @@ describe('fetchImageAndStoreForToken', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage: link insert
     harness.queueResult([{ tokenId: 'token-1', name: 'Coin', symbol: 'COIN', decimals: 18 }]) // insertToken
@@ -2012,6 +2113,7 @@ describe('fetchImageAndStoreForToken', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage: link insert
     harness.queueResult([{ tokenId: 'token-1', providedId: solanaToken.providedId }]) // insertToken
@@ -2036,6 +2138,7 @@ describe('fetchImageAndStoreForToken', () => {
     fetchMock.mockResolvedValue(new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-new' }]) // insertImage: image insert
     harness.queueResult([{ uri: 'https://x/icon.png' }]) // insertImage's link insert
     harness.queueResult([{ tokenId: 'token-1' }]) // insertToken
@@ -2066,15 +2169,19 @@ describe('prewarmImages', () => {
     // Lists routinely point many tokens at one logo — every wrapped variant of an asset,
     // every chain a bridged token lives on. Downloading per token rather than per uri is
     // the difference between one request and several hundred for the same bytes.
-    harness.queueResult([]) // getFreshImageFromLink: link miss for a.png
-    harness.queueResult([]) // getFreshImageFromLink: link miss for b.png
-    // A fresh Response per call: these downloads run concurrently and a body can only be
-    // read once, so a single shared instance would leave the second caller with nothing.
+    // A fresh Response per call: a body can only be read once, so a single shared instance would leave the second
+    // caller with nothing.
     fetchMock.mockImplementation(async () => new Response(PNG_BYTES))
     detectImageExt.mockResolvedValue('.png')
     sanitizeImage.mockResolvedValue(Buffer.from('sanitized'))
+    // One at a time, so the queued results below are consumed in a fixed order: each address's freshness
+    // lookup, then its image write (lock read, image insert, link insert).
+    harness.queueResult([]) // getFreshImageFromLink: link miss for a.png
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-a' }])
     harness.queueResult([{ uri: 'https://x/a.png' }])
+    harness.queueResult([]) // getFreshImageFromLink: link miss for b.png
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-b' }])
     harness.queueResult([{ uri: 'https://x/b.png' }])
 
@@ -2082,6 +2189,7 @@ describe('prewarmImages', () => {
       uris: ['https://x/a.png', 'https://x/b.png', 'https://x/a.png', null, undefined, ''],
       providerKey: 'trustwallet',
       listId: 'list-1',
+      concurrency: 1,
     })
 
     expect(result.distinct).toBe(2)
@@ -2150,6 +2258,7 @@ describe('link-only hosts', () => {
     // The whole point. DeBank's terms forbid keeping a copy and forbid making a
     // derivative, and every resize this service serves is a derivative. So the bytes
     // are never fetched at all - not even to sanitize and throw away.
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-debank' }])
     harness.queueResult([{ uri: DEBANK }])
 
@@ -2161,6 +2270,7 @@ describe('link-only hosts', () => {
   })
 
   it('stores an empty body and the link mode, so the serving path redirects', async () => {
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-debank' }])
     harness.queueResult([{ uri: DEBANK }])
 
@@ -2184,8 +2294,10 @@ describe('link-only hosts', () => {
     // the same empty body still land apart. Were that not so, every link-only image
     // in the service would collapse onto one row holding one address.
     const other = 'https://static.debank.com/image/eth_token/logo_url/0xdef/99990168de63ca803e8db7990e4f6ec.png'
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'h1' }])
     harness.queueResult([{ uri: DEBANK }])
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'h2' }])
     harness.queueResult([{ uri: other }])
 
@@ -2215,6 +2327,7 @@ describe('link-only hosts', () => {
 
   it('reads the extension from the path and not from a query string', async () => {
     const withQuery = 'https://static.debank.com/image/eth_token/logo_url/0xabc/pic.svg?width=64#fragment'
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-svg' }])
     harness.queueResult([{ uri: withQuery }])
 
@@ -2237,6 +2350,7 @@ describe('link-only hosts', () => {
 
   it('stores a token against a link-only address without downloading it', async () => {
     harness.queueResult([]) // getFreshImageFromLink: nothing stored for this address yet
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-debank' }])
     harness.queueResult([{ uri: DEBANK }])
     for (let spare = 0; spare < 8; spare++) {
@@ -2270,6 +2384,7 @@ describe('link-only hosts', () => {
     // `missing`: the loop blanks every address in that set, which would throw away a
     // perfectly resolvable address as though the host had refused it.
     harness.queueResult([]) // getFreshImageFromLink: no fresh row yet
+    harness.queueResult([]) // upsert: lock read of the stored digest
     harness.queueResult([{ imageHash: 'hash-debank' }])
     harness.queueResult([{ uri: DEBANK }])
 
