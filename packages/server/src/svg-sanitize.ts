@@ -11,8 +11,13 @@
  *   (script, foreignObject, web page markup, math markup, editor metadata, handler and listener elements) goes with
  *   its children.
  * - Attributes: every attribute whose name starts with `on` goes. A link (`href` or `src`, under
- *   any prefix) that runs script, reads a file, or holds a data address that is not an image is
- *   replaced by `#`. A `use` with a link that is not local is removed.
+ *   any prefix) that runs script or reads a file is replaced by `#`. A data address is replaced by `#`
+ *   unless it is a picture the sniffer knows (PNG, JPEG, GIF, WebP or AVIF) whose size its own header
+ *   states, within the document's pixel budget (see `cleanedEmbeddedRaster`). A picture whose label is
+ *   wrong is relabelled to the type its bytes really are. An address whose label is not an image type is
+ *   only read on an `image` element, which is where a browser would sniff it; anywhere else it is
+ *   replaced by `#`. A nested vector address is kept as written. A `use` with a link that is not local
+ *   is removed.
  * - Animation: an animation element that targets a link or an `on*` attribute is removed.
  * - Styles: `@import` rules, `image-set()` values and `url()` values that are not local or `data:image` are
  *   removed from style elements and from every attribute. Every attribute value is checked, because a
@@ -28,6 +33,13 @@
  */
 import { DOMImplementation, DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import { ImageRejectedError } from './image-rejected'
+import { MAX_INPUT_PIXELS } from './untrusted-input'
+import {
+  EMBEDDED_RASTER_MEDIA_TYPES,
+  readBase64Payload,
+  readRasterDimensions,
+  sniffRasterFormat,
+} from './svg-raster-embed'
 
 /** The vector image namespace. An element outside it is removed. */
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
@@ -204,12 +216,10 @@ export function isScriptUri(value: string): boolean {
   return SCRIPT_SCHEME_REGEX.test(normalizeLink(value))
 }
 
-/** Whether a link value cannot be kept: it runs script, reads a file, or holds data that is not an image. */
+/** Whether a link value runs script or reads a file. Data addresses are judged by `cleanedLinkValue`, not here. */
 function isUnsafeLink(value: string): boolean {
   const normalized = normalizeLink(value)
-  if (SCRIPT_SCHEME_REGEX.test(normalized)) return true
-  if (normalized.startsWith('file:')) return true
-  return normalized.startsWith('data:') && !normalized.startsWith('data:image/')
+  return SCRIPT_SCHEME_REGEX.test(normalized) || normalized.startsWith('file:')
 }
 
 /** Whether a link value points inside the document. */
@@ -219,6 +229,93 @@ function isLocalLink(value: string): boolean {
 
 /** The replacement for a link that cannot be kept. */
 const NEUTRAL_LINK = '#'
+
+// ---------------------------------------------------------------------------
+// Embedded pictures
+// ---------------------------------------------------------------------------
+
+/** The scheme every data address starts with, once normalized. */
+const DATA_SCHEME = 'data:'
+
+/** The start of a data address whose media type is an image type, once normalized. */
+const IMAGE_DATA_PREFIX = 'data:image/'
+
+/**
+ * The start of a nested vector image address. It is kept exactly as written: it is never relabelled, and it is not
+ * measured (a vector draws no pixel budget). Browsers draw it in an image context, where it cannot run script.
+ */
+const VECTOR_DATA_PREFIX = 'data:image/svg+xml'
+
+/** The element whose address may hold a picture the browser sniffs even when its label is wrong. */
+const IMAGE_ELEMENT = 'image'
+
+/** A data address as a browser reads it: the declared media type, whether the payload is base64, and the payload as written. */
+interface DataAddress {
+  readonly declaredType: string
+  readonly base64: boolean
+  readonly payload: string
+}
+
+/**
+ * Read the header of a data address. The header is normalized the way a browser reads a link, so a scheme written
+ * with tabs or references is still found. The payload is kept as it was written, because base64 is case-sensitive.
+ * The caller has already checked that the value reads as a data address, so the header starts with the scheme.
+ *
+ * @returns The address, or null when the value has no comma (there is no payload to read).
+ */
+function parseDataAddress(value: string): DataAddress | null {
+  const comma = value.indexOf(',')
+  if (comma < 0) return null
+  const header = normalizeLink(value.slice(0, comma))
+  const parameters = header.slice(DATA_SCHEME.length).split(';')
+  const base64 = parameters.length > 1 && parameters[parameters.length - 1] === 'base64'
+  return { declaredType: parameters[0], base64, payload: value.slice(comma + 1) }
+}
+
+/** The pixels the embedded pictures of one document may still draw. Starts at the cap and only goes down. */
+interface PixelBudget {
+  remaining: number
+}
+
+/**
+ * The value an embedded picture keeps, or the neutral link when it cannot be kept.
+ *
+ * The payload must be well formed base64 and a picture the sniffer knows (PNG, JPEG, GIF, WebP or AVIF). Its size
+ * comes from its own header, never from its label. A picture that cannot be sized, or that would pass the pixel
+ * budget, is refused, and a refused picture spends nothing from the budget. A picture whose label was right is kept
+ * as written; one whose label was wrong (or missing) is rewritten under the media type its bytes really are.
+ * An address that is not base64 is refused, so nothing is relabelled that cannot be checked.
+ */
+function cleanedEmbeddedRaster(value: string, pixels: PixelBudget): string {
+  const address = parseDataAddress(value)
+  if (address === null || !address.base64) return NEUTRAL_LINK
+  const payload = readBase64Payload(address.payload)
+  if (payload === null) return NEUTRAL_LINK
+  const format = sniffRasterFormat(payload.bytes)
+  if (format === null) return NEUTRAL_LINK
+  const dimensions = readRasterDimensions(payload.bytes, format)
+  if (dimensions === null) return NEUTRAL_LINK
+  const pixelCount = dimensions.width * dimensions.height
+  if (pixelCount > pixels.remaining) return NEUTRAL_LINK
+  pixels.remaining -= pixelCount
+  const mediaType = EMBEDDED_RASTER_MEDIA_TYPES[format]
+  if (address.declaredType === mediaType) return value
+  return `data:${mediaType};base64,${payload.text}`
+}
+
+/**
+ * The value a link attribute keeps. A data address is judged as a picture: only an address that is an image type
+ * (or any address on an `image` element, which is where a browser would sniff a mislabelled picture) can keep
+ * anything, and only as a picture whose bytes and size check out. Every other data address is neutralised, as before.
+ */
+function cleanedLinkValue(value: string, elementName: string, pixels: PixelBudget): string {
+  const normalized = normalizeLink(value)
+  if (!normalized.startsWith(DATA_SCHEME)) return isUnsafeLink(value) ? NEUTRAL_LINK : value
+  if (normalized.startsWith(VECTOR_DATA_PREFIX)) return value
+  if (normalized.startsWith(IMAGE_DATA_PREFIX) || elementName === IMAGE_ELEMENT)
+    return cleanedEmbeddedRaster(value, pixels)
+  return NEUTRAL_LINK
+}
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -424,17 +521,19 @@ interface AttributeBudget {
 interface CopyContext {
   output: Document
   budget: AttributeBudget
+  pixels: PixelBudget
 }
 
 /**
  * The value an attribute keeps in the cleaned copy, or null when the attribute is dropped. Every
  * attribute counts against the budget, dropped or not.
  */
-function cleanedAttributeValue(attribute: Attr, budget: AttributeBudget): string | null {
-  budget.remaining -= 1
-  if (budget.remaining < 0) throw new SvgRejectedError(`the document has more than ${MAX_ATTRIBUTES} attributes`)
+function cleanedAttributeValue(element: Element, attribute: Attr, context: CopyContext): string | null {
+  context.budget.remaining -= 1
+  if (context.budget.remaining < 0)
+    throw new SvgRejectedError(`the document has more than ${MAX_ATTRIBUTES} attributes`)
   if (isHandlerAttribute(attribute) || isBaseAttribute(attribute)) return null
-  if (isLinkAttribute(attribute)) return isUnsafeLink(attribute.value) ? NEUTRAL_LINK : attribute.value
+  if (isLinkAttribute(attribute)) return cleanedLinkValue(attribute.value, element.localName, context.pixels)
   // Every other value is read as style sheet text too: a presentation attribute is, and its escapes
   // can spell `url(` without the raw text ever containing it. A value is one declaration's value, so
   // one that holds a remote function is dropped whole.
@@ -464,7 +563,7 @@ function copyElement(element: Element, parent: Node, context: CopyContext): void
   if (isRemovedElement(element)) return
   const copy = context.output.createElementNS(element.namespaceURI, element.nodeName)
   for (const attribute of attributesOf(element)) {
-    const value = cleanedAttributeValue(attribute, context.budget)
+    const value = cleanedAttributeValue(element, attribute, context)
     if (value === null) continue
     // `setAttributeNode` finds an existing attribute through the element's index. `setAttributeNS` looks
     // it up by scanning the whole list, which makes writing n attributes cost n squared.
@@ -550,6 +649,7 @@ export function sanitizeSvgDocument(image: Buffer): Buffer {
     copyChildren(document as unknown as Node, output, {
       output,
       budget: { remaining: MAX_ATTRIBUTES },
+      pixels: { remaining: MAX_INPUT_PIXELS },
     })
     return Buffer.from(new XMLSerializer().serializeToString(xmlOutput), 'utf-8')
   } catch (error) {

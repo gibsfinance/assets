@@ -5,6 +5,9 @@ import { MAX_STYLE_TEXT_LENGTH, cleanCss, sanitizeSvgDocument } from './svg-sani
 
 const NS = 'xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
 
+/** A real one-pixel PNG, so an embedded picture's header can be read. */
+const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 /** Sanitize an SVG written as text and give back the text. */
 const clean = async (svg: string): Promise<string> => (await sanitizeImage(Buffer.from(svg), '.svg')).toString()
 
@@ -69,11 +72,11 @@ describe('links under any prefix', () => {
     const output = await clean(
       wrap(
         `<image href="file:///etc/passwd"/><image href="data:text/html;base64,AAAA"/>` +
-          `<image id="keep" href="data:image/png;base64,AAAA"/><a href="#keep"/>`,
+          `<image id="keep" href="data:image/png;base64,${ONE_PIXEL_PNG}"/><a href="#keep"/>`,
       ),
     )
     expect(output).not.toMatch(/file:|text\/html/)
-    expect(output).toContain('data:image/png;base64,AAAA')
+    expect(output).toContain(`data:image/png;base64,${ONE_PIXEL_PNG}`)
     expect(output).toContain('href="#keep"')
   })
 

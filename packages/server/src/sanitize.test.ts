@@ -3,6 +3,9 @@ import { palettePngClaiming } from './__testing__/oversized-png'
 import { ImageRejectedError, SvgRejectedError, sanitizeImage, decodeCharacterReferences, isScriptUri } from './sanitize'
 import { MAX_INPUT_PIXELS } from './untrusted-input'
 
+/** A real one-pixel PNG, so an embedded picture's header can be read. */
+const ONE_PIXEL_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 describe('sanitizeImage', () => {
   describe('SVG sanitization', () => {
     it('strips <script> elements', async () => {
@@ -84,7 +87,7 @@ describe('sanitizeImage', () => {
 
     it('preserves data:image URIs', async () => {
       const svg = Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,iVBORw0KGgo="/></svg>',
+        `<svg xmlns="http://www.w3.org/2000/svg"><image href="data:image/png;base64,${ONE_PIXEL_PNG}"/></svg>`,
       )
       const result = await sanitizeImage(svg, '.svg')
       const output = result.toString()

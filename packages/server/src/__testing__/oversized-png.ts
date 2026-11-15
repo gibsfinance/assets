@@ -19,12 +19,13 @@ const pngChunk = (type: string, data: Buffer): Buffer => {
  * A palette PNG that states a square size and carries almost no pixel data: 255 KB of real data would decode to
  * this size, and this fixture is a few hundred bytes. The size is read from the header, before any pixel is decoded.
  *
- * @param side Width and height the header states, in pixels.
+ * @param width Width the header states, in pixels.
+ * @param height Height the header states, in pixels.
  */
-export const palettePngClaiming = (side: number): Buffer => {
+export const palettePngOf = (width: number, height: number): Buffer => {
   const header = Buffer.alloc(13)
-  header.writeUInt32BE(side, 0)
-  header.writeUInt32BE(side, 4)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
   header[8] = 8 // bit depth
   header[9] = 3 // palette colour
   return Buffer.concat([
@@ -35,3 +36,10 @@ export const palettePngClaiming = (side: number): Buffer => {
     pngChunk('IEND', Buffer.alloc(0)),
   ])
 }
+
+/**
+ * A square palette PNG that states `side` by `side` pixels. See {@link palettePngOf}.
+ *
+ * @param side Width and height the header states, in pixels.
+ */
+export const palettePngClaiming = (side: number): Buffer => palettePngOf(side, side)
