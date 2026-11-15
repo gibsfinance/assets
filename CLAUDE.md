@@ -277,25 +277,31 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
   `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
 - Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
-  512 KB (streamed, dropped as it passes the cap). The fetch gate (4 downloads at once, a line of 16) covers only the network
-  call and the body: a file waiting for a sanitizer worker holds no fetch slot. Each download has its own window
+  512 KB (streamed, dropped as it passes the cap). The fetch gate (`REMOTE_IMAGE_CONCURRENCY`, 4 fetches at once) covers
+  only the network call and the body: a file waiting for a sanitizer worker holds no fetch slot. The number of files in
+  progress as a whole is `REMOTE_IMAGE_PLACES` (8), so the fetch line cannot fill; the gate has no separate queue limit. Each download has its own window
   of `REMOTE_IMAGE_TIMEOUT_MS` (5 s) from the moment it starts, and that window alone governs the network call and the
   body. The request's arrival deadline (also 5 s, from arrival) only decides the caller's answer; a file nobody waits for
   is dropped from the line before it starts. One fetch per address is in flight at a time: requests for that address join
   it (`inFlight`), so a slow or silent host cannot be made to serve many parallel downloads. A successful answer is always
   kept, even when every request that waited for it was shed.
   - Charged (`refuse`, remembered 60 s): a download whose window ended without an answer, after queueing or not; a
-    non-success answer; an oversized or empty body; a file the sanitizer refused (including a worker that ran out of its
-    heap on it); a file whose sanitizing ran out of its budget (`cut-off`).
+    non-success answer; an oversized or empty body; a file the sanitizer refused (`ImageRejectedError`, which includes a
+    raster over `MAX_INPUT_PIXELS`); a file whose sanitizing ran out of its budget (`cut-off`); a worker that ran out of
+    its heap, or stopped, or crashed while it was running this file after it had reported ready. Only those: any other
+    error from the sanitizer is shed (see below).
   - Shed (`REMOTE_IMAGE_SHED`, nothing charged, the next request tries again): a request whose deadline passed in line; a
     sanitizing job that expired because no request wanted the file when a worker was granted, or because it was shed by
-    the sanitizer queue (see below); and any sanitizer
-    infrastructure failure (`unavailable`): a worker that did not start, did not load, or crashed for reasons that are not
-    the file's, and a closed pool. Infrastructure failures are logged once per distinct message to the failure log.
+    the sanitizer queue (see below); and any sanitizer infrastructure failure (`unavailable`): a worker that could not be
+    started (its factory threw, for example `ERR_WORKER_INVALID_EXEC_ARGV`), a worker whose code failed to load, a worker
+    that did not report ready within `READY_TIMEOUT_MS` (10 s; a start takes about 0.4 s on an idle machine and up to several seconds under load, and it is stopped), a closed pool, and a third worker while
+    two stopped ones are still alive. Failures before ready are never charged, because the file was never run. Infrastructure
+    failures are logged once per distinct message to the failure log.
   - A download still running when its requests are shed keeps its gate slot until its window ends (it is not aborted,
     because that would leave a silent host never charged).
   The sanitizer queue is bounded by places. Before a file is downloaded its request reserves one place
-  (`sanitizer.reserve()`, see `sanitizer-pool.ts`); at most `SANITIZER_QUEUE_LIMIT` (8) places are held at once, and a
+  (`sanitizer.reserve()`, see `sanitizer-pool.ts`). A place is held for a file in progress: being downloaded, waiting for a
+  worker, or being cleaned. At most `REMOTE_IMAGE_PLACES` (8) are held at once, and a
   request that finds none is shed at once with no download and no fetch. A place is held while the file is downloaded,
   waits for a worker and is cleaned, and it is released on every path that does not clean the file: a failed or refused
   download, a shed download, and a finished cleaning (`release` is idempotent). A file that waits longer than
@@ -306,8 +312,14 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   use, running one job at a time, with `--import register-hooks.ts` and a 256 MB heap limit. The sanitizing budget
   (`SANITIZE_TIMEOUT_MS`, 5 s) starts when a worker is granted to the file and the worker has reported ready (its code
   loaded), so neither the wait for a worker nor the worker's start-up is charged to the file. A worker that ends a job
-  stopped (cut off, or failed) is counted against the pool size until it has exited, so a second worker never starts while
-  the first is alive. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
+  stopped (cut off, or failed) holds its slot until it has exited or `TERMINATE_GRACE_MS` (500 ms) has passed, whichever
+  comes first, so a slow exit does not hold the pool. While one stopped worker is still alive a second may start, and a
+  third is refused as unavailable: the pool never has more than `SANITIZER_POOL_SIZE` + 1 threads.
+  Memory limits and decode cost: `untrusted-input.ts` holds `MAX_INPUT_PIXELS` (25,000,000, about 5000 by 5000). Every sharp
+  call on bytes from outside spreads `UNTRUSTED_INPUT` into its options: the raster sanitizer, the resize and measurement
+  openers (including the SVG density path), and the sprite rasteriser. sharp reads the header first, so a palette PNG that
+  claims 16383 by 16383 pixels is refused before any pixel is decoded (a 255 KB file of that size decoded for about six
+  seconds before the cap). Images that a server composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
   only while remote files are being cleaned; the next job starts a fresh worker. A job takes its worker's idle stop away,
   and the idle timer never stops a worker that is running a job. `close()` answers every waiting job and every later job
   unavailable, and stops the workers.

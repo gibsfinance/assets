@@ -6,6 +6,10 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    // Several tests start real sanitizer worker threads or run sharp; a worker starts in about 0.4 seconds on an idle
+    // machine and in several seconds on a loaded one. The default five seconds made those tests fail under load, not
+    // because they were wrong. A test that really hangs still stops at this limit.
+    testTimeout: 30_000,
     coverage: {
       // Vitest 4 reports nothing at all unless `include` is set — an unset
       // include yields an empty table rather than an error, which reads as a

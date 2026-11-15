@@ -12,7 +12,7 @@ const wrap = (inner: string): string => `<svg ${NS}>${inner}</svg>`
 const clean = async (svg: string): Promise<string> => sanitizeSvgDocument(Buffer.from(svg)).toString()
 
 // The bounds are loose on purpose. In isolation these documents clean in about two seconds; under the coverage run,
-// with the rest of the suite sharing the machine, they took up to about eight. The bounds exist to catch a return of
+// with the rest of the suite sharing the machine, they took up to about twenty-one. The bounds exist to catch a return of
 // the quadratic cost (which took minutes at this size), not to measure speed.
 describe('linear cost on large documents (fifth review, finding 1)', { timeout: 60_000 }, () => {
   // xmldom re-indexes a parent's children on every removal and shifts an element's attribute list on every
@@ -40,7 +40,7 @@ describe('linear cost on large documents (fifth review, finding 1)', { timeout: 
     const elapsed = performance.now() - started
     expect(output.toString()).toContain('fill="red"')
     expect(output.toString()).not.toContain('onclick')
-    expect(elapsed).toBeLessThan(15_000)
+    expect(elapsed).toBeLessThan(30_000)
   })
 
   it('keeps 150,000 ordinary attributes on one element in well under a few seconds', () => {
@@ -49,7 +49,7 @@ describe('linear cost on large documents (fifth review, finding 1)', { timeout: 
     const output = sanitizeSvgDocument(Buffer.from(wrap(`<rect ${kept}/>`)))
     const elapsed = performance.now() - started
     expect(output.toString()).toContain('data-n149999="1"')
-    expect(elapsed).toBeLessThan(15_000)
+    expect(elapsed).toBeLessThan(30_000)
   })
 
   it('cleans a document with 150,000 sibling elements to remove in well under a few seconds', () => {
@@ -59,7 +59,7 @@ describe('linear cost on large documents (fifth review, finding 1)', { timeout: 
     const elapsed = performance.now() - started
     expect(output.toString()).toContain('<circle')
     expect(output.toString()).not.toContain('script')
-    expect(elapsed).toBeLessThan(15_000)
+    expect(elapsed).toBeLessThan(30_000)
   })
 
   it('rejects a document with more attributes than the cap', () => {
