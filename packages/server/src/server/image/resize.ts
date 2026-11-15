@@ -673,8 +673,8 @@ const OVER_BUDGET = Symbol('over-budget')
 /** What `producePlated` answers when a plate was asked for and cannot be produced. */
 const PLATE_FAILED = Symbol('plate-failed')
 
-/** What `settlePlate` answers when the logo's visibility cannot be measured. */
-const UNMEASURABLE = Symbol('unmeasurable')
+/** What `settlePlate` answers when the logo could not be measured, so the caller can tell that from "no plate". */
+export const UNMEASURABLE = Symbol('unmeasurable')
 
 interface Refusal {
   status: number
@@ -808,7 +808,7 @@ const drawFailures = createFailureMemory()
  * Null when it gets none because none is needed; `UNMEASURABLE` when the logo cannot be measured, so
  * the caller can tell "no plate needed" from "could not tell".
  */
-async function settlePlate({
+export async function settlePlate({
   request,
   key,
   content,

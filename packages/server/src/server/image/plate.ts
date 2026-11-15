@@ -17,17 +17,24 @@
 import sharp from 'sharp'
 import type { FormatEnum, Sharp } from 'sharp'
 import httpErrors from 'http-errors'
+import {
+  canonicalHexColour,
+  SPRITE_DEFAULT_PLATE_SHAPE,
+  SPRITE_PLATE_CONTRASTS,
+  SPRITE_PLATE_SHAPES,
+  type SpritePlateContrast,
+  type SpritePlateShape,
+} from '@gibs/sdk/sprite-layout'
 
-/** The outlines a plate can have. */
-export const PLATE_SHAPES = ['circle', 'rounded', 'square'] as const
-export type PlateShape = (typeof PLATE_SHAPES)[number]
-
-/** The page tone a caller names with `contrast=`. */
-export const PLATE_CONTRASTS = ['dark', 'light'] as const
-export type PlateContrast = (typeof PLATE_CONTRASTS)[number]
-
-/** The outline used when `shape` is not given. */
-export const DEFAULT_PLATE_SHAPE: PlateShape = 'circle'
+/*
+ * The plate vocabulary lives in the shared sprite layout, so a sprite and a single image name the same outlines and
+ * tones, and the software development kit can compute the same plate options.
+ */
+export const PLATE_SHAPES = SPRITE_PLATE_SHAPES
+export type PlateShape = SpritePlateShape
+export const PLATE_CONTRASTS = SPRITE_PLATE_CONTRASTS
+export type PlateContrast = SpritePlateContrast
+export const DEFAULT_PLATE_SHAPE: PlateShape = SPRITE_DEFAULT_PLATE_SHAPE
 
 /** A colour with each channel 0-255 and alpha 0-1. */
 export interface Rgba {
@@ -99,23 +106,15 @@ export const PLATE_DEFAULT_VECTOR_SIDE = 256
 /** Most measured logos kept in memory. */
 export const VISIBILITY_CACHE_LIMIT = 5000
 
-const HEX_COLOUR = /^(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i
-
 /**
  * Read a colour written as 3, 6 or 8 hex digits without `#`. Three digits repeat each digit
  * (`f80` is `ff8800`); eight carry alpha last. Null when the text is anything else.
  */
 export function parseHexColour(value: string): Rgba | null {
-  if (!HEX_COLOUR.test(value)) return null
-  const full =
-    value.length === 3
-      ? value
-          .split('')
-          .map((digit) => digit + digit)
-          .join('')
-      : value
-  const channel = (index: number) => parseInt(full.slice(index, index + 2), 16)
-  const alpha = full.length === 8 ? channel(6) / 255 : 1
+  const canonical = canonicalHexColour(value)
+  if (!canonical) return null
+  const channel = (index: number) => parseInt(canonical.slice(index, index + 2), 16)
+  const alpha = canonical.length === 8 ? channel(6) / 255 : 1
   return { red: channel(0), green: channel(2), blue: channel(4), alpha }
 }
 
