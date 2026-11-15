@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { spriteClassName, spriteScopeClassName } from '../../../../sdk/src/sprite-layout'
+import { spriteScopeClassName, spriteTokenClassName } from '../../../../sdk/src/sprite-layout'
 import {
   IMAGE_OPTION_DARK_LOGO_PATH,
   IMAGE_OPTION_SUBJECT_PATH,
   IMAGE_OPTION_TILES,
   SPRITE_MANIFEST_PATH,
+  SPRITE_PREVIEW_TOKEN_KEYS,
   SPRITE_SAMPLE_TOKEN_CLASS,
   SPRITE_SCOPE_CLASS,
   SPRITE_SHEET_PATH,
   SPRITE_STYLESHEET_PATH,
+  spritePreviewClass,
   spriteSnippet,
 } from './integration-examples'
 
@@ -70,30 +72,39 @@ describe('IMAGE_OPTION_TILES', () => {
 })
 
 describe('sprite addresses', () => {
-  it('asks for the manifest and the sheet with the same sizing', () => {
-    expect(SPRITE_MANIFEST_PATH).toBe('/sprite/pulsex/extended?size=32&cols=10&limit=20')
-    expect(SPRITE_SHEET_PATH).toBe('/sprite/pulsex/extended/sheet?size=32&cols=10&limit=20')
+  it('asks for the manifest and the sheet with the same sizing, scale and gap', () => {
+    expect(SPRITE_MANIFEST_PATH).toBe('/sprite/pulsex/extended?size=48&cols=10&limit=20&scale=2&gap=4')
+    expect(SPRITE_SHEET_PATH).toBe('/sprite/pulsex/extended/sheet?size=48&cols=10&limit=20&scale=2&gap=4')
   })
 
   it('asks for the stylesheet route with the same query as the sheet it styles', () => {
-    expect(SPRITE_STYLESHEET_PATH).toBe('/sprite/pulsex/extended/sheet.css?size=32&cols=10&limit=20')
+    expect(SPRITE_STYLESHEET_PATH).toBe('/sprite/pulsex/extended/sheet.css?size=48&cols=10&limit=20&scale=2&gap=4')
   })
 })
 
 describe('sprite class names', () => {
-  // The snippet must name the classes the server writes. These tests ask the shared layout
-  // module for them, so a change to the naming rules fails here rather than in a reader's page.
+  // The snippet and the preview must name the classes the server writes. These tests ask the
+  // shared layout module for them, so a change to the naming rules fails here, not on a reader's page.
+  const request = { size: 48, cols: 10, limit: 20, scale: 2, gap: 4 } as const
+
   it('names the scope class the server gives this list and these settings', () => {
-    expect(SPRITE_SCOPE_CLASS).toBe(spriteScopeClassName('pulsex', 'extended', { size: 32, cols: 10, limit: 20 }))
+    expect(SPRITE_SCOPE_CLASS).toBe(spriteScopeClassName('pulsex', 'extended', request))
   })
 
-  it('names the class the server gives the sample token', () => {
-    expect(SPRITE_SAMPLE_TOKEN_CLASS).toBe(spriteClassName(369, '0x8854bc985fb5725f872c8856bea11b917caeb2fe'))
+  it('names the sample class the server gives the first preview token', () => {
+    expect(SPRITE_SAMPLE_TOKEN_CLASS).toBe(spriteTokenClassName(SPRITE_PREVIEW_TOKEN_KEYS[0]))
+  })
+
+  it('gives every preview token the class the server writes for it', () => {
+    expect(SPRITE_PREVIEW_TOKEN_KEYS).toHaveLength(20)
+    for (const key of SPRITE_PREVIEW_TOKEN_KEYS) {
+      expect(spritePreviewClass(key)).toBe(spriteTokenClassName(key))
+    }
   })
 })
 
 describe('spriteSnippet', () => {
-  const stylesheetUrl = 'https://gib.show/sprite/pulsex/extended/sheet.css?size=32&cols=10&limit=20'
+  const stylesheetUrl = 'https://gib.show/sprite/pulsex/extended/sheet.css?size=48&cols=10&limit=20&scale=2&gap=4'
   const snippet = spriteSnippet({ stylesheetUrl })
 
   it('links the stylesheet it was given, not a fixed address', () => {

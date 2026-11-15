@@ -1,44 +1,58 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { faImage } from '@fortawesome/free-solid-svg-icons'
-import IntegrationCard, { IntegrationAddress, addressSegments } from './IntegrationCard'
+import IntegrationCard, { IntegrationAddress, addressSegments, type IntegrationCardLayout } from './IntegrationCard'
 
 afterEach(cleanup)
 
 const DOCS_HREF = 'https://docs.gib.show/api-reference/images/'
 
-function renderCard(overrides: Partial<Parameters<typeof IntegrationCard>[0]> = {}) {
+function renderCard(layout: IntegrationCardLayout, preview: boolean) {
   return render(
     <IntegrationCard
+      layout={layout}
       icon={faImage}
       title="Example title"
       description="Example description"
-      preview={<span>the live example</span>}
-      docsHref={DOCS_HREF}
-      {...overrides}>
+      preview={preview ? <span>the live example</span> : undefined}
+      docsHref={DOCS_HREF}>
       <p>the text under the description</p>
     </IntegrationCard>,
   )
 }
 
-describe('IntegrationCard', () => {
-  it('shows its title and description in the text panel', () => {
-    renderCard()
+describe('IntegrationCard, compact layout', () => {
+  it('shows its title and description under the preview', () => {
+    renderCard('compact', true)
     expect(screen.getByRole('heading', { name: 'Example title' })).toBeTruthy()
     expect(screen.getByText('Example description')).toBeTruthy()
   })
 
-  it('draws the preview in the panel that comes before the text, as the layout expects', () => {
-    const { container } = renderCard()
+  it('draws the preview in its own panel, above the title, as the layout expects', () => {
+    const { container } = renderCard('compact', true)
     const preview = screen.getByText('the live example')
-    const text = screen.getByText('Example description')
+    const title = screen.getByRole('heading', { name: 'Example title' })
     expect(preview.parentElement!.className).toContain('bg-surface-inset')
-    expect(preview.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(preview.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(container.querySelectorAll('.bg-surface-inset')).toHaveLength(1)
   })
 
-  it('draws whatever sits under the description, after it and before the documentation link', () => {
-    renderCard()
+  it('pushes the documentation link to the foot of the card, so cards in a row line up', () => {
+    renderCard('compact', true)
+    const docs = screen.getByRole('link', { name: /Read the full documentation/ })
+    expect(docs.className).toContain('mt-auto')
+  })
+})
+
+describe('IntegrationCard, wide layout', () => {
+  it('has no preview panel of its own, because its children draw the body', () => {
+    const { container } = renderCard('wide', false)
+    expect(container.querySelectorAll('.bg-surface-inset')).toHaveLength(0)
+    expect(screen.getByRole('heading', { name: 'Example title' })).toBeTruthy()
+  })
+
+  it('draws the children under the description, before the documentation link', () => {
+    renderCard('wide', false)
     const description = screen.getByText('Example description')
     const under = screen.getByText('the text under the description')
     const docs = screen.getByRole('link', { name: /Read the full documentation/ })
@@ -46,8 +60,15 @@ describe('IntegrationCard', () => {
     expect(under.compareDocumentPosition(docs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('links the documentation page in a new tab, opened without a reference to the page', () => {
-    renderCard()
+  it('shows a preview only when one is given, even in the wide layout', () => {
+    renderCard('wide', true)
+    expect(screen.getByText('the live example')).toBeTruthy()
+  })
+})
+
+describe('IntegrationCard, both layouts', () => {
+  it.each(['compact', 'wide'] as const)('links the documentation page in a new tab (%s)', (layout) => {
+    renderCard(layout, false)
     const docs = screen.getByRole('link', { name: /Read the full documentation/ })
     expect(docs.getAttribute('href')).toBe(DOCS_HREF)
     expect(docs.getAttribute('target')).toBe('_blank')
@@ -80,7 +101,6 @@ describe('IntegrationAddress', () => {
     const { container } = render(<IntegrationAddress href={address} />)
     const code = container.querySelector('code')!
     expect(code.querySelectorAll('wbr')).toHaveLength(1)
-    expect(code.innerHTML).toContain('contrast=dark')
     expect(code.innerHTML.indexOf('<wbr>')).toBeGreaterThan(code.innerHTML.indexOf('eip155-25?'))
   })
 

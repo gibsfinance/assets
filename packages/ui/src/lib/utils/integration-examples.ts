@@ -94,12 +94,16 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
 
 /** The list the sprite card draws, and the options that size its sheet. */
 export const SPRITE_LIST_PATH = '/sprite/pulsex/extended'
-const SPRITE_OPTIONS = 'size=32&cols=10&limit=20'
+/**
+ * The options the sprite example asks for: 48-pixel cells, twenty tokens in ten columns, drawn at
+ * two sheet pixels per CSS pixel (sharp on high-density screens) with a 4-pixel gap between cells.
+ */
+const SPRITE_OPTIONS = 'size=48&cols=10&limit=20&scale=2&gap=4'
 
 /** The manifest path for the sprite card: where each token sits in the grid, and the sheet's address. */
 export const SPRITE_MANIFEST_PATH = `${SPRITE_LIST_PATH}?${SPRITE_OPTIONS}`
 
-/** The rendered sheet for the sprite card. Ten columns of 32-pixel cells, two rows, 320 by 64 pixels. */
+/** The rendered sheet for the sprite card: ten columns and two rows of 48-pixel cells, drawn at scale 2. */
 export const SPRITE_SHEET_PATH = `${SPRITE_LIST_PATH}/sheet?${SPRITE_OPTIONS}`
 
 /** The stylesheet the snippet links: one scope class for the list, and one class per token. */
@@ -110,13 +114,51 @@ export const SPRITE_STYLESHEET_PATH = `${SPRITE_LIST_PATH}/sheet.css?${SPRITE_OP
  * computed by `spriteScopeClassName` in `packages/sdk/src/sprite-layout.ts` from the list and the
  * settings. A test recomputes it through that function, so this value cannot drift from the server.
  */
-export const SPRITE_SCOPE_CLASS = 'gibsheet-0bc2ecdbc38407'
+export const SPRITE_SCOPE_CLASS = 'gibsheet-172034060c850b'
 
 /**
- * The class of the sample token, Pulsechain's first cell in the sheet. Computed by `spriteClassName`
- * in `packages/sdk/src/sprite-layout.ts`; a test recomputes it through that function.
+ * The tokens the sprite preview draws, in the order the sheet places them: twenty PulseChain tokens.
+ * Their keys come from the manifest for the sprite options above.
  */
-export const SPRITE_SAMPLE_TOKEN_CLASS = 'gib-eip155-369-0x8854bc985fb5725f872c8856bea11b917caeb2fe'
+export const SPRITE_PREVIEW_TOKEN_KEYS: readonly string[] = [
+  'eip155-369-0xa1077a294dde1b09bb078844df40758a5d0f9a27',
+  'eip155-369-0xca35638a3fddd02fec597d8c1681198c06b23f58',
+  'eip155-369-0xbbcf895bfcb57d0f457d050bb806d1499436c0ce',
+  'eip155-369-0x0567ca0de35606e9c260cc2358404b11de21db44',
+  'eip155-369-0xaec4c07537b03e3e62fc066ec62401aed5fdd361',
+  'eip155-369-0xdfdc2836fd2e63bba9f0ee07901ad465bff4de71',
+  'eip155-369-0xcfcffe432a48db53f59c301422d2edd77b2a88d7',
+  'eip155-369-0x9159f1d2a9f51998fc9ab03fbd8f265ab14a1b3b',
+  'eip155-369-0x0deed1486bc52aa0d3e6f8849cec5add6598a162',
+  'eip155-369-0x600136da8cc6d1ea07449514604dc4ab7098db82',
+  'eip155-369-0x8854bc985fb5725f872c8856bea11b917caeb2fe',
+  'eip155-369-0x96e035ae0905efac8f733f133462f971cfa45db1',
+  'eip155-369-0x9663c2d75ffd5f4017310405fce61720af45b829',
+  'eip155-369-0xa12e2661ec6603cbbb891072b2ad5b3d5edb48bd',
+  'eip155-369-0xecd465a15fac825b0fe69416a4c7bfe03a50c12e',
+  'eip155-369-0xa9d4230b4899e6aac0d84e540941b3832aba3ba0',
+  'eip155-369-0xf876bdf9d6403aa7d5bf7f523e8f440a841cc596',
+  'eip155-369-0x73d8a4d01d658e565cf83068397fd39baf386c48',
+  'eip155-369-0x7663e79e09d78142e3f6e4dca19faf604159842d',
+  'eip155-369-0x1dcbf345bc44696bbbed402367f7c62e524fe8b5',
+]
+
+/**
+ * The class a token carries, for a key that is all lowercase letters, digits and dashes (every
+ * key in the preview). The server's rule is `spriteTokenClassName` in `packages/sdk/src/sprite-layout.ts`;
+ * a test checks this against that function for every preview key, so the two cannot drift.
+ *
+ * @param key The token's manifest key, `chainId-address`.
+ * @returns The class name.
+ */
+export function spritePreviewClass(key: string): string {
+  return `gib-${key}`
+}
+
+/**
+ * The class of the sample token in the snippet: the first token of the preview.
+ */
+export const SPRITE_SAMPLE_TOKEN_CLASS = spritePreviewClass(SPRITE_PREVIEW_TOKEN_KEYS[0])
 
 /**
  * The markup a reader would paste to show one token from a sprite sheet: the stylesheet link, then

@@ -1,29 +1,19 @@
-import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
+import { useMemo, useCallback, useState, useRef, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
 import { getDocsUrl, type DocsPageName } from '../utils/docs-links'
-import {
-  IMAGE_OPTION_SUBJECT_PATH,
-  IMAGE_OPTION_TILES,
-  SPRITE_MANIFEST_PATH,
-  SPRITE_SHEET_PATH,
-  SPRITE_STYLESHEET_PATH,
-  spriteSnippet,
-  type ImageOptionSurface,
-  type ImageOptionTile as ImageOptionTileData,
-} from '../utils/integration-examples'
 import { prefetchStudioWhenIdle } from './load-studio'
-import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
 import Image from '../components/Image'
 import IntegrationCard, { IntegrationAddress } from '../components/IntegrationCard'
+import ImageOptionsExample from '../components/ImageOptionsExample'
+import SpriteSheetExample from '../components/SpriteSheetExample'
 import {
-  faArrowRight,
   faBolt,
   faCloud,
   faFlask,
@@ -34,6 +24,7 @@ import {
   faNetworkWired,
   faShield,
   faSliders,
+  type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from '../components/Icon'
 
@@ -56,15 +47,18 @@ const features = [
   },
 ]
 
-/** Each card's documentation page, by the name `DOCS_PAGES` gives it. */
+/**
+ * The three compact cards. Each shows its live logo above the text, and its one address below it.
+ * The address is shown once: the preview draws the logo and does not repeat the address.
+ */
 const examples: {
   type: string
-  icon: typeof faImage
+  icon: IconDefinition
   title: string
   description: string
   code: string
-  displayUrl: string
   docsPage: DocsPageName
+  preview: ReactNode
 }[] = [
   {
     type: 'token-image',
@@ -72,8 +66,17 @@ const examples: {
     title: 'Token Images',
     description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
     code: getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-    displayUrl: `/image/eip155-1/0x2260...`,
     docsPage: 'images',
+    preview: (
+      <Image
+        src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+        alt="WBTC Token"
+        size={64}
+        skeleton
+        shape="circle"
+        className="rounded-full"
+      />
+    ),
   },
   {
     type: 'network-image',
@@ -81,8 +84,17 @@ const examples: {
     title: 'Network Logos',
     description: 'Get chain/network logos and metadata. Perfect for network selectors.',
     code: getApiUrl('/image/eip155-1'),
-    displayUrl: `/image/eip155-1`,
     docsPage: 'networks',
+    preview: (
+      <Image
+        src={getApiUrl('/image/eip155-1')}
+        alt="Ethereum"
+        size={64}
+        skeleton
+        shape="circle"
+        className="rounded-full"
+      />
+    ),
   },
   {
     type: 'token-list',
@@ -90,133 +102,37 @@ const examples: {
     title: 'Token Lists',
     description: 'Get curated token lists with optional network filtering.',
     code: getApiUrl('/list/coingecko'),
-    displayUrl: `/list/coingecko`,
     docsPage: 'tokenLists',
+    preview: (
+      <div className="flex -space-x-4">
+        <Image
+          src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+          alt="Token 1"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+        <Image
+          src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
+          alt="Token 2"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+        <Image
+          src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
+          alt="Token 3"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+      </div>
+    ),
   },
 ]
-
-/** The logo well's background, by the surface a tile names. A dark logo needs the dark well. */
-const WELL_SURFACE_CLASS: Record<ImageOptionSurface, string> = {
-  inset: 'bg-surface-inset',
-  backdrop: 'bg-surface-backdrop',
-}
-
-type ImageOptionTileProps = {
-  tile: ImageOptionTileData
-}
-
-/**
- * One option in the image options card: its title and sentences, then each of its logos with
- * the address that drew it.
- *
- * The logos are drawn at the exact address shown, through `fullResolution`. Without it the
- * shared image component would add its own size and format to the request, and the reader
- * would see one address on the page and be served another.
- */
-function ImageOptionTile({ tile }: ImageOptionTileProps) {
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
-      <div>
-        <h4 className="font-heading text-sm font-bold text-content-strong">{tile.title}</h4>
-        <p className="mt-1 text-sm text-content-secondary">{tile.description}</p>
-      </div>
-      {tile.samples.map((sample) => (
-        <div key={sample.path} className="flex flex-col items-start gap-2">
-          <div className={`flex rounded-md p-2 ${WELL_SURFACE_CLASS[tile.surface]}`}>
-            <Image src={getApiUrl(sample.path)} alt={sample.alt} size={64} fullResolution shape="rect" />
-          </div>
-          {sample.caption && <p className="text-xs text-content-subtle">{sample.caption}</p>}
-          <IntegrationAddress href={getApiUrl(sample.path)} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-type ExamplePreviewProps = {
-  type: string
-  displayUrl: string
-}
-
-function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
-  if (type === 'token-image') {
-    return (
-      <div className="flex flex-col md:flex-row items-center gap-4">
-        <div className="flex flex-row items-center gap-3">
-          <Image
-            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
-            alt="WBTC Token"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full"
-          />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-        </div>
-        <CodeBlock code={displayUrl} />
-      </div>
-    )
-  }
-
-  if (type === 'network-image') {
-    return (
-      <div className="flex flex-col md:flex-row items-center gap-4">
-        <div className="flex flex-row items-center gap-3">
-          <Image
-            src={getApiUrl('/image/eip155-1')}
-            alt="Ethereum"
-            size={48}
-            skeleton
-            shape="circle"
-            className="rounded-full"
-          />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-        </div>
-        <CodeBlock code={displayUrl} />
-      </div>
-    )
-  }
-
-  // The only caller is the map below over the module-level `examples` list, which
-  // declares exactly three entries: 'token-image', 'network-image', 'token-list'. The
-  // first two are handled above, so reaching this point means the type is 'token-list'.
-  // There is no fourth type to fall through to, so this closing branch needs no guard
-  // and no dead default beneath it.
-  return (
-    <div className="flex flex-col md:flex-row items-center gap-4">
-      <div className="flex flex-row items-center gap-3">
-        <div className="flex -space-x-4">
-          <Image
-            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
-            alt="Token 1"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-          <Image
-            src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
-            alt="Token 2"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-          <Image
-            src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
-            alt="Token 3"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-        </div>
-        <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-      </div>
-      <CodeBlock code={displayUrl} />
-    </div>
-  )
-}
 
 export default function Home() {
   const navigate = useNavigate()
@@ -380,77 +296,40 @@ export default function Home() {
           </section>
 
           {/* Integration Examples */}
-          <section className="space-y-8 py-12">
+          <section className="space-y-6 py-8">
             <h2 className="font-heading text-center text-3xl font-bold text-content-strong">Simple Integration</h2>
-            <div className="grid gap-6">
+            <div className="grid items-stretch gap-4 lg:grid-cols-3">
               {examples.map((example) => (
                 <IntegrationCard
                   key={example.type}
+                  layout="compact"
                   icon={example.icon}
                   title={example.title}
                   description={example.description}
                   docsHref={getDocsUrl(example.docsPage)}
-                  preview={<ExamplePreview type={example.type} displayUrl={example.displayUrl} />}>
+                  preview={example.preview}>
                   <IntegrationAddress href={example.code} />
                 </IntegrationCard>
               ))}
-
-              <IntegrationCard
-                icon={faSliders}
-                title="Image Options"
-                description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. The examples use Wrapped Bitcoin, and the dark-page example uses Cronos, a dark logo."
-                docsHref={getDocsUrl('imageOptions')}
-                preview={
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    <Image
-                      src={getApiUrl(IMAGE_OPTION_SUBJECT_PATH)}
-                      alt="Wrapped Bitcoin logo"
-                      size={128}
-                      fullResolution
-                      shape="rect"
-                    />
-                    <p className="text-sm text-content-subtle">Wrapped Bitcoin, drawn by three of the options below</p>
-                  </div>
-                }>
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                  {IMAGE_OPTION_TILES.map((tile) => (
-                    <ImageOptionTile key={tile.key} tile={tile} />
-                  ))}
-                </div>
-              </IntegrationCard>
-
-              <IntegrationCard
-                icon={faLayerGroup}
-                title="Sprite Sheets"
-                description="One request draws a whole list. The sheet is one picture of every logo in the list, and the manifest says where each token sits in it."
-                docsHref={getDocsUrl('spriteSheets')}
-                preview={
-                  <div className="flex max-w-full flex-col items-center gap-3 overflow-x-auto">
-                    <Image
-                      src={getApiUrl(SPRITE_SHEET_PATH)}
-                      alt="Logos of the PulseX token list, drawn as one sheet"
-                      width={320}
-                      height={64}
-                      fullResolution
-                      skeleton
-                      shape="rect"
-                    />
-                    <IntegrationAddress href={getApiUrl(SPRITE_SHEET_PATH)} />
-                  </div>
-                }>
-                <IntegrationAddress href={getApiUrl(SPRITE_MANIFEST_PATH)} />
-                <CodeBlock
-                  code={spriteSnippet({ stylesheetUrl: getApiUrl(SPRITE_STYLESHEET_PATH) })}
-                  lang="html"
-                  preClasses="[&>pre]:whitespace-pre-wrap [&>pre]:break-all"
-                />
-                <p className="text-sm text-content-subtle">
-                  Add chainId to keep one chain, content=mixed for vector logos as data addresses, gap for space between
-                  cells, bg or contrast for a plate behind each logo, and scale=2 for sharp sheets on high-density
-                  screens. Sizes run from 16 to 128 pixels for size, 5 to 50 for cols, and 1 to 2000 tokens for limit.
-                </p>
-              </IntegrationCard>
             </div>
+
+            <IntegrationCard
+              layout="wide"
+              icon={faSliders}
+              title="Image Options"
+              description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. Pick an option to see its image and address."
+              docsHref={getDocsUrl('imageOptions')}>
+              <ImageOptionsExample />
+            </IntegrationCard>
+
+            <IntegrationCard
+              layout="wide"
+              icon={faLayerGroup}
+              title="Sprite Sheets"
+              description="One request draws a whole list. The sheet is one picture of every logo in the list, and a stylesheet says where each token sits in it."
+              docsHref={getDocsUrl('spriteSheets')}>
+              <SpriteSheetExample />
+            </IntegrationCard>
           </section>
 
           {/* Platform Metrics */}

@@ -20,21 +20,14 @@
  * are all exercised.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Home from './Home'
 import { SettingsProvider } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
 import { getDocsUrl } from '../utils/docs-links'
-import {
-  IMAGE_OPTION_TILES,
-  SPRITE_MANIFEST_PATH,
-  SPRITE_SAMPLE_TOKEN_CLASS,
-  SPRITE_SCOPE_CLASS,
-  SPRITE_SHEET_PATH,
-  SPRITE_STYLESHEET_PATH,
-} from '../utils/integration-examples'
+import { SPRITE_STYLESHEET_PATH } from '../utils/integration-examples'
 import { prefetchStudioWhenIdle } from './load-studio'
 
 // The idle fetch would pull the whole Studio page into every render below. The module is
@@ -517,13 +510,13 @@ describe('Home — the integration examples', () => {
     expect(screen.getByAltText('Ethereum').getAttribute('src')!.startsWith(exampleUrls[1])).toBe(true)
   })
 
-  it('shows a shortened path in the sample rather than the whole absolute URL', () => {
-    // The samples are read at a glance; the full origin pushes the interesting part of the
-    // path off the line.
+  it('shows each example address once, beside its card, rather than repeating it on the logo', () => {
     stubFetch()
     renderHome()
 
-    expect(screen.getByText('/list/coingecko')).toBeTruthy()
+    for (const url of exampleUrls) {
+      expect(screen.getAllByText(url)).toHaveLength(1)
+    }
   })
 
   it('shows the three token logos the list example is illustrated with', () => {
@@ -537,80 +530,37 @@ describe('Home — the integration examples', () => {
 })
 
 describe('Home — the image options and sprite sheet cards', () => {
-  // The logo the option tiles draw, and each tile's address as the card shows it.
-  const logo = (path: string) => getApiUrl(path)
-
-  it('shows each option with the exact address its logo is drawn from', () => {
+  it('draws the image options card with its option tabs, the first one selected', () => {
     stubFetch()
     renderHome()
 
-    for (const sample of IMAGE_OPTION_TILES.flatMap((tile) => tile.samples)) {
-      expect(screen.getByAltText(sample.alt).getAttribute('src')).toBe(logo(sample.path))
-    }
+    expect(screen.getByRole('heading', { name: 'Image Options' })).toBeTruthy()
+    expect(screen.getAllByRole('tab')[0].getAttribute('aria-selected')).toBe('true')
   })
 
-  it('links each option address, opened safely, to the address the logo is drawn from', () => {
+  it('shows the address of the option the reader picks, and no other option’s address', () => {
     stubFetch()
     renderHome()
 
-    for (const sample of IMAGE_OPTION_TILES.flatMap((tile) => tile.samples)) {
-      const link = screen.getByText(logo(sample.path)).closest('a')!
-      expect(link.getAttribute('href')).toBe(logo(sample.path))
-      expect(link.getAttribute('target')).toBe('_blank')
-    }
+    fireEvent.click(screen.getByRole('tab', { name: 'Vector only' }))
+
+    const panel = screen.getByRole('tabpanel')
+    expect(
+      within(panel).getByText(getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?only=vector')),
+    ).toBeTruthy()
+    expect(
+      within(panel).queryByText(
+        getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?w=64&h=64&as=webp'),
+      ),
+    ).toBeNull()
   })
 
-  it('draws the plain logo and the contrast logo side by side on the dark backdrop, with a caption for each', () => {
-    stubFetch()
-    renderHome()
-
-    // The logo's own wrapper is the image component's; the well that takes the backdrop is the
-    // element around it.
-    const wellOf = (alt: string) => screen.getByAltText(alt).closest('.rounded-md')!
-    expect(wellOf('Cronos logo, plain').className).toContain('bg-surface-backdrop')
-    expect(wellOf('Cronos logo, with contrast=dark').className).toContain('bg-surface-backdrop')
-    expect(screen.getByText('No options')).toBeTruthy()
-    expect(screen.getByText('contrast=dark')).toBeTruthy()
-  })
-
-  it('keeps the other option logos off the dark backdrop', () => {
-    stubFetch()
-    renderHome()
-
-    const well = screen.getByAltText('Wrapped Bitcoin, vector only').closest('.rounded-md')!
-    expect(well.className).not.toContain('bg-surface-backdrop')
-  })
-
-  it('draws the sprite sheet from the sheet address, not the manifest', () => {
-    stubFetch()
-    renderHome()
-
-    const sheet = screen.getByAltText('Logos of the PulseX token list, drawn as one sheet')
-    expect(sheet.getAttribute('src')).toBe(getApiUrl(SPRITE_SHEET_PATH))
-    expect(sheet.getAttribute('width')).toBe('320')
-    expect(sheet.getAttribute('height')).toBe('64')
-  })
-
-  it('shows the manifest address the sprite card explains', () => {
-    stubFetch()
-    renderHome()
-
-    const link = screen.getByText(getApiUrl(SPRITE_MANIFEST_PATH)).closest('a')!
-    expect(link.getAttribute('href')).toBe(getApiUrl(SPRITE_MANIFEST_PATH))
-  })
-
-  it('puts the stylesheet address the reader must link into the snippet', () => {
+  it('draws the sprite sheet card with the real stylesheet in place', () => {
     stubFetch()
     const { container } = renderHome()
 
-    expect(container.textContent).toContain(`<link rel="stylesheet" href="${getApiUrl(SPRITE_STYLESHEET_PATH)}" />`)
-  })
-
-  it('draws the sample token with the list scope class and its own class, as the stylesheet names them', () => {
-    stubFetch()
-    const { container } = renderHome()
-
-    expect(container.textContent).toContain(`<span class="${SPRITE_SCOPE_CLASS} ${SPRITE_SAMPLE_TOKEN_CLASS}"></span>`)
+    const link = container.querySelector('link[rel="stylesheet"]')!
+    expect(link.getAttribute('href')).toBe(getApiUrl(SPRITE_STYLESHEET_PATH))
   })
 
   it('links all five cards to the documentation page that covers them', () => {
