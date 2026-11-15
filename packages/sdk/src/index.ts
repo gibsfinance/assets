@@ -5,10 +5,13 @@ export {
   fetchSprite,
   getSpriteUrl,
   getSpriteSheetUrl,
+  getSpriteStylesheetUrl,
+  getSpriteScopeClass,
   type Sprite,
   type SpriteManifest,
   type SpriteOptions,
   type SpriteTokenEntry,
   type ResolvedIcon,
 } from './sprite'
+export { spriteClassName, type SpriteScale } from './sprite-layout'
 export type { TokenListToken, TokenList, NetworkInfo, ListInfo } from './types'

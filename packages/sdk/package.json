@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./sprite-layout": {
+      "types": "./src/sprite-layout.ts",
+      "import": "./src/sprite-layout.ts"
     }
   },
   "files": [
@@ -17,7 +21,8 @@
   ],
   "scripts": {
     "build": "node ../../scripts/tsc7.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "node scripts/publish-exports.mjs"
   },
   "keywords": [
     "tokens",
