@@ -319,7 +319,9 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   call on bytes from outside spreads `UNTRUSTED_INPUT` into its options: the raster sanitizer, the resize and measurement
   openers (including the SVG density path), and the sprite rasteriser. sharp reads the header first, so a palette PNG that
   claims 16383 by 16383 pixels is refused before any pixel is decoded (a 255 KB file of that size decoded for about six
-  seconds before the cap). Images that a server composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
+  seconds before the cap). The same cap bounds the total of every picture one vector document embeds (a budget per
+  document, spent only by pictures that are kept), so many small-looking embeds cannot exceed it in sum. Images that a server
+  composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
   only while remote files are being cleaned; the next job starts a fresh worker. A job takes its worker's idle stop away,
   and the idle timer never stops a worker that is running a job. `close()` answers every waiting job and every later job
   unavailable, and stops the workers.
@@ -343,7 +345,7 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   Stored vector images pass `sanitizeImage`, so this is the second wall. The vector sanitizer (`svg-sanitize.ts`) reads
   the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
   elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
-  (decoded the way a browser reads it), cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
+  (decoded the way a browser reads it), replaces a data address with `#` unless it is an embedded picture that passes the check below, cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
   (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes a cleaned copy
   into a new document (`copyChildren` / `copyElement`). The copy is linear: xmldom re-indexes a parent's children on
   every removal and `setAttributeNS` scans the whole attribute list on every write, so the walk never removes a node and
@@ -355,7 +357,17 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
   throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
   so APNG is refused, not flattened. A style element's text or a `style` attribute over `MAX_STYLE_TEXT_LENGTH` (256 KiB), or a document over
-  `MAX_ATTRIBUTES` (200,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
+  `MAX_ATTRIBUTES` (200,000), is rejected. Embedded pictures: a data address in an `image` link, or any address whose
+  label is an image type, is kept only when its base64 text is well formed, its bytes are a Portable Network Graphics,
+  JPEG, GIF, WebP or AVIF file by their magic numbers (`svg-raster-embed.ts`), and its header states a size that the
+  document's budget can pay (`cleanedEmbeddedRaster` in `svg-sanitize.ts`; the budget starts at `MAX_INPUT_PIXELS` per
+  document and a refused picture costs nothing). The size comes from the header, never from the label, and nothing is
+  decoded. A picture whose label is wrong (`img/png`) is rewritten to the type its bytes are, as a browser would sniff
+  it; a label that is not an image type is read only on an `image` element, and anywhere else it is blanked. A
+  correctly labelled picture is kept as written. AVIF is always refused, because its size sits in item tables this
+  check does not read. Non-base64 addresses are blanked. A nested vector address (`data:image/svg+xml`) is kept as
+  written and never relabelled. The renderer does not decode a `url()` data address in a style declaration (a 12000
+  by 12000 embed in a fill drew nothing and took about 2 ms), so only `href`/`src` carry pictures. Other attribute values (path data) get no length cap, only the remote-load
   check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
   or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
   changes were checked on the 4,441 files of the smoldapp sample: the copy walk gives byte-identical output for every
