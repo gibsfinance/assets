@@ -16,7 +16,8 @@
  *   states, within the document's pixel budget (see `cleanedEmbeddedRaster`). A picture whose label is
  *   wrong is relabelled to the type its bytes really are. An address whose label is not an image type is
  *   only read on an `image` element, which is where a browser would sniff it; anywhere else it is
- *   replaced by `#`. A nested vector address is kept as written. A `use` with a link that is not local
+ *   replaced by `#`. A nested vector address is replaced by `#`, because the document inside it is neither
+ *   cleaned nor measured. A `use` with a link that is not local
  *   is removed.
  * - Animation: an animation element that targets a link or an `on*` attribute is removed.
  * - Styles: `@import` rules, `image-set()` values and `url()` values that are not local or `data:image` are
@@ -241,8 +242,9 @@ const DATA_SCHEME = 'data:'
 const IMAGE_DATA_PREFIX = 'data:image/'
 
 /**
- * The start of a nested vector image address. It is kept exactly as written: it is never relabelled, and it is not
- * measured (a vector draws no pixel budget). Browsers draw it in an image context, where it cannot run script.
+ * The start of a nested vector image address. Such an address is always blanked: the document inside it is neither
+ * cleaned nor measured, so a picture over the pixel cap one level down was drawn in full (a 12000 by 12000 embed took
+ * about a second). No logo seen in the artwork repositories nests one.
  */
 const VECTOR_DATA_PREFIX = 'data:image/svg+xml'
 
@@ -311,7 +313,7 @@ function cleanedEmbeddedRaster(value: string, pixels: PixelBudget): string {
 function cleanedLinkValue(value: string, elementName: string, pixels: PixelBudget): string {
   const normalized = normalizeLink(value)
   if (!normalized.startsWith(DATA_SCHEME)) return isUnsafeLink(value) ? NEUTRAL_LINK : value
-  if (normalized.startsWith(VECTOR_DATA_PREFIX)) return value
+  if (normalized.startsWith(VECTOR_DATA_PREFIX)) return NEUTRAL_LINK
   if (normalized.startsWith(IMAGE_DATA_PREFIX) || elementName === IMAGE_ELEMENT)
     return cleanedEmbeddedRaster(value, pixels)
   return NEUTRAL_LINK

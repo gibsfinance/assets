@@ -365,8 +365,9 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   decoded. A picture whose label is wrong (`img/png`) is rewritten to the type its bytes are, as a browser would sniff
   it; a label that is not an image type is read only on an `image` element, and anywhere else it is blanked. A
   correctly labelled picture is kept as written. AVIF is always refused, because its size sits in item tables this
-  check does not read. Non-base64 addresses are blanked. A nested vector address (`data:image/svg+xml`) is kept as
-  written and never relabelled. The renderer does not decode a `url()` data address in a style declaration (a 12000
+  check does not read. Non-base64 addresses are blanked. A nested vector address (`data:image/svg+xml`) is blanked: the
+  document inside it is neither cleaned nor measured, so a 12000 by 12000 picture one level down drew for about a
+  second before this rule. Nothing is ever relabelled to a vector type. The renderer does not decode a `url()` data address in a style declaration (a 12000
   by 12000 embed in a fill drew nothing and took about 2 ms), so only `href`/`src` carry pictures. Other attribute values (path data) get no length cap, only the remote-load
   check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
   or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector

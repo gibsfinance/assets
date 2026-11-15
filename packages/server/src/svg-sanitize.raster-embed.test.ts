@@ -204,9 +204,19 @@ describe('correctly labelled raster embeds', () => {
     expect(firstLinkOf(await cleanText(imageDocument(notAnImage)))).toBe('#')
   })
 
-  it('keeps a nested vector image address as it was (no change to the vector label)', async () => {
+  // A nested vector document is not cleaned or measured, so a picture over the pixel cap inside it was drawn in full:
+  // a 12000 by 12000 embed one level down rasterized for about a second. Blank every nested vector address.
+  it('blanks a nested vector image address', async () => {
     const nested = dataAddress('image/svg+xml', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))
-    expect(firstLinkOf(await cleanText(imageDocument(nested)))).toBe(nested)
+    expect(firstLinkOf(await cleanText(imageDocument(nested)))).toBe('#')
+  })
+
+  it('blanks a nested vector document that hides an oversized picture', async () => {
+    const hidden = dataAddress('image/png', palettePngClaiming(12_000))
+    const inner = Buffer.from(`<svg ${NS}><image width="1" height="1" xlink:href="${hidden}"/></svg>`)
+    const cleaned = await cleanText(imageDocument(dataAddress('image/svg+xml', inner)))
+    expect(firstLinkOf(cleaned)).toBe('#')
+    expect(cleaned).not.toContain('svg+xml')
   })
 
   it('keeps a correctly labelled raster on an anchor element, as before', async () => {
