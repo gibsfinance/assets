@@ -210,16 +210,21 @@ Return visitors paint from cache; the build removes the two blocking requests.
   deploy and redeploy). The build then ships a `/sw.js` that deletes every cache and unregisters
   itself, and the page stops registering a worker. Browsers pick it up on their next update check,
   which they make on each navigation and at least daily. Remove the variable to turn the worker back on.
-- **Edge cache for the page:** a Cloudflare cache rule (zone `gib.show`, phase
-  `http_request_cache_settings`, description "page: cache index.html at the edge for 60s") caches
-  `/` and `/index.html` on `gib.show` and `staging.gib.show` for 60 seconds, edge only. Browsers still
-  get the origin's `no-cache` (browser TTL: respect origin). A deploy reaches first-time visitors
-  within a minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of
-  about 120 ms. The other rule in that phase ("content") caches `/image`, `/list`, `/token`, `/stats`,
-  `/networks`. It respects the origin's lifetimes, except that it keeps 404 answers for one hour:
+- **Edge cache for the page:** two Cloudflare cache rules (zone `gib.show`, phase
+  `http_request_cache_settings`) hold the edge rules. The page rule ("page: cache index.html at the
+  edge for 60s") keeps `/` and `/index.html` on `gib.show` and `staging.gib.show` at the edge for 60
+  seconds. Browsers still get the origin's `no-cache`. A deploy reaches first-time visitors within a
+  minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of about
+  120 ms. The content rule ("content") covers `/image`, `/list`, `/token`, `/sprite`, `/stats` and
+  `/networks`. It follows the origin's lifetimes, except that it keeps 404 answers for one hour:
   without that, Cloudflare kept them about 3 minutes despite the origin's `max-age=86400`, and one
-  client polling a few imageless addresses sent about 3,000 requests a day to the server. Edit both
-  rules through the Cloudflare API, not by hand, so this note stays true.
+  client polling a few imageless addresses sent about 3,000 requests a day to the server.
+  Edit the rules through the Cloudflare API, not by hand. Then export them from `packages/docs`:
+  `CLOUDFLARE_ZONE_ID=<zone> CLOUDFLARE_API_TOKEN=<token> node scripts/export-edge-cache-rules.ts`.
+  That rewrites `packages/docs/src/data/edge-cache-rules.json` and the table on the caching page
+  (`packages/docs/src/content/docs/api-reference/caching.md`); commit both. Add `--check` to compare
+  the live rules with the committed file. It exits 1 and names each difference. The script lives at
+  `packages/docs/scripts/export-edge-cache-rules.ts`.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
 
