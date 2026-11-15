@@ -26,6 +26,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Home from './Home'
 import { SettingsProvider } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
+import { getDocsUrl } from '../utils/docs-links'
+import {
+  IMAGE_OPTION_TILES,
+  SPRITE_MANIFEST_PATH,
+  SPRITE_SHEET_PATH,
+  SPRITE_STYLESHEET_PATH,
+} from '../utils/integration-examples'
 import { prefetchStudioWhenIdle } from './load-studio'
 
 // The idle fetch would pull the whole Studio page into every render below. The module is
@@ -524,6 +531,91 @@ describe('Home — the integration examples', () => {
     expect(screen.getByAltText('Token 1')).toBeTruthy()
     expect(screen.getByAltText('Token 2')).toBeTruthy()
     expect(screen.getByAltText('Token 3')).toBeTruthy()
+  })
+})
+
+describe('Home — the image options and sprite sheet cards', () => {
+  // The logo the option tiles draw, and each tile's address as the card shows it.
+  const logo = (path: string) => getApiUrl(path)
+
+  it('shows each option with the exact address its logo is drawn from', () => {
+    stubFetch()
+    renderHome()
+
+    for (const sample of IMAGE_OPTION_TILES.flatMap((tile) => tile.samples)) {
+      expect(screen.getByAltText(sample.alt).getAttribute('src')).toBe(logo(sample.path))
+    }
+  })
+
+  it('links each option address, opened safely, to the address the logo is drawn from', () => {
+    stubFetch()
+    renderHome()
+
+    for (const sample of IMAGE_OPTION_TILES.flatMap((tile) => tile.samples)) {
+      const link = screen.getByText(logo(sample.path)).closest('a')!
+      expect(link.getAttribute('href')).toBe(logo(sample.path))
+      expect(link.getAttribute('target')).toBe('_blank')
+    }
+  })
+
+  it('draws the plain logo and the contrast logo side by side on the dark backdrop, with a caption for each', () => {
+    stubFetch()
+    renderHome()
+
+    // The logo's own wrapper is the image component's; the well that takes the backdrop is the
+    // element around it.
+    const wellOf = (alt: string) => screen.getByAltText(alt).closest('.rounded-md')!
+    expect(wellOf('Cronos logo, plain').className).toContain('bg-surface-backdrop')
+    expect(wellOf('Cronos logo, with contrast=dark').className).toContain('bg-surface-backdrop')
+    expect(screen.getByText('No options')).toBeTruthy()
+    expect(screen.getByText('contrast=dark')).toBeTruthy()
+  })
+
+  it('keeps the other option logos off the dark backdrop', () => {
+    stubFetch()
+    renderHome()
+
+    const well = screen.getByAltText('Cronos logo, vector only').closest('.rounded-md')!
+    expect(well.className).not.toContain('bg-surface-backdrop')
+  })
+
+  it('draws the sprite sheet from the sheet address, not the manifest', () => {
+    stubFetch()
+    renderHome()
+
+    const sheet = screen.getByAltText('Logos of the PulseX token list, drawn as one sheet')
+    expect(sheet.getAttribute('src')).toBe(getApiUrl(SPRITE_SHEET_PATH))
+    expect(sheet.getAttribute('width')).toBe('320')
+    expect(sheet.getAttribute('height')).toBe('64')
+  })
+
+  it('shows the manifest address the sprite card explains', () => {
+    stubFetch()
+    renderHome()
+
+    const link = screen.getByText(getApiUrl(SPRITE_MANIFEST_PATH)).closest('a')!
+    expect(link.getAttribute('href')).toBe(getApiUrl(SPRITE_MANIFEST_PATH))
+  })
+
+  it('puts the stylesheet address the reader must link into the snippet', () => {
+    stubFetch()
+    const { container } = renderHome()
+
+    expect(container.textContent).toContain(`<link rel="stylesheet" href="${getApiUrl(SPRITE_STYLESHEET_PATH)}" />`)
+  })
+
+  it('links all five cards to the documentation page that covers them', () => {
+    stubFetch()
+    renderHome()
+
+    const docsLinks = screen.getAllByRole('link', { name: /Read the full documentation/ })
+    expect(docsLinks.map((link) => link.getAttribute('href'))).toEqual([
+      getDocsUrl('images'),
+      getDocsUrl('networks'),
+      getDocsUrl('tokenLists'),
+      getDocsUrl('imageOptions'),
+      getDocsUrl('spriteSheets'),
+    ])
   })
 })
 

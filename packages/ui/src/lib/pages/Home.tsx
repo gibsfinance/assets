@@ -4,23 +4,36 @@ import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
+import { getDocsUrl, type DocsPageName } from '../utils/docs-links'
+import {
+  IMAGE_OPTION_LOGO_PATH,
+  IMAGE_OPTION_TILES,
+  SPRITE_MANIFEST_PATH,
+  SPRITE_SHEET_PATH,
+  SPRITE_STYLESHEET_PATH,
+  spriteSnippet,
+  type ImageOptionSurface,
+  type ImageOptionTile as ImageOptionTileData,
+} from '../utils/integration-examples'
 import { prefetchStudioWhenIdle } from './load-studio'
 import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
 import Image from '../components/Image'
+import IntegrationCard, { IntegrationAddress } from '../components/IntegrationCard'
 import {
   faArrowRight,
   faBolt,
   faCloud,
   faFlask,
   faImage,
-  faLink,
+  faLayerGroup,
   faList,
   faListUl,
   faNetworkWired,
   faShield,
+  faSliders,
 } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from '../components/Icon'
 
@@ -43,7 +56,16 @@ const features = [
   },
 ]
 
-const examples = [
+/** Each card's documentation page, by the name `DOCS_PAGES` gives it. */
+const examples: {
+  type: string
+  icon: typeof faImage
+  title: string
+  description: string
+  code: string
+  displayUrl: string
+  docsPage: DocsPageName
+}[] = [
   {
     type: 'token-image',
     icon: faImage,
@@ -51,6 +73,7 @@ const examples = [
     description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
     code: getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
     displayUrl: `/image/eip155-1/0x2260...`,
+    docsPage: 'images',
   },
   {
     type: 'network-image',
@@ -59,6 +82,7 @@ const examples = [
     description: 'Get chain/network logos and metadata. Perfect for network selectors.',
     code: getApiUrl('/image/eip155-1'),
     displayUrl: `/image/eip155-1`,
+    docsPage: 'networks',
   },
   {
     type: 'token-list',
@@ -67,8 +91,47 @@ const examples = [
     description: 'Get curated token lists with optional network filtering.',
     code: getApiUrl('/list/coingecko'),
     displayUrl: `/list/coingecko`,
+    docsPage: 'tokenLists',
   },
 ]
+
+/** The logo well's background, by the surface a tile names. A dark logo needs the dark well. */
+const WELL_SURFACE_CLASS: Record<ImageOptionSurface, string> = {
+  inset: 'bg-surface-inset',
+  backdrop: 'bg-surface-backdrop',
+}
+
+type ImageOptionTileProps = {
+  tile: ImageOptionTileData
+}
+
+/**
+ * One option in the image options card: its title and sentences, then each of its logos with
+ * the address that drew it.
+ *
+ * The logos are drawn at the exact address shown, through `fullResolution`. Without it the
+ * shared image component would add its own size and format to the request, and the reader
+ * would see one address on the page and be served another.
+ */
+function ImageOptionTile({ tile }: ImageOptionTileProps) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
+      <div>
+        <h4 className="font-heading text-sm font-bold text-content-strong">{tile.title}</h4>
+        <p className="mt-1 text-sm text-content-secondary">{tile.description}</p>
+      </div>
+      {tile.samples.map((sample) => (
+        <div key={sample.path} className="flex flex-col items-start gap-2">
+          <div className={`flex rounded-md p-2 ${WELL_SURFACE_CLASS[tile.surface]}`}>
+            <Image src={getApiUrl(sample.path)} alt={sample.alt} size={64} fullResolution lazy shape="rect" />
+          </div>
+          {sample.caption && <p className="text-xs text-content-subtle">{sample.caption}</p>}
+          <IntegrationAddress href={getApiUrl(sample.path)} />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 type ExamplePreviewProps = {
   type: string
@@ -322,36 +385,73 @@ export default function Home() {
             <h2 className="font-heading text-center text-3xl font-bold text-content-strong">Simple Integration</h2>
             <div className="grid gap-6">
               {examples.map((example) => (
-                <div
+                <IntegrationCard
                   key={example.type}
-                  className="glass-card p-6 transition-all duration-200 hover:shadow-glow-accent-subtle">
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Visual Preview */}
-                    <div className="flex items-center justify-center rounded-lg bg-surface-inset p-4">
-                      <ExamplePreview type={example.type} displayUrl={example.displayUrl} />
-                    </div>
-
-                    {/* Description */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-4">
-                        <div className="rounded-lg bg-accent/10 p-3">
-                          <Icon icon={example.icon} className="text-2xl text-accent-content" />
-                        </div>
-                        <h3 className="font-heading text-lg font-bold text-content-strong">{example.title}</h3>
-                      </div>
-                      <p className="text-content-secondary">{example.description}</p>
-                      <a
-                        href={example.code}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-content-subtle">
-                        <Icon icon={faLink} className="text-accent-content" />
-                        <code className="break-all font-mono">{example.code}</code>
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                  icon={example.icon}
+                  title={example.title}
+                  description={example.description}
+                  docsHref={getDocsUrl(example.docsPage)}
+                  preview={<ExamplePreview type={example.type} displayUrl={example.displayUrl} />}>
+                  <IntegrationAddress href={example.code} />
+                </IntegrationCard>
               ))}
+
+              <IntegrationCard
+                icon={faSliders}
+                title="Image Options"
+                description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. The four below all draw the same logo, Cronos."
+                docsHref={getDocsUrl('imageOptions')}
+                preview={
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <Image
+                      src={getApiUrl(IMAGE_OPTION_LOGO_PATH)}
+                      alt="Cronos logo, the one every option below draws"
+                      size={128}
+                      fullResolution
+                      lazy
+                      shape="rect"
+                    />
+                    <p className="text-sm text-content-subtle">Cronos, the logo every option below draws</p>
+                  </div>
+                }>
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  {IMAGE_OPTION_TILES.map((tile) => (
+                    <ImageOptionTile key={tile.key} tile={tile} />
+                  ))}
+                </div>
+              </IntegrationCard>
+
+              <IntegrationCard
+                icon={faLayerGroup}
+                title="Sprite Sheets"
+                description="One request draws a whole list. The sheet is one picture of every logo in the list, and the manifest says where each token sits in it."
+                docsHref={getDocsUrl('spriteSheets')}
+                preview={
+                  <div className="flex max-w-full flex-col items-center gap-3 overflow-x-auto">
+                    <Image
+                      src={getApiUrl(SPRITE_SHEET_PATH)}
+                      alt="Logos of the PulseX token list, drawn as one sheet"
+                      width={320}
+                      height={64}
+                      fullResolution
+                      skeleton
+                      shape="rect"
+                    />
+                    <IntegrationAddress href={getApiUrl(SPRITE_SHEET_PATH)} />
+                  </div>
+                }>
+                <IntegrationAddress href={getApiUrl(SPRITE_MANIFEST_PATH)} />
+                <CodeBlock
+                  code={spriteSnippet({ stylesheetUrl: getApiUrl(SPRITE_STYLESHEET_PATH) })}
+                  lang="html"
+                  preClasses="[&>pre]:whitespace-pre-wrap [&>pre]:break-all"
+                />
+                <p className="text-sm text-content-subtle">
+                  Add chainId to keep one chain, or content=mixed to put vector logos in the manifest as data addresses
+                  instead of drawing them on the sheet. Sizes run from 16 to 128 pixels for size, 5 to 50 for cols, and
+                  1 to 2000 tokens for limit.
+                </p>
+              </IntegrationCard>
             </div>
           </section>
 
