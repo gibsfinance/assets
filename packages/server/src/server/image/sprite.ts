@@ -11,6 +11,17 @@ import { chainIdFilterMatch } from '../../chain-id'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { setImageSecurityHeaders } from './headers'
+import { refuse } from './refusal'
+import { clientAddressOf } from './client-address'
+import { GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
+import {
+  SPRITE_BUSY,
+  SPRITE_OVER_BUDGET,
+  sharedSpriteBudget,
+  sharedSpriteGate,
+  sheetCost,
+  type SpriteBudget,
+} from './sprite-budget'
 import { REMOTE_IMAGE_SHED, sharedRemoteImages } from './remote-image'
 import { loadImageBytes } from '../../image-store/image-bytes'
 import { unexportedBytesSql } from '../../db/image-columns'
@@ -43,6 +54,27 @@ import _ from 'lodash'
 /** How many image files a sprite request reads at once. */
 const FILE_READ_BATCH_SIZE = 20
 
+/**
+ * How long a manifest, a stylesheet and a sheet pinned to no version may be kept, in seconds. Five minutes
+ * bounds the stale window: a layout that changed is noticed by a page within that time, and the sheet it
+ * still names answers 409, so no wrong logo is ever shown.
+ */
+export const SPRITE_INDEX_SECONDS = 300
+
+/**
+ * How long a sheet pinned to a layout version may be kept, in seconds. A day. The version names the layout,
+ * so an old sheet stays correct for every page still holding the stylesheet that names it. Logo pixels can still
+ * change when a logo is re-collected, which is why this is not `immutable`.
+ */
+export const SPRITE_VERSIONED_SHEET_SECONDS = 86_400
+
+/**
+ * Most bytes of vector pictures one manifest or stylesheet may inline, in total. A vector that would take it
+ * past the limit is left out, and the rest are still inlined, so one list of large vectors cannot make a single
+ * response of gigabytes.
+ */
+export const SPRITE_INLINE_VECTOR_BYTE_LIMIT = 4 * 1024 * 1024
+
 interface SpriteToken {
   address: string
   chainId: string
@@ -60,6 +92,9 @@ interface PlacedToken {
   placement: SpriteLayout['placements'][number]
   row: SpriteToken
 }
+
+/** A placed token that is a raster cell. */
+type PlacedCell = PlacedToken & { placement: Extract<SpriteLayout['placements'][number], { kind: 'cell' }> }
 
 /**
  * Manifest key of a token: the namespaced chain, a dash, then the address. The shared layout module
@@ -247,13 +282,17 @@ async function inlinedVectors(
   )
   const pictures = new Map<string, string>()
   let platingFailed = false
+  let inlinedBytes = 0
   for (const batch of _.chunk(inline, FILE_READ_BATCH_SIZE)) {
     const read = await Promise.all(batch.map(({ row }) => loadImageBytes(row)))
     const drawn = await Promise.all(batch.map(({ row }, index) => drawVector(row, read[index], plate)))
+    // Taken in list order, so the same vectors are inlined whichever batch finished first.
     batch.forEach(({ placement }, index) => {
       const picture = drawn[index]
       if (picture.platingFailed) platingFailed = true
-      if (picture.bytes) pictures.set(placement.key, `data:image/svg+xml;base64,${picture.bytes.toString('base64')}`)
+      if (!picture.bytes || inlinedBytes + picture.bytes.length > SPRITE_INLINE_VECTOR_BYTE_LIMIT) return
+      inlinedBytes += picture.bytes.length
+      pictures.set(placement.key, `data:image/svg+xml;base64,${picture.bytes.toString('base64')}`)
     })
   }
   return { pictures, platingFailed }
@@ -318,11 +357,7 @@ const EMPTY_CELL: DrawnCell = { composite: null, plated: null, shed: false, plat
 /**
  * Draw one raster cell: its logo, inset inside a plate when one is drawn for it.
  */
-async function drawCell(
-  placed: PlacedToken & { placement: Extract<PlacedToken['placement'], { kind: 'cell' }> },
-  layout: SpriteLayout,
-  plate: PlateRequest | null,
-): Promise<DrawnCell> {
+async function drawCell(placed: PlacedCell, layout: SpriteLayout, plate: PlateRequest | null): Promise<DrawnCell> {
   const source = await cellSource(placed.row)
   if (source === REMOTE_IMAGE_SHED) return { ...EMPTY_CELL, shed: true }
   if (!source) return EMPTY_CELL
@@ -367,9 +402,7 @@ export function plateLayerDocument(
 }
 
 /** The cell placements of a plan, with their rows. */
-function cellsOf(planned: { layout: SpriteLayout; rows: SpriteToken[] }): (PlacedToken & {
-  placement: Extract<PlacedToken['placement'], { kind: 'cell' }>
-})[] {
+function cellsOf(planned: { layout: SpriteLayout; rows: SpriteToken[] }): PlacedCell[] {
   return planned.layout.placements.flatMap((placement) =>
     placement.kind === 'cell' ? [{ placement, row: planned.rows[placement.source] }] : [],
   )
@@ -438,7 +471,7 @@ export const manifest: RequestHandler = async (req, res, _next) => {
   const addresses = addressesFor(providerKey, listKey, settings, layout.version)
   const tokens = manifestTokens(layout, vectors.pictures)
 
-  res.set('cache-control', vectors.platingFailed ? 'no-store' : `public, max-age=${config.cacheSeconds}`)
+  res.set('cache-control', vectors.platingFailed ? 'no-store' : `public, max-age=${SPRITE_INDEX_SECONDS}`)
   res.set('link', LICENSE_LINK_HEADER)
   res.json({
     spriteUrl: addresses.sheet,
@@ -461,29 +494,25 @@ export const manifest: RequestHandler = async (req, res, _next) => {
 // Sheet: GET /sprite/:providerKey/:listKey/sheet
 // ---------------------------------------------------------------------------
 
-export const sheet: RequestHandler = async (req, res, _next) => {
-  const { providerKey, listKey } = req.params
-  const listId = await resolveListId(providerKey, listKey)
-  // Same JSON 404 as the manifest — see the comment there.
-  if (!listId) {
-    res.status(404).json({ error: 'unknown provider or list' })
-    return
-  }
+/** What the sheet route answers when the budget was spent between the check and the draw. */
+const BUDGET_SPENT = Symbol('budget-spent')
 
-  const { settings, plate, version } = readSpriteRequest(req.query)
-  const planned = await planListSprite(listId, settings, { withBytes: true })
-  const { layout } = planned
-  if (version !== null && version !== layout.version) {
-    sendLayoutChanged(res, layout.version)
-    return
-  }
+/** What a drawn sheet carries to its answer. */
+interface DrawnSheet {
+  image: Buffer
+  cellsShed: number
+  platingFailed: boolean
+  cells: PlacedCell[]
+}
 
-  const cells = cellsOf(planned)
-  if (cells.length === 0) {
-    res.status(204).end()
-    return
-  }
-
+/**
+ * Draw every cell of a sheet, and build the image.
+ *
+ * @param cells The cells to draw, with their rows.
+ * @param layout The layout the cells are placed by.
+ * @param plate The plate asked for, or null.
+ */
+async function drawSheet(cells: PlacedCell[], layout: SpriteLayout, plate: PlateRequest | null): Promise<DrawnSheet> {
   const composites: OverlayOptions[] = []
   const plated: { left: number; top: number; plate: Plate }[] = []
   let cellsShed = 0
@@ -503,8 +532,7 @@ export const sheet: RequestHandler = async (req, res, _next) => {
       .toBuffer()
     composites.unshift({ input: plates, left: 0, top: 0 })
   }
-
-  const sprite = await sharp({
+  const image = await sharp({
     create: {
       width: Math.max(layout.sheetWidth, 1),
       height: layout.sheetHeight,
@@ -515,10 +543,88 @@ export const sheet: RequestHandler = async (req, res, _next) => {
     .composite(composites)
     .webp({ quality: 85 })
     .toBuffer()
+  return { image, cellsShed, platingFailed, cells }
+}
 
+/**
+ * The sheet route, with its budget and its gate passed in. Production uses the shared budget and gate
+ * (see `sprite-budget.ts`); a test passes small ones.
+ *
+ * A sheet is refused before any drawing when the caller or the server has spent its budget, and while the
+ * drawing line is full. It spends from the budget only once it is drawn, so an answer that draws nothing (204,
+ * 409, a 404) costs the caller nothing.
+ *
+ * @param options.budget Spent by the cost of each drawn sheet.
+ * @param options.gate Limits how many sheets are drawn at once.
+ */
+export function createSheetHandler({ budget, gate }: { budget: SpriteBudget; gate: ConcurrencyGate }): RequestHandler {
+  return async (req, res, _next) => {
+    const { providerKey, listKey } = req.params
+    const listId = await resolveListId(providerKey, listKey)
+    // Same JSON 404 as the manifest — see the comment there.
+    if (!listId) {
+      res.status(404).json({ error: 'unknown provider or list' })
+      return
+    }
+
+    const { settings, plate, version } = readSpriteRequest(req.query)
+    const planned = await planListSprite(listId, settings, { withBytes: true })
+    const { layout } = planned
+    if (version !== null && version !== layout.version) {
+      sendLayoutChanged(res, layout.version)
+      return
+    }
+
+    const cells = cellsOf(planned)
+    if (cells.length === 0) {
+      res.status(204).end()
+      return
+    }
+
+    const spend = {
+      clientAddress: clientAddressOf(req, { header: config.clientAddressHeader }),
+      cost: sheetCost({ cells: cells.length, plated: plate !== null }),
+    }
+    if (!budget.canSpend(spend)) {
+      refuse(res, SPRITE_OVER_BUDGET)
+      return
+    }
+    const drawn = await gate.run(
+      async () => {
+        // Checked again inside the line: other sheets may have spent the budget while this one waited.
+        if (!budget.spend(spend)) return BUDGET_SPENT
+        return drawSheet(cells, layout, plate)
+      },
+      { key: spend.clientAddress ?? undefined },
+    )
+    if (drawn === GATE_FULL) {
+      refuse(res, SPRITE_BUSY)
+      return
+    }
+    if (drawn === BUDGET_SPENT) {
+      refuse(res, SPRITE_OVER_BUDGET)
+      return
+    }
+    respondWithSheet(res, drawn, layout, settings, version !== null)
+  }
+}
+
+/**
+ * Write a drawn sheet and its headers. A sheet pinned to its version is kept a day; any other sheet is kept as the
+ * manifest is, because the layout it shows may be superseded.
+ */
+function respondWithSheet(
+  res: Response,
+  drawn: DrawnSheet,
+  layout: SpriteLayout,
+  settings: SpriteSettings,
+  pinned: boolean,
+): void {
   // Grid metadata in headers (small, always fits)
   const tokenMap: Record<string, [number, number]> = {}
-  for (const { placement } of cells) tokenMap[placement.key] = [placement.column, placement.row]
+  for (const { placement } of drawn.cells) {
+    tokenMap[placement.key] = [placement.column, placement.row]
+  }
   const tokenJson = JSON.stringify(tokenMap)
 
   res.set('content-type', 'image/webp')
@@ -526,13 +632,18 @@ export const sheet: RequestHandler = async (req, res, _next) => {
   res.set('link', LICENSE_LINK_HEADER)
   // A sheet with a cell that is empty only because the server was busy, or with a plate it could not draw,
   // is not the sheet this list should have, so it is not kept.
-  res.set('cache-control', cellsShed > 0 || platingFailed ? 'no-store' : `public, max-age=${config.cacheSeconds}`)
+  res.set(
+    'cache-control',
+    drawn.cellsShed > 0 || drawn.platingFailed
+      ? 'no-store'
+      : `public, max-age=${pinned ? SPRITE_VERSIONED_SHEET_SECONDS : SPRITE_INDEX_SECONDS}`,
+  )
   res.set('x-sprite-size', String(settings.size))
   res.set('x-sprite-scale', String(settings.scale))
   res.set('x-sprite-gap', String(settings.gap))
   res.set('x-sprite-cols', String(settings.cols))
   res.set('x-sprite-rows', String(layout.rows))
-  res.set('x-sprite-count', String(cells.length))
+  res.set('x-sprite-count', String(drawn.cells.length))
   res.set('x-sprite-version', layout.version)
   // Token map can exceed header size limits — use the manifest endpoint instead.
   if (tokenJson.length < 4096) {
@@ -542,8 +653,11 @@ export const sheet: RequestHandler = async (req, res, _next) => {
     'access-control-expose-headers',
     'x-sprite-size, x-sprite-scale, x-sprite-gap, x-sprite-cols, x-sprite-rows, x-sprite-count, x-sprite-version, x-sprite-tokens',
   )
-  res.send(sprite)
+  res.send(drawn.image)
 }
+
+/** The sheet route, with the shared budget and gate. */
+export const sheet: RequestHandler = createSheetHandler({ budget: sharedSpriteBudget, gate: sharedSpriteGate })
 
 // ---------------------------------------------------------------------------
 // Stylesheet: GET /sprite/:providerKey/:listKey/sheet.css
@@ -577,7 +691,7 @@ export const stylesheet: RequestHandler = async (req, res, _next) => {
   // A stylesheet is not an image, so the image policy does not apply; nosniff still stops a browser guessing a type.
   res.set('x-content-type-options', 'nosniff')
   res.set('link', LICENSE_LINK_HEADER)
-  res.set('cache-control', vectors.platingFailed ? 'no-store' : `public, max-age=${config.cacheSeconds}`)
+  res.set('cache-control', vectors.platingFailed ? 'no-store' : `public, max-age=${SPRITE_INDEX_SECONDS}`)
   res.send(
     renderSpriteStylesheet({
       scope: spriteScopeClassName(providerKey, listKey, request),

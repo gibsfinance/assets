@@ -41,7 +41,19 @@ vi.mock('drizzle-orm', () => ({
 import sharp from 'sharp'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { manifest, plateLayerDocument, readSpriteRequest, sheet, spriteKey, stylesheet } from './sprite'
+import {
+  SPRITE_INDEX_SECONDS,
+  SPRITE_INLINE_VECTOR_BYTE_LIMIT,
+  SPRITE_VERSIONED_SHEET_SECONDS,
+  createSheetHandler,
+  manifest,
+  plateLayerDocument,
+  readSpriteRequest,
+  sheet,
+  spriteKey,
+  stylesheet,
+} from './sprite'
+import { createSpriteBudget, createSpriteGate } from './sprite-budget'
 import { IMAGE_SECURITY_HEADERS } from './headers'
 import { REMOTE_IMAGE_CONCURRENCY, REMOTE_IMAGE_MAX_BYTES, REMOTE_IMAGE_SHED, sharedRemoteImages } from './remote-image'
 import { LICENSE_LINK_HEADER } from './attribution'
@@ -1124,5 +1136,189 @@ describe('sprite layout contract (shared fixture)', () => {
     for (const token of layoutContract.classes) {
       expect(text).toContain(`.${layoutContract.scope}.${token.className}`)
     }
+  })
+})
+
+describe('sheet budget, gate and lifetimes', () => {
+  let pngContent: Buffer
+  beforeAll(async () => {
+    pngContent = await sharp({
+      create: { width: 8, height: 8, channels: 4, background: { r: 200, g: 50, b: 50, alpha: 1 } },
+    })
+      .png()
+      .toBuffer()
+  })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sharedRemoteImages.reset()
+  })
+
+  const CALLER = '203.0.113.7'
+  const oneRow = () => [
+    { address: ADDRESS, chainId: '1', imageHash: 'h1', ext: '.png', content: pngContent, mode: 'save', uri: '' },
+  ]
+  const fromCaller = (query: Record<string, string> = { size: '16', cols: '5' }) => mockRequest({ ip: CALLER, query })
+
+  it('answers 429 with no-store and a window to wait when the caller has spent their budget', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 0, globalBudget: 1000 }),
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(headerValue(res, 'retry-after')).toBe('60')
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+  })
+
+  it('answers 429 when the whole server has spent its budget, whoever asks', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 1000, globalBudget: 0 }),
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+  })
+
+  it('answers 503 with a short wait, and draws nothing, when the sheet line is full', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 1000, globalBudget: 1000 }),
+      gate: createSpriteGate({ limit: 0, maxQueue: 0 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(headerValue(res, 'retry-after')).toBe('2')
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('answers 429 when the budget is spent while the sheet waited in line, and draws nothing', async () => {
+    // The budget is checked before the line and again inside it, because other sheets may have spent it while this one waited.
+    const handler = createSheetHandler({
+      budget: { canSpend: () => true, spend: () => false },
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('spends nothing on a sheet it does not draw: one with no cells, or one answered 409', async () => {
+    const budget = createSpriteBudget({ clientBudget: 3, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], [])
+    await handler(fromCaller(), mockResponse(), vi.fn())
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller({ size: '16', cols: '5', v: 'stale' }), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 3 })).toBe(true)
+  })
+
+  it('charges one unit for each cell an unplated sheet draws', async () => {
+    const budget = createSpriteBudget({ clientBudget: 10, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller(), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 9 })).toBe(true)
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 10 })).toBe(false)
+  })
+
+  it('charges a plated cell twice as much, so a plated sheet costs more than the same sheet unplated', async () => {
+    const budget = createSpriteBudget({ clientBudget: 10, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller({ size: '16', cols: '5', bg: 'ff0000' }), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 8 })).toBe(true)
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 9 })).toBe(false)
+  })
+
+  it('answers the manifest and the stylesheet while the sheet line is full, because they draw nothing', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const manifestResponse = mockResponse()
+    await manifest(fromCaller(), manifestResponse, vi.fn())
+    expect(manifestResponse.status).not.toHaveBeenCalled()
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const styleResponse = mockResponse()
+    await stylesheet(fromCaller(), styleResponse, vi.fn())
+    expect(styleResponse.send).toHaveBeenCalled()
+  })
+
+  it('keeps a manifest and a stylesheet five minutes, and an unpinned sheet the same', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const json = mockResponse()
+    await manifest(fromCaller(), json, vi.fn())
+    const { version } = (json.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(SPRITE_INDEX_SECONDS).toBe(300)
+    expect(headerValue(json, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const css = mockResponse()
+    await stylesheet(mockRequest(), css, vi.fn())
+    expect(headerValue(css, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const unpinned = mockResponse()
+    await sheet(mockRequest({ query: { size: '16', cols: '5' } }), unpinned, vi.fn())
+    expect(headerValue(unpinned, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const pinned = mockResponse()
+    await sheet(mockRequest({ query: { size: '16', cols: '5', v: version } }), pinned, vi.fn())
+    expect(headerValue(pinned, 'cache-control')).toBe(`public, max-age=${SPRITE_VERSIONED_SHEET_SECONDS}`)
+  })
+
+  it('keeps a sheet pinned to its version a day, because the version names its layout', () => {
+    expect(SPRITE_VERSIONED_SHEET_SECONDS).toBe(86_400)
+  })
+
+  it('inlines vectors up to the byte limit, skipping one that does not fit, and gives the stylesheet the same ones', async () => {
+    const bulk = (size: number) =>
+      Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><!-- ${'x'.repeat(size)} --></svg>`)
+    const big = Math.floor(SPRITE_INLINE_VECTOR_BYTE_LIMIT * 0.6)
+    const rows = [
+      {
+        address: `0x${'1'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'a',
+        ext: '.svg',
+        content: bulk(big),
+        mode: 'save',
+        uri: '',
+      },
+      {
+        address: `0x${'2'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'b',
+        ext: '.svg',
+        content: bulk(big),
+        mode: 'save',
+        uri: '',
+      },
+      {
+        address: `0x${'3'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'c',
+        ext: '.svg',
+        content: bulk(10),
+        mode: 'save',
+        uri: '',
+      },
+    ]
+    queueDrizzleResults([{ listId: 'L1' }], rows)
+    const json = mockResponse()
+    await manifest(mockRequest({ query: { content: 'mixed' } }), json, vi.fn())
+    const { tokens } = (json.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(Object.keys(tokens).map((key) => key.slice(-4))).toEqual(['1111', '3333'])
+
+    queueDrizzleResults([{ listId: 'L1' }], rows)
+    const css = mockResponse()
+    await stylesheet(mockRequest({ query: { content: 'mixed' } }), css, vi.fn())
+    const text = vi.mocked(css.send).mock.calls[0][0] as string
+    expect(text.match(/background-image: url\("data:/g)).toHaveLength(2)
   })
 })
