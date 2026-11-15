@@ -381,6 +381,15 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   batch process with no deadline.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
+- **Sprites** (`server/image/sprite.ts`, `packages/sdk/src/sprite-layout.ts`): a list's logos on one sheet. The manifest
+  (`/sprite/:p/:l`), the sheet (`…/sheet`) and the cascading stylesheet (`…/sheet.css`) all read one layout. The layout
+  module is the single source for the token class names, the scope class, the layout version and the stylesheet text.
+  The server imports it from the SDK's source (its `exports` point there in the repository); `publish-exports.mjs`
+  rewrites the subpath to `dist` at publish. Tokens are placed in list order (`list_token_order_id`, then chain,
+  address, entry id), never by image format, so the limit cuts the same rows for every endpoint. Vectors under
+  `content=mixed` take no cell. The version hashes the settings and every placement, and a request that pins a stale
+  `v=` answers 409, never a redirect. Plates and gaps use the single-image plate rules; a plated sheet is cut to 500
+  tokens. The sheet is capped at 16,383 pixels a side and 25 million in all.
 
 ### Image Bytes: the Store
 Image bytes live in a content-addressed store (`packages/server/src/image-store/`, directory `IMAGE_STORE_DIR`,

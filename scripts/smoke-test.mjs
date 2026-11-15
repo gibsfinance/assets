@@ -260,6 +260,47 @@ await probe('network image, Algorand alias', '/image/4160', {
 
 // Refusals. The claim under test is that a bad input fails cleanly, never at 500.
 await probe('unknown chain', '/image/eip155-99999999', { expect: [400, 404] })
+
+// Sprites. The manifest, the stylesheet and the sheet must agree on one layout version: the stylesheet
+// names its sheet at that version, so a body that carries the manifest's version proves the pair matches.
+const SPRITE_PATH = '/sprite/piteas/exchange'
+const SPRITE_QUERY = 'size=32&cols=10&limit=20'
+await probe('sprite manifest', `${SPRITE_PATH}?${SPRITE_QUERY}`, {
+  type: 'json',
+})
+await probe('sprite plated sheet', `${SPRITE_PATH}/sheet?${SPRITE_QUERY}&bg=ffffff&gap=2`, {
+  expect: [200, 204],
+  type: 'image/webp',
+})
+await probe('sprite bad gap', `${SPRITE_PATH}?gap=40`, { expect: [400] })
+await probe('sprite stale layout', `${SPRITE_PATH}/sheet?${SPRITE_QUERY}&v=0000000000000`, { expect: [409] })
+try {
+  const manifestResponse = await fetch(
+    `${BASE_URL}${SPRITE_PATH}?${SPRITE_QUERY}&smoke=${Math.random().toString(36).slice(2)}`,
+  )
+  const manifest = await manifestResponse.json()
+  const version = manifest.version
+  const pinnedPath = (address) => address.replace(/^https?:\/\/[^/]+/, '')
+  await probe('sprite stylesheet', pinnedPath(manifest.stylesheetUrl), {
+    type: 'text/css',
+    headers: ['x-content-type-options'],
+    bodyIncludes: `v=${version}`,
+  })
+  await probe('sprite sheet at the manifest version', pinnedPath(manifest.spriteUrl), {
+    expect: [200, 204],
+    type: 'image/webp',
+  })
+} catch (error) {
+  results.push({
+    ok: false,
+    label: 'sprite version check',
+    status: 'ERR',
+    type: '',
+    bytes: 0,
+    ms: 0,
+    note: error.message,
+  })
+}
 await probe('unknown token', `/image/eip155-1/0x${'de'.repeat(20)}`, {
   expect: [400, 404],
 })
