@@ -47,13 +47,16 @@ export interface RateLimiterOptions {
 }
 
 export interface RateLimiter {
-  /** Records one request against both budgets. Returns false when either is spent. */
-  check: (imageHash: string) => boolean
+  /**
+   * Records one request, of `cost` units (one by default), against both budgets. Returns false, and
+   * spends nothing, when either would be passed.
+   */
+  check: (imageHash: string, cost?: number) => boolean
   /**
    * Whether `check` would answer true right now, without spending anything. Lets a caller refuse
    * a request before doing expensive work for it, and spend the budget only when the work is done.
    */
-  canSpend: (imageHash: string) => boolean
+  canSpend: (imageHash: string, cost?: number) => boolean
   /** Forgets every window, global and per image. */
   reset: () => void
   /** How many images currently have a window. Housekeeping only. */
@@ -108,7 +111,7 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     }
   }
 
-  const check = (imageHash: string): boolean => {
+  const check = (imageHash: string, cost = 1): boolean => {
     const at = now()
 
     if (at - globalWindow.windowStart > windowMs) {
@@ -117,7 +120,7 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
     // The global budget is read before the per-image one and neither counter
     // moves on a refusal, so a request turned away by one budget does not
     // spend the other.
-    if (globalWindow.count >= globalLimit) return false
+    if (globalWindow.count + cost > globalLimit) return false
 
     let window = perImageWindows.get(imageHash)
     if (!window || at - window.windowStart > windowMs) {
@@ -127,23 +130,23 @@ export const createRateLimiter = (options: RateLimiterOptions = {}): RateLimiter
       perImageWindows.set(imageHash, window)
       evictOldest()
     }
-    if (window.count >= perImageLimit) return false
+    if (window.count + cost > perImageLimit) return false
 
-    window.count += 1
-    globalWindow.count += 1
+    window.count += cost
+    globalWindow.count += cost
 
     if (perImageWindows.size > sweepThreshold && at - lastSweepAt >= windowMs) sweepExpired(at)
 
     return true
   }
 
-  const canSpend = (imageHash: string): boolean => {
+  const canSpend = (imageHash: string, cost = 1): boolean => {
     const at = now()
     const globalSpent = at - globalWindow.windowStart > windowMs ? 0 : globalWindow.count
-    if (globalSpent >= globalLimit) return false
+    if (globalSpent + cost > globalLimit) return false
     const window = perImageWindows.get(imageHash)
     const spent = !window || at - window.windowStart > windowMs ? 0 : window.count
-    return spent < perImageLimit
+    return spent + cost <= perImageLimit
   }
 
   const reset = (): void => {

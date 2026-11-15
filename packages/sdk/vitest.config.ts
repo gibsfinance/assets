@@ -2,7 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
+    // The publish script under scripts/ is tested here too; coverage counts only src/, which ships.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     coverage: {
       // Vitest 4 reports nothing at all unless `include` is set — an unset
       // include yields an empty table rather than an error, which reads as a

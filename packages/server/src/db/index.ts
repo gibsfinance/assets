@@ -8,6 +8,7 @@
  * or all rows (token list endpoints). The `sorted` flag adds an outer ORDER BY.
  */
 import * as fs from 'fs'
+import { isVectorImageExtension } from '@gibs/sdk/sprite-layout'
 import * as path from 'path'
 import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
@@ -1149,7 +1150,8 @@ export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
 }
 
 /** Whether an image extension names a vector format (`.svg`, or the `.svg+xml` spelling). */
-export const isVectorExt = (ext: string | null | undefined): boolean => ext === '.svg' || ext === '.svg+xml'
+/** Whether a stored extension is a vector image. The rule lives in the shared sprite layout. */
+export const isVectorExt = isVectorImageExtension
 
 /**
  * Point a network's icon slot at `imageHash` on behalf of `providerKey`, but only if

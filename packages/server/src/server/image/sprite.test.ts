@@ -13,16 +13,26 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 const configMock = vi.hoisted(() => ({ default: { cacheSeconds: 86400, imageStoreDirectory: '' } }))
 vi.mock('../../../config', () => configMock)
 vi.mock('../../db/drizzle', () => ({ getDrizzle: vi.fn() }))
+// resize.ts imports the database index for its variant cache; the sprite tests never touch it, and loading it
+// starts the terminal view, which cannot run under a test runner.
+vi.mock('../../db', () => ({}))
 vi.mock('../../db/schema', () => ({
   token: { networkId: 'networkId', providedId: 'providedId', tokenId: 'tokenId' },
   image: { ext: 'ext', imageHash: 'imageHash', content: 'content', mode: 'mode', uri: 'uri' },
   provider: { key: 'key', providerId: 'providerId' },
   list: { key: 'key', listId: 'listId', providerId: 'providerId' },
-  listToken: { listId: 'listId', tokenId: 'tokenId', imageHash: 'imageHash' },
+  listToken: {
+    listId: 'listId',
+    tokenId: 'tokenId',
+    imageHash: 'imageHash',
+    listTokenOrderId: 'listTokenOrderId',
+    listTokenId: 'listTokenId',
+  },
   network: { networkId: 'networkId', imageHash: 'imageHash', chainId: 'chainId' },
 }))
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn((...args: unknown[]) => ({ op: 'eq', args })),
+  asc: vi.fn((...args: unknown[]) => ({ op: 'asc', args })),
   and: vi.fn((...args: unknown[]) => ({ op: 'and', args })),
   ne: vi.fn((...args: unknown[]) => ({ op: 'ne', args })),
   sql: Object.assign(vi.fn(), { join: vi.fn(), raw: vi.fn() }),
@@ -31,12 +41,24 @@ vi.mock('drizzle-orm', () => ({
 import sharp from 'sharp'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { manifest, sheet, spriteKey } from './sprite'
+import {
+  SPRITE_INDEX_SECONDS,
+  SPRITE_INLINE_VECTOR_BYTE_LIMIT,
+  SPRITE_VERSIONED_SHEET_SECONDS,
+  createSheetHandler,
+  manifest,
+  plateLayerDocument,
+  readSpriteRequest,
+  sheet,
+  spriteKey,
+  stylesheet,
+} from './sprite'
+import { createSpriteBudget, createSpriteGate } from './sprite-budget'
 import { IMAGE_SECURITY_HEADERS } from './headers'
 import { REMOTE_IMAGE_CONCURRENCY, REMOTE_IMAGE_MAX_BYTES, REMOTE_IMAGE_SHED, sharedRemoteImages } from './remote-image'
 import { LICENSE_LINK_HEADER } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
-import { sql } from 'drizzle-orm'
+import { asc, sql } from 'drizzle-orm'
 import { getImageStore, resetImageStoreForTests } from '../../image-store'
 import * as fileSystem from 'node:fs/promises'
 import * as os from 'node:os'
@@ -190,8 +212,8 @@ describe('sprite endpoints', () => {
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
       expect(body.count).toBe(2)
       expect(body.tokens).toEqual({
-        [`1-${ADDRESS.toLowerCase()}`]: [0, 0],
-        [`369-${ADDRESS.toLowerCase()}`]: [1, 0],
+        [`eip155-1-${ADDRESS.toLowerCase()}`]: [0, 0],
+        [`eip155-369-${ADDRESS.toLowerCase()}`]: [1, 0],
       })
     })
 
@@ -208,8 +230,8 @@ describe('sprite endpoints', () => {
       expect(headerValue(res, 'x-content-type-options')).toBe('nosniff')
       const tokenMap = JSON.parse(headerValue(res, 'x-sprite-tokens')!)
       expect(tokenMap).toEqual({
-        [`1-${ADDRESS.toLowerCase()}`]: [0, 0],
-        [`369-${ADDRESS.toLowerCase()}`]: [1, 0],
+        [`eip155-1-${ADDRESS.toLowerCase()}`]: [0, 0],
+        [`eip155-369-${ADDRESS.toLowerCase()}`]: [1, 0],
       })
       expect(res.send).toHaveBeenCalled()
     })
@@ -240,7 +262,7 @@ describe('sprite endpoints', () => {
       await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
 
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      const key = `1-${ADDRESS.toLowerCase()}`
+      const key = `eip155-1-${ADDRESS.toLowerCase()}`
       expect(body.tokens[key]).toBe(`data:image/svg+xml;base64,${svgContent.toString('base64')}`)
       // An inlined SVG is not a raster cell, so it must not consume a grid slot.
       expect(body.rasterCount).toBe(0)
@@ -687,12 +709,12 @@ describe('sprite endpoints', () => {
       await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
 
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toBe(
+      expect(body.tokens[`eip155-1-${ADDRESS.toLowerCase()}`]).toBe(
         `data:image/svg+xml;base64,${svgContent.toString('base64')}`,
       )
     })
 
-    it('gives an SVG whose file is missing a grid cell instead, like one that carries no bytes', async () => {
+    it('leaves an SVG whose file is missing out of the manifest, and moves no raster', async () => {
       const row = await exportedRow(svgContent, { ext: '.svg', contentSha256: 'd'.repeat(64) })
       queueDrizzleResults([{ listId: 'L1' }], [row])
       const res = mockResponse()
@@ -700,10 +722,11 @@ describe('sprite endpoints', () => {
       await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
 
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toEqual([0, 0])
+      expect(body.tokens).toEqual({})
+      expect(body.count).toBe(0)
     })
 
-    it('gives an SVG that carries empty bytes a grid cell, rather than an empty data address', async () => {
+    it('leaves an SVG that carries empty bytes out of the manifest, rather than giving an empty data address', async () => {
       queueDrizzleResults(
         [{ listId: 'L1' }],
         [{ ...(await exportedRow(svgContent, { ext: '.svg' })), content: Buffer.alloc(0), contentSha256: null }],
@@ -713,7 +736,7 @@ describe('sprite endpoints', () => {
       await manifest(mockRequest({ query: { content: 'mixed' } }), res, vi.fn())
 
       const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      expect(body.tokens[`1-${ADDRESS.toLowerCase()}`]).toEqual([0, 0])
+      expect(body.tokens).toEqual({})
     })
 
     it('reads no file for a manifest that is not mixed, and for rasters in a mixed one', async () => {
@@ -762,5 +785,540 @@ describe('sprite endpoints', () => {
       expect(headerValue(res, 'x-sprite-count')).toBe('1')
       expect(res.send).toHaveBeenCalled()
     })
+  })
+
+  describe('list order', () => {
+    it('orders by list position, then chain, then address, then the entry id, so the limit cuts the same rows everywhere', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], [])
+      await manifest(mockRequest(), mockResponse(), vi.fn())
+      expect(vi.mocked(asc).mock.calls).toEqual([['listTokenOrderId'], ['chainId'], ['providedId'], ['listTokenId']])
+    })
+  })
+
+  describe('readSpriteRequest validation', () => {
+    it('reads a gap, a plate and a pinned version', () => {
+      const parsed = readSpriteRequest({ gap: '4', bg: '1A2B3C', shape: 'Square', v: 'abc' })
+      expect(parsed.settings.gap).toBe(4)
+      expect(parsed.settings.plate).toEqual({ colour: '1a2b3c', shape: 'square', contrast: null })
+      expect(parsed.plate).not.toBeNull()
+      expect(parsed.version).toBe('abc')
+    })
+
+    it('takes no gap, plate or version when none is given', () => {
+      const parsed = readSpriteRequest({})
+      expect(parsed.settings.gap).toBe(0)
+      expect(parsed.settings.plate).toBeNull()
+      expect(parsed.plate).toBeNull()
+      expect(parsed.version).toBeNull()
+    })
+
+    it('reads a contrast tone and a chain, and makes no plate from a shape alone', () => {
+      const parsed = readSpriteRequest({ contrast: 'light', chainId: 'solana-501', content: 'mixed' })
+      expect(parsed.settings).toMatchObject({ chainId: 'solana-501', content: 'mixed' })
+      expect(parsed.plate).toMatchObject({ contrast: 'light' })
+      expect(readSpriteRequest({ shape: 'square' }).plate).toBeNull()
+    })
+
+    it.each([
+      ['a gap above the range', { gap: '33' }],
+      ['a negative gap', { gap: '-1' }],
+      ['a fractional gap', { gap: '1.5' }],
+      ['a gap that is not a number', { gap: 'wide' }],
+      ['a gap given as a list', { gap: ['1', '2'] }],
+      ['an invalid colour', { bg: 'zz' }],
+      ['an invalid shape with a colour', { bg: 'ffffff', shape: 'hexagon' }],
+      ['an invalid tone', { contrast: 'sideways' }],
+    ])('refuses %s with a 400', (_label, query) => {
+      expect(() => readSpriteRequest(query)).toThrow(expect.objectContaining({ status: 400 }))
+    })
+
+    it('names the gap in its refusal', () => {
+      expect(() => readSpriteRequest({ gap: '40' })).toThrow('gap must be a whole number from 0 to 32')
+    })
+  })
+
+  describe('gap and plate on the sheet', () => {
+    const oneToken = () => [
+      { address: ADDRESS, chainId: '1', imageHash: 'h1', ext: '.png', content: pngContent, mode: 'save', uri: '' },
+    ]
+
+    /** The colour of one pixel of a sheet, as the four channels. */
+    async function pixelAt(image: Buffer, left: number, top: number): Promise<number[]> {
+      const { data } = await sharp(image)
+        .extract({ left, top, width: 1, height: 1 })
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      return [...data]
+    }
+
+    it('spaces the cells by the gap, so the sheet is cols times (size plus gap) wide', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], oneToken())
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', gap: '4' } }), res, vi.fn())
+      const { width, height } = await sharp(vi.mocked(res.send).mock.calls[0][0] as Buffer).metadata()
+      expect(width).toBe(5 * 20)
+      expect(height).toBe(20)
+    })
+
+    it('scales the gap with the sheet, so a scale of 2 doubles it', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], oneToken())
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', gap: '2', scale: '2' } }), res, vi.fn())
+      const { width } = await sharp(vi.mocked(res.send).mock.calls[0][0] as Buffer).metadata()
+      expect(width).toBe(5 * (16 + 2) * 2)
+    })
+
+    it('paints a plate of the requested colour behind a logo, inside the cell', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], oneToken())
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', bg: 'ff0000' } }), res, vi.fn())
+      const [red, green, , alpha] = await pixelAt(vi.mocked(res.send).mock.calls[0][0] as Buffer, 1, 8)
+      expect(red).toBeGreaterThan(200)
+      expect(green).toBeLessThan(60)
+      expect(alpha).toBeGreaterThan(200)
+    })
+
+    it('paints a plate only on a logo that does not stand out against the page tone', async () => {
+      const darkLogo = await sharp({
+        create: { width: 8, height: 8, channels: 4, background: { r: 20, g: 20, b: 20, alpha: 1 } },
+      })
+        .png()
+        .toBuffer()
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [
+          {
+            address: ADDRESS,
+            chainId: '1',
+            imageHash: 'dark-logo',
+            ext: '.png',
+            content: darkLogo,
+            mode: 'save',
+            uri: '',
+          },
+        ],
+      )
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', contrast: 'dark' } }), res, vi.fn())
+      const [red, green] = await pixelAt(vi.mocked(res.send).mock.calls[0][0] as Buffer, 1, 8)
+      // The dark logo does not stand out on a dark page, so the plate is the light tone.
+      expect(red).toBeGreaterThan(200)
+      expect(green).toBeGreaterThan(200)
+    })
+
+    it('leaves a logo that stands out unplated, so the same cell stays transparent', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [
+          {
+            address: ADDRESS,
+            chainId: '1',
+            imageHash: 'bright-logo',
+            ext: '.png',
+            content: pngContent,
+            mode: 'save',
+            uri: '',
+          },
+        ],
+      )
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', contrast: 'dark' } }), res, vi.fn())
+      // No plate: the cell shows the logo's own red, not the white plate a dark page would get.
+      const [red, green] = await pixelAt(vi.mocked(res.send).mock.calls[0][0] as Buffer, 1, 8)
+      expect(red).toBeGreaterThan(150)
+      expect(green).toBeLessThan(120)
+      expect(headerValue(res, 'cache-control')).toMatch(/^public/)
+    })
+
+    it('does not keep a sheet whose plate could not be measured', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [
+          {
+            address: ADDRESS,
+            chainId: '1',
+            imageHash: 'unreadable-logo',
+            ext: '.png',
+            content: Buffer.from('not an image'),
+            mode: 'save',
+            uri: '',
+          },
+        ],
+      )
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { size: '16', cols: '5', contrast: 'dark' } }), res, vi.fn())
+      expect(headerValue(res, 'cache-control')).toBe('no-store')
+    })
+
+    it('draws every plate in one layer, one circle per plated cell', () => {
+      const red = { red: 255, green: 0, blue: 0, alpha: 1 }
+      const layer = plateLayerDocument(
+        [
+          { left: 0, top: 0, plate: { colour: red, shape: 'circle' } },
+          { left: 20, top: 0, plate: { colour: red, shape: 'circle' } },
+        ],
+        { sheetWidth: 40, sheetHeight: 20, cellPixels: 16 } as never,
+      )
+      expect(layer.match(/<circle/g)).toHaveLength(2)
+      expect(layer).toContain('translate(20 0) scale(0.16)')
+    })
+  })
+
+  describe('versions and the stylesheet', () => {
+    it('pins the version in the sheet and stylesheet addresses the manifest gives', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await manifest(mockRequest({ query: { gap: '2', bg: 'ff0000' } }), res, vi.fn())
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.version).toMatch(/^[0-9a-f]{14}$/)
+      expect(body.spriteUrl).toContain(`v=${body.version}`)
+      expect(body.stylesheetUrl).toContain(`v=${body.version}`)
+      expect(body.spriteUrl).toContain('gap=2')
+      expect(body.gap).toBe(2)
+      expect(body.plate).toEqual({ colour: 'ff0000', shape: 'circle', contrast: null })
+    })
+
+    it('answers 409 to a sheet that names a layout no longer current, and never redirects', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { v: 'stale' } }), res, vi.fn())
+      expect(res.status).toHaveBeenCalledWith(409)
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+      expect((res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({ version: expect.any(String) })
+    })
+
+    it('answers 409 to a stylesheet that names a layout no longer current', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await stylesheet(mockRequest({ query: { v: 'stale' } }), res, vi.fn())
+      expect(res.status).toHaveBeenCalledWith(409)
+    })
+
+    it('serves the sheet when the pinned version is the current one', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const first = mockResponse()
+      await manifest(mockRequest(), first, vi.fn())
+      const { version } = (first.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await sheet(mockRequest({ query: { v: version } }), res, vi.fn())
+      expect(res.status).not.toHaveBeenCalledWith(409)
+      expect(res.send).toHaveBeenCalled()
+    })
+
+    it('writes the base rule at the pitch, and each token rule at its cell position', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await stylesheet(mockRequest({ query: { size: '16', cols: '5', gap: '4' } }), res, vi.fn())
+      const css = vi.mocked(res.send).mock.calls[0][0] as string
+      expect(css).toContain('background-size: 100px auto;')
+      expect(css).toContain('background-position: 0px 0px;')
+      expect(css).toContain('background-position: -20px 0px;')
+    })
+
+    it('sends the stylesheet as text, marked not to be sniffed', async () => {
+      queueDrizzleResults([{ listId: 'L1' }], multiChainTokens())
+      const res = mockResponse()
+      await stylesheet(mockRequest(), res, vi.fn())
+      expect(headerValue(res, 'content-type')).toBe('text/css; charset=utf-8')
+      expect(headerValue(res, 'x-content-type-options')).toBe('nosniff')
+    })
+
+    it('gives a vector its picture inside a plate when the picture can be drawn', async () => {
+      const framed = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle r="4"/></svg>')
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [{ address: ADDRESS, chainId: '1', imageHash: 'v1', ext: '.svg', content: framed, mode: 'save', uri: '' }],
+      )
+      const res = mockResponse()
+      await manifest(mockRequest({ query: { content: 'mixed', bg: '00ff00' } }), res, vi.fn())
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const address = String(body.tokens[`eip155-1-${ADDRESS.toLowerCase()}`])
+      const picture = Buffer.from(address.split(',')[1], 'base64').toString()
+      expect(picture).toContain('<circle cx="50"')
+      expect(res.set).toHaveBeenCalledWith('cache-control', expect.stringContaining('public'))
+    })
+
+    it('does not keep a manifest whose vector plate cannot be drawn, such as a vector with no viewBox', async () => {
+      queueDrizzleResults(
+        [{ listId: 'L1' }],
+        [{ address: ADDRESS, chainId: '1', imageHash: 'v2', ext: '.svg', content: svgContent, mode: 'save', uri: '' }],
+      )
+      const res = mockResponse()
+      await manifest(mockRequest({ query: { content: 'mixed', bg: '00ff00' } }), res, vi.fn())
+      expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+    })
+  })
+
+  describe('stylesheet for an unknown list', () => {
+    it('answers the JSON 404, as the manifest and sheet do', async () => {
+      queueDrizzleResults([])
+      const res = mockResponse()
+      await stylesheet(mockRequest(), res, vi.fn())
+      expect(res.status).toHaveBeenCalledWith(404)
+      expect(res.json).toHaveBeenCalledWith({ error: 'unknown provider or list' })
+    })
+  })
+
+  describe('capacity', () => {
+    it('places no more cells than the sheet can hold at this size, gap and scale', async () => {
+      const many = Array.from({ length: 400 }, (_, index) => ({
+        address: `0x${String(index).padStart(40, '0')}`,
+        chainId: '1',
+        imageHash: `h${index}`,
+        ext: '.png',
+        content: pngContent,
+        mode: 'save',
+        uri: '',
+      }))
+      queueDrizzleResults([{ listId: 'L1' }], many)
+      const res = mockResponse()
+      await manifest(mockRequest({ query: { size: '128', cols: '50', scale: '2', limit: '2000' } }), res, vi.fn())
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(body.rasterCount).toBe(350)
+      expect(body.rows).toBe(7)
+    })
+  })
+})
+
+/**
+ * The shared layout contract. The software development kit computes the same version, scope and token classes
+ * from the same fixture, so the two halves cannot disagree about a layout.
+ */
+describe('sprite layout contract (shared fixture)', () => {
+  const layoutContract = JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL('../../../../../fixtures/sprite-layout-contract.json', import.meta.url)),
+      'utf8',
+    ),
+  ) as {
+    request: Record<string, string>
+    version: string
+    scope: string
+    classes: { className: string }[]
+  }
+
+  /** The request as a query string delivers it: every value is text. */
+  const contractQuery = Object.fromEntries(
+    Object.entries(layoutContract.request).map(([name, value]) => [name, String(value)]),
+  )
+  const contractSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>')
+  /** The three tokens of the fixture, as the database rows that produce its keys. */
+  const contractRows = [
+    { address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', chainId: 'eip155-1', ext: '.png' },
+    { address: 'GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g', chainId: 'solana-501', ext: '.svg' },
+    { address: '0x50f1ca62e6fb8adf438ca1f50067ab83670094a6', chainId: 'eip155-369', ext: '.png' },
+  ].map((row) => ({
+    ...row,
+    imageHash: `h-${row.address}`,
+    content: contractSvg,
+    contentSha256: null,
+    mode: 'save',
+    uri: '',
+  }))
+
+  it('serves the version the fixture names, in the manifest and in its stylesheet address', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], contractRows)
+    const res = mockResponse()
+    await manifest(mockRequest({ query: contractQuery }), res, vi.fn())
+    const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(body.version).toBe(layoutContract.version)
+    expect(body.stylesheetUrl).toContain(`v=${layoutContract.version}`)
+  })
+
+  it('writes the scope and every token class the fixture names into the stylesheet', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], contractRows)
+    const css = mockResponse()
+    await stylesheet(mockRequest({ query: contractQuery }), css, vi.fn())
+    const text = vi.mocked(css.send).mock.calls[0][0] as string
+    expect(text).toContain(`.${layoutContract.scope}`)
+    for (const token of layoutContract.classes) {
+      expect(text).toContain(`.${layoutContract.scope}.${token.className}`)
+    }
+  })
+})
+
+describe('sheet budget, gate and lifetimes', () => {
+  let pngContent: Buffer
+  beforeAll(async () => {
+    pngContent = await sharp({
+      create: { width: 8, height: 8, channels: 4, background: { r: 200, g: 50, b: 50, alpha: 1 } },
+    })
+      .png()
+      .toBuffer()
+  })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sharedRemoteImages.reset()
+  })
+
+  const CALLER = '203.0.113.7'
+  const oneRow = () => [
+    { address: ADDRESS, chainId: '1', imageHash: 'h1', ext: '.png', content: pngContent, mode: 'save', uri: '' },
+  ]
+  const fromCaller = (query: Record<string, string> = { size: '16', cols: '5' }) => mockRequest({ ip: CALLER, query })
+
+  it('answers 429 with no-store and a window to wait when the caller has spent their budget', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 0, globalBudget: 1000 }),
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(headerValue(res, 'retry-after')).toBe('60')
+    expect(res.set).toHaveBeenCalledWith('cache-control', 'no-store')
+  })
+
+  it('answers 429 when the whole server has spent its budget, whoever asks', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 1000, globalBudget: 0 }),
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+  })
+
+  it('answers 503 with a short wait, and draws nothing, when the sheet line is full', async () => {
+    const handler = createSheetHandler({
+      budget: createSpriteBudget({ clientBudget: 1000, globalBudget: 1000 }),
+      gate: createSpriteGate({ limit: 0, maxQueue: 0 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(headerValue(res, 'retry-after')).toBe('2')
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('answers 429 when the budget is spent while the sheet waited in line, and draws nothing', async () => {
+    // The budget is checked before the line and again inside it, because other sheets may have spent it while this one waited.
+    const handler = createSheetHandler({
+      budget: { canSpend: () => true, spend: () => false },
+      gate: createSpriteGate({ limit: 1, maxQueue: 8 }),
+    })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const res = mockResponse()
+    await handler(fromCaller(), res, vi.fn())
+    expect(res.status).toHaveBeenCalledWith(429)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('spends nothing on a sheet it does not draw: one with no cells, or one answered 409', async () => {
+    const budget = createSpriteBudget({ clientBudget: 3, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], [])
+    await handler(fromCaller(), mockResponse(), vi.fn())
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller({ size: '16', cols: '5', v: 'stale' }), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 3 })).toBe(true)
+  })
+
+  it('charges one unit for each cell an unplated sheet draws', async () => {
+    const budget = createSpriteBudget({ clientBudget: 10, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller(), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 9 })).toBe(true)
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 10 })).toBe(false)
+  })
+
+  it('charges a plated cell twice as much, so a plated sheet costs more than the same sheet unplated', async () => {
+    const budget = createSpriteBudget({ clientBudget: 10, globalBudget: 1000 })
+    const handler = createSheetHandler({ budget, gate: createSpriteGate({ limit: 1, maxQueue: 8 }) })
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    await handler(fromCaller({ size: '16', cols: '5', bg: 'ff0000' }), mockResponse(), vi.fn())
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 8 })).toBe(true)
+    expect(budget.canSpend({ clientAddress: CALLER, cost: 9 })).toBe(false)
+  })
+
+  it('answers the manifest and the stylesheet while the sheet line is full, because they draw nothing', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const manifestResponse = mockResponse()
+    await manifest(fromCaller(), manifestResponse, vi.fn())
+    expect(manifestResponse.status).not.toHaveBeenCalled()
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const styleResponse = mockResponse()
+    await stylesheet(fromCaller(), styleResponse, vi.fn())
+    expect(styleResponse.send).toHaveBeenCalled()
+  })
+
+  it('keeps a manifest and a stylesheet five minutes, and an unpinned sheet the same', async () => {
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const json = mockResponse()
+    await manifest(fromCaller(), json, vi.fn())
+    const { version } = (json.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(SPRITE_INDEX_SECONDS).toBe(300)
+    expect(headerValue(json, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const css = mockResponse()
+    await stylesheet(mockRequest(), css, vi.fn())
+    expect(headerValue(css, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const unpinned = mockResponse()
+    await sheet(mockRequest({ query: { size: '16', cols: '5' } }), unpinned, vi.fn())
+    expect(headerValue(unpinned, 'cache-control')).toBe(`public, max-age=${SPRITE_INDEX_SECONDS}`)
+
+    queueDrizzleResults([{ listId: 'L1' }], oneRow())
+    const pinned = mockResponse()
+    await sheet(mockRequest({ query: { size: '16', cols: '5', v: version } }), pinned, vi.fn())
+    expect(headerValue(pinned, 'cache-control')).toBe(`public, max-age=${SPRITE_VERSIONED_SHEET_SECONDS}`)
+  })
+
+  it('keeps a sheet pinned to its version a day, because the version names its layout', () => {
+    expect(SPRITE_VERSIONED_SHEET_SECONDS).toBe(86_400)
+  })
+
+  it('inlines vectors up to the byte limit, skipping one that does not fit, and gives the stylesheet the same ones', async () => {
+    const bulk = (size: number) =>
+      Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><!-- ${'x'.repeat(size)} --></svg>`)
+    const big = Math.floor(SPRITE_INLINE_VECTOR_BYTE_LIMIT * 0.6)
+    const rows = [
+      {
+        address: `0x${'1'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'a',
+        ext: '.svg',
+        content: bulk(big),
+        mode: 'save',
+        uri: '',
+      },
+      {
+        address: `0x${'2'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'b',
+        ext: '.svg',
+        content: bulk(big),
+        mode: 'save',
+        uri: '',
+      },
+      {
+        address: `0x${'3'.repeat(40)}`,
+        chainId: '1',
+        imageHash: 'c',
+        ext: '.svg',
+        content: bulk(10),
+        mode: 'save',
+        uri: '',
+      },
+    ]
+    queueDrizzleResults([{ listId: 'L1' }], rows)
+    const json = mockResponse()
+    await manifest(mockRequest({ query: { content: 'mixed' } }), json, vi.fn())
+    const { tokens } = (json.json as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(Object.keys(tokens).map((key) => key.slice(-4))).toEqual(['1111', '3333'])
+
+    queueDrizzleResults([{ listId: 'L1' }], rows)
+    const css = mockResponse()
+    await stylesheet(mockRequest({ query: { content: 'mixed' } }), css, vi.fn())
+    const text = vi.mocked(css.send).mock.calls[0][0] as string
+    expect(text.match(/background-image: url\("data:/g)).toHaveLength(2)
   })
 })

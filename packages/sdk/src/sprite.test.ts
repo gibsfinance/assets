@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { getSpriteUrl, getSpriteSheetUrl, fetchSprite } from './sprite'
+import {
+  getSpriteUrl,
+  getSpriteSheetUrl,
+  getSpriteStylesheetUrl,
+  getSpriteScopeClass,
+  fetchSprite,
+} from './sprite'
 
 const BASE = 'https://gib.show'
 
@@ -446,5 +452,72 @@ describe('getSpriteSheetUrl — additional edge cases', () => {
     const url = getSpriteSheetUrl(BASE, 'provider', 'list-name', { size: 48 })
     expect(url).toContain('/sprite/provider/list-name/sheet')
     expect(url).toContain('size=48')
+  })
+})
+
+describe('stylesheet, scope and the new options', () => {
+  it('builds the stylesheet address beside the sheet, with the same options', () => {
+    expect(getSpriteStylesheetUrl(BASE, 'pulsex', 'extended', { size: 24, gap: 2 })).toBe(
+      'https://gib.show/sprite/pulsex/extended/sheet.css?size=24&gap=2',
+    )
+    expect(getSpriteStylesheetUrl(BASE, 'pulsex', 'extended')).toBe('https://gib.show/sprite/pulsex/extended/sheet.css')
+  })
+
+  it('sends a scale, a gap and a plate only when the caller gives them', () => {
+    const url = getSpriteUrl(BASE, 'p', 'l', { scale: 2, gap: 3, bg: 'FF8800', shape: 'square', contrast: 'dark' })
+    expect(url).toContain('scale=2')
+    expect(url).toContain('gap=3')
+    expect(url).toContain('bg=FF8800')
+    expect(url).toContain('shape=square')
+    expect(url).toContain('contrast=dark')
+    expect(getSpriteUrl(BASE, 'p', 'l', { gap: 0 })).toBe('https://gib.show/sprite/p/l')
+  })
+
+  it('computes the same scope class for the same options however they are written', () => {
+    const written = getSpriteScopeClass('pulsex', 'extended', { size: 32, cols: 25, limit: 500, gap: 2 })
+    expect(written).toBe(getSpriteScopeClass('pulsex', 'extended', { gap: 2 }))
+    expect(written).not.toBe(getSpriteScopeClass('pulsex', 'extended', { gap: 3 }))
+    expect(written).toMatch(/^gibsheet-[0-9a-f]{14}$/)
+  })
+
+  it('reads the stylesheet, scale, gap and version a manifest carries', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            spriteUrl: '/sprite/p/l/sheet?v=abc',
+            stylesheetUrl: '/sprite/p/l/sheet.css?v=abc',
+            size: 16,
+            scale: 2,
+            gap: 2,
+            cols: 5,
+            rows: 1,
+            rasterCount: 1,
+            svgCount: 0,
+            count: 1,
+            version: 'abc',
+            plate: null,
+            tokens: { 'eip155-1-0xabc': [0, 0] },
+          }),
+      }),
+    )
+    const sprite = await fetchSprite(BASE, 'p', 'l')
+    expect(sprite.stylesheetUrl).toBe('https://gib.show/sprite/p/l/sheet.css?v=abc')
+    expect(sprite.manifest.version).toBe('abc')
+    expect(sprite.manifest.gap).toBe(2)
+  })
+
+  it('leaves the stylesheet address null for a server that predates it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ spriteUrl: '/sprite/p/l/sheet', size: 32, cols: 25, rows: 0, rasterCount: 0, svgCount: 0, count: 0, tokens: {} }),
+      }),
+    )
+    const sprite = await fetchSprite(BASE, 'p', 'l')
+    expect(sprite.stylesheetUrl).toBeNull()
   })
 })

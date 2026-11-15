@@ -68,6 +68,9 @@ COPY --from=submodules /usr/src/app/submodules ./submodules
 COPY tsconfig.json ./
 COPY packages/utils packages/utils
 COPY packages/dexscreener packages/dexscreener
+# The collector imports the sprite layout from the SDK's source, as the server does (see Dockerfile).
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/sdk/src packages/sdk/src
 COPY packages/server packages/server
 COPY scripts/refresh-submodules.mjs scripts/refresh-submodules.mjs
 COPY update_submodules.sh /usr/local/bin/update_submodules.sh

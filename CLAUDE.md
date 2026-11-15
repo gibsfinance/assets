@@ -99,6 +99,7 @@ falls back to the default.
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
 | `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits (4 places per caller), past it 503 + `Retry-After` |
+| `SPRITE_RENDER_CONCURRENCY` | `1` | sprite sheets drawn at once; a line of 8 times that waits (2 places per caller), past it 503 + `Retry-After` |
 | `CLIENT_ADDRESS_HEADER` | none | header that carries the real client address (`cf-connecting-ip` behind Cloudflare); read only when named, never trusted by default (`image/client-address.ts`) |
 | `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
 | `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
@@ -381,6 +382,21 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   batch process with no deadline.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
+- **Sprites** (`server/image/sprite.ts`, `packages/sdk/src/sprite-layout.ts`): a list's logos on one sheet. The manifest
+  (`/sprite/:p/:l`), the sheet (`…/sheet`) and the cascading stylesheet (`…/sheet.css`) all read one layout. The layout
+  module is the single source for the token class names, the scope class, the layout version and the stylesheet text.
+  The server imports it from the SDK's source (its `exports` point there in the repository); `publish-exports.mjs`
+  rewrites the subpath to `dist` at publish. Tokens are placed in list order (`list_token_order_id`, then chain,
+  address, entry id), never by image format, so the limit cuts the same rows for every endpoint. Vectors under
+  `content=mixed` take no cell. The version hashes the settings and every placement, and a request that pins a stale
+  `v=` answers 409, never a redirect. Plates and gaps use the single-image plate rules; a plated sheet is cut to 500
+  tokens. The sheet is capped at 16,383 pixels a side and 25 million in all.
+  Drawing is bounded like single plates: a sheet is charged in cells (1 unit a cell, 2 a plated cell) against a per-caller
+  budget (3000 a minute) and a global one (20000 a minute), spent only when the sheet is drawn, and drawn through its own
+  gate (`sprite-budget.ts`, 1 at a time). A refusal is `no-store` 429 or 503 with `Retry-After`. The manifest and
+  stylesheet draw nothing but a string of vector pictures, and inline at most 4 MiB of them. Lifetimes: manifest,
+  stylesheet and unpinned sheet 5 minutes (`SPRITE_INDEX_SECONDS`); a sheet pinned by `v=` a day
+  (`SPRITE_VERSIONED_SHEET_SECONDS`), because the version names its layout.
 
 ### Image Bytes: the Store
 Image bytes live in a content-addressed store (`packages/server/src/image-store/`, directory `IMAGE_STORE_DIR`,

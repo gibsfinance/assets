@@ -1,8 +1,18 @@
 import type { ChainId } from './image'
+import {
+  buildSpriteQuery,
+  normalizeSpriteAddress,
+  spriteScopeClassName,
+  spriteTokenKey,
+  type SpritePlateContrast,
+  type SpritePlateSettings,
+  type SpritePlateShape,
+  type SpriteScale,
+} from './sprite-layout'
 
 /** Options for fetching a sprite */
 export interface SpriteOptions {
-  /** Icon size in pixels (default: 32) */
+  /** Icon size in CSS pixels (default: 32) */
   size?: number
   /** Grid columns (default: 25) */
   cols?: number
@@ -16,6 +26,19 @@ export interface SpriteOptions {
   chainId?: ChainId
   /** 'mixed' returns SVGs as inline data URIs, rasters in the sprite grid */
   content?: 'mixed'
+  /**
+   * Sheet pixels per CSS pixel (default: 1). 2 draws the sheet at twice the resolution,
+   * for screens with a high pixel density. Positions and sizes stay in CSS pixels.
+   */
+  scale?: SpriteScale
+  /** Space between cells in CSS pixels, from 0 (the default) to 32. Keeps neighbouring logos apart. */
+  gap?: number
+  /** Plate colour: 3, 6 or 8 hex digits without `#`. Paints a plate behind every cell. */
+  bg?: string
+  /** Plate outline (default: circle). */
+  shape?: SpritePlateShape
+  /** Paints a plate only on cells whose logo does not stand out against this page tone. */
+  contrast?: SpritePlateContrast
 }
 
 /** Position of a raster icon in the sprite grid */
@@ -24,23 +47,34 @@ export type SpritePosition = [col: number, row: number]
 /** A token entry is either a grid position [col, row] or an inline SVG data URI */
 export type SpriteTokenEntry = SpritePosition | string
 
-/** Manifest returned by the sprite endpoint */
+/**
+ * Manifest returned by the sprite endpoint.
+ *
+ * `stylesheetUrl`, `scale` and `version` are absent from a server that predates
+ * the stylesheet. Read them as optional.
+ */
 export interface SpriteManifest {
   spriteUrl: string
+  stylesheetUrl?: string
   size: number
+  scale?: SpriteScale
   cols: number
   rows: number
   rasterCount: number
   svgCount: number
   count: number
+  /** Changes whenever a token moves, or the gap or plate changes. Pinned in `spriteUrl` and `stylesheetUrl`. */
+  version?: string
+  /** Space between cells in CSS pixels. */
+  gap?: number
+  /** The plate painted behind each cell, or null when there is none. */
+  plate?: SpritePlateSettings | null
   tokens: Record<string, SpriteTokenEntry>
 }
 
 /** Resolved icon — either a sprite crop or an inline SVG */
 export type ResolvedIcon =
-  | { type: 'sprite'; url: string; x: number; y: number; size: number }
-  | { type: 'svg'; dataUri: string }
-  | null
+  { type: 'sprite'; url: string; x: number; y: number; size: number } | { type: 'svg'; dataUri: string } | null
 
 /** A loaded sprite with helper methods for looking up token icons */
 export interface Sprite {
@@ -48,6 +82,8 @@ export interface Sprite {
   manifest: SpriteManifest
   /** Full URL to the sprite sheet image */
   sheetUrl: string
+  /** Full URL to the list's stylesheet, when the server provides one */
+  stylesheetUrl: string | null
   /** Look up an icon by chainId + address. Accepts `1` or `eip155-1`. */
   getIcon(chainId: ChainId, address: string): ResolvedIcon
   /** Get CSS background properties for a raster icon */
@@ -58,106 +94,96 @@ export interface Sprite {
   keys(): string[]
 }
 
-function buildSpriteUrl(
-  baseUrl: string,
-  provider: string,
-  listKey: string,
-  options?: SpriteOptions,
-): string {
-  const params = new URLSearchParams()
-  if (options?.size) params.set('size', String(options.size))
-  if (options?.cols) params.set('cols', String(options.cols))
-  if (options?.limit) params.set('limit', String(options.limit))
-  if (options?.chainId) params.set('chainId', String(options.chainId))
-  if (options?.content) params.set('content', options.content)
-  const qs = params.toString()
-  return `${baseUrl}/sprite/${provider}/${listKey}${qs ? `?${qs}` : ''}`
+/**
+ * The query string for a set of options. Only the options the caller gave are sent,
+ * so the server applies its own defaults to the rest.
+ *
+ * @param options What the caller set.
+ * @returns The query string with a leading `?`, or an empty string when there is none.
+ */
+function queryFor(options?: SpriteOptions): string {
+  const query = buildSpriteQuery({
+    size: options?.size || undefined,
+    cols: options?.cols || undefined,
+    limit: options?.limit || undefined,
+    chainId: options?.chainId ? String(options.chainId) : undefined,
+    content: options?.content,
+    scale: options?.scale,
+    gap: options?.gap || undefined,
+    bg: options?.bg,
+    shape: options?.shape,
+    contrast: options?.contrast,
+  })
+  return query ? `?${query}` : ''
 }
 
 /** Build a sprite manifest URL */
-export function getSpriteUrl(
-  baseUrl: string,
-  provider: string,
-  listKey: string,
-  options?: SpriteOptions,
-): string {
-  return buildSpriteUrl(baseUrl, provider, listKey, options)
+export function getSpriteUrl(baseUrl: string, provider: string, listKey: string, options?: SpriteOptions): string {
+  return `${baseUrl}/sprite/${provider}/${listKey}${queryFor(options)}`
 }
 
 /** Build a sprite sheet (image) URL */
-export function getSpriteSheetUrl(
+export function getSpriteSheetUrl(baseUrl: string, provider: string, listKey: string, options?: SpriteOptions): string {
+  return `${baseUrl}/sprite/${provider}/${listKey}/sheet${queryFor(options)}`
+}
+
+/**
+ * Build a stylesheet URL. The stylesheet gives each token a class, and the page applies
+ * it with the scope class from {@link getSpriteScopeClass}.
+ *
+ * @param baseUrl The instance's base address.
+ * @param provider The provider key.
+ * @param listKey The list key.
+ * @param options The same options the manifest and the sheet take.
+ * @returns The stylesheet address.
+ */
+export function getSpriteStylesheetUrl(
   baseUrl: string,
   provider: string,
   listKey: string,
   options?: SpriteOptions,
 ): string {
-  return buildSpriteUrl(baseUrl, provider, listKey, options).replace(
-    `/sprite/${provider}/${listKey}`,
-    `/sprite/${provider}/${listKey}/sheet`,
-  )
+  return `${baseUrl}/sprite/${provider}/${listKey}/sheet.css${queryFor(options)}`
 }
 
 /**
- * A hex address, the only token id whose casing carries no meaning.
+ * The scope class a list's stylesheet is written under. Apply it with the token class
+ * (see `spriteClassName`) to show that token's picture.
  *
- * Base58 ids (Solana mints, Tron addresses) never begin `0x` — the alphabet
- * excludes `0` — so the prefix alone separates the two families, and neither
- * form contains a dash. That makes the final dash-separated segment of a
- * manifest key unambiguously the address, however many dashes the chain
- * identifier ahead of it carries.
+ * The name is computed from the provider, the list and the options, so it matches the
+ * server's without a request. Give the same options to the stylesheet and to this function.
+ *
+ * @param provider The provider key.
+ * @param listKey The list key.
+ * @param options The same options given to {@link getSpriteStylesheetUrl}.
+ * @returns A class name, for example `gibsheet-0123…`.
  */
-const HEX_ADDRESS = /^0x[0-9a-fA-F]+$/
-
-/**
- * Canonical CAIP-2 identifier, mirroring the server's `toCAIP2`.
- *
- * The dash form (`eip155-1`, not `eip155:1`) is what the server stores in
- * `network.chain_id` and therefore what its sprite keys carry.
- */
-function toCAIP2(chainId: ChainId): string {
-  const input = String(chainId)
-  if (input.includes('-')) return input
-  if (input === '0') return 'asset-0'
-  return `eip155-${input}`
-}
-
-/** Lowercase hex addresses only; base58 ids are case-significant and pass through. */
-function normalizeAddress(address: string): string {
-  return HEX_ADDRESS.test(address) ? address.toLowerCase() : address
+export function getSpriteScopeClass(provider: string, listKey: string, options?: SpriteOptions): string {
+  return spriteScopeClassName(provider, listKey, {
+    size: options?.size,
+    cols: options?.cols,
+    limit: options?.limit,
+    chainId: options?.chainId,
+    content: options?.content,
+    scale: options?.scale,
+    gap: options?.gap,
+    bg: options?.bg,
+    shape: options?.shape,
+    contrast: options?.contrast,
+  })
 }
 
 /**
- * The manifest key for a token, matching the server's `spriteKey` exactly.
+ * Whether a manifest key was written with an uppercase hexadecimal address. Keys are read back
+ * as the server wrote them, so only the lookup index changes case.
  *
- * The chain component is the full identifier, not the bare number. The server has
- * keyed sprites this way since chain ids became CAIP-2, but this builder emitted
- * `1-0x…` against a manifest carrying `eip155-1-0x…`. Since `getIcon`, `has`, and
- * `getBackgroundCSS` all declared `chainId: number`, a bare number was the only
- * value a caller could pass without violating the signature — and it missed on
- * every chain. Lookups only ever succeeded by passing a CAIP-2 string the types
- * rejected. The unit tests did not catch it because their fixture manifest was
- * hand-written in the same bare-number shape, so both halves agreed with each
- * other and neither agreed with the server.
- */
-function tokenKey(chainId: ChainId, address: string): string {
-  return `${toCAIP2(chainId)}-${normalizeAddress(address)}`
-}
-
-/**
- * Case-fold a manifest key so a hex address matches whatever casing the caller
- * passes, while a base58 id keeps every byte.
- *
- * Folding the whole key — as this module used to, with a blanket `toLowerCase()`
- * over `Object.entries` — collided distinct Solana mints that differ only in case
- * and handed `keys()` corrupted addresses. The server's own `spriteKey` carries a
- * comment warning against precisely that.
+ * @param key A key as the server served it.
+ * @returns The key with its address lowercased when the address is hexadecimal.
  */
 function foldKey(key: string): string {
   const cut = key.lastIndexOf('-')
   if (cut === -1) return key
-  const address = key.slice(cut + 1)
-  if (!HEX_ADDRESS.test(address)) return key
-  return `${key.slice(0, cut + 1)}${address.toLowerCase()}`
+  return `${key.slice(0, cut + 1)}${normalizeSpriteAddress(key.slice(cut + 1))}`
 }
 
 /** Fetch and parse a sprite manifest, returning a Sprite with lookup helpers */
@@ -180,12 +206,11 @@ export async function fetchSprite(
     index[foldKey(key)] = value
   }
 
-  const sheetUrl = manifest.spriteUrl.startsWith('/')
-    ? `${baseUrl}${manifest.spriteUrl}`
-    : manifest.spriteUrl
+  const sheetUrl = resolveAddress(baseUrl, manifest.spriteUrl)
+  const stylesheetUrl = manifest.stylesheetUrl ? resolveAddress(baseUrl, manifest.stylesheetUrl) : null
 
   function getIcon(chainId: ChainId, address: string): ResolvedIcon {
-    const entry = index[tokenKey(chainId, address)]
+    const entry = index[spriteTokenKey({ chainId, address })]
     if (!entry) return null
 
     if (typeof entry === 'string') {
@@ -225,13 +250,25 @@ export async function fetchSprite(
   return {
     manifest,
     sheetUrl,
+    stylesheetUrl,
     getIcon,
     getBackgroundCSS,
     has(chainId: ChainId, address: string): boolean {
-      return tokenKey(chainId, address) in index
+      return spriteTokenKey({ chainId, address }) in index
     },
     keys(): string[] {
       return Object.keys(manifest.tokens)
     },
   }
+}
+
+/**
+ * Turns an address the server gave into a full address. A root-relative address is joined to the base address.
+ *
+ * @param baseUrl The instance's base address.
+ * @param address The address the manifest carries.
+ * @returns The full address.
+ */
+function resolveAddress(baseUrl: string, address: string): string {
+  return address.startsWith('/') ? `${baseUrl}${address}` : address
 }

@@ -246,6 +246,66 @@ const TOKEN_LIST_RESPONSE = {
   },
 }
 
+/** Query parameters shared by the sprite manifest, sheet and stylesheet. Each one is read the same way by all three. */
+const SPRITE_LIST_PARAMS = [
+  PROVIDER_KEY_PARAM,
+  LIST_KEY_PARAM,
+  {
+    name: 'size',
+    in: 'query' as const,
+    description: 'Cell size in CSS pixels.',
+    schema: { type: 'integer' as const, minimum: 16, maximum: 128, default: 32 },
+  },
+  {
+    name: 'cols',
+    in: 'query' as const,
+    description: 'Grid columns.',
+    schema: { type: 'integer' as const, minimum: 5, maximum: 50, default: 25 },
+  },
+  {
+    name: 'limit',
+    in: 'query' as const,
+    description: 'Maximum tokens. A request with a plate is cut to 500.',
+    schema: { type: 'integer' as const, minimum: 1, maximum: 2000, default: 500 },
+  },
+  {
+    name: 'content',
+    in: 'query' as const,
+    description: 'content=mixed inlines vector images as data addresses instead of placing them on the grid.',
+    schema: { type: 'string' as const, enum: ['mixed'] },
+  },
+  {
+    name: 'chainId',
+    in: 'query' as const,
+    description: 'Filter to one chain.',
+    schema: { type: 'string' as const },
+  },
+  {
+    name: 'scale',
+    in: 'query' as const,
+    description:
+      'Sheet pixels per CSS pixel. 2 draws the sheet at twice the resolution for dense screens; positions and sizes stay in CSS pixels. Any value other than 2 means 1.',
+    schema: { type: 'integer' as const, enum: [1, 2], default: 1 },
+  },
+  {
+    name: 'gap',
+    in: 'query' as const,
+    description:
+      'Space between cells, in CSS pixels, so neighbouring logos do not touch and a scaled page cannot bleed one into another. Scaled with the sheet. Any value outside 0 to 32 answers 400.',
+    schema: { type: 'integer' as const, minimum: 0, maximum: 32, default: 0 },
+  },
+  ...PLATE_PARAMS,
+]
+
+/** The layout version, pinned by the manifest's addresses. A sheet or stylesheet asked for a stale one answers 409. */
+const SPRITE_VERSION_PARAM = {
+  name: 'v',
+  in: 'query' as const,
+  description:
+    'The layout version the manifest gave (its version field). Optional. When it no longer matches the current layout the answer is 409, so no client pairs one layout with another sheet.',
+  schema: { type: 'string' as const, pattern: '^[0-9a-f]{14}$' },
+}
+
 export const openapi = {
   openapi: '3.1.0',
   info: {
@@ -815,39 +875,16 @@ export const openapi = {
         tags: ['Image Endpoints'],
         summary: 'Sprite sheet manifest (JSON) for a token list',
         'x-example': '/sprite/pulsex/extended?size=32&cols=10&limit=20',
-        parameters: [
-          PROVIDER_KEY_PARAM,
-          LIST_KEY_PARAM,
-          {
-            name: 'size',
-            in: 'query',
-            description: 'Cell size in pixels.',
-            schema: { type: 'integer', minimum: 16, maximum: 128, default: 32 },
-          },
-          {
-            name: 'cols',
-            in: 'query',
-            description: 'Grid columns.',
-            schema: { type: 'integer', minimum: 5, maximum: 50, default: 25 },
-          },
-          {
-            name: 'limit',
-            in: 'query',
-            description: 'Maximum tokens.',
-            schema: { type: 'integer', minimum: 1, maximum: 2000, default: 500 },
-          },
-          {
-            name: 'content',
-            in: 'query',
-            description: 'content=mixed inlines SVGs as data URIs.',
-            schema: { type: 'string', enum: ['mixed'] },
-          },
-          { name: 'chainId', in: 'query', description: 'Filter to one chain.', schema: { type: 'string' } },
-        ],
+        parameters: SPRITE_LIST_PARAMS,
         responses: {
           '200': {
-            description: 'Manifest mapping token keys to grid coordinates (or inline data URIs).',
+            description:
+              'Manifest mapping token keys to grid coordinates (or inline data addresses). Its spriteUrl and stylesheetUrl both carry the layout version. Kept five minutes.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/SpriteManifest' } } },
+          },
+          '400': {
+            description: 'A gap, plate colour, shape or tone that is not valid.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '404': {
             description: 'Unknown provider or list.',
@@ -861,36 +898,67 @@ export const openapi = {
         tags: ['Image Endpoints'],
         summary: 'Rendered sprite sheet image (WebP) — same parameters as the manifest',
         'x-example': '/sprite/pulsex/extended/sheet?size=32&cols=10&limit=20',
-        parameters: [
-          PROVIDER_KEY_PARAM,
-          LIST_KEY_PARAM,
-          {
-            name: 'size',
-            in: 'query',
-            description: 'Cell size in pixels.',
-            schema: { type: 'integer', minimum: 16, maximum: 128, default: 32 },
-          },
-          {
-            name: 'cols',
-            in: 'query',
-            description: 'Grid columns.',
-            schema: { type: 'integer', minimum: 5, maximum: 50, default: 25 },
-          },
-          {
-            name: 'limit',
-            in: 'query',
-            description: 'Maximum tokens.',
-            schema: { type: 'integer', minimum: 1, maximum: 2000, default: 500 },
-          },
-        ],
+        parameters: [...SPRITE_LIST_PARAMS, SPRITE_VERSION_PARAM],
         responses: {
           '200': {
-            description: 'WebP sheet with x-sprite-* metadata headers.',
+            description:
+              'WebP sheet with x-sprite-* metadata headers, including x-sprite-version. Kept a day when pinned by v, and five minutes otherwise.',
             content: { 'image/webp': { schema: { type: 'string', format: 'binary' } } },
           },
           '204': { description: 'No raster tokens to render.' },
+          '400': {
+            description: 'A gap, plate colour, shape or tone that is not valid.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
           '404': {
             description: 'Unknown provider or list.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '429': {
+            description:
+              'This caller, or every caller together, has spent the sheet budget for the window. A sheet costs one unit per cell drawn (two for a plated cell), and the budget is spent only when a sheet is actually drawn. Retry-After says when it renews, in seconds, and the answer is never cached.',
+            headers: { 'Retry-After': { schema: { type: 'integer' } } },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '503': {
+            description:
+              'Too many sheets are being drawn at once. Retry-After says how long to wait, in seconds, and the answer is never cached.',
+            headers: { 'Retry-After': { schema: { type: 'integer' } } },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '409': {
+            description:
+              'The layout named by v is no longer current. Read the manifest again. The answer is never a redirect, which would pair one layout with another sheet.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+    '/sprite/{providerKey}/{listKey}/sheet.css': {
+      get: {
+        tags: ['Image Endpoints'],
+        summary: 'Stylesheet for a token list: one class per token, with its cell position',
+        description:
+          'Each token has a class `gib-<chain>-<address>` (case kept, uppercase letters escaped as `_` and a letter). ' +
+          'Apply it with the scope class `gibsheet-…` the list computes, which the software development kit returns from getSpriteScopeClass. ' +
+          'The scope class sets the box and the picture; the token class sets the position, or a vector picture for content=mixed.',
+        'x-example': '/sprite/pulsex/extended/sheet.css?size=32&cols=10&limit=20',
+        parameters: [...SPRITE_LIST_PARAMS, SPRITE_VERSION_PARAM],
+        responses: {
+          '200': {
+            description: 'A cascading stylesheet (text/css). Marked nosniff.',
+            content: { 'text/css': { schema: { type: 'string' } } },
+          },
+          '400': {
+            description: 'A gap, plate colour, shape or tone that is not valid.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '404': {
+            description: 'Unknown provider or list.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '409': {
+            description: 'The layout named by v is no longer current. Read the manifest again.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -1276,7 +1344,15 @@ export const openapi = {
       SpriteManifest: {
         type: 'object',
         properties: {
-          spriteUrl: { type: 'string' },
+          spriteUrl: { type: 'string', description: 'Sheet address, pinned to the layout version.' },
+          stylesheetUrl: { type: 'string', description: 'Stylesheet address for the same layout.' },
+          version: {
+            type: 'string',
+            description: 'Layout version. Changes when a token moves or the gap or plate changes.',
+          },
+          scale: { type: 'integer', enum: [1, 2] },
+          gap: { type: 'integer', description: 'Space between cells, in CSS pixels.' },
+          plate: { type: ['object', 'null'], description: 'The plate behind each cell, or null.' },
           size: { type: 'integer' },
           cols: { type: 'integer' },
           rows: { type: 'integer' },

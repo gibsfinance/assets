@@ -11344,6 +11344,7 @@ __metadata:
   dependencies:
     "@eslint/js": "npm:^10.0.1"
     "@gibs/dexscreener": "npm:^1.0.0"
+    "@gibs/sdk": "workspace:*"
     "@gibs/utils": "npm:^1.0.0"
     "@types/compression": "npm:^1.8.1"
     "@types/cors": "npm:^2.8.19"
