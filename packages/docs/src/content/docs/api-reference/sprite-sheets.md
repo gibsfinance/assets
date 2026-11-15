@@ -98,6 +98,27 @@ A cached copy of a manifest or a stylesheet can name a layout that has since cha
 
 A sheet has at most 16,383 pixels on each side and 25 million pixels in all. At large sizes and high scale, the sheet holds fewer cells, and the tokens past its capacity are left off the layout. The manifest's `rasterCount` says how many cells it holds.
 
+## Budgets and refusals
+
+Drawing a sheet takes real processing time, so the server limits it. A sheet is charged by its cells: one unit for each cell it draws without a plate, and two for each cell with one. A 500-cell sheet with a plate costs 1000 units.
+
+- Each caller may spend 3000 units a minute. That is six unplated 500-cell sheets, or three plated ones.
+- All callers together may spend 20,000 units a minute.
+- Only a sheet that is actually drawn is charged. A stylesheet, a manifest, a 204 and a 409 cost nothing.
+
+When the budget is spent, the answer is 429 with `Retry-After`, in seconds. When too many sheets are being drawn at once, the answer is 503 with a shorter `Retry-After`. Neither answer is cached. A caller who sees either should wait and try again.
+
+## Lifetimes
+
+| Address | Kept by caches for |
+|---------|--------------------|
+| Manifest | 5 minutes |
+| Stylesheet | 5 minutes |
+| Sheet, with no `v=` | 5 minutes |
+| Sheet, with `v=` | a day |
+
+A manifest or a stylesheet can name a layout that has since changed. Its sheet then answers 409, so logos stay missing until the cache expires, but no wrong logo is shown. A sheet pinned by `v=` keeps a day, because its version names its layout and an old sheet stays correct for any page that still holds the stylesheet that names it.
+
 ## React
 
 The `@gibs/react` package provides a `SpriteIcon` component. It adds the stylesheet once for each address, and draws the logo.

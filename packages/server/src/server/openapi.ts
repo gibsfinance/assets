@@ -879,7 +879,7 @@ export const openapi = {
         responses: {
           '200': {
             description:
-              'Manifest mapping token keys to grid coordinates (or inline data addresses). Its spriteUrl and stylesheetUrl both carry the layout version.',
+              'Manifest mapping token keys to grid coordinates (or inline data addresses). Its spriteUrl and stylesheetUrl both carry the layout version. Kept five minutes.',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/SpriteManifest' } } },
           },
           '400': {
@@ -901,7 +901,8 @@ export const openapi = {
         parameters: [...SPRITE_LIST_PARAMS, SPRITE_VERSION_PARAM],
         responses: {
           '200': {
-            description: 'WebP sheet with x-sprite-* metadata headers, including x-sprite-version.',
+            description:
+              'WebP sheet with x-sprite-* metadata headers, including x-sprite-version. Kept a day when pinned by v, and five minutes otherwise.',
             content: { 'image/webp': { schema: { type: 'string', format: 'binary' } } },
           },
           '204': { description: 'No raster tokens to render.' },
@@ -911,6 +912,18 @@ export const openapi = {
           },
           '404': {
             description: 'Unknown provider or list.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '429': {
+            description:
+              'This caller, or every caller together, has spent the sheet budget for the window. A sheet costs one unit per cell drawn (two for a plated cell), and the budget is spent only when a sheet is actually drawn. Retry-After says when it renews, in seconds, and the answer is never cached.',
+            headers: { 'Retry-After': { schema: { type: 'integer' } } },
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '503': {
+            description:
+              'Too many sheets are being drawn at once. Retry-After says how long to wait, in seconds, and the answer is never cached.',
+            headers: { 'Retry-After': { schema: { type: 'integer' } } },
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '409': {
