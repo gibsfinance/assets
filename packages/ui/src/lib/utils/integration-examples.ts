@@ -18,11 +18,20 @@ export const IMAGE_OPTION_SUBJECT_PATH = '/image/eip155-1/0x2260FAC5E5542a773Aa4
  */
 export const IMAGE_OPTION_DARK_LOGO_PATH = '/image/eip155-25'
 
+/** The size, in pixels, the preview draws a logo at when its option does not ask for one. */
+export const IMAGE_OPTION_PREVIEW_SIZE = 128
+
 /** One logo in an option tile: the address it draws, its alternative text and an optional caption. */
 export interface ImageOptionSample {
   path: string
   alt: string
   caption?: string
+  /**
+   * The size, in pixels, to draw this logo at. Set it when the address itself asks for a size, so the
+   * example shows the file at the size the option produces instead of stretching it. Defaults to
+   * `IMAGE_OPTION_PREVIEW_SIZE`.
+   */
+  displaySize?: number
 }
 
 /** Which backdrop a tile's logos sit on. A dark logo needs the dark one to show what the option does. */
@@ -51,6 +60,7 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
       {
         path: `${IMAGE_OPTION_SUBJECT_PATH}?w=64&h=64&as=webp`,
         alt: 'Wrapped Bitcoin, 64 pixels, webp',
+        displaySize: 64,
       },
     ],
   },

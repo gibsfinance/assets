@@ -96,6 +96,16 @@ describe('ImageOptionsExample, the preview', () => {
     expect(well.className).toContain('bg-surface-backdrop')
   })
 
+  // The resize option asks the server for 64 pixels. Drawing that file at 128 stretched it and made the
+  // example look soft, which shows the opposite of what the option is for.
+  it('draws the resized logo at the 64 pixels it asks for, and the other options at 128', () => {
+    render(<ImageOptionsExample />)
+    const resized = within(panel()).getAllByRole('img')[0]
+    expect(resized.getAttribute('width')).toBe('64')
+    select('Vector only')
+    expect(within(panel()).getAllByRole('img')[0].getAttribute('width')).toBe('128')
+  })
+
   it('keeps the other options on the inset surface, not the dark backdrop', () => {
     render(<ImageOptionsExample />)
     const well = within(panel()).getAllByRole('img')[0].closest('.rounded-lg')!

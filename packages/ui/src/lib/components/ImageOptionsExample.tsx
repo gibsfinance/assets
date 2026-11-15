@@ -1,5 +1,6 @@
 import { useId, useState, type KeyboardEvent } from 'react'
 import {
+  IMAGE_OPTION_PREVIEW_SIZE,
   IMAGE_OPTION_TILES,
   type ImageOptionSample,
   type ImageOptionSurface,
@@ -44,7 +45,13 @@ function ImageOptionPreview({ tile }: { tile: ImageOptionTile }) {
         {tile.samples.map((sample) => (
           <figure key={sample.path} className="flex flex-col items-center gap-2">
             <div className={`flex rounded-lg p-3 ${WELL_SURFACE_CLASS[tile.surface]}`}>
-              <Image src={getApiUrl(sample.path)} alt={sample.alt} size={128} fullResolution shape="rect" />
+              <Image
+                src={getApiUrl(sample.path)}
+                alt={sample.alt}
+                size={sample.displaySize ?? IMAGE_OPTION_PREVIEW_SIZE}
+                fullResolution
+                shape="rect"
+              />
             </div>
             {sample.caption && <figcaption className="text-xs text-content-subtle">{sample.caption}</figcaption>}
           </figure>
