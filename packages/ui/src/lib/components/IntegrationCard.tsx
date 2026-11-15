@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import type { IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import { faArrowRight, faLink } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
@@ -75,7 +75,22 @@ export interface IntegrationAddressProps {
 }
 
 /**
+ * Splits an address into the pieces a line may break between: after each `?` and each `&`, so the
+ * options of a query can start a new line. Joined back together, the pieces are the exact address.
+ *
+ * @param href The full address.
+ * @returns The pieces, in order, each ending where a break may follow.
+ */
+export function addressSegments(href: string): string[] {
+  return href.split(/(?<=[?&])/)
+}
+
+/**
  * An address shown as a link, with its text set in the monospace face so a reader can copy it.
+ *
+ * The text breaks only after a `?` or `&` (or inside a word when nothing else fits), so a long
+ * query stays readable on a narrow screen. The break points are zero-width, so the copied text is
+ * exactly the address.
  *
  * @param props.href The full address. It is both the link target and the text shown.
  */
@@ -85,9 +100,17 @@ export function IntegrationAddress({ href }: IntegrationAddressProps) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-2 text-sm text-content-subtle">
+      className="flex max-w-full min-w-0 items-center gap-2 text-sm text-content-subtle">
       <Icon icon={faLink} className="shrink-0 text-accent-content" />
-      <code className="break-all font-mono">{href}</code>
+      {/* Break after ? and &, first. Anywhere only when a run has no break point, such as a hex address. */}
+      <code className="min-w-0 font-mono [overflow-wrap:anywhere]">
+        {addressSegments(href).map((segment, index) => (
+          <Fragment key={index}>
+            {index > 0 && <wbr />}
+            {segment}
+          </Fragment>
+        ))}
+      </code>
     </a>
   )
 }

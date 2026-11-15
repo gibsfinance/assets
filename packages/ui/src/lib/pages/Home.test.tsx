@@ -30,6 +30,8 @@ import { getDocsUrl } from '../utils/docs-links'
 import {
   IMAGE_OPTION_TILES,
   SPRITE_MANIFEST_PATH,
+  SPRITE_SAMPLE_TOKEN_CLASS,
+  SPRITE_SCOPE_CLASS,
   SPRITE_SHEET_PATH,
   SPRITE_STYLESHEET_PATH,
 } from '../utils/integration-examples'
@@ -575,7 +577,7 @@ describe('Home — the image options and sprite sheet cards', () => {
     stubFetch()
     renderHome()
 
-    const well = screen.getByAltText('Cronos logo, vector only').closest('.rounded-md')!
+    const well = screen.getByAltText('Wrapped Bitcoin, vector only').closest('.rounded-md')!
     expect(well.className).not.toContain('bg-surface-backdrop')
   })
 
@@ -602,6 +604,13 @@ describe('Home — the image options and sprite sheet cards', () => {
     const { container } = renderHome()
 
     expect(container.textContent).toContain(`<link rel="stylesheet" href="${getApiUrl(SPRITE_STYLESHEET_PATH)}" />`)
+  })
+
+  it('draws the sample token with the list scope class and its own class, as the stylesheet names them', () => {
+    stubFetch()
+    const { container } = renderHome()
+
+    expect(container.textContent).toContain(`<span class="${SPRITE_SCOPE_CLASS} ${SPRITE_SAMPLE_TOKEN_CLASS}"></span>`)
   })
 
   it('links all five cards to the documentation page that covers them', () => {

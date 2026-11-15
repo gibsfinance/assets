@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { faImage } from '@fortawesome/free-solid-svg-icons'
-import IntegrationCard, { IntegrationAddress } from './IntegrationCard'
+import IntegrationCard, { IntegrationAddress, addressSegments } from './IntegrationCard'
 
 afterEach(cleanup)
 
@@ -55,12 +55,33 @@ describe('IntegrationCard', () => {
   })
 })
 
+describe('addressSegments', () => {
+  it('breaks only after each question mark and each ampersand, and joins back to the exact address', () => {
+    const address = 'https://gib.show/image/eip155-1/0xabc?w=64&h=64&as=webp'
+    const segments = addressSegments(address)
+    expect(segments).toEqual(['https://gib.show/image/eip155-1/0xabc?', 'w=64&', 'h=64&', 'as=webp'])
+    expect(segments.join('')).toBe(address)
+  })
+
+  it('has no break point in an address without a query', () => {
+    expect(addressSegments('https://gib.show/image/eip155-1')).toEqual(['https://gib.show/image/eip155-1'])
+  })
+})
+
 describe('IntegrationAddress', () => {
   const address = 'https://gib.show/image/eip155-25?contrast=dark'
 
   it('shows the full address as its own text, so a reader can copy exactly what the link opens', () => {
     render(<IntegrationAddress href={address} />)
     expect(screen.getByText(address).tagName).toBe('CODE')
+  })
+
+  it('offers a break point after the question mark, and none in the path', () => {
+    const { container } = render(<IntegrationAddress href={address} />)
+    const code = container.querySelector('code')!
+    expect(code.querySelectorAll('wbr')).toHaveLength(1)
+    expect(code.innerHTML).toContain('contrast=dark')
+    expect(code.innerHTML.indexOf('<wbr>')).toBeGreaterThan(code.innerHTML.indexOf('eip155-25?'))
   })
 
   it('opens the same address it shows', () => {

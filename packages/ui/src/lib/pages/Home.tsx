@@ -6,7 +6,7 @@ import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
 import { getDocsUrl, type DocsPageName } from '../utils/docs-links'
 import {
-  IMAGE_OPTION_LOGO_PATH,
+  IMAGE_OPTION_SUBJECT_PATH,
   IMAGE_OPTION_TILES,
   SPRITE_MANIFEST_PATH,
   SPRITE_SHEET_PATH,
@@ -123,7 +123,7 @@ function ImageOptionTile({ tile }: ImageOptionTileProps) {
       {tile.samples.map((sample) => (
         <div key={sample.path} className="flex flex-col items-start gap-2">
           <div className={`flex rounded-md p-2 ${WELL_SURFACE_CLASS[tile.surface]}`}>
-            <Image src={getApiUrl(sample.path)} alt={sample.alt} size={64} fullResolution lazy shape="rect" />
+            <Image src={getApiUrl(sample.path)} alt={sample.alt} size={64} fullResolution shape="rect" />
           </div>
           {sample.caption && <p className="text-xs text-content-subtle">{sample.caption}</p>}
           <IntegrationAddress href={getApiUrl(sample.path)} />
@@ -167,7 +167,6 @@ function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
             alt="Ethereum"
             size={48}
             skeleton
-            lazy
             shape="circle"
             className="rounded-full"
           />
@@ -399,19 +398,18 @@ export default function Home() {
               <IntegrationCard
                 icon={faSliders}
                 title="Image Options"
-                description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. The four below all draw the same logo, Cronos."
+                description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. The examples use Wrapped Bitcoin, and the dark-page example uses Cronos, a dark logo."
                 docsHref={getDocsUrl('imageOptions')}
                 preview={
                   <div className="flex flex-col items-center gap-3 text-center">
                     <Image
-                      src={getApiUrl(IMAGE_OPTION_LOGO_PATH)}
-                      alt="Cronos logo, the one every option below draws"
+                      src={getApiUrl(IMAGE_OPTION_SUBJECT_PATH)}
+                      alt="Wrapped Bitcoin logo"
                       size={128}
                       fullResolution
-                      lazy
                       shape="rect"
                     />
-                    <p className="text-sm text-content-subtle">Cronos, the logo every option below draws</p>
+                    <p className="text-sm text-content-subtle">Wrapped Bitcoin, drawn by three of the options below</p>
                   </div>
                 }>
                 <div className="grid min-w-0 gap-4 sm:grid-cols-2">
@@ -447,9 +445,9 @@ export default function Home() {
                   preClasses="[&>pre]:whitespace-pre-wrap [&>pre]:break-all"
                 />
                 <p className="text-sm text-content-subtle">
-                  Add chainId to keep one chain, or content=mixed to put vector logos in the manifest as data addresses
-                  instead of drawing them on the sheet. Sizes run from 16 to 128 pixels for size, 5 to 50 for cols, and
-                  1 to 2000 tokens for limit.
+                  Add chainId to keep one chain, content=mixed for vector logos as data addresses, gap for space between
+                  cells, bg or contrast for a plate behind each logo, and scale=2 for sharp sheets on high-density
+                  screens. Sizes run from 16 to 128 pixels for size, 5 to 50 for cols, and 1 to 2000 tokens for limit.
                 </p>
               </IntegrationCard>
             </div>

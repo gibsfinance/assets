@@ -11,27 +11,14 @@
 /** Where the documentation site is served. */
 export const DOCS_SITE_ROOT = 'https://docs.gib.show'
 
-/**
- * The pages the interface links to, by name. Each value is the page's path on the site.
- *
- * PLACEHOLDER for `spriteSheets`: it points at the generated endpoint reference until the
- * sprite page (planned at `/api-reference/sprites/`) exists. When it does, set this to that
- * path. The existing `/api-reference/sprite-sheets/` page is a candidate too, if the planned
- * page is not wanted.
- */
+/** The pages the interface links to, by name. Each value is the page's path on the site. */
 export const DOCS_PAGES = {
   images: '/api-reference/images/',
   networks: '/api-reference/networks/',
   tokenLists: '/api-reference/token-lists/',
   imageOptions: '/api-reference/image-options/',
-  spriteSheets: '/reference/',
+  spriteSheets: '/api-reference/sprite-sheets/',
 } as const
-
-/**
- * Pages the documentation site builds from the server's definition rather than from a source
- * file. Each is named by the `base` the site's `starlightOpenAPI` plugin gives it.
- */
-export const GENERATED_DOCS_PATHS: readonly string[] = ['/reference/']
 
 /** The name of a page the interface links to. */
 export type DocsPageName = keyof typeof DOCS_PAGES

@@ -8,10 +8,15 @@
  */
 
 /**
- * The logo the image options card draws. Cronos is a dark vector logo: it reads on a light
- * page and nearly vanishes on a dark one, so every option has a visible effect on it.
+ * The logo most options draw: Wrapped Bitcoin, a vector that reads on both a light and a dark page.
  */
-export const IMAGE_OPTION_LOGO_PATH = '/image/eip155-25'
+export const IMAGE_OPTION_SUBJECT_PATH = '/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'
+
+/**
+ * The logo the dark-page example draws. Cronos is a dark vector logo: it reads on a light page and
+ * nearly vanishes on a dark one, so `contrast` has something to fix.
+ */
+export const IMAGE_OPTION_DARK_LOGO_PATH = '/image/eip155-25'
 
 /** One logo in an option tile: the address it draws, its alternative text and an optional caption. */
 export interface ImageOptionSample {
@@ -42,7 +47,12 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
     title: 'Resize and convert',
     description: 'Use for lists and buttons, where a small file at a set size is enough. Gib never enlarges a logo.',
     surface: 'inset',
-    samples: [{ path: `${IMAGE_OPTION_LOGO_PATH}?w=64&h=64&as=webp`, alt: 'Cronos logo, 64 pixels, webp' }],
+    samples: [
+      {
+        path: `${IMAGE_OPTION_SUBJECT_PATH}?w=64&h=64&as=webp`,
+        alt: 'Wrapped Bitcoin, 64 pixels, webp',
+      },
+    ],
   },
   {
     key: 'vector-only',
@@ -50,7 +60,7 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
     description:
       'Use when your design needs a sharp logo at any size. If the token has no vector logo, the answer is 404, so plan a fallback.',
     surface: 'inset',
-    samples: [{ path: `${IMAGE_OPTION_LOGO_PATH}?only=vector`, alt: 'Cronos logo, vector only' }],
+    samples: [{ path: `${IMAGE_OPTION_SUBJECT_PATH}?only=vector`, alt: 'Wrapped Bitcoin, vector only' }],
   },
   {
     key: 'plate-for-dark-page',
@@ -59,9 +69,9 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
       'Use when a logo is dark and would vanish on your page. Gib adds a light plate only when a logo is hard to see. The logo on the left has no option, and it nearly disappears here.',
     surface: 'backdrop',
     samples: [
-      { path: IMAGE_OPTION_LOGO_PATH, alt: 'Cronos logo, plain', caption: 'No options' },
+      { path: IMAGE_OPTION_DARK_LOGO_PATH, alt: 'Cronos logo, plain', caption: 'No options' },
       {
-        path: `${IMAGE_OPTION_LOGO_PATH}?contrast=dark`,
+        path: `${IMAGE_OPTION_DARK_LOGO_PATH}?contrast=dark`,
         alt: 'Cronos logo, with contrast=dark',
         caption: 'contrast=dark',
       },
@@ -71,9 +81,14 @@ export const IMAGE_OPTION_TILES: readonly ImageOptionTile[] = [
     key: 'custom-plate',
     title: 'Custom plate',
     description:
-      'Use when you want your own background behind a logo. bg takes a six-digit colour without the hash sign, and shape sets the outline: circle, rounded or square.',
+      'Use when you want your own background behind a logo. bg takes a six-digit colour without the hash sign, and shape sets the outline: circle, rounded or square. This grey plate shows on both light and dark pages.',
     surface: 'inset',
-    samples: [{ path: `${IMAGE_OPTION_LOGO_PATH}?bg=ffffff&shape=rounded`, alt: 'Cronos logo on a white plate' }],
+    samples: [
+      {
+        path: `${IMAGE_OPTION_SUBJECT_PATH}?bg=6b7280&shape=rounded`,
+        alt: 'Wrapped Bitcoin on a grey plate',
+      },
+    ],
   },
 ]
 
@@ -87,16 +102,25 @@ export const SPRITE_MANIFEST_PATH = `${SPRITE_LIST_PATH}?${SPRITE_OPTIONS}`
 /** The rendered sheet for the sprite card. Ten columns of 32-pixel cells, two rows, 320 by 64 pixels. */
 export const SPRITE_SHEET_PATH = `${SPRITE_LIST_PATH}/sheet?${SPRITE_OPTIONS}`
 
-/**
- * The stylesheet the snippet links. PLACEHOLDER: the server route that serves a ready-made
- * stylesheet for a list's sprite is not final yet. When it lands, set this to that route's
- * path (with the same list and sizing options). Until then the snippet's link does not resolve.
- */
-export const SPRITE_STYLESHEET_PATH = `${SPRITE_LIST_PATH}/stylesheet?${SPRITE_OPTIONS}`
+/** The stylesheet the snippet links: one scope class for the list, and one class per token. */
+export const SPRITE_STYLESHEET_PATH = `${SPRITE_LIST_PATH}/sheet.css?${SPRITE_OPTIONS}`
 
 /**
- * The markup a reader would paste to show one token from a sprite sheet: the stylesheet link,
- * then one element whose class the stylesheet gives the token's place on the sheet.
+ * The scope class of the stylesheet above, which every token rule in it starts with. It is
+ * computed by `spriteScopeClassName` in `packages/sdk/src/sprite-layout.ts` from the list and the
+ * settings. A test recomputes it through that function, so this value cannot drift from the server.
+ */
+export const SPRITE_SCOPE_CLASS = 'gibsheet-0bc2ecdbc38407'
+
+/**
+ * The class of the sample token, Pulsechain's first cell in the sheet. Computed by `spriteClassName`
+ * in `packages/sdk/src/sprite-layout.ts`; a test recomputes it through that function.
+ */
+export const SPRITE_SAMPLE_TOKEN_CLASS = 'gib-eip155-369-0x8854bc985fb5725f872c8856bea11b917caeb2fe'
+
+/**
+ * The markup a reader would paste to show one token from a sprite sheet: the stylesheet link, then
+ * one element that carries the list's scope class and the token's class.
  *
  * @param input.stylesheetUrl The absolute address of the stylesheet, as the reader's page would link it.
  * @returns The snippet, as plain markup.
@@ -104,7 +128,6 @@ export const SPRITE_STYLESHEET_PATH = `${SPRITE_LIST_PATH}/stylesheet?${SPRITE_O
 export function spriteSnippet({ stylesheetUrl }: { stylesheetUrl: string }): string {
   return [
     `<link rel="stylesheet" href="${stylesheetUrl}" />`,
-    '<!-- the stylesheet names one class per token; use that class here -->',
-    '<span class="..."></span>',
+    `<span class="${SPRITE_SCOPE_CLASS} ${SPRITE_SAMPLE_TOKEN_CLASS}"></span>`,
   ].join('\n')
 }
