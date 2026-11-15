@@ -1,0 +1,386 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createDrizzleHarness, renderSql, sqlParams } from '../db/__testing__/drizzle-harness'
+import { createMemoryBlobStore } from './__testing__/memory-store'
+import { EXAMPLE_LIMIT } from './backfill'
+import { hashBytes } from './hash'
+import { resanitizeImages } from './resanitize'
+import { sanitizeSvgDocument } from '../svg-sanitize'
+
+const harness = createDrizzleHarness()
+const fakeDatabase = harness.db as never
+const defaultStore = createMemoryBlobStore()
+vi.mock('../logger', () => ({ log: vi.fn() }))
+vi.mock('../db/drizzle', () => ({ getDrizzle: () => harness.db }))
+vi.mock('./index', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./index')>()),
+  getImageStore: () => defaultStore,
+}))
+
+const NS = 'xmlns="http://www.w3.org/2000/svg"'
+/** Markup an older sanitizer left in place: a comment, and a script in a prefixed element. */
+const old = Buffer.from(
+  `<svg ${NS} xmlns:s="http://www.w3.org/2000/svg"><!-- c --><s:script>alert(1)</s:script><rect/></svg>`,
+)
+const cleaned = sanitizeSvgDocument(old)
+const alreadyClean = cleaned
+
+const stepOf = (query: (typeof harness.queries)[number], method: string) =>
+  query.steps.find((step) => step.method === method)
+const renderedWhere = (query: (typeof harness.queries)[number]) => renderSql(stepOf(query, 'where')?.args[0])
+
+beforeEach(() => {
+  harness.reset()
+  defaultStore.blobs.clear()
+  defaultStore.puts.length = 0
+})
+
+describe('resanitizeImages', () => {
+  it('is a dry run by default: it reports what would change and writes nothing', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    store.puts.length = 0
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store })
+
+    expect(summary).toMatchObject({ dryRun: true, examined: 1, changed: 1, rewritten: 0, unchanged: 0, ok: true })
+    expect(store.puts).toEqual([])
+    expect(harness.queries.some((query) => query.root === 'update')).toBe(false)
+  })
+
+  it('writes the new file before moving the row, and records the digest and length of the new bytes', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    const filesWhenUpdated: number[] = []
+    const database: never = {
+      ...harness.db,
+      update: (...args: Parameters<typeof harness.db.update>) => {
+        filesWhenUpdated.push(store.blobs.size)
+        return harness.db.update(...args)
+      },
+      // The row is written inside a transaction; its callback gets this same wrapped database.
+      transaction: (callback: (transaction: unknown) => unknown) => harness.db.transaction(() => callback(database)),
+    } as never
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database, store, dryRun: false })
+
+    expect(filesWhenUpdated).toEqual([2])
+    expect(summary).toMatchObject({ changed: 1, rewritten: 1, skipped: 0, ok: true })
+    const update = harness.queries.find((query) => query.root === 'update')!
+    expect(stepOf(update, 'set')?.args[0]).toEqual({ contentSha256: hashBytes(cleaned), byteSize: cleaned.length })
+    // The address of the image is never touched, and only the row that was read is changed.
+    expect(renderedWhere(update)).toContain('"image"."image_hash" = $')
+    expect(renderedWhere(update)).toContain('"image"."content_sha256" = $')
+    expect(sqlParams(stepOf(update, 'where')?.args[0])).toEqual(['a', sha256])
+  })
+
+  it('never deletes a file: the old one stays for the garbage collector', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
+    harness.queueResult([])
+
+    await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(store.blobs.has(sha256)).toBe(true)
+    expect(store.blobs.has(hashBytes(cleaned))).toBe(true)
+  })
+
+  it('moves a copy kept in the database together with the digest, so the two always agree', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: true }])
+    harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
+    harness.queueResult([])
+
+    await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    const update = harness.queries.find((query) => query.root === 'update')!
+    expect(stepOf(update, 'set')?.args[0]).toEqual({
+      contentSha256: hashBytes(cleaned),
+      byteSize: cleaned.length,
+      content: cleaned,
+    })
+  })
+
+  it('handles a row not exported yet: guards on the bytes it holds and gives it a digest', async () => {
+    const store = createMemoryBlobStore()
+    harness.queueResult([{ imageHash: 'a', content: old, contentSha256: null, holdsDatabaseCopy: true }])
+    harness.queueResult([{ imageHash: 'a' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary.rewritten).toBe(1)
+    const update = harness.queries.find((query) => query.root === 'update')!
+    expect(renderedWhere(update)).toContain('"image"."content_sha256" is null')
+    expect(renderedWhere(update)).toContain('encode(sha256("image"."content"), \'hex\') = $')
+    expect(sqlParams(stepOf(update, 'where')?.args[0])).toContain(hashBytes(old))
+    expect(stepOf(update, 'set')?.args[0]).toMatchObject({ contentSha256: hashBytes(cleaned), content: cleaned })
+  })
+
+  it('counts a row that changed since it was read as skipped', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ changed: 1, rewritten: 0, skipped: 1 })
+  })
+
+  it('leaves a row alone when the sanitizer would not change it, so a second run finds nothing to do', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(alreadyClean)
+    store.puts.length = 0
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ examined: 1, unchanged: 1, changed: 0 })
+    expect(store.puts).toEqual([])
+    expect(harness.queries.some((query) => query.root === 'update')).toBe(false)
+  })
+
+  it('reports a row the sanitizer refuses, leaves it, and is not ok', async () => {
+    const store = createMemoryBlobStore()
+    const broken = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><circle></svg>')
+    const { sha256 } = await store.put(broken)
+    harness.queueResult([{ imageHash: 'broken', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ rejected: 1, rejectedExamples: ['broken'], ok: false, rewritten: 0 })
+    expect(harness.queries.some((query) => query.root === 'update')).toBe(false)
+  })
+
+  it('lists at most a fixed number of rejected examples but counts them all', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(Buffer.from('not markup'))
+    const rows = Array.from({ length: EXAMPLE_LIMIT + 3 }, (_, index) => ({
+      imageHash: `h${index}`,
+      content: null,
+      contentSha256: sha256,
+      holdsDatabaseCopy: false,
+    }))
+    harness.queueResult(rows)
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store })
+
+    expect(summary.rejected).toBe(EXAMPLE_LIMIT + 3)
+    expect(summary.rejectedExamples).toHaveLength(EXAMPLE_LIMIT)
+  })
+
+  it('reports a missing file, leaves the row, and is not ok', async () => {
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: 'f'.repeat(64), holdsDatabaseCopy: false }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store: createMemoryBlobStore(), dryRun: false })
+
+    expect(summary).toMatchObject({ missingFiles: 1, ok: false })
+  })
+
+  it('reads only vector rows that carry bytes, in key order, after the cursor, a batch at a time', async () => {
+    harness.queueResult([])
+
+    await resanitizeImages({ database: fakeDatabase, store: createMemoryBlobStore(), batchSize: 7 })
+
+    const select = harness.queries.find((query) => query.root === 'select')!
+    const where = renderedWhere(select)
+    expect(where).toContain('"image"."ext" in ($')
+    expect(sqlParams(stepOf(select, 'where')?.args[0])).toEqual(expect.arrayContaining(['.svg', '.svg+xml']))
+    expect(where).toContain('"image"."image_hash" > $')
+    expect(where).toContain('"image"."content_sha256" is not null')
+    expect(where).toContain('octet_length')
+    expect(stepOf(select, 'limit')?.args).toEqual([7])
+  })
+
+  it('resumes from the last key of each batch and pauses between batches only when asked', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(alreadyClean)
+    const sleep = vi.fn(async () => undefined)
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+
+    await resanitizeImages({ database: fakeDatabase, store, sleep, sleepMs: 30 })
+
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(30)
+    const selects = harness.queries.filter((query) => query.root === 'select')
+    expect(sqlParams(stepOf(selects[0], 'where')?.args[0])).toContain('')
+    expect(sqlParams(stepOf(selects[1], 'where')?.args[0])).toContain('a')
+
+    sleep.mockClear()
+    harness.reset()
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+    await resanitizeImages({ database: fakeDatabase, store, sleep })
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('waits on a real timer by default, and uses the process store and database when none are passed', async () => {
+    const { sha256 } = await defaultStore.put(alreadyClean)
+    harness.queueResult([{ imageHash: 'a', content: null, contentSha256: sha256, holdsDatabaseCopy: false }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ sleepMs: 1 })
+
+    expect(summary.unchanged).toBe(1)
+  })
+})
+
+describe('resanitizeImages: the rows it rewrote and the older extension (third review, findings 1 and 3)', () => {
+  it('names the image hash of every row it rewrote, and calls back as each is rewritten', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    const unchangedStore = await store.put(alreadyClean)
+    const seen: string[] = []
+    harness.queueResult([
+      { imageHash: 'rewritten-one', ext: '.svg', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
+      {
+        imageHash: 'left-alone',
+        ext: '.svg',
+        content: null,
+        contentSha256: unchangedStore.sha256,
+        holdsDatabaseCopy: false,
+      },
+    ])
+    harness.queueResult([{ imageHash: 'rewritten-one' }])
+    harness.queueResult([{ imageHash: 'a' }]) // the variants deleted with the row
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({
+      database: fakeDatabase,
+      store,
+      dryRun: false,
+      onRewritten: (imageHash) => seen.push(imageHash),
+    })
+
+    expect(summary.rewrittenHashes).toEqual(['rewritten-one'])
+    expect(seen).toEqual(['rewritten-one'])
+  })
+
+  it('names no hash in a dry run, and none for a row skipped because it changed under it', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([
+      { imageHash: 'a', ext: '.svg', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
+    ])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
+    harness.queueResult([])
+    expect((await resanitizeImages({ database: fakeDatabase, store })).rewrittenHashes).toEqual([])
+
+    harness.reset()
+    harness.queueResult([
+      { imageHash: 'a', ext: '.svg', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
+    ])
+    harness.queueResult([])
+    harness.queueResult([])
+    const skipped = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+    expect(skipped).toMatchObject({ skipped: 1, rewrittenHashes: [] })
+  })
+
+  it('counts and cleans rows stored under the older .svg+xml extension', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([
+      { imageHash: 'legacy', ext: '.svg+xml', content: null, contentSha256: sha256, holdsDatabaseCopy: false },
+    ])
+    harness.queueResult([{ total: 3 }]) // variants that would go with the row
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store })
+
+    expect(summary).toMatchObject({ examined: 1, changed: 1, legacyExtensionRows: 1 })
+  })
+})
+
+describe('resanitizeImages: resized variants go with the bytes they were drawn from', () => {
+  const rowFor = (sha256: string, imageHash = 'a') => ({
+    imageHash,
+    ext: '.svg',
+    content: null,
+    contentSha256: sha256,
+    holdsDatabaseCopy: false,
+  })
+
+  it('deletes the variants of a rewritten row inside the same transaction, after the row is updated, and counts them', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([{ imageHash: 'a' }]) // the update
+    harness.queueResult([{ imageHash: 'a' }, { imageHash: 'a' }, { imageHash: 'a' }]) // three variants deleted
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ rewritten: 1, variantsDeleted: 3 })
+    const roots = harness.queries.map((query) => query.root)
+    expect(roots.slice(roots.indexOf('transaction'))).toEqual(['transaction', 'update', 'delete', 'select'])
+    const deletion = harness.queries.find((query) => query.root === 'delete')!
+    expect(renderedWhere(deletion)).toContain('"image_variant"."image_hash" = $')
+    expect(sqlParams(stepOf(deletion, 'where')?.args[0])).toEqual(['a'])
+  })
+
+  it('keeps the variants of a row it leaves unchanged', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(alreadyClean)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ unchanged: 1, rewritten: 0, variantsDeleted: 0 })
+    expect(harness.queries.some((query) => query.root === 'delete')).toBe(false)
+  })
+
+  it('keeps the variants of a row it skipped because the row changed under it', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([]) // the guarded update matched nothing
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store, dryRun: false })
+
+    expect(summary).toMatchObject({ skipped: 1, variantsDeleted: 0 })
+    expect(harness.queries.some((query) => query.root === 'delete')).toBe(false)
+  })
+
+  it('in a dry run counts the variants that would go and deletes nothing', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([{ total: 7 }])
+    harness.queueResult([])
+
+    const summary = await resanitizeImages({ database: fakeDatabase, store })
+
+    expect(summary).toMatchObject({ dryRun: true, changed: 1, variantsDeleted: 7 })
+    expect(harness.queries.some((query) => query.root === 'delete' || query.root === 'update')).toBe(false)
+  })
+
+  it('counts zero when the count query answers nothing', async () => {
+    const store = createMemoryBlobStore()
+    const { sha256 } = await store.put(old)
+    harness.queueResult([rowFor(sha256)])
+    harness.queueResult([])
+    harness.queueResult([])
+
+    expect((await resanitizeImages({ database: fakeDatabase, store })).variantsDeleted).toBe(0)
+  })
+})

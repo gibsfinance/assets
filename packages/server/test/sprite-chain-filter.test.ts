@@ -7,6 +7,7 @@ import { app } from '../src/server/app'
 import * as db from '../src/db'
 import { getDrizzle } from '../src/db/drizzle'
 import * as s from '../src/db/schema'
+import { IMAGE_SECURITY_HEADERS } from '../src/server/image/headers'
 import { isDbAvailable } from './db-available'
 
 /**
@@ -145,6 +146,15 @@ test(
         .get(`/sprite/${provider.key}/${list.key}/sheet?chainId=solana-501`)
         .expect(200)
       assert.strictEqual(response.headers['x-sprite-count'], '1')
+    })
+
+    await t.test('the sheet carries the image security headers', async () => {
+      const response = await supertest(app)
+        .get(`/sprite/${provider.key}/${list.key}/sheet?chainId=solana-501`)
+        .expect(200)
+      for (const [name, value] of Object.entries(IMAGE_SECURITY_HEADERS)) {
+        assert.strictEqual(response.headers[name], value, `${name} must be set on a sprite sheet`)
+      }
     })
 
     await t.test('the manifest key carries the identifier, never the bare reference', async () => {

@@ -92,7 +92,10 @@ router.post(
     })
 
     if (!result) {
-      res.status(400).json({ error: 'Failed to process image — unrecognized format' })
+      res.status(400).json({
+        error:
+          'Failed to process image — unrecognized format, or it cannot be cleaned (PNG, JPEG, GIF, WebP, AVIF and SVG are accepted)',
+      })
       return
     }
 

@@ -48,6 +48,8 @@ import request from 'supertest'
 import sharp from 'sharp'
 import { getImage, getImageAndFallback, getImageByHash } from './handlers'
 import { nextOnError } from '../utils'
+import { IMAGE_CONTENT_SECURITY_POLICY } from './headers'
+import { errorMiddleware } from '../middleware'
 import * as db from '../../db'
 import { getDrizzle } from '../../db/drizzle'
 import { getDefaultListOrderId } from '../../db/sync-order'
@@ -82,6 +84,10 @@ function buildApp() {
   app.get('/image/direct/:imageHash', nextOnError(getImageByHash))
   app.get('/image/fallback/:order/:chainId/:address', nextOnError(getImageAndFallback))
   app.get('/image/:chainId/:address', nextOnError(getImage(false)))
+  app.get('/api/json', (_req, res) => {
+    res.json({ ok: true })
+  })
+  app.use(errorMiddleware)
   return app
 }
 
@@ -162,5 +168,230 @@ describe('image handlers through a real Express 5 app', () => {
     const res = await request(app).get(`/image/direct/${'a'.repeat(64)}`)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toContain('image/png')
+  })
+
+  describe('plate parameters', () => {
+    it('answers 400 for a bad bg on the token route and on the direct route', async () => {
+      const token = await request(app).get(`/image/1/${TEST_ADDRESS}?bg=nope`)
+      expect(token.status).toBe(400)
+      expect(token.text).toContain('bg must be 3, 6 or 8 hex digits')
+      const direct = await request(app).get(`/image/direct/${'a'.repeat(64)}?contrast=sideways`)
+      expect(direct.status).toBe(400)
+    })
+
+    it('serves a plated image that differs from the plain one, with its own ETag', async () => {
+      const plain = await request(app).get(`/image/1/${TEST_ADDRESS}`)
+      const plated = await request(app).get(`/image/1/${TEST_ADDRESS}?bg=ff0000&shape=square`)
+      expect(plated.status).toBe(200)
+      expect(plated.headers['content-type']).toContain('image/png')
+      expect(plated.headers.etag).toBeDefined()
+      expect(plated.headers.etag).not.toBe(plain.headers.etag)
+      expect(db.insertVariant).not.toHaveBeenCalled()
+    })
+
+    it('leaves the image unchanged when contrast finds no need for a plate', async () => {
+      const res = await request(app).get(`/image/1/${TEST_ADDRESS}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['x-resize']).toBe('original')
+    })
+  })
+  describe('security headers on image bytes', () => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#123456"/></svg>',
+    )
+    const expectLocked = (res: request.Response) => {
+      expect(res.headers['content-security-policy']).toBe(IMAGE_CONTENT_SECURITY_POLICY)
+      expect(res.headers['content-security-policy']).toBe(
+        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+      )
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+    }
+    const serveSvg = () =>
+      vi.mocked(getDrizzle).mockImplementation(
+        () =>
+          makeDrizzleChain([
+            {
+              provider: { key: 'test' },
+              list: { listId: '1' },
+              list_token: { tokenId: '1' },
+              token: { networkId: 'eip155:1' },
+              image: {
+                imageHash: 'b'.repeat(64),
+                content: svg,
+                uri: 'https://example.com/a.svg',
+                ext: '.svg',
+                mode: 'save',
+              },
+            },
+          ]) as never,
+      )
+
+    it('are on the original', async () => {
+      expectLocked(await request(app).get(`/image/1/${TEST_ADDRESS}`))
+    })
+    it('are on a vector served directly, the case the policy exists for', async () => {
+      serveSvg()
+      const res = await request(app).get(`/image/1/${TEST_ADDRESS}`)
+      expect(res.headers['content-type']).toContain('image/svg+xml')
+      expectLocked(res)
+    })
+    it('are on a converted variant, a stored variant and a plated image', async () => {
+      expectLocked(await request(app).get(`/image/1/${TEST_ADDRESS}.webp`))
+      vi.mocked(db.getVariant).mockResolvedValue({
+        imageHash: 'x',
+        width: 8,
+        height: 8,
+        format: 'png',
+        content: pngContent,
+      } as never)
+      expectLocked(await request(app).get(`/image/1/${TEST_ADDRESS}?w=8`))
+      expectLocked(await request(app).get(`/image/1/${TEST_ADDRESS}?bg=ff0000`))
+    })
+    it('are on a plated vector, which stays an svg', async () => {
+      serveSvg()
+      const res = await request(app).get(`/image/1/${TEST_ADDRESS}?bg=ff0000`)
+      expect(res.headers['content-type']).toContain('image/svg+xml')
+      expectLocked(res)
+    })
+    it('are on the content-addressed route, plain and plated', async () => {
+      vi.mocked(getDrizzle).mockImplementation(
+        () =>
+          makeDrizzleChain([
+            { imageHash: 'b'.repeat(64), content: svg, uri: 'https://example.com/a.svg', ext: '.svg', mode: 'save' },
+          ]) as never,
+      )
+      expectLocked(await request(app).get(`/image/direct/${'b'.repeat(64)}`))
+      expectLocked(await request(app).get(`/image/direct/${'b'.repeat(64)}?bg=00ff00`))
+    })
+    it('are on the fallback route', async () => {
+      expectLocked(await request(app).get(`/image/fallback/default/1/${TEST_ADDRESS}`))
+    })
+    it('are absent from a JSON answer and from an error answer', async () => {
+      for (const res of [
+        await request(app).get('/api/json'),
+        await request(app).get(`/image/1/${TEST_ADDRESS}?bg=nope`),
+      ]) {
+        expect(res.headers['content-type']).toContain('application/json')
+        expect(res.headers['content-security-policy']).toBeUndefined()
+        expect(res.headers['x-content-type-options']).toBeUndefined()
+      }
+    })
+  })
+
+  describe('a plated image on the content-addressed route', () => {
+    it('is mutable, though a plain image there is immutable for a year', async () => {
+      const hash = 'c'.repeat(64)
+      vi.mocked(getDrizzle).mockImplementation(
+        () =>
+          makeDrizzleChain([
+            { imageHash: hash, content: pngContent, uri: 'https://example.com/t.png', ext: '.png', mode: 'save' },
+          ]) as never,
+      )
+      const plain = await request(app).get(`/image/direct/${hash}`)
+      const plated = await request(app).get(`/image/direct/${hash}?bg=ff0000`)
+      expect(plain.headers['cache-control']).toContain('immutable')
+      expect(plated.headers['cache-control']).not.toContain('immutable')
+      expect(plated.headers['cache-control']).toContain('max-age=86400')
+    })
+  })
+
+  // The content-addressed route promises one path, one set of bytes, for a year. A request that
+  // carries plate parameters is a different answer from the plain one, so it must never get that
+  // promise, whether the plate was drawn, not needed, or could not be made.
+  describe('plate parameters on the content-addressed route never get the year-long lifetime', () => {
+    // Each test gets its own hash: a failed measurement or draw is remembered by it for a minute.
+    let hash = ''
+    let counter = 0
+    beforeEach(() => {
+      counter += 1
+      hash = counter.toString(16).padStart(64, 'd')
+    })
+    const rowFor = (image: Record<string, unknown>) => () =>
+      makeDrizzleChain([
+        { imageHash: hash, uri: 'https://example.com/t.png', ext: '.png', mode: 'save', ...image },
+      ]) as never
+
+    /** Noise bright enough that a dark page shows it without a plate. */
+    async function makeBrightNoisePng(): Promise<Buffer> {
+      const raw = Buffer.alloc(32 * 32 * 4, 255)
+      for (let i = 0; i < raw.length; i += 1) if (i % 4 !== 3) raw[i] = 200 + ((i * 2654435761) % 56)
+      return sharp(raw, { raw: { width: 32, height: 32, channels: 4 } })
+        .png()
+        .toBuffer()
+    }
+
+    it('sends no-store when the plate cannot be drawn, and the plain request keeps its year', async () => {
+      // 300 bytes that are not an image: past the serve check, undecodable by sharp.
+      const undecodable = Buffer.from('not an image '.repeat(30))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: undecodable }))
+      const plated = await request(app).get(`/image/direct/${hash}?bg=ffffff`)
+      const plain = await request(app).get(`/image/direct/${hash}`)
+      expect(plated.status).toBe(200)
+      expect(plated.headers['cache-control']).toBe('no-store')
+      expect(plain.headers['cache-control']).toContain('immutable')
+    })
+
+    it('sends no-store when the logo cannot be measured for contrast', async () => {
+      const undecodable = Buffer.from('not an image either '.repeat(20))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: undecodable }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('no-store')
+    })
+
+    it('is mutable, not immutable, when contrast finds no plate is needed', async () => {
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: await makeBrightNoisePng() }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark`)
+      expect(res.status).toBe(200)
+      expect(res.headers['x-resize']).toBe('original')
+      expect(res.headers['cache-control']).not.toContain('immutable')
+      expect(res.headers['cache-control']).toContain('max-age=86400')
+    })
+
+    it('is mutable when a plate and a size are asked for and no plate is needed', async () => {
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: await makeBrightNoisePng() }))
+      const res = await request(app).get(`/image/direct/${hash}?contrast=dark&w=16`)
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).not.toContain('immutable')
+    })
+
+    it('is no-store, with the redirect, when a linked image cannot be fetched for a plate', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('down')))
+      vi.mocked(getDrizzle).mockImplementation(rowFor({ content: Buffer.alloc(0), mode: 'link' }))
+      const res = await request(app).get(`/image/direct/${hash}?bg=ffffff`).redirects(0)
+      vi.unstubAllGlobals()
+      expect(res.status).toBe(302)
+      expect(res.headers['cache-control']).toBe('no-store')
+    })
+  })
+
+  describe('a jpg through the real app', () => {
+    it('is image/jpeg when resized and when plated', async () => {
+      const jpg = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#808080' } })
+        .jpeg()
+        .toBuffer()
+      vi.mocked(getDrizzle).mockImplementation(
+        () =>
+          makeDrizzleChain([
+            {
+              provider: { key: 'test' },
+              list: { listId: '1' },
+              list_token: { tokenId: '1' },
+              token: { networkId: 'eip155:1' },
+              image: {
+                imageHash: 'j'.repeat(64),
+                content: jpg,
+                uri: 'https://example.com/t.jpg',
+                ext: '.jpg',
+                mode: 'save',
+              },
+            },
+          ]) as never,
+      )
+      expect((await request(app).get(`/image/1/${TEST_ADDRESS}?w=32`)).headers['content-type']).toContain('image/jpeg')
+      expect((await request(app).get(`/image/1/${TEST_ADDRESS}?bg=ff0000`)).headers['content-type']).toContain(
+        'image/jpeg',
+      )
+    })
   })
 })

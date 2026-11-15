@@ -30,18 +30,29 @@ import type { ChainId } from '@gibs/utils'
 import * as utils from '../../utils'
 import * as db from '../../db'
 import type { Image, ListOrder, ListOrderItem, ListToken, List, Token } from '../../db/schema-types'
-import { type RequestHandler, type Response } from 'express'
+import { type Request, type RequestHandler, type Response } from 'express'
 import _ from 'lodash'
 import { type ParsedQs } from 'qs'
 import { getDefaultListOrderId } from '../../db/sync-order'
 import { type ImageModeParam } from '../../types'
-import { maybeResize, parseResizeParams, cacheControlFor, stripRootSvgDimensions, type CachePolicy } from './resize'
+import {
+  maybeResize,
+  parseResizeParams,
+  cacheControlFor,
+  cachePolicyForOriginal,
+  stripRootSvgDimensions,
+  type CachePolicy,
+  type ResizeParams,
+} from './resize'
+import { clientAddressOf } from './client-address'
+import { servableExt } from '../../image-format'
+import config from '../../../config'
 import { attributionHeaders, resolveAttribution } from './attribution'
 import { getDrizzle } from '../../db/drizzle'
 import { eq, and, inArray, sql as dsql, type SQL } from 'drizzle-orm'
 import * as s from '../../db/schema'
 import { toCAIP2, namespaceOf, isBareNumeric, resolveChainIdAgainstStored, resolveChainIdAlias } from '../../chain-id'
-import { RESOLVED_CHAIN_HEADER } from './headers'
+import { RESOLVED_CHAIN_HEADER, setImageSecurityHeaders } from './headers'
 import { withImageBytes } from '../../image-store/image-bytes'
 import { imageColumnsWithoutStoredBytes } from '../../db/image-columns'
 
@@ -368,6 +379,34 @@ export const queryStringToList = (query: string | ParsedQs | (string | ParsedQs)
     .filter((v) => v.trim())
 }
 
+/**
+ * Serve an image the way every image route does: the resized, converted or plated variant when the
+ * request asks for one and it can be made, else the original. One funnel, so the plate budget sees
+ * the same caller and the original gets the same cache policy on every route.
+ *
+ * The original's policy comes from `cachePolicyForOriginal`: a request that carries plate parameters
+ * is never `content-addressed`, and one whose plate could not be produced is `no-store`. Without
+ * that, `/image/direct/<hash>?bg=ffffff` could answer with the plain image and keep it for a year.
+ */
+const respondWithImage = async ({
+  req,
+  res,
+  img,
+  params,
+  routePolicy = 'mutable',
+}: {
+  req: Request
+  res: Response
+  img: Image & Record<string, any>
+  params: ResizeParams | null
+  routePolicy?: CachePolicy
+}) => {
+  const clientAddress = clientAddressOf(req, { header: config.clientAddressHeader })
+  if (await maybeResize({ res, img, params, cachePolicy: routePolicy, clientAddress })) return
+  const mode = resolveImageMode(req.query.mode as ImageModeParam | null | undefined)
+  sendImage(res, img, mode, cachePolicyForOriginal({ res, params, cachePolicy: routePolicy }))
+}
+
 export const getImage =
   (parseOrder: boolean): RequestHandler =>
   async (req, res, _next) => {
@@ -384,8 +423,7 @@ export const getImage =
     // passed explicitly — Express 5 re-parses req.query on every access, so a
     // mutation written into it never reaches maybeResize.
     const params = parseResizeParams({ query: req.query, pathExt: outputExt })
-    if (await maybeResize({ res, img, params })) return
-    sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+    await respondWithImage({ req, res, img, params })
   }
 
 export const getImageAndFallback: RequestHandler = async (req, res, next) => {
@@ -417,9 +455,15 @@ export const getImageAndFallback: RequestHandler = async (req, res, next) => {
   // Same explicit-options path as getImage — this handler used to write the
   // wrong query key (`format` instead of `as`), so the conversion never fired.
   const params = parseResizeParams({ query: req.query, pathExt: outputExt })
-  if (await maybeResize({ res, img, params })) return
-  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  await respondWithImage({ req, res, img, params })
 }
+
+/**
+ * The cache lifetime for `/image/direct/<hash>`. Immutable for a year only when the stored bytes
+ * can never be rewritten by our own tools, which is every row except a vector one (see
+ * `resanitizeImages`, which rewrites vector bytes and keeps the address).
+ */
+export const directRoutePolicy = (ext: string): CachePolicy => (SVG_EXTS.has(ext) ? 'mutable' : 'content-addressed')
 
 export const getImageByHash: RequestHandler = async (req, res, next) => {
   // The path extension here is a SOURCE filter (hash.svg → serve only if the
@@ -445,15 +489,14 @@ export const getImageByHash: RequestHandler = async (req, res, next) => {
     return next(httpErrors.NotFound('image not available under the requested license'))
   }
   const params = parseResizeParams({ query: req.query })
-  // Content-addressed: the key in the URL is derived from the downloaded bytes (and their
-  // source address), so a new download never lands on an old key. A year-long, immutable cache
-  // is honest here in a way it would not be for a token or chain image, which can get new
-  // content at the same address later. Both the un-resized original
-  // below and any resized/transcoded variant maybeResize serves carry the same
-  // policy — a caller who asks for a resized hash-addressed image gets the same
-  // permanent-cache guarantee as one who asks for the original.
-  if (await maybeResize({ res, img: image, params, cachePolicy: 'content-addressed' })) return
-  sendImage(res, image, resolveImageMode(req.query.mode as ImageModeParam | null | undefined), 'content-addressed')
+  // The key in the URL is derived from the downloaded bytes (and their source address), so a new
+  // download never lands on an old key. A year-long, immutable cache is honest for a raster row,
+  // which no tool of ours rewrites. It is not honest for a vector row: `images resanitize` rewrites
+  // a vector row's bytes under the same key whenever the sanitizer is fixed, and a cache holding
+  // the old bytes for a year would keep serving what the fix removed. Vector rows therefore get the
+  // ordinary lifetime. Both the un-resized original and any resized or transcoded variant
+  // maybeResize serves carry the same policy.
+  await respondWithImage({ req, res, img: image, params, routePolicy: directRoutePolicy(image.ext) })
 }
 
 /**
@@ -553,8 +596,7 @@ export const bestGuessNetworkImageFromOnOnChainInfo: RequestHandler = async (req
   // Note: a path extension on the network route is a source filter (handled in
   // bestGuessNeworkImage), not an output conversion — so no pathExt here.
   const params = parseResizeParams({ query: req.query })
-  if (await maybeResize({ res, img, params })) return
-  sendImage(res, img, resolveImageMode(req.query.mode as ImageModeParam | null | undefined))
+  await respondWithImage({ req, res, img, params })
 }
 
 /** Swallow 404 errors (return null), re-throw anything else */
@@ -594,8 +636,7 @@ export const tryMultiple: RequestHandler<
         ignoreNotFound,
       )
       if (!result) continue
-      if (await maybeResize({ res, img: result.img, params })) return
-      return sendImage(res, result.img, resolveImageMode(req.query.mode))
+      return respondWithImage({ req, res, img: result.img, params })
     }
     if (order && order.length !== 64 /* check if hex */) {
       return next(httpErrors.NotAcceptable('invalid order'))
@@ -627,8 +668,7 @@ export const tryMultiple: RequestHandler<
       }).catch(ignoreNotFound)
     }
     if (result) {
-      if (await maybeResize({ res, img: result.img, params })) return
-      return sendImage(res, result.img, resolveImageMode(req.query.mode))
+      return respondWithImage({ req, res, img: result.img, params })
     }
   }
   return next(httpErrors.NotFound('image not found from list'))
@@ -705,6 +745,8 @@ export const sendImage = (
     for (const [name, value] of Object.entries(headers)) {
       res.set(name, value)
     }
+    // A redirect that stands in for a plate that could not be made must not be kept either.
+    if (cachePolicy === 'no-store') res.set('cache-control', cacheControlFor(cachePolicy))
     return res.redirect(img.uri)
   }
   if (decision === 'unavailable') {
@@ -721,14 +763,13 @@ export const sendImage = (
   // or strip them. Only the root element is ever rewritten — see
   // stripRootSvgDimensions.
   //
-  // The content-addressed route is deliberately excluded. Its contract is that one path
-  // keeps returning the stored bytes, which is what makes a year-long immutable lifetime safe
-  // to promise. (The key in the path is not the sha256 of those bytes; `image.content_sha256`
-  // is that digest.) Rewriting the markup there would change what a path returns, and the
-  // year-long cache would carry the change well past any correction. So the hash route serves
-  // exactly what was stored.
+  // A response promised for a year is excluded: its contract is that one path keeps returning the
+  // stored bytes, and rewriting the markup would change what the path returns. No vector row is
+  // served that way now (see `directRoutePolicy`), so this guard is a safeguard for a policy
+  // passed in by a future route.
   const rewritable = SVG_EXTS.has(img.ext) && cachePolicy !== 'content-addressed'
   // `classifyImageServe` answered 'serve' only because there are bytes.
   const content = rewritable ? stripRootSvgDimensions(img.content!) : img.content
-  r.contentType(img.ext).send(content)
+  setImageSecurityHeaders(r)
+  r.contentType(servableExt(img.ext)).send(content)
 }

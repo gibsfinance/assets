@@ -33,12 +33,43 @@ const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
  */
 const PROVENANCE = ['link', 'x-license', 'x-source-uri', 'x-provider']
 
+/**
+ * What every response that carries image bytes must send. A stored vector image is text a stranger
+ * uploaded; with this policy a browser that opens it directly cannot run a script in it. They must
+ * stay off everything else, because `sandbox` would break the interface and the documentation site.
+ */
+const IMAGE_SECURITY_HEADERS = {
+  'content-security-policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+  'x-content-type-options': 'nosniff',
+}
+
+/**
+ * The documentation host for a target, by the naming the deployment uses (`docs.gib.show` and
+ * `docs-staging.gib.show`). Null for any other target, such as a local one, where the check is skipped.
+ */
+function docsBaseUrl(base) {
+  const { protocol, hostname } = new URL(base)
+  if (hostname === 'gib.show') return `${protocol}//docs.gib.show`
+  if (hostname === 'staging.gib.show') return `${protocol}//docs-staging.gib.show`
+  return null
+}
+
 const results = []
 
 async function probe(label, path, options = {}) {
-  const { expect = [200], type, follow = false, headers = [], bodyIncludes, headerEquals = {} } = options
+  const {
+    expect = [200],
+    type,
+    follow = false,
+    headers = [],
+    bodyIncludes,
+    headerEquals = {},
+    headerAbsent = [],
+    headerLacks = {},
+    baseUrl = BASE_URL,
+  } = options
   const separator = path.includes('?') ? '&' : '?'
-  const url = `${BASE_URL}${path}${separator}smoke=${Math.random().toString(36).slice(2)}`
+  const url = `${baseUrl}${path}${separator}smoke=${Math.random().toString(36).slice(2)}`
   const started = Date.now()
 
   let response
@@ -83,6 +114,20 @@ async function probe(label, path, options = {}) {
     if (actual === wanted) continue
     ok = false
     notes.push(`${name} is ${actual}, expected ${wanted}`)
+  }
+
+  for (const [name, forbidden] of Object.entries(headerLacks)) {
+    const actual = response.headers.get(name) ?? ''
+    if (!actual.includes(forbidden)) continue
+    ok = false
+    notes.push(`${name} is ${actual}, which must not contain ${forbidden}`)
+  }
+
+  for (const name of headerAbsent) {
+    const actual = response.headers.get(name)
+    if (actual === null) continue
+    ok = false
+    notes.push(`${name} is ${actual}, expected none`)
   }
 
   results.push({
@@ -146,6 +191,53 @@ await probe('query conversion', `/image/eip155-1/${USDC}?as=webp&width=128`, {
   type: 'image/webp',
 })
 await probe('resize', `/image/eip155-1/${USDC}?width=32`, { type: 'image/' })
+// A plate behind the logo. The Ethereum network icon is a vector, so a plated one stays a vector.
+await probe('plated vector', '/image/eip155-1?bg=ffffff&shape=rounded', {
+  type: 'image/svg+xml',
+  bodyIncludes: 'fill="#ffffff"',
+})
+await probe('plated pixels', `/image/eip155-1/${USDC}?bg=ffffff&as=png&w=64`, { type: 'image/png' })
+await probe('contrast', '/image/eip155-1?contrast=dark', { type: 'image/' })
+// An answer that depends on plate parameters is never kept for a year, plated or not.
+await probe('plated lifetime', '/image/eip155-1?bg=ffffff', {
+  type: 'image/svg+xml',
+  headerLacks: { 'cache-control': 'immutable' },
+})
+await probe('contrast lifetime', '/image/eip155-1?contrast=dark', {
+  type: 'image/',
+  headerLacks: { 'cache-control': 'immutable' },
+})
+
+// Image bytes carry the security headers, and nothing else does. The vector-only network icon is an
+// svg, the file type the policy exists for. A plated one is sent by a different code path.
+await probe('svg security headers', '/image/eip155-1?only=vector', {
+  type: 'image/svg+xml',
+  headerEquals: IMAGE_SECURITY_HEADERS,
+})
+await probe('plated svg security headers', '/image/eip155-1?only=vector&bg=ffffff', {
+  type: 'image/svg+xml',
+  headerEquals: IMAGE_SECURITY_HEADERS,
+})
+await probe('pixel image security headers', `/image/eip155-1/${USDC}?as=png&w=64`, {
+  type: 'image/png',
+  headerEquals: IMAGE_SECURITY_HEADERS,
+})
+await probe('json lacks image headers', '/networks', {
+  type: 'json',
+  headerAbsent: Object.keys(IMAGE_SECURITY_HEADERS),
+})
+await probe('interface lacks image headers', '/', {
+  type: 'text/html',
+  headerAbsent: Object.keys(IMAGE_SECURITY_HEADERS),
+})
+const docsUrl = docsBaseUrl(BASE_URL)
+if (docsUrl) {
+  await probe('docs host lacks image headers', '/', {
+    baseUrl: docsUrl,
+    type: 'text/html',
+    headerAbsent: Object.keys(IMAGE_SECURITY_HEADERS),
+  })
+}
 await probe('vector only', `/image/eip155-1/${USDC}?only=vector`, {
   type: 'image/',
 })
@@ -171,6 +263,8 @@ await probe('unknown chain', '/image/eip155-99999999', { expect: [400, 404] })
 await probe('unknown token', `/image/eip155-1/0x${'de'.repeat(20)}`, {
   expect: [400, 404],
 })
+await probe('malformed plate colour', '/image/eip155-1?bg=not-a-colour', { expect: [400] })
+await probe('malformed plate contrast', '/image/eip155-1?contrast=sideways', { expect: [400] })
 await probe('malformed address', '/image/eip155-1/not-an-address', {
   expect: [400, 404],
 })

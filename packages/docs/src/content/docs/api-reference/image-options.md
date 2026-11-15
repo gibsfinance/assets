@@ -19,6 +19,9 @@ These options apply to the token image routes. The resize and format options als
 | `providerKey` | string | none | Use only these providers, for example `trustwallet` or `coingecko`. Separate several with commas. |
 | `listKey` | string | none | Use only these list keys. Separate several with commas. |
 | `license` | string | none | Allow only images with these licences. See [Ask for licensed artwork only](#ask-for-licensed-artwork-only). |
+| `bg` | hex colour | none | Paint a plate behind the logo. See [Put a logo on a plate](#put-a-logo-on-a-plate). |
+| `shape` | `circle`, `rounded` or `square` | `circle` | The outline of the plate. |
+| `contrast` | `dark` or `light` | none | Add a plate only when the logo is hard to see on a dark or light page. |
 | `mode` | `link` | none | With `mode=link`, Gib answers 302 and redirects to the original source address instead of sending the image. Without it, Gib sends the image bytes. |
 
 ## How resizing works
@@ -30,6 +33,39 @@ These options apply to the token image routes. The resize and format options als
 - A vector image (`svg`) that has a `viewBox` passes through unchanged. It is already independent of resolution.
 - A vector image without a `viewBox` is rasterised to `png`.
 - `as` without `w` or `h` converts the format and keeps the original size.
+
+## Put a logo on a plate
+
+Some logos are dark and almost vanish on a dark page. Add a plate, a solid shape behind the logo, to fix that. Three parameters control it. They work on every image route.
+
+- `bg` is the plate colour. Write 3, 6 or 8 hex digits without `#`. Eight digits end with alpha, so `00000080` is half-transparent black. Any other value answers 400.
+- `shape` is the outline: `circle` (the default), `rounded` or `square`. It has an effect only together with `bg` or `contrast`. On its own it is checked, so a typo still answers 400, and then ignored.
+- `contrast` tells Gib what your page looks like: `dark` or `light`. Gib draws the logo small and checks each visible pixel against a typical page of that tone. A pixel stands out when its contrast ratio is at least 3:1, the minimum the Web Content Accessibility Guidelines set for graphics. Gib adds a plate in the opposite tone (white on a dark page, near-black on a light page) only when fewer than a quarter of the visible pixels stand out. A logo with some strong parts, such as a coloured disc with a white symbol, is served unchanged.
+
+When you send `bg` and `contrast` together, `bg` is the plate colour and `contrast` decides whether the plate appears. With `bg` alone the plate is always drawn.
+
+```bash
+# Add a light plate only if the logo is too dark for a dark page
+curl "https://gib.show/image/25?contrast=dark"
+
+# Always paint a white rounded plate
+curl "https://gib.show/image/25?bg=ffffff&shape=rounded"
+
+# A plate drawn to pixels, 128 by 128, as webp
+curl "https://gib.show/image/25?bg=ffffff&as=webp&w=128"
+```
+
+How the plate is drawn:
+
+- A vector image with a `viewBox` stays a vector. The answer is `image/svg+xml`: a new image with the plate behind and the original inside it, centred. Gib adds nothing from your query to it except the validated colour. `w` and `h` have no effect on a vector, as before.
+- Any other source, or any request with `as`, is drawn to pixels. The plate is a square, `w` by `w` (or the smaller of `w` and `h`). Without a size, a vector source is drawn 256 pixels wide and a raster source keeps its size plus room for the padding. The logo is fitted inside the shape with space around it, more for `circle` than for `square`, and is never enlarged. A circle or rounded plate has transparent corners, except in `jpg`, which has no transparency and gets white corners.
+- A vector without a `viewBox` is drawn to pixels as `png`, because it has no size to nest it by.
+- A plate is never wider than 2048 pixels, the same limit as `w` and `h`. A raster source so large that its own size plus padding passes 2048 is drawn at 2048, with the logo shrunk to fit.
+- Gib does not store plated images, and a plated request never receives a plain image or the other way round. The response `ETag` follows the bytes, and the logo's brightness is measured once and remembered by the server. If Gib cannot decode a source to measure or draw it, you get the plain image with `cache-control: no-store`, so a cache does not keep the plain image in place of the plate. A logo kept at a remote address (a linked image) is read by Gib for the plate, up to 512 KB, and is cleaned before it is drawn; a larger file, or one that cannot be read, is redirected to its own address.
+- Any request with `bg`, `shape` or `contrast` carries the shorter `cache-control` lifetime, including on `/image/direct/{hash}`, and also when `contrast` finds no plate is needed. The year-long immutable lifetime is for bytes that cannot change, and the answer to a plate request depends on how Gib draws plates.
+- `as=svg` together with a plate gives a vector only for a vector image that has a usable `viewBox`. For any other source the answer is 404, not a png.
+- Drawing is limited, because it is done on demand. Each image may have 30 plated draws a minute, each caller 120, and the whole service 600; past that the answer is 429 with `Retry-After: 60`. A caller is named by its network address. When too many plates are being drawn at once, or one caller already has four waiting, the answer is 503 with `Retry-After: 2`. A request that needs no plate (for example `contrast` on a logo that is already easy to see) spends nothing and never waits behind a draw. Neither answer is cached. An edge cache that holds the full address, query included, answers repeat requests for the same plate without reaching Gib, so a page that shows the same plates again and again does not spend this allowance.
+- A source that asks that its artwork is not copied is redirected, as described above. It gets no plate.
 
 ## Response headers
 
@@ -43,6 +79,8 @@ These options apply to the token image routes. The resize and format options als
 | `x-license` | The licence Gib identified, or `unknown`. |
 | `x-license-url` | Where to read that licence. Sent only when the licence is known. |
 | `x-attribution` | The notice you must reproduce, when the licence requires one. |
+| `content-security-policy` | `default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox`, on every response that carries image bytes. A stored vector image comes from outside, so a browser that opens it directly must not run anything in it. Images shown in an `img` element or as a CSS background are not affected. |
+| `x-content-type-options` | `nosniff`, on every response that carries image bytes. |
 | `link` | A link to the licence terms page of the instance. On the public instance it is `https://gib.show/terms`. |
 | `x-resolved-chain` | Network image route only. The prefixed identifier the request resolved to. |
 | `cache-control` | See [Caching](/api-reference/caching/). |

@@ -1,125 +1,63 @@
 import sharp from 'sharp'
 import type { FormatEnum } from 'sharp'
+import { ImageRejectedError } from './image-rejected'
+import { UNTRUSTED_INPUT } from './untrusted-input'
+import { sanitizeSvgDocument } from './svg-sanitize'
+
+export { SvgRejectedError, decodeCharacterReferences, isScriptUri } from './svg-sanitize'
+export { ImageRejectedError } from './image-rejected'
+
+/** The raster extensions that have a re-encoder, and the format each is written in. */
+const RASTER_FORMATS: Readonly<Record<string, keyof FormatEnum | 'avif'>> = {
+  '.png': 'png',
+  '.jpg': 'jpeg',
+  '.jpeg': 'jpeg',
+  '.gif': 'gif',
+  '.webp': 'webp',
+  '.avif': 'avif',
+}
+
+/**
+ * Extensions whose files may hold several frames. They are read with `animated: true`, because
+ * sharp otherwise reads only the first frame and the re-encoded file is a still.
+ */
+const ANIMATED_RASTER_EXTENSIONS: ReadonlySet<string> = new Set(['.gif', '.webp'])
 
 /**
  * Sanitize an image buffer before storage.
  *
- * Raster images (PNG, JPG, GIF, WebP, AVIF): Re-encode through sharp to strip
- * EXIF metadata, embedded scripts, and other potentially dangerous payloads.
+ * Raster images (PNG, JPEG, GIF, WebP, AVIF): re-encoded through sharp to strip metadata, embedded
+ * scripts and any other payload. An animated GIF or WebP keeps its frames. A raster format with no
+ * re-encoder (APNG, BMP, TIFF, ICO and the rest) is refused, because storing it would store the
+ * bytes as they were downloaded; sharp cannot write an animated PNG, so an APNG cannot be cleaned
+ * without losing its animation, and it is refused too.
  *
- * SVG images: Strip dangerous elements (script, foreignObject, use with external
- * refs), event handler attributes (on*), and javascript: URIs.
+ * Vector images: parsed, everything unsafe removed and the tree written back (see `svg-sanitize.ts`).
+ *
+ * @throws {ImageRejectedError} For an image that cannot be made safe: a vector image that is not
+ *   well formed markup (a `SvgRejectedError`), a raster format with no re-encoder, or a raster file
+ *   sharp cannot decode. Such an image is never stored as it came.
  */
 export async function sanitizeImage(image: Buffer, ext: string): Promise<Buffer> {
   if (ext === '.svg') {
-    return sanitizeSvg(image)
+    return sanitizeSvgDocument(image)
   }
   return sanitizeRaster(image, ext)
 }
 
-/** Re-encode a raster image through sharp to strip metadata and embedded payloads */
+/** Re-encode a raster image through sharp to strip metadata and embedded payloads. */
 async function sanitizeRaster(image: Buffer, ext: string): Promise<Buffer> {
-  // sharp's `toFormat` accepts `keyof FormatEnum | "avif"` — avif is typed
-  // separately from the enum, so the union is required to include it.
-  const formatMap: Record<string, keyof FormatEnum | 'avif'> = {
-    '.png': 'png',
-    '.jpg': 'jpeg',
-    '.jpeg': 'jpeg',
-    '.gif': 'gif',
-    '.webp': 'webp',
-    '.avif': 'avif',
-    '.ico': 'png', // ICO → PNG re-encode
-  }
-
-  const format = formatMap[ext]
+  const format = RASTER_FORMATS[ext]
   if (!format) {
-    // Unknown raster format — return as-is (will be detected by getExt)
-    return image
+    throw new ImageRejectedError(`raster rejected: there is no re-encoder for ${ext}, so it cannot be cleaned`)
   }
 
   try {
-    return await sharp(image)
+    return await sharp(image, { ...UNTRUSTED_INPUT, animated: ANIMATED_RASTER_EXTENSIONS.has(ext) })
       .rotate() // Auto-rotate based on EXIF, then strip EXIF
       .toFormat(format)
       .toBuffer()
-  } catch {
-    // sharp can't process this image — return original
-    // (e.g., corrupt file, animated GIF edge cases)
-    return image
+  } catch (error) {
+    throw new ImageRejectedError(`raster rejected: sharp cannot decode this ${ext} file`, { cause: error })
   }
-}
-
-// ---------------------------------------------------------------------------
-// SVG sanitization
-// ---------------------------------------------------------------------------
-
-/** Elements that can execute code or load external resources */
-const DANGEROUS_ELEMENTS = [
-  'script',
-  'foreignObject',
-  'iframe',
-  'embed',
-  'object',
-  'applet',
-  'math', // MathML can trigger XSS in some browsers
-]
-
-/** Build a regex that matches opening and closing tags + content for dangerous elements */
-const DANGEROUS_ELEMENT_REGEX = new RegExp(
-  DANGEROUS_ELEMENTS.map((el) => `<${el}[\\s>][\\s\\S]*?</${el}\\s*>`).join('|') +
-    '|' +
-    DANGEROUS_ELEMENTS.map((el) => `<${el}[\\s/][^>]*/>`).join('|'),
-  'gi',
-)
-
-/** Matches event handler attributes: onclick, onload, onerror, etc. */
-const EVENT_HANDLER_REGEX = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi
-
-/** Matches javascript: URIs in href/xlink:href/src attributes */
-const JAVASCRIPT_URI_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))javascript:[^"']*(?:"|')/gi
-
-/** Matches <use> elements with external references (xlink:href="http://..." or href="http://...") */
-const EXTERNAL_USE_REGEX = /<use\s[^>]*(?:xlink:)?href\s*=\s*(?:"|')https?:\/\/[^"']*(?:"|')[^>]*\/?>/gi
-
-/** Matches data: URIs that aren't images (could be text/html, application/javascript, etc.) */
-const DANGEROUS_DATA_URI_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))data:(?!image\/)[^"']*(?:"|')/gi
-
-/** Matches set/animate elements that can modify href to javascript: */
-const DANGEROUS_ANIMATE_REGEX =
-  /<(?:set|animate)\s[^>]*(?:attributeName\s*=\s*(?:"|')(?:href|xlink:href)(?:"|'))[^>]*>/gi
-
-/** Matches CSS @import rules that can load external stylesheets */
-const CSS_IMPORT_REGEX = /@import\s+(?:url\()?[^;)]+(?:\))?[^;]*;/gi
-
-/** Matches file:// protocol URIs */
-const FILE_PROTOCOL_REGEX = /(\s+(?:href|xlink:href|src)\s*=\s*(?:"|'))file:\/\/[^"']*(?:"|')/gi
-
-function sanitizeSvg(image: Buffer): Buffer {
-  let svg = image.toString('utf-8')
-
-  // Strip dangerous elements and their content
-  svg = svg.replace(DANGEROUS_ELEMENT_REGEX, '')
-
-  // Strip event handler attributes
-  svg = svg.replace(EVENT_HANDLER_REGEX, '')
-
-  // Strip javascript: URIs
-  svg = svg.replace(JAVASCRIPT_URI_REGEX, '$1#')
-
-  // Strip file:// URIs
-  svg = svg.replace(FILE_PROTOCOL_REGEX, '$1#')
-
-  // Strip CSS @import (can load external stylesheets)
-  svg = svg.replace(CSS_IMPORT_REGEX, '')
-
-  // Strip <use> elements with external references
-  svg = svg.replace(EXTERNAL_USE_REGEX, '')
-
-  // Strip non-image data: URIs
-  svg = svg.replace(DANGEROUS_DATA_URI_REGEX, '$1#')
-
-  // Strip animate/set elements targeting href (can inject javascript:)
-  svg = svg.replace(DANGEROUS_ANIMATE_REGEX, '')
-
-  return Buffer.from(svg, 'utf-8')
 }

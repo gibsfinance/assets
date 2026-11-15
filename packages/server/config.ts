@@ -79,6 +79,18 @@ const sharp = {
 }
 
 /**
+ * How many plated images (`?bg=`, `?contrast=`) the server draws at once. A plate is drawn on
+ * demand and never stored, so this is what keeps a burst of different colours from taking every
+ * thread and all the memory. Others wait in a line eight times this long; past that the server
+ * answers 503 with `Retry-After`. Defaults to `SHARP_CONCURRENCY`, since each draw is a sharp job.
+ *
+ *   PLATE_RENDER_CONCURRENCY  plates drawn at once   (default: SHARP_CONCURRENCY, 1)
+ */
+const plateRenders = {
+  concurrency: readLimit(process.env.PLATE_RENDER_CONCURRENCY, sharp.concurrency),
+}
+
+/**
  * Directory that holds the content-addressed image store (see `image-store/`).
  * Set IMAGE_STORE_DIR to move it, for example onto a volume that outlives the
  * container. The default sits in the repository root and is ignored by git.
@@ -121,6 +133,15 @@ const etherscan = readEtherscanSettings(process.env)
  */
 const docsHostnames = readHostnames(process.env.DOCS_HOSTNAMES)
 
+/**
+ * Lower-case name of the request header that carries the real client address, for example
+ * `cf-connecting-ip` behind the Cloudflare proxy or tunnel (CLIENT_ADDRESS_HEADER). Empty, the
+ * default, trusts no header. Set it only when the server can be reached through that proxy alone:
+ * a client that reaches the server directly could write the header itself. See
+ * `server/image/client-address.ts`.
+ */
+const clientAddressHeader = process.env.CLIENT_ADDRESS_HEADER?.trim().toLowerCase() || undefined
+
 Error.stackTraceLimit = Infinity
 
 export default {
@@ -131,9 +152,11 @@ export default {
   imageMaxAgeMs,
   concurrency,
   sharp,
+  plateRenders,
   imageStoreDirectory,
   imageStore,
   imageBytesInDatabase,
   etherscan,
   docsHostnames,
+  clientAddressHeader,
 }

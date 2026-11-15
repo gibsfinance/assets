@@ -23,3 +23,31 @@
  * only happens to need the same cross-origin exposure treatment.
  */
 export const RESOLVED_CHAIN_HEADER = 'x-resolved-chain'
+
+/**
+ * The policy sent with every response that carries image bytes. A stored vector image is text a
+ * stranger uploaded, and a browser that opens it directly at `/image/...` runs it on this origin.
+ * The sanitizer is a filter, and a filter can be bypassed, so this is the second wall: with
+ * `default-src 'none'` and `sandbox`, a script in the file cannot run and the file has no origin to
+ * borrow. `img-src data:` and `style-src 'unsafe-inline'` keep the inline pictures and styles that
+ * real logos use.
+ */
+export const IMAGE_CONTENT_SECURITY_POLICY = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+
+/** The headers every image-bytes response carries, as name and value. */
+export const IMAGE_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  'content-security-policy': IMAGE_CONTENT_SECURITY_POLICY,
+  // The type we declare is the type the browser uses. Without this a browser may sniff a stored
+  // vector file as a page.
+  'x-content-type-options': 'nosniff',
+}
+
+/** The part of an Express response the image funnel needs. */
+interface HeaderTarget {
+  set: (name: string, value: string) => unknown
+}
+
+/** Set the image security headers on a response that is about to carry image bytes. */
+export function setImageSecurityHeaders(res: HeaderTarget): void {
+  for (const [name, value] of Object.entries(IMAGE_SECURITY_HEADERS)) res.set(name, value)
+}

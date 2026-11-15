@@ -98,6 +98,8 @@ falls back to the default.
 | `SHARP_CACHE_MEMORY_MB` | 16 | sharp pixel cache size (`applySharpLimits`, both processes) |
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
+| `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits (4 places per caller), past it 503 + `Retry-After` |
+| `CLIENT_ADDRESS_HEADER` | none | header that carries the real client address (`cf-connecting-ip` behind Cloudflare); read only when named, never trusted by default (`image/client-address.ts`) |
 | `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
 | `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
 | `IMAGE_STORE_S3_PRESET` | `aws` | `s3`: `aws`, `r2`, `hetzner`, `b2`, `wasabi`, `spaces`, `minio` or `custom` |
@@ -245,6 +247,126 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   default, key. One rule for the by-address image (`applyOrder`), the chain lists and search, so a
   `logoURI` names the image `/image/:chainId/:address` serves. `applyOrder` adds one term after
   usable image: a current list version beats a superseded one (the lists read current versions only).
+- Plates: `?bg=<hex>`, `?shape=circle|rounded|square`, `?contrast=dark|light` put a shape behind a logo
+  (`image/plate.ts`, wired into `maybeResize`, so every image route has them). `parseResizeParams` validates
+  them (400) and a plate request alone makes `params` non-null. `contrast` draws the logo at 64 px and measures,
+  for each page tone, the alpha-weighted share of visible pixels with at least `PLATE_CONTRAST_THRESHOLD` (3:1)
+  contrast; it plates only when that share is under `PLATE_VISIBLE_SHARE_THRESHOLD` (0.25). A share, not a mean:
+  a mean gave the Ethereum logo a plate on white. The two shares are remembered in memory, keyed by `image:<imageHash>`
+  for stored bytes and `bytes:<sha256>` for a link-mode body fetched this request; concurrent requests share one
+  measurement and a source that cannot be decoded is remembered for 60 s (logged once) and answered as the plain
+  request would be, never 500. A vector is measured at about 64 px (`openForMeasurement`), not at its declared size.
+  Plated output is NOT stored in `image_variant` (its key has no plate field and the colour is free text, so storing
+  would let a caller fill the table) and so needs no migration. Because it is drawn per request it is limited: a
+  plate budget (`createRateLimiter`, 30 per image, 120 per caller and 600 total a minute, answer 429 + `Retry-After: 60`)
+  spent only when a plate is actually drawn (`canSpend` looks without spending, so a link-mode request is refused before
+  its download), and `concurrency-gate.ts` (`PLATE_RENDER_CONCURRENCY`, line of 8 per slot, 4 places per caller, then
+  503 + `Retry-After: 2`). The gate wraps only the draw, after the budget check; measurements, no-plate answers and vector
+  wrapping never queue. A caller is `clientAddressOf` (`client-address.ts`): the header named by `CLIENT_ADDRESS_HEADER`
+  when set, else the connection's address, and null (global budget only) when that is private or loopback, which is a
+  tunnel or proxy whose callers cannot be told apart. IPv6 is cut to its first 64 bits. Behind Cloudflare Tunnel the
+  deploy must set `CLIENT_ADDRESS_HEADER=cf-connecting-ip` for the per-caller budget to apply. Both refusals are `no-store` JSON written in `maybeResize`, not thrown (the error funnel
+  turns 5xx into a generic 500). A drawn plate never passes `MAX_DIM` (2048) a side; a larger raster shrinks. A request
+  with plate parameters is always `mutable`, including on `/image/direct/<hash>` and when `contrast` finds no plate is
+  needed (`cachePolicyForOriginal`, used by `respondWithImage` in `handlers.ts`, so every route agrees): its answer depends
+  on code constants, so the year-long immutable lifetime is not honest. A plate that was asked for and cannot be produced
+  (cannot be measured or drawn, or a link-mode image cannot be read) sends the plain image, or the redirect, `no-store`;
+  chosen over 503 because a logo that shows without its plate is better than a broken image, and `no-store` stops a
+  cache keeping that answer. `as=svg` with a plate on a vector with no usable `viewBox` is 404, as `as=svg` on a raster is. A vector with a `viewBox` and no `as` stays svg (plate plus the
+  original nested) only when `wrapSvgWithPlate` is sure of valid markup (quote-aware root tag; a DOCTYPE, a non-UTF-8
+  declaration, or markup outside comments around the root sends it to sharp instead); anything else goes through sharp.
+  `hasUsableViewBox` reads the attribute named exactly `viewBox` (not `data-viewBox`, not text inside another value).
+- Link-mode images (a row with no stored bytes) are read by `remote-image.ts` for every resize and plate: body capped at
+  512 KB (streamed, dropped as it passes the cap). The fetch gate (`REMOTE_IMAGE_CONCURRENCY`, 4 fetches at once) covers
+  only the network call and the body: a file waiting for a sanitizer worker holds no fetch slot. The number of files in
+  progress as a whole is `REMOTE_IMAGE_PLACES` (8), so the fetch line cannot fill; the gate has no separate queue limit. Each download has its own window
+  of `REMOTE_IMAGE_TIMEOUT_MS` (5 s) from the moment it starts, and that window alone governs the network call and the
+  body. The request's arrival deadline (also 5 s, from arrival) only decides the caller's answer; a file nobody waits for
+  is dropped from the line before it starts. One fetch per address is in flight at a time: requests for that address join
+  it (`inFlight`), so a slow or silent host cannot be made to serve many parallel downloads. A successful answer is always
+  kept, even when every request that waited for it was shed.
+  - Charged (`refuse`, remembered 60 s): a download whose window ended without an answer, after queueing or not; a
+    non-success answer; an oversized or empty body; a file the sanitizer refused (`ImageRejectedError`, which includes a
+    raster over `MAX_INPUT_PIXELS`); a file whose sanitizing ran out of its budget (`cut-off`); a worker that ran out of
+    its heap, or stopped, or crashed while it was running this file after it had reported ready. Only those: any other
+    error from the sanitizer is shed (see below).
+  - Shed (`REMOTE_IMAGE_SHED`, nothing charged, the next request tries again): a request whose deadline passed in line; a
+    sanitizing job that expired because no request wanted the file when a worker was granted, or because it was shed by
+    the sanitizer queue (see below); and any sanitizer infrastructure failure (`unavailable`): a worker that could not be
+    started (its factory threw, for example `ERR_WORKER_INVALID_EXEC_ARGV`), a worker whose code failed to load, a worker
+    that did not report ready within `READY_TIMEOUT_MS` (10 s; a start takes about 0.4 s on an idle machine and up to several seconds under load, and it is stopped), a closed pool, and a third worker while
+    two stopped ones are still alive. Failures before ready are never charged, because the file was never run. Infrastructure
+    failures are logged once per distinct message to the failure log.
+  - A download still running when its requests are shed keeps its gate slot until its window ends (it is not aborted,
+    because that would leave a silent host never charged).
+  The sanitizer queue is bounded by places. Before a file is downloaded its request reserves one place
+  (`sanitizer.reserve()`, see `sanitizer-pool.ts`). A place is held for a file in progress: being downloaded, waiting for a
+  worker, or being cleaned. At most `REMOTE_IMAGE_PLACES` (8) are held at once, and a
+  request that finds none is shed at once with no download and no fetch. A place is held while the file is downloaded,
+  waits for a worker and is cleaned, and it is released on every path that does not clean the file: a failed or refused
+  download, a shed download, and a finished cleaning (`release` is idempotent). A file that waits longer than
+  `SANITIZER_QUEUE_MAX_WAIT_MS` (5 s) for a worker is shed as `expired-in-queue`, nothing is charged, and its fetched bytes
+  are dropped: they were never cleaned, so they are never served or kept, and the next request fetches again. A job that is
+  already running is not aborted when its waiters leave; its budget bounds it, and its result is kept.
+  Sanitizing runs in `server/image/sanitizer-pool.ts` on one worker thread (`SANITIZER_POOL_SIZE` = 1), started on first
+  use, running one job at a time, with `--import register-hooks.ts` and a 256 MB heap limit. The sanitizing budget
+  (`SANITIZE_TIMEOUT_MS`, 5 s) starts when a worker is granted to the file and the worker has reported ready (its code
+  loaded), so neither the wait for a worker nor the worker's start-up is charged to the file. A worker that ends a job
+  stopped (cut off, or failed) holds its slot until it has exited or `TERMINATE_GRACE_MS` (500 ms) has passed, whichever
+  comes first, so a slow exit does not hold the pool. While one stopped worker is still alive a second may start, and a
+  third is refused as unavailable: the pool never has more than `SANITIZER_POOL_SIZE` + 1 threads.
+  Memory limits and decode cost: `untrusted-input.ts` holds `MAX_INPUT_PIXELS` (25,000,000, about 5000 by 5000). Every sharp
+  call on bytes from outside spreads `UNTRUSTED_INPUT` into its options: the raster sanitizer, the resize and measurement
+  openers (including the SVG density path), and the sprite rasteriser. sharp reads the header first, so a palette PNG that
+  claims 16383 by 16383 pixels is refused before any pixel is decoded (a 255 KB file of that size decoded for about six
+  seconds before the cap). Images that a server composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
+  only while remote files are being cleaned; the next job starts a fresh worker. A job takes its worker's idle stop away,
+  and the idle timer never stops a worker that is running a job. `close()` answers every waiting job and every later job
+  unavailable, and stops the workers.
+  Memory, measured on the development machine with the sanitizer and the loader loaded in a plain script: 131 MB with no
+  worker, 163 MB with one (about 33 MB per worker), 207 MB with two (about 38 MB each). The 250 MB figure in the deployment
+  notes is the owner's measurement of the whole server and was not re-measured here. A worker's start-up pauses the main
+  thread for a few hundred milliseconds (measured: a worker's first reply takes about 360 ms with the production hooks,
+  and about 19 ms without them), so a remote load that finds no worker waiting pays that once; after an idle stop, or after
+  a worker is stopped for a file, the next remote load pays it again. `sanitize` in the loader options runs in-process with
+  no budget and is a test seam only. Kept 60 s by address in a cache bounded to 200 entries and 32 MB, a failure remembered
+  60 s. Plain-node check: `sanitizer-pool.plain-node.test.ts` runs `server/image/__testing__/pool-load-check.ts` under
+  `node --import ./src/bin/register-hooks.ts`; the longest main-thread pause with two 360 KB logos is about 18 ms with one
+  worker (the in-process path blocked the loop for the whole load).
+  librsvg does not fetch external references (an `<image href>` to a local server or `file:` drew nothing and made no
+  request), so a remote vector cannot make the server fetch more. `load` answers `REMOTE_IMAGE_SHED` (a full line, or a deadline passed in line) apart from `null` (a bad image):
+  `sprite.ts` sends a sheet with a cell lost to `REMOTE_IMAGE_SHED` as `no-store`, not for `CACHE_SECONDS`.
+- Image security headers: every response that carries image bytes (`sendImage`, `sendVariant`, so plated output
+  too, and the sprite sheet) sets `Content-Security-Policy: default-src 'none'; img-src data:; style-src
+  'unsafe-inline'; sandbox` and `X-Content-Type-Options: nosniff` through `setImageSecurityHeaders` in
+  `image/headers.ts`. Redirects and JSON errors do not carry them, nor does the docs host or the interface. Stored
+  Stored vector images pass `sanitizeImage`, so this is the second wall. The vector sanitizer (`svg-sanitize.ts`) reads
+  the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
+  elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
+  (decoded the way a browser reads it), cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
+  (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes a cleaned copy
+  into a new document (`copyChildren` / `copyElement`). The copy is linear: xmldom re-indexes a parent's children on
+  every removal and `setAttributeNS` scans the whole attribute list on every write, so the walk never removes a node and
+  writes attributes with `createAttributeNS` and `setAttributeNode`. The parser runs with `locator: false` (positions
+  are not read, and recording them cost about half the parse). There is no pattern matching on markup. A document that is not well formed, uses an entity, or does not start with a vector image
+  root throws `SvgRejectedError`; `insertImage` then logs it and returns null, so nothing is stored
+  (`POST /api/images/submit` answers 400). Rasters follow the same rule (`sanitizeRaster` in `sanitize.ts`): PNG, JPEG,
+  GIF, WebP and AVIF are re-encoded (GIF and WebP with `animated: true`, so their frames survive; sharp reads only the first
+  frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
+  throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
+  so APNG is refused, not flattened. A style element's text or a `style` attribute over `MAX_STYLE_TEXT_LENGTH` (256 KiB), or a document over
+  `MAX_ATTRIBUTES` (200,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
+  check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
+  or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
+  changes were checked on the 4,441 files of the smoldapp sample: the copy walk gives byte-identical output for every
+  file, against the previous in-place walk and against the sanitizer before the review round. The 3 files of 3 to 4 MB
+  (about 97,000 attributes apiece) are kept by the 200,000 cap. The collector reads that artwork from disk, so no download
+  cap applies to it. Measured with the copy walk, on one element on the development machine: 199,990 kept attributes
+  take about 2.0 to 2.7 seconds, and 199,990 dropped ones about 0.9 to 1.2 seconds (most of it the parse); 150,000
+  siblings to remove take about 1.5 seconds. Before the copy walk, 25,000 handler attributes took 8.6 seconds.
+  The collector's `insertImage` also sanitizes on its own thread; that is left in place because the collector is a
+  batch process with no deadline.
+  A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
 
 ### Image Bytes: the Store
@@ -268,7 +390,15 @@ directory.
   `gc` (dry run unless `--no-dry-run`; keeps files younger than `--grace-days`, default 7), `copy --from <spec>
   --to <spec> [--concurrency N]` (moves every blob between any two stores; resumable, since a blob the destination
   holds with the same length is skipped; each blob is hashed after reading and a mismatch is reported, never written;
-  exits 1 on any problem). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
+  exits 1 on any problem), `resanitize [--no-dry-run] [--batch-size N] [--sleep-ms N] [--changed-list <path>]` (runs the
+  current vector sanitizer over stored `.svg` and `.svg+xml` rows (`legacyExtensionRows` counts the second; `servableExt`
+  serves both as `image/svg+xml`, and the extension is not renamed because it is part of the `image_hash` key); the summary's
+  `rewrittenHashes` and the `--changed-list` file name every rewritten row, so an operator can purge exactly
+  `/image/direct/<hash>` at the edge. `/image/direct/<hash>` is `immutable` for a year only for non-vector rows
+  (`directRoutePolicy`); a vector row gets the ordinary lifetime because this command rewrites its bytes under the same address; dry run by default; a changed row also loses its `image_variant` rows in the same transaction (`variantsDeleted`; a dry run counts them, an unchanged or skipped row keeps its variants) and gets a new file in the store and a new
+  `content_sha256` and `byte_size`, plus a new `content` if it kept a database copy, while `image_hash` stays and the old
+  file stays for `images gc`; safe to repeat because the sanitizer is idempotent; a refused row or a missing file is
+  reported and makes it exit 1). `<spec>` is a kind name or the `IMAGE_STORE` JSON. All of these go through the
   `BlobStore` interface, so they work on whatever `IMAGE_STORE` names; `gc` deletes only through `delete`.
 - The `content` column is dropped in a later migration, after production has run with bytes off.
 

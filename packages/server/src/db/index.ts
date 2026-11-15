@@ -13,7 +13,7 @@ import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
 import * as paths from '../paths'
 import { detectImageExt } from '../image-format'
-import { sanitizeImage } from '../sanitize'
+import { sanitizeImage, type ImageRejectedError } from '../sanitize'
 import {
   isPlaceholderDigest,
   isPlaceholderStoredImage,
@@ -267,7 +267,7 @@ export const insertImage = async (
   },
   tx?: DrizzleTx,
 ) => {
-  const ext = await detectImageExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image)
   const imageHash = ids.imageHash(image, originalUri, ext)
   if (!ext) {
     failureLog('no ext %o -> %o', providerKey, originalUri)
@@ -289,7 +289,13 @@ export const insertImage = async (
   }
 
   // Sanitize: re-encode rasters (strips EXIF/payloads), strip SVG scripts
-  const sanitized = await sanitizeImage(image, ext)
+  // An image that cannot be cleaned (a vector file that is not well formed, a raster format with no
+  // re-encoder, a raster sharp cannot decode) is never stored as it came, so nothing is stored for it.
+  const sanitized = await sanitizeImage(image, ext).catch((error: ImageRejectedError) => {
+    failureLog('image cannot be cleaned %o -> %o: %s', providerKey, originalUri, error.message)
+    return null
+  })
+  if (!sanitized) return null
   // One digest of the stored bytes serves the placeholder check, the row, and the file's name.
   const sha256 = hashBytes(sanitized)
   // Some sources answer a logo they do not hold with a generic "no artwork"
@@ -641,7 +647,7 @@ export const resolveImage = async (
   const image = await fetchImage(uri, signal, providerKey, address)
   if (!image) return null
   const originalUri = Buffer.isBuffer(uri) ? `buffer:${providerKey}:${address}` : uri
-  const ext = await detectImageExt(image, path.extname(originalUri))
+  const ext = await detectImageExt(image)
   if (!ext) return null
   return { buffer: image, ext, originalUri }
 }
@@ -2789,16 +2795,43 @@ export const getVariant = async (imageHash: string, width: number, height: numbe
   return row
 }
 
-export const insertVariant = async (variant: InsertableImageVariant, tx?: DrizzleTx): Promise<void> => {
-  const db = tx ?? getDrizzle()
-  await db
-    .insert(s.imageVariant)
-    .values(variant)
-    .onConflictDoUpdate({
-      target: [s.imageVariant.imageHash, s.imageVariant.width, s.imageVariant.height, s.imageVariant.format],
-      set: { content: variant.content, lastAccessedAt: dsql`NOW()` },
-    })
-}
+/**
+ * Store a resized variant, but only while its image still holds the bytes it was drawn from.
+ *
+ * `images resanitize` rewrites a row's bytes and deletes that row's variants in one transaction. A
+ * variant drawn from the bytes read before that rewrite would otherwise be stored after the delete,
+ * and served again. The image row is locked for sharing while the digest is checked and the variant
+ * written, so a rewrite either finishes first (and the digest no longer matches) or waits for this
+ * write, and then deletes it with the rest.
+ *
+ * @param options.variant The variant to store.
+ * @param options.sourceSha256 The digest the image's bytes had when they were read; null when the row
+ *   held no digest (its bytes were in the database, or it is a link-mode image).
+ * @returns True when stored. False when the image is gone or no longer holds `sourceSha256`.
+ */
+export const insertVariant = async ({
+  variant,
+  sourceSha256,
+}: {
+  variant: InsertableImageVariant
+  sourceSha256: string | null
+}): Promise<boolean> =>
+  getDrizzle().transaction(async (transaction) => {
+    const [current] = await transaction
+      .select({ contentSha256: s.image.contentSha256 })
+      .from(s.image)
+      .where(eq(s.image.imageHash, variant.imageHash))
+      .for('share')
+    if (!current || current.contentSha256 !== sourceSha256) return false
+    await transaction
+      .insert(s.imageVariant)
+      .values(variant)
+      .onConflictDoUpdate({
+        target: [s.imageVariant.imageHash, s.imageVariant.width, s.imageVariant.height, s.imageVariant.format],
+        set: { content: variant.content, lastAccessedAt: dsql`NOW()` },
+      })
+    return true
+  })
 
 export const bumpVariantAccess = async (
   imageHash: string,

@@ -39,10 +39,31 @@ Run it again to finish an interrupted copy. Use `--concurrency N` to set how man
 | `import` | Rollback. Copies bytes from the store back into the `content` column. |
 | `gc` | Garbage collection. It is a dry run unless you pass `--no-dry-run`. It keeps files younger than `--grace-days` (default 7). It deletes only through the store's `delete` function. |
 | `copy` | Moves every blob between two stores, as described above. |
+| `resanitize` | Runs the current vector image sanitizer over every stored vector image. It is a dry run unless you pass `--no-dry-run`. It rewrites only the images whose cleaned bytes differ, and it exits with status 1 if a file is missing or the sanitizer refuses an image. See below. |
 
 `export`, `verify`, `import` and `gc` work on whichever store `IMAGE_STORE` names.
 
 A `fallback` store never lets `gc` delete from its read-only side.
+
+## Cleaning stored vector images again
+
+The sanitizer runs when an image is stored. An image stored before a security fix keeps the bytes the older sanitizer left. Run `images resanitize` after you upgrade to make every stored vector image pass the current sanitizer.
+
+```sh
+yarn workspace server run start:images resanitize                # dry run: reports counts only
+yarn workspace server run start:images resanitize --no-dry-run --changed-list rewritten-hashes.txt   # rewrites
+```
+
+- A rewritten image gets a new file in the store, and its row gets the new digest and length. Its public address (`image_hash`) does not change.
+- If the row still holds a copy in the database, that copy changes with the digest.
+- The old file stays in the store. Run `images gc` later to remove it, after its grace period.
+- It is safe to stop and to run again. A second run reports every image as unchanged.
+- A row the sanitizer refuses (the file is not well formed) stays as it is and is listed in `rejectedExamples`. Check those rows by hand.
+- It reads rows stored as `.svg` and rows stored as `.svg+xml`, an older spelling of the same format. The summary field `legacyExtensionRows` counts the second kind. Gib serves both as `image/svg+xml`. It does not rename the extension, because the extension is part of the key that makes `image_hash`.
+- The summary lists the `image_hash` of every rewritten row in `rewrittenHashes`. With `--changed-list <path>`, the command also appends each hash to that file, one per line, as it rewrites the row, so the list is complete even if the run stops.
+- When it rewrites a row, it deletes that image's stored resized variants in the same transaction, so no variant drawn from the old bytes is served again. They are made again on the next request. The summary field `variantsDeleted` counts them. A dry run reports how many would be deleted. A row that is unchanged keeps its variants.
+- **Drop the old copies from your edge cache.** Gib serves a vector image at `/image/direct/<hash>` with the ordinary lifetime, not a year. The ordinary lifetime on `gib.show` is one day, plus a seven-day window that serves the old copy while the cache refreshes. A cache can therefore hold the old bytes for up to eight days. To close that window, ask your content delivery network to drop `/image/direct/<hash>` for each hash in the list. The resized forms of an address (`?w=`, `?h=` and `?as=`) are separate entries in the edge cache, and this list does not name them. They have the same ordinary one-day lifetime, so they expire on their own, and the server no longer builds them from the old bytes. On Cloudflare, give the full addresses to the cache purge by URL call, 30 at a time.
+- Use `--batch-size` and `--sleep-ms` to leave the database room for other work.
 
 ## Image bytes in the database
 

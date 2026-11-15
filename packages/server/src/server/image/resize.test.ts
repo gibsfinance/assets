@@ -39,6 +39,8 @@ import * as db from '../../db'
 import * as path from 'path'
 import { submodules } from '../../paths'
 import sharp from 'sharp'
+import { UNTRUSTED_INPUT } from '../../untrusted-input'
+import { REMOTE_IMAGE_SHED, createRemoteImageLoader, type RemoteImageLoader } from './remote-image'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,10 +74,12 @@ function makeImage(
     uri: string
     mode: string
     createdAt: Date
+    contentSha256: string | null
   }> = {},
 ): any {
   return {
     imageHash: 'abc123',
+    contentSha256: null,
     content: Buffer.from('fake-image-data'),
     ext: '.png',
     uri: 'https://example.com/image.png',
@@ -430,6 +434,7 @@ describe('formatToContentType', () => {
     expect(formatToContentType('webp')).toBe('image/webp')
     expect(formatToContentType('png')).toBe('image/png')
     expect(formatToContentType('jpg')).toBe('image/jpeg')
+    expect(formatToContentType('jpeg')).toBe('image/jpeg')
     expect(formatToContentType('avif')).toBe('image/avif')
   })
 
@@ -437,7 +442,6 @@ describe('formatToContentType', () => {
     expect(formatToContentType('bmp')).toBe('application/octet-stream')
     expect(formatToContentType('tiff')).toBe('application/octet-stream')
     expect(formatToContentType('')).toBe('application/octet-stream')
-    expect(formatToContentType('jpeg')).toBe('application/octet-stream')
   })
 })
 
@@ -596,7 +600,7 @@ describe('maybeResize', () => {
     const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
-    expect(sharp).toHaveBeenCalledWith(img.content)
+    expect(sharp).toHaveBeenCalledWith(img.content, UNTRUSTED_INPUT)
     expect(res.send).toHaveBeenCalledWith(Buffer.from('resized'))
   })
 
@@ -662,10 +666,7 @@ describe('maybeResize', () => {
   // -------------------------------------------------------------------------
   it('fetches remote content for LINK-mode images', async () => {
     const fakeContent = Buffer.from('remote-image-data')
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      arrayBuffer: vi.fn().mockResolvedValue(fakeContent.buffer),
-    }) as any
+    global.fetch = vi.fn().mockResolvedValue(new Response(new Uint8Array(fakeContent))) as any
 
     const req = mockReq({ w: '72' })
     const res = mockRes()
@@ -675,14 +676,38 @@ describe('maybeResize', () => {
       uri: 'https://cdn.example.com/token.png',
     })
 
-    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
+    // Sharp is mocked in this file, so the real sanitizer could not decode the stand-in bytes; it is
+    // replaced here and tested on its own (see `sanitize.test.ts`).
+    const remoteImages = createRemoteImageLoader({ sanitize: async (bytes) => bytes })
+    const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }), remoteImages })
 
     expect(result).toBe(true)
     expect(global.fetch).toHaveBeenCalledWith(
       'https://cdn.example.com/token.png',
       expect.objectContaining({ signal: expect.anything() }),
     )
-    expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
+    expect(sharp).toHaveBeenCalledWith(expect.any(Buffer), UNTRUSTED_INPUT)
+  })
+
+  it('treats a download turned away for load as an image that cannot be had, and leaves the original answer to the caller', async () => {
+    const remoteImages: RemoteImageLoader = {
+      load: vi.fn(async (): ReturnType<RemoteImageLoader['load']> => REMOTE_IMAGE_SHED),
+      reset: vi.fn(),
+      size: 0,
+    }
+    const res = mockRes()
+    const img = makeImage({ mode: 'link', content: Buffer.from(''), uri: 'https://cdn.example.com/busy.png' })
+
+    const result = await maybeResize({
+      res,
+      img,
+      params: parseResizeParams({ query: { w: '72' } }),
+      remoteImages,
+    })
+
+    expect(result).toBe(false)
+    expect(vi.mocked(remoteImages.load)).toHaveBeenCalledTimes(1)
+    expect(res.send).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -782,6 +807,33 @@ describe('maybeResize', () => {
     const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(false)
+  })
+
+  // Fourth review, finding 2: the variant is stored only against the digest of the bytes it was drawn from.
+  it('passes the digest of the bytes the variant was drawn from to insertVariant', async () => {
+    const digest = 'd'.repeat(64)
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'digest-carried-' + Date.now(), contentSha256: digest })
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: { w: '72', as: 'webp' } }) })
+
+    await vi.waitFor(() =>
+      expect(db.insertVariant).toHaveBeenCalledWith({
+        variant: expect.objectContaining({ imageHash: img.imageHash, width: 72 }),
+        sourceSha256: digest,
+      }),
+    )
+  })
+
+  it('passes a null digest for bytes that have none, such as a link-mode image', async () => {
+    const res = mockRes()
+    const img = makeImage({ imageHash: 'no-digest-' + Date.now(), contentSha256: null })
+
+    await maybeResize({ res, img, params: parseResizeParams({ query: { w: '72', as: 'webp' } }) })
+
+    await vi.waitFor(() =>
+      expect(db.insertVariant).toHaveBeenCalledWith(expect.objectContaining({ sourceSha256: null })),
+    )
   })
 
   // -------------------------------------------------------------------------

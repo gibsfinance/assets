@@ -1,3 +1,4 @@
+import { mkdtempSync, readFileSync } from 'node:fs'
 import * as fileSystem from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -12,6 +13,10 @@ vi.mock('./backfill', async (importOriginal) => ({
   exportImages: vi.fn(async () => ({ examined: 0, exported: 0, empty: 0, skipped: 0, bytes: 0 })),
   verifyImages: vi.fn(async () => ({ ok: true })),
   importImages: vi.fn(async () => ({ examined: 0, restored: 0, missingFiles: 0, skipped: 0 })),
+}))
+vi.mock('./resanitize', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./resanitize')>()),
+  resanitizeImages: vi.fn(async () => ({ ok: true, dryRun: true })),
 }))
 vi.mock('./garbage-collection', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./garbage-collection')>()),
@@ -28,6 +33,22 @@ const okCopy = {
   failed: 0,
   bytesCopied: 9,
   errors: [],
+  ok: true,
+}
+
+const okResanitize = {
+  dryRun: true,
+  examined: 3,
+  unchanged: 1,
+  changed: 2,
+  rewritten: 0,
+  variantsDeleted: 0,
+  skipped: 0,
+  rejected: 0,
+  missingFiles: 0,
+  legacyExtensionRows: 0,
+  rewrittenHashes: [] as string[],
+  rejectedExamples: [],
   ok: true,
 }
 
@@ -48,6 +69,7 @@ const setup = () => {
       unreferencedBytes: 0,
     })),
     copyImages: vi.fn(async () => okCopy),
+    resanitizeImages: vi.fn(async () => okResanitize),
   }
   const output = { print: (text: string) => printed.push(text), printError: (text: string) => errors.push(text) }
   return { operations, output, printed, errors }
@@ -170,6 +192,69 @@ describe('runImagesCommand', () => {
     expect(operations.copyImages).toHaveBeenCalledWith({ from: 'a', to: 'b', concurrency: 4 })
   })
 
+  it('makes resanitize a dry run unless told otherwise, and prints the summary', async () => {
+    const { operations, output, printed } = setup()
+
+    expect(await runImagesCommand(['resanitize'], { operations, output })).toBe(0)
+
+    expect(operations.resanitizeImages).toHaveBeenCalledWith({ dryRun: true, batchSize: 50, sleepMs: 0 })
+    expect(JSON.parse(printed[0])).toMatchObject({ examined: 3, changed: 2 })
+  })
+
+  it('rewrites with resanitize only for --no-dry-run, passing the batch options, and exits 1 when it is not ok', async () => {
+    const { operations, output } = setup()
+    operations.resanitizeImages = vi.fn(async () => ({ ...okResanitize, dryRun: false, rejected: 1, ok: false }))
+
+    const exitCode = await runImagesCommand(['resanitize', '--no-dry-run', '--batch-size', '5', '--sleep-ms', '20'], {
+      operations,
+      output,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(operations.resanitizeImages).toHaveBeenCalledWith({ dryRun: false, batchSize: 5, sleepMs: 20 })
+  })
+
+  it('writes the hash of each rewritten row to --changed-list as it is rewritten', async () => {
+    const { operations, output } = setup()
+    operations.resanitizeImages = vi.fn(async (options) => {
+      options.onRewritten?.('hash-one')
+      options.onRewritten?.('hash-two')
+      return { ...okResanitize, dryRun: false, rewritten: 2, rewrittenHashes: ['hash-one', 'hash-two'] }
+    })
+    const lines: [string, string][] = []
+
+    await runImagesCommand(['resanitize', '--no-dry-run', '--changed-list', '/tmp/changed.txt'], {
+      operations,
+      output,
+      appendLine: (path, line) => lines.push([path, line]),
+    })
+
+    expect(lines).toEqual([
+      ['/tmp/changed.txt', 'hash-one'],
+      ['/tmp/changed.txt', 'hash-two'],
+    ])
+  })
+
+  it('appends a line to a real file by default', async () => {
+    const { operations, output } = setup()
+    const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'changed-list-')), 'changed.txt')
+    operations.resanitizeImages = vi.fn(async (options) => {
+      options.onRewritten?.('hash-a')
+      options.onRewritten?.('hash-b')
+      return okResanitize
+    })
+
+    await runImagesCommand(['resanitize', '--changed-list', file], { operations, output })
+
+    expect(readFileSync(file, 'utf8')).toBe('hash-a\nhash-b\n')
+  })
+
+  it('passes no callback without --changed-list', async () => {
+    const { operations, output } = setup()
+    await runImagesCommand(['resanitize'], { operations, output })
+    expect(vi.mocked(operations.resanitizeImages).mock.calls[0][0]).not.toHaveProperty('onRewritten')
+  })
+
   it('refuses copy without both stores named', async () => {
     const { operations, output, errors } = setup()
 
@@ -217,9 +302,10 @@ describe('runImagesCommand', () => {
     expect(await runImagesCommand(['verify'])).toBe(0)
     expect(await runImagesCommand(['import'])).toBe(0)
     expect(await runImagesCommand(['gc'])).toBe(0)
+    expect(await runImagesCommand(['resanitize'])).toBe(0)
     expect(await runImagesCommand(['nonsense'])).toBe(1)
 
-    expect(log).toHaveBeenCalledTimes(4)
+    expect(log).toHaveBeenCalledTimes(5)
     expect(error).toHaveBeenCalled()
     log.mockRestore()
     error.mockRestore()
