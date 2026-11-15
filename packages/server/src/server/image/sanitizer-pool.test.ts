@@ -1,11 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import type { Worker } from 'node:worker_threads'
 import { failures } from '@gibs/utils'
 import {
   createInProcessSanitizer,
   createSanitizerPool,
   SANITIZE_TIMEOUT_MS,
   SANITIZER_IDLE_MS,
-  SANITIZER_QUEUE_LIMIT,
+  REMOTE_IMAGE_PLACES,
   SANITIZER_QUEUE_MAX_WAIT_MS,
   type SanitizeAttempt,
 } from './sanitizer-pool'
@@ -20,7 +22,9 @@ const sanitizedText = (attempt: SanitizeAttempt): string => {
   return attempt.bytes.toString()
 }
 
-describe('createSanitizerPool', () => {
+// Starting a worker is slow in this environment (up to about three seconds when a worker follows a stopped one), so
+// these tests allow longer than the default five seconds. The bounds they assert are the pool's own timers.
+describe('createSanitizerPool', { timeout: 30_000 }, () => {
   it('sanitizes a file on a worker thread, removing what the sanitizer removes', async () => {
     const pool = createSanitizerPool()
     try {
@@ -255,11 +259,11 @@ describe('createSanitizerPool', () => {
   })
 })
 
-describe('the sanitizer queue is bounded (sixth review, queue)', () => {
+describe('the sanitizer queue is bounded (sixth review, queue)', { timeout: 30_000 }, () => {
   const slowWorker = new URL('./__testing__/slow-sanitize-worker.ts', import.meta.url)
 
   it('reserves no more places than the queue limit, and a released place can be reserved again', () => {
-    const pool = createSanitizerPool({ workerUrl: slowWorker, queueLimit: 2 })
+    const pool = createSanitizerPool({ workerUrl: slowWorker, places: 2 })
     try {
       const first = pool.reserve()
       const second = pool.reserve()
@@ -276,7 +280,7 @@ describe('the sanitizer queue is bounded (sixth review, queue)', () => {
   })
 
   it('releases a place once, however often release is called', () => {
-    const pool = createSanitizerPool({ workerUrl: slowWorker, queueLimit: 1 })
+    const pool = createSanitizerPool({ workerUrl: slowWorker, places: 1 })
     try {
       const place = pool.reserve()
       place?.release()
@@ -317,10 +321,106 @@ describe('the sanitizer queue is bounded (sixth review, queue)', () => {
   })
 
   it('the default queue limit is eight, and the default maximum wait five seconds', () => {
-    expect(SANITIZER_QUEUE_LIMIT).toBe(8)
+    expect(REMOTE_IMAGE_PLACES).toBe(8)
     expect(SANITIZER_QUEUE_MAX_WAIT_MS).toBe(5_000)
   })
 })
+
+/**
+ * A stand-in worker for the pool's failure paths. It reports ready, takes jobs and never answers them, and when it is
+ * stopped it takes two seconds to exit. Its timers are unreferenced, so a test that ends first leaves nothing behind.
+ */
+class SlowExitWorker extends EventEmitter {
+  constructor() {
+    super()
+    setTimeout(() => this.emit('message', { ready: true }), 0).unref()
+  }
+  postMessage(): void {
+    // Never answered: the budget stops the job.
+  }
+  unref(): void {
+    // Nothing to keep alive.
+  }
+  terminate(): Promise<number> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.emit('exit', 1)
+        resolve(1)
+      }, 2_000).unref()
+    })
+  }
+}
+const slowExitWorker = (): Worker => new SlowExitWorker() as unknown as Worker
+
+describe(
+  'a worker that cannot start, never reports ready, or exits slowly (sixth round, failures)',
+  { timeout: 30_000 },
+  () => {
+    it('answers unavailable, and starts no worker, when the worker cannot be started at all', async () => {
+      const pool = createSanitizerPool({
+        createWorker: () => {
+          throw Object.assign(new Error('invalid exec argv'), { code: 'ERR_WORKER_INVALID_EXEC_ARGV' })
+        },
+      })
+      try {
+        expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({
+          status: 'unavailable',
+          message: 'sanitizer worker could not start: invalid exec argv',
+        })
+        expect(pool.workersStarted()).toBe(0)
+      } finally {
+        pool.close()
+      }
+    })
+
+    it('answers unavailable, and stops the worker, when it never reports ready', async () => {
+      const pool = createSanitizerPool({ workerUrl: fixture('silent-ready-sanitize-worker.ts'), readyTimeoutMs: 200 })
+      try {
+        expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({
+          status: 'unavailable',
+          message: 'sanitizer worker failed: did not report ready within 200 ms',
+        })
+        await vi.waitFor(() => expect(pool.workers()).toBe(0))
+      } finally {
+        pool.close()
+      }
+    })
+
+    // The slot is given back at the grace, not at the exit: the worker takes two seconds to exit, the grace is 300 ms.
+    it('gives the slot back within the grace after a cut-off, even when the worker exits slowly', async () => {
+      const pool = createSanitizerPool({ createWorker: slowExitWorker, budgetMs: 100, terminateGraceMs: 300 })
+      try {
+        const first = performance.now()
+        expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({ status: 'cut-off' })
+        expect(performance.now() - first).toBeLessThan(1_500)
+
+        const second = performance.now()
+        expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({ status: 'cut-off' })
+        expect(performance.now() - second).toBeLessThan(1_500)
+        expect(pool.workersPeak()).toBe(2)
+      } finally {
+        pool.close()
+      }
+    })
+
+    // One stopped worker may still be alive: a second one may start, a third may not.
+    it('refuses a third worker while two stopped workers are still alive', async () => {
+      const pool = createSanitizerPool({ createWorker: slowExitWorker, budgetMs: 100, terminateGraceMs: 50 })
+      try {
+        await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+        await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)
+
+        expect(await pool.run({ bytes: SVG, ext: '.svg' }, alwaysWanted)).toEqual({
+          status: 'unavailable',
+          message: 'sanitizer workers are still stopping',
+        })
+        expect(pool.workersPeak()).toBe(2)
+      } finally {
+        pool.close()
+      }
+    })
+  },
+)
 
 describe('createInProcessSanitizer', () => {
   it('sanitizes with the function it was given, on the calling thread', async () => {
@@ -381,7 +481,7 @@ const fakeTimers = () => {
   }
 }
 
-describe('an idle worker is stopped after the idle window (fifth review, memory)', () => {
+describe('an idle worker is stopped after the idle window (fifth review, memory)', { timeout: 30_000 }, () => {
   it('stops a worker that has had no job for the idle window', async () => {
     const timers = fakeTimers()
     const pool = createSanitizerPool({ timers })

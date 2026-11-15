@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, type Mock } from 'vitest'
 import sharp from 'sharp'
 import { createConcurrencyGate } from './concurrency-gate'
+import { ImageRejectedError } from '../../image-rejected'
 import { createSanitizerPool, type SanitizeAttempt, type SanitizerRunner } from './sanitizer-pool'
 import {
   createRemoteImageLoader,
@@ -152,7 +153,7 @@ describe('createRemoteImageLoader', () => {
     expect(await down.load({ uri: 'https://cdn.example/x', ext: '.png' })).toBeNull()
     const { loader } = setup({
       sanitize: async () => {
-        throw new Error('cannot sanitize')
+        throw new ImageRejectedError('cannot sanitize')
       },
     })
     expect(await loader.load({ uri: 'https://cdn.example/y', ext: '.png' })).toBeNull()
@@ -567,6 +568,8 @@ describe('the sanitizing budget starts when a worker is granted (sixth review, f
       budgetMs: 1_500,
     })
     try {
+      // Warm the worker first, so the holder runs at once and the timings below exclude a worker's start-up.
+      await pool.run({ bytes: Buffer.from('warm'), ext: '.svg' }, () => true)
       const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
       await sleepFor(50)
       const fetchImpl = vi.fn(async () => new Response(bytesOf('SLOW')))
@@ -587,7 +590,7 @@ describe('the sanitizing budget starts when a worker is granted (sixth review, f
     } finally {
       pool.close()
     }
-  })
+  }, 30_000)
 })
 
 describe('an unavailable sanitizer is shed, never charged (sixth review, finding 2)', () => {
@@ -702,12 +705,12 @@ describe('the fetch gate covers only the fetch, not the wait for a sanitizer (si
     }
   })
 
-  it('refuses a file that an in-process sanitizer throws on, and charges the address', async () => {
+  it('refuses a file that an in-process sanitizer refuses, and charges the address', async () => {
     const fetchImpl = vi.fn(async () => new Response(bytesOf('bad')))
     const loader = createRemoteImageLoader({
       fetchImpl: fetchImpl as unknown as typeof fetch,
       sanitize: async () => {
-        throw new Error('refused in process')
+        throw new ImageRejectedError('refused in process')
       },
     })
     const request = { uri: 'https://cdn.example/throws.svg', ext: '.svg' }
@@ -723,7 +726,7 @@ describe('a download reserves a place in the sanitizer queue first (sixth review
 
   // With every place in use, a new address is shed at once: it is not downloaded, so no fetch is made for it.
   it('answers shed, and makes no fetch, for a new address while the queue is full', async () => {
-    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 1 })
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), places: 1 })
     try {
       const holderPlace = pool.reserve()
       const holder = pool.run({ bytes: Buffer.from('HOLD'), ext: '.svg' }, () => true)
@@ -742,7 +745,7 @@ describe('a download reserves a place in the sanitizer queue first (sixth review
 
   // Every failure and every shed must give its place back: after many of them, the queue still accepts work.
   it('gives every place back after refusals and sheds, so the queue still accepts work', async () => {
-    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 2, queueMaxWaitMs: 50 })
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), places: 2, queueMaxWaitMs: 50 })
     try {
       const refusing = createRemoteImageLoader({
         fetchImpl: vi.fn(async () => new Response('no', { status: 500 })) as unknown as typeof fetch,
@@ -778,7 +781,7 @@ describe('a download reserves a place in the sanitizer queue first (sixth review
 
   // A download that reserved its place is cleaned in it, and its place is released after the cleaning.
   it('cleans a file it downloaded in the place it reserved, and frees the place afterwards', async () => {
-    const pool = createSanitizerPool({ workerUrl: slowWorker(), queueLimit: 1 })
+    const pool = createSanitizerPool({ workerUrl: slowWorker(), places: 1 })
     try {
       const loader = createRemoteImageLoader({
         fetchImpl: vi.fn(async () => new Response(bytesOf('logo'))) as unknown as typeof fetch,
@@ -790,5 +793,43 @@ describe('a download reserves a place in the sanitizer queue first (sixth review
     } finally {
       pool.close()
     }
+  })
+})
+
+describe("only the file's own refusal is charged (sixth round, narrowed catch)", () => {
+  // A worker that cannot start is not the file's: the request is shed, and the next request tries again.
+  it('sheds, and charges nothing, when the worker cannot be started', async () => {
+    const pool = createSanitizerPool({
+      createWorker: () => {
+        throw Object.assign(new Error('invalid exec argv'), { code: 'ERR_WORKER_INVALID_EXEC_ARGV' })
+      },
+    })
+    try {
+      const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+      const loader = createRemoteImageLoader({ fetchImpl: fetchImpl as unknown as typeof fetch, sanitizer: pool })
+      const request = { uri: 'https://cdn.example/no-worker.svg', ext: '.svg' }
+
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    } finally {
+      pool.close()
+    }
+  })
+
+  // A sanitizer that fails for a reason that is not a refusal is not the file's either.
+  it('sheds, and charges nothing, when the in-process sanitizer fails for a reason other than a refusal', async () => {
+    const fetchImpl = vi.fn(async () => new Response(bytesOf('logo')))
+    const loader = createRemoteImageLoader({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      sanitize: async () => {
+        throw new Error('the sanitizer broke')
+      },
+    })
+    const request = { uri: 'https://cdn.example/broken-sanitizer.svg', ext: '.svg' }
+
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    expect(await loader.load(request)).toBe(REMOTE_IMAGE_SHED)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

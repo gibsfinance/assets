@@ -14,6 +14,7 @@
  * a remote file is as untrusted as an upload.
  */
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
+import { ImageRejectedError } from '../../image-rejected'
 import { createFailureMemory } from './plate'
 import {
   createInProcessSanitizer,
@@ -48,9 +49,11 @@ export const REMOTE_IMAGE_CACHE_MAX_ENTRIES = 200
 /** Most bytes kept at once, over all addresses. */
 export const REMOTE_IMAGE_CACHE_MAX_BYTES = 32 * 1024 * 1024
 
-/** Downloads that may run at once, and how many more may wait. */
+/**
+ * Fetches that may run at once. Only the network call and the body hold one; the number of files in progress as a
+ * whole is bounded by `REMOTE_IMAGE_PLACES` (see `sanitizer-pool.ts`), so the fetch line cannot fill.
+ */
 export const REMOTE_IMAGE_CONCURRENCY = 4
-export const REMOTE_IMAGE_QUEUE = 16
 
 interface CacheEntry {
   bytes: Buffer
@@ -127,7 +130,7 @@ export function createRemoteImageLoader({
   now = () => Date.now(),
   sanitize,
   sanitizer = sanitize ? createInProcessSanitizer(sanitize) : createSanitizerPool(),
-  gate = createConcurrencyGate({ limit: REMOTE_IMAGE_CONCURRENCY, maxQueue: REMOTE_IMAGE_QUEUE }),
+  gate = createConcurrencyGate({ limit: REMOTE_IMAGE_CONCURRENCY }),
   timeoutMs = REMOTE_IMAGE_TIMEOUT_MS,
   maxBytes = REMOTE_IMAGE_MAX_BYTES,
   ttlMs = REMOTE_IMAGE_CACHE_TTL_MS,
@@ -217,9 +220,11 @@ export function createRemoteImageLoader({
       // A file the sanitizer refused, or one whose sanitizing ran out of its budget: the file's own work caused
       // it, so the address is charged, as a file that fails to download is.
       return refuse(cacheKey)
-    } catch {
-      // A sanitizer that throws (the test seam sanitizes in-process) has refused the file.
-      return refuse(cacheKey)
+    } catch (error) {
+      // Only the file's own refusal is charged. Any other failure of the sanitizer (a worker that could not start,
+      // or a bug) is not the file's, so the request is shed and the next one tries again.
+      if (error instanceof ImageRejectedError) return refuse(cacheKey)
+      return REMOTE_IMAGE_SHED
     } finally {
       place.release()
     }

@@ -4,21 +4,24 @@
  *
  * The sanitizer is synchronous work. On the main thread it cannot be interrupted, so one crafted remote
  * file could hold the event loop, and every other request with it, for as long as it liked. Here a job runs
- * in a worker. The budget for a job starts when a worker is granted to it, not when the request started, so
- * the time a file spends waiting behind another file is not charged to it. A job that runs out of its budget
- * is stopped, and it is charged to its address.
+ * in a worker. The budget for a job starts when a worker is granted to it and has reported ready, not when the
+ * request started, so the time a file spends waiting behind another file, or a worker's start-up, is not charged
+ * to it. A job that runs out of its budget is stopped, and it is charged to its address.
  *
- * Each worker runs one job at a time. At most `size` jobs run at once, and a stopped worker counts against
- * `size` until it has exited. A job waits for a worker without limit, and a job that no request wants any more
- * is not run. A worker is started on first use, and it is stopped after `SANITIZER_IDLE_MS` with no job, so
- * the memory a worker holds exists only while remote files are being cleaned.
+ * Each worker runs one job at a time. At most `size` jobs run at once. A stopped worker holds its slot until it
+ * exits, or until `TERMINATE_GRACE_MS` has passed, whichever comes first; while one stopped worker is still alive
+ * the pool may start one extra worker, and no more. A job waits for a worker at most `SANITIZER_QUEUE_MAX_WAIT_MS`.
+ * A worker is started on first use, and it is stopped after `SANITIZER_IDLE_MS` with no job.
  *
- * An answer is one of: sanitized; refused (the file caused it: the sanitizer refused it, or the worker ran out
- * of memory on it); cut off (the file's sanitizing ran out of its budget); unavailable (the worker could not
- * do the job for reasons that are not the file's: it did not start, did not load, or crashed, or the pool is
- * closed); or expired in the queue (no request wanted the file by the time a worker was granted).
+ * A place (see `reserve`) is held from before a file is downloaded, so the number of files in progress at once is
+ * bounded before any bytes are fetched.
+ *
+ * An answer is one of: sanitized; refused (the file caused it: the sanitizer refused it, or the worker failed while
+ * it was running the file); cut off (the file's sanitizing ran out of its budget); unavailable (the worker could not
+ * do the job for reasons that are not the file's: it did not start, did not report ready, or the pool is closed);
+ * or expired in the queue (no request wanted the file by the time a worker was granted, or it waited too long).
  */
-import { Worker } from 'node:worker_threads'
+import { Worker, type WorkerOptions } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import { failureLog } from '@gibs/utils'
 import { copyToOwnBuffer, type SanitizeJobReply, type SanitizeJobRequest } from './sanitize-job'
@@ -33,18 +36,31 @@ export const SANITIZER_POOL_SIZE = 1
 export const SANITIZER_IDLE_MS = 60_000
 
 /**
- * How long one file may take to sanitize once a worker has been granted to it, in milliseconds. The wait for
- * a worker is not part of it.
+ * How long one file may take to sanitize once a worker has been granted to it and has reported ready, in
+ * milliseconds. Neither the wait for a worker nor its start-up is part of it.
  */
 export const SANITIZE_TIMEOUT_MS = 5_000
 
-/** Most files that may wait for a worker at once. A file past it is shed at once, and nothing is charged. */
-export const SANITIZER_QUEUE_LIMIT = 8
+/**
+ * Most files that may be in progress at once, from before their download to the end of their cleaning. A file in
+ * progress is one being downloaded, waiting for a worker, or being cleaned. A request that finds no place is shed
+ * before it downloads anything. Eight places with a fetch line of four keep the fetch line from ever filling.
+ */
+export const REMOTE_IMAGE_PLACES = 8
 
 /** Longest a file may wait for a worker, in milliseconds. A file that waits longer is shed, and nothing is charged. */
 export const SANITIZER_QUEUE_MAX_WAIT_MS = 5_000
 
-/** Schedules the idle stop. Tests inject a clock; the default is the process timer, which does not keep it alive. */
+/** How long a worker may take to report ready, in milliseconds. Past it the worker is stopped, and the job is unavailable. */
+export const READY_TIMEOUT_MS = 10_000
+
+/**
+ * How long a stopped worker may take to exit before its slot is given back anyway, in milliseconds. A worker that
+ * is still alive after it is one extra thread; the pool never allows a second.
+ */
+export const TERMINATE_GRACE_MS = 500
+
+/** Schedules timers. Tests inject a clock; the default is the process timer, which does not keep the server alive. */
 export interface SanitizerTimers {
   set: (callback: () => void, milliseconds: number) => unknown
   clear: (handle: unknown) => void
@@ -68,24 +84,27 @@ export const SANITIZER_WORKER_HEAP_MB = 256
 /** The message of a job answered after the pool was closed. */
 const CLOSED = 'sanitizer pool closed'
 
+/** The message of a job refused because the stopped workers still hold the thread allowance. */
+const STILL_STOPPING = 'sanitizer workers are still stopping'
+
 /** The error code the runtime gives a worker stopped for running out of its heap. */
 const OUT_OF_MEMORY = 'ERR_WORKER_OUT_OF_MEMORY'
 
 /** How one sanitizing attempt ended. */
 export type SanitizeAttempt =
   | { status: 'sanitized'; bytes: Buffer }
-  /** The file caused it: the sanitizer refused the file, or the worker ran out of memory on it. Charged. */
+  /** The file caused it: the sanitizer refused the file, or the worker failed while running it. Charged. */
   | { status: 'refused'; message: string }
   /** The file's sanitizing ran out of its budget once a worker was granted, so the worker was stopped. Charged. */
   | { status: 'cut-off' }
   /** The worker could not do the job, for reasons that are not the file's. Nothing is charged. */
   | { status: 'unavailable'; message: string }
-  /** No request wanted the file by the time a worker was granted, so it was not run. Nothing is charged. */
+  /** No request wanted the file by the time a worker was granted, or it waited too long. Nothing is charged. */
   | { status: 'expired-in-queue' }
 
 /**
- * A place in the sanitizer's queue, held from before a file is downloaded until it is cleaned or dropped. A place is
- * released exactly once: `release` is safe to call again.
+ * A place for a file in progress, held from before its download until its cleaning ends or it is dropped. A place
+ * is released exactly once: `release` is safe to call again.
  */
 export interface SanitizerPlace {
   release: () => void
@@ -94,8 +113,8 @@ export interface SanitizerPlace {
 /** Runs sanitizing jobs for the remote loader. */
 export interface SanitizerRunner {
   /**
-   * Hold a place in the queue for a file that is about to be downloaded. Null when every place is in use, in which
-   * case the file must not be downloaded at all. The place counts against the queue limit until released.
+   * Hold a place for a file that is about to be downloaded. Null when every place is in use, in which case the file
+   * must not be downloaded at all. The place counts against `REMOTE_IMAGE_PLACES` until released.
    */
   reserve: () => SanitizerPlace | null
   /**
@@ -161,24 +180,34 @@ export function createInProcessSanitizer(sanitize: (bytes: Buffer, ext: string) 
  *
  * @param options.size Jobs that may run at once, and so the most workers alive while busy.
  * @param options.workerUrl The worker's entry. Tests point it at a fixture.
- * @param options.budgetMs The sanitizing budget of one file, from the moment its worker is granted.
+ * @param options.createWorker Starts a worker. Tests inject one that fails or stalls; the default is `new Worker`.
+ * @param options.budgetMs The sanitizing budget of one file, from the moment its worker is granted and ready.
+ * @param options.places Places for files in progress (see `REMOTE_IMAGE_PLACES`).
+ * @param options.readyTimeoutMs How long a worker may take to report ready.
+ * @param options.terminateGraceMs How long a stopped worker may take to exit before its slot is given back.
  * @returns The runner.
  */
 export function createSanitizerPool({
   size = SANITIZER_POOL_SIZE,
   workerUrl = DEFAULT_WORKER_URL,
+  createWorker = (url: URL, options: WorkerOptions) => new Worker(url, options),
   idleMs = SANITIZER_IDLE_MS,
   budgetMs = SANITIZE_TIMEOUT_MS,
-  queueLimit = SANITIZER_QUEUE_LIMIT,
+  places = REMOTE_IMAGE_PLACES,
   queueMaxWaitMs = SANITIZER_QUEUE_MAX_WAIT_MS,
+  readyTimeoutMs = READY_TIMEOUT_MS,
+  terminateGraceMs = TERMINATE_GRACE_MS,
   timers = processTimers,
 }: {
   size?: number
   workerUrl?: URL
+  createWorker?: (url: URL, options: WorkerOptions) => Worker
   idleMs?: number
   budgetMs?: number
-  queueLimit?: number
+  places?: number
   queueMaxWaitMs?: number
+  readyTimeoutMs?: number
+  terminateGraceMs?: number
   timers?: SanitizerTimers
 } = {}): SanitizerRunner {
   const alive = new Set<Worker>()
@@ -194,8 +223,8 @@ export function createSanitizerPool({
   let peak = 0
   let closed = false
   let freeSlots = size
-  /** Places held by reservations: files being downloaded, waiting for a worker, or being cleaned. */
-  let reserved = 0
+  /** Places in use: files in progress (see `REMOTE_IMAGE_PLACES`). */
+  let placesInUse = 0
   /** A job waiting for a worker, and the timer that sheds it if it waits too long. */
   interface Waiter {
     answer: (answer: SlotAnswer) => void
@@ -205,9 +234,8 @@ export function createSanitizerPool({
   /** Messages already reported to the failure log, so a fault that repeats is reported once. */
   const reported = new Set<string>()
 
-  // A slot passes straight to the next job in line, so a newcomer cannot take it ahead of the line. A job waits
-  // at most `queueMaxWaitMs`; how many files may wait at all is bounded by the reservations (see `reserve`). A job
-  // waiting for a slot is answered closed when the pool closes.
+  // A slot passes straight to the next job in line, so a newcomer cannot take it ahead of the line. A job waits at
+  // most `queueMaxWaitMs`. A job waiting for a slot is answered closed when the pool closes.
   const takeSlot = (): Promise<SlotAnswer> => {
     if (closed) return Promise.resolve('closed')
     if (freeSlots > 0) {
@@ -244,7 +272,7 @@ export function createSanitizerPool({
   }
 
   const startWorker = (): Worker => {
-    const worker = new Worker(workerUrl, {
+    const worker = createWorker(workerUrl, {
       execArgv: ['--import', REGISTER_HOOKS],
       resourceLimits: { maxOldGenerationSizeMb: SANITIZER_WORKER_HEAP_MB },
     })
@@ -254,9 +282,14 @@ export function createSanitizerPool({
     readiness.set(
       worker,
       new Promise<string | null>((resolve) => {
-        worker.once('message', () => resolve(null))
-        worker.once('error', (error) => resolve(error.message))
-        worker.once('exit', () => resolve('stopped before it started'))
+        const deadline = timers.set(() => resolve(`did not report ready within ${readyTimeoutMs} ms`), readyTimeoutMs)
+        const settle = (failure: string | null): void => {
+          timers.clear(deadline)
+          resolve(failure)
+        }
+        worker.once('message', () => settle(null))
+        worker.once('error', (error) => settle(error.message))
+        worker.once('exit', () => settle('stopped before it started'))
       }),
     )
     started += 1
@@ -303,13 +336,27 @@ export function createSanitizerPool({
     )
   }
 
-  /** The worker for the next job: an idle one, whose stop is cancelled, else a new one. */
+  /** The worker for the next job: an idle one, whose stop is cancelled, else a new one. A new one may throw. */
   const takeWorker = (): Worker => {
     const worker = idle.pop()
     if (!worker) return startWorker()
     cancelIdleStop(worker)
     return worker
   }
+
+  /**
+   * Stop a worker that cannot take another job. The returned promise settles when the worker has exited or
+   * `terminateGraceMs` has passed, whichever comes first. The slot is given back then, even if the worker is still
+   * alive; a stopped worker that is still alive counts against the thread allowance (see `run`).
+   */
+  const stopWorker = (worker: Worker): Promise<void> =>
+    new Promise<void>((resolve) => {
+      const grace = timers.set(() => resolve(), terminateGraceMs)
+      void worker.terminate().then(() => {
+        timers.clear(grace)
+        resolve()
+      })
+    })
 
   /** Give the job to `worker` and wait for its reply, a failure, its exit or the budget, whichever comes first. */
   const runJob = (worker: Worker, request: { bytes: Buffer; ext: string }, budget: AbortSignal): Promise<JobResult> =>
@@ -361,33 +408,38 @@ export function createSanitizerPool({
       // The pool may have closed while this job held a slot, between the grant and this line.
       if (closed) return unavailable(CLOSED)
       if (!wanted()) return { status: 'expired-in-queue' }
-      const worker = takeWorker()
+      // A new worker is allowed while the stopped ones alive number at most one; a second is refused.
+      if (idle.length === 0 && alive.size > size) return unavailable(STILL_STOPPING)
+      let worker: Worker
+      try {
+        worker = takeWorker()
+      } catch (error) {
+        return unavailable(`sanitizer worker could not start: ${(error as Error).message}`)
+      }
       const failure = await readiness.get(worker)!
       if (failure !== null) {
-        await worker.terminate()
+        await stopWorker(worker)
         return unavailable(closed ? CLOSED : `sanitizer worker failed: ${failure}`)
       }
-      // The budget starts now, once the worker is online, and not when the request started.
+      // The budget starts now, once the worker has reported ready, and not when the request started.
       const result = await runJob(worker, request, AbortSignal.timeout(budgetMs))
       if (result.reusable) parkWorker(worker)
-      else await worker.terminate()
+      else await stopWorker(worker)
       return result.attempt
     } finally {
-      // A slot is given back only once the worker that held it has exited, so the pool never has more workers
-      // alive than its size. `terminate` resolves when the worker has exited.
       giveSlot()
     }
   }
 
   const reserve = (): SanitizerPlace | null => {
-    if (reserved >= queueLimit) return null
-    reserved += 1
+    if (placesInUse >= places) return null
+    placesInUse += 1
     let released = false
     return {
       release: () => {
         if (released) return
         released = true
-        reserved -= 1
+        placesInUse -= 1
       },
     }
   }
