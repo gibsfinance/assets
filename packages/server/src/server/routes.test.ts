@@ -29,6 +29,7 @@ vi.mock('./submissions', () => ({ router: markerRouter('submissions') }))
 vi.mock('./image/sprite', () => ({
   sheet: vi.fn((_req, res) => res.json({ marker: 'sprite-sheet' })),
   manifest: vi.fn((_req, res) => res.json({ marker: 'sprite-manifest' })),
+  stylesheet: vi.fn((_req, res) => res.json({ marker: 'sprite-stylesheet' })),
 }))
 vi.mock('./openapi', () => ({ openapi: { marker: 'openapi-document' } }))
 vi.mock('./llms-txt', () => ({ LLMS_TXT: 'LLMS_TXT_MARKER' }))
@@ -92,6 +93,11 @@ describe('router wiring', () => {
   it('registers the sprite sheet handler at /sprite/:providerKey/:listKey/sheet', async () => {
     const res = await request(app).get('/sprite/pulsex/extended/sheet')
     expect(res.body).toEqual({ marker: 'sprite-sheet' })
+  })
+
+  it('registers the sprite stylesheet handler at /sprite/:providerKey/:listKey/sheet.css', async () => {
+    const res = await request(app).get('/sprite/pulsex/extended/sheet.css')
+    expect(res.body).toEqual({ marker: 'sprite-stylesheet' })
   })
 
   it('registers the sprite manifest handler at /sprite/:providerKey/:listKey', async () => {

@@ -44,6 +44,7 @@ router.use('/image', imageRouter)
 
 // gib.show/sprite
 router.get('/sprite/:providerKey/:listKey/sheet', nextOnError(sprite.sheet))
+router.get('/sprite/:providerKey/:listKey/sheet.css', nextOnError(sprite.stylesheet))
 router.get('/sprite/:providerKey/:listKey', nextOnError(sprite.manifest))
 
 // gib.show/list
