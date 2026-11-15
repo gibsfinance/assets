@@ -15,7 +15,7 @@
  */
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
-import { UNTRUSTED_INPUT } from '../../untrusted-input'
+import { UNTRUSTED_INPUT, isOverPixelCap } from '../../untrusted-input'
 import type { FormatEnum, Sharp } from 'sharp'
 import type { Response } from 'express'
 import httpErrors from 'http-errors'
@@ -563,7 +563,13 @@ export async function maybeResize({
 
   pipeline = pipeline.toFormat(normalizeFormat(targetFormat) as keyof FormatEnum | 'avif')
 
-  const resizedBuffer = await pipeline.toBuffer()
+  // A row stored before the pixel cap existed can hold an image over it. Serve the original for that one, as
+  // other unusable resizes do, rather than failing the request; any other fault still throws.
+  const resizedBuffer = await pipeline.toBuffer().catch((error: unknown) => {
+    if (isOverPixelCap(error)) return null
+    throw error
+  })
+  if (!resizedBuffer) return false
 
   const variantRecord: InsertableImageVariant = {
     imageHash: img.imageHash,

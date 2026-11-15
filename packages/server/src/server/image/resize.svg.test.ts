@@ -13,6 +13,7 @@ vi.mock('../../db', () => ({
 vi.mock('../../../config', () => ({ default: { cacheSeconds: 86400 } }))
 
 import { maybeResize, parseResizeParams, computeSvgScale, densityForScale, openSource, resetRateLimit } from './resize'
+import { palettePngClaiming } from '../../__testing__/oversized-png'
 
 const squareSvg = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#09f"/></svg>',
@@ -203,6 +204,31 @@ describe('maybeResize with a raster source, real sharp', () => {
       query: { w: '128', h: '128', as: 'webp' },
     })
     expect(size).toEqual({ width: 32, height: 32 })
+  })
+
+  // A row stored before the pixel cap existed can hold an image over it. A resize of it must fall back to the
+  // original, as other unusable resizes do, not fail the request with a 500.
+  it('falls back to the original when the stored image is over the pixel cap', async () => {
+    const res: any = {}
+    res.set = vi.fn().mockReturnValue(res)
+    res.contentType = vi.fn().mockReturnValue(res)
+    res.send = vi.fn().mockReturnValue(res)
+    const img: any = { imageHash: 'huge', content: palettePngClaiming(16_383), ext: '.png', uri: 'x', mode: 'save' }
+
+    const handled = await maybeResize({ res, img, params: parseResizeParams({ query: { w: '64', as: 'webp' } }) })
+
+    expect(handled).toBe(false)
+    expect(res.send).not.toHaveBeenCalled()
+  })
+
+  it('still fails on a decode fault that is not the pixel cap', async () => {
+    const res: any = {}
+    res.set = vi.fn().mockReturnValue(res)
+    const img: any = { imageHash: 'bad', content: Buffer.from('not an image'), ext: '.png', uri: 'x', mode: 'save' }
+
+    await expect(
+      maybeResize({ res, img, params: parseResizeParams({ query: { w: '64', as: 'webp' } }) }),
+    ).rejects.toThrow(/unsupported image format/i)
   })
 
   it('shrinks a raster image', async () => {

@@ -17,3 +17,15 @@ export const MAX_INPUT_PIXELS = 25_000_000
 
 /** The sharp options for bytes from outside. Spread them into `sharp(bytes, options)`. */
 export const UNTRUSTED_INPUT = { limitInputPixels: MAX_INPUT_PIXELS } as const
+
+/** sharp's message when an input states more pixels than `limitInputPixels` allows. */
+const PIXEL_LIMIT_MESSAGE = /exceeds pixel limit/i
+
+/**
+ * Whether an error is sharp refusing an input over the pixel cap. A caller that can serve something else (the
+ * original image instead of a resized copy) uses this to tell that refusal apart from a real fault.
+ *
+ * @param error Anything a sharp call rejected with.
+ */
+export const isOverPixelCap = (error: unknown): boolean =>
+  error instanceof Error && PIXEL_LIMIT_MESSAGE.test(error.message)
