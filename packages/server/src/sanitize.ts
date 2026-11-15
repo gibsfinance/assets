@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import type { FormatEnum } from 'sharp'
 import { ImageRejectedError } from './image-rejected'
+import { UNTRUSTED_INPUT } from './untrusted-input'
 import { sanitizeSvgDocument } from './svg-sanitize'
 
 export { SvgRejectedError, decodeCharacterReferences, isScriptUri } from './svg-sanitize'
@@ -52,7 +53,7 @@ async function sanitizeRaster(image: Buffer, ext: string): Promise<Buffer> {
   }
 
   try {
-    return await sharp(image, { animated: ANIMATED_RASTER_EXTENSIONS.has(ext) })
+    return await sharp(image, { ...UNTRUSTED_INPUT, animated: ANIMATED_RASTER_EXTENSIONS.has(ext) })
       .rotate() // Auto-rotate based on EXIF, then strip EXIF
       .toFormat(format)
       .toBuffer()

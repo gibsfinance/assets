@@ -362,10 +362,10 @@ describe('measuring a vector is bounded (finding 8)', () => {
     const { width, height } = await opened.metadata()
     expect(width).toBeLessThanOrEqual(128)
     expect(height).toBeLessThanOrEqual(128)
-    // The plain opener would have drawn the full 6000 px.
-    expect(
-      (await (await openSource({ content: hugeSvg, ext: '.svg', target: { w: 64, h: 64 } })).metadata()).width,
-    ).toBe(6000)
+    // The plain opener would draw the full 6000 px, which is more pixels than the cap allows: it is refused, not drawn.
+    await expect(
+      openSource({ content: hugeSvg, ext: '.svg', target: { w: 64, h: 64 } }).then((opened) => opened.metadata()),
+    ).rejects.toThrow(/pixel limit/i)
   })
   it('does not draw a small vector larger than its own size', async () => {
     const opened = await openForMeasurement({ content: cronosSvg, ext: '.svg' })
@@ -394,7 +394,8 @@ describe('the source size is read once (finding 10)', () => {
   })
 })
 
-describe('what a fetched source is remembered under (finding 9)', () => {
+// These fetch through the shared remote reader, which starts a sanitizer worker on first use; under load that takes seconds.
+describe('what a fetched source is remembered under (finding 9)', { timeout: 30_000 }, () => {
   const linkImage = { content: Buffer.alloc(0), mode: 'link', uri: 'https://example.com/logo.svg' }
   const serve = (body: Buffer) =>
     vi.stubGlobal(

@@ -39,6 +39,7 @@ import * as db from '../../db'
 import * as path from 'path'
 import { submodules } from '../../paths'
 import sharp from 'sharp'
+import { UNTRUSTED_INPUT } from '../../untrusted-input'
 import { REMOTE_IMAGE_SHED, createRemoteImageLoader, type RemoteImageLoader } from './remote-image'
 
 // ---------------------------------------------------------------------------
@@ -599,7 +600,7 @@ describe('maybeResize', () => {
     const result = await maybeResize({ res, img, params: parseResizeParams({ query: req.query }) })
 
     expect(result).toBe(true)
-    expect(sharp).toHaveBeenCalledWith(img.content)
+    expect(sharp).toHaveBeenCalledWith(img.content, UNTRUSTED_INPUT)
     expect(res.send).toHaveBeenCalledWith(Buffer.from('resized'))
   })
 
@@ -685,7 +686,7 @@ describe('maybeResize', () => {
       'https://cdn.example.com/token.png',
       expect.objectContaining({ signal: expect.anything() }),
     )
-    expect(sharp).toHaveBeenCalledWith(expect.any(Buffer))
+    expect(sharp).toHaveBeenCalledWith(expect.any(Buffer), UNTRUSTED_INPUT)
   })
 
   it('treats a download turned away for load as an image that cannot be had, and leaves the original answer to the caller', async () => {

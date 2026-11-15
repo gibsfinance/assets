@@ -15,6 +15,7 @@
  */
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
+import { UNTRUSTED_INPUT } from '../../untrusted-input'
 import type { FormatEnum, Sharp } from 'sharp'
 import type { Response } from 'express'
 import httpErrors from 'http-errors'
@@ -273,6 +274,26 @@ export function densityForScale(scale: number): number {
   return Math.min(SVG_MAX_DENSITY, Math.ceil(SVG_BASE_DENSITY * scale))
 }
 
+/** The density a vector too large to draw at the base density is probed at: small enough to stay under the pixel cap. */
+const SVG_PROBE_DENSITY = 16
+
+/**
+ * The intrinsic size of a vector, in pixels at the base density. Read exactly when the drawing fits under the pixel
+ * cap, which is every vector a logo can be. A vector too large for that is probed at a low density, where its drawing
+ * is a few thousand pixels, and its size is scaled back up: the size is approximate, and it is only used to decide
+ * how large to draw, which the cap bounds anyway. A probe that fails too (a file that is not a vector) is a failure.
+ */
+async function vectorIntrinsicSize(content: Buffer): Promise<{ width: number; height: number }> {
+  try {
+    const { width, height } = await sharp(content, UNTRUSTED_INPUT).metadata()
+    return { width: width!, height: height! }
+  } catch {
+    const { width, height } = await sharp(content, { density: SVG_PROBE_DENSITY }).metadata()
+    const scale = SVG_BASE_DENSITY / SVG_PROBE_DENSITY
+    return { width: Math.round(width! * scale), height: Math.round(height! * scale) }
+  }
+}
+
 /**
  * Open image bytes with sharp. A vector source is rasterized large enough to
  * reach the requested size (see `computeSvgScale`); any other source is opened
@@ -290,12 +311,12 @@ export async function openSource({
   /** The source's own size, when the caller has already read it, so it is not read twice. */
   intrinsic?: { width?: number; height?: number }
 }): Promise<Sharp> {
-  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content)
-  if (!target.w && !target.h) return sharp(content)
-  const size = intrinsic ?? (await sharp(content).metadata())
+  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content, UNTRUSTED_INPUT)
+  if (!target.w && !target.h) return sharp(content, UNTRUSTED_INPUT)
+  const size = intrinsic ?? (await vectorIntrinsicSize(content))
   const scale = computeSvgScale({ intrinsic: size, target })
-  if (scale === 1) return sharp(content)
-  return sharp(content, { density: densityForScale(scale) })
+  if (scale === 1) return sharp(content, UNTRUSTED_INPUT)
+  return sharp(content, { ...UNTRUSTED_INPUT, density: densityForScale(scale) })
 }
 
 /**
@@ -304,12 +325,12 @@ export async function openSource({
  * size, not at its own size, which a file can set as large as it likes. A raster is opened as it is.
  */
 export async function openForMeasurement({ content, ext }: { content: Buffer; ext: string }): Promise<Sharp> {
-  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content)
-  const { width, height } = await sharp(content).metadata()
+  if (!SVG_SOURCE_EXTS.has(ext)) return sharp(content, UNTRUSTED_INPUT)
+  const { width, height } = await vectorIntrinsicSize(content)
   // sharp reports a size for every vector it can open; one it cannot open throws here, and the caller treats that as a failed measurement.
   const longest = Math.max(width!, height!)
   const density = Math.floor((SVG_BASE_DENSITY * VISIBILITY_SAMPLE_SIDE) / longest)
-  return sharp(content, { density: Math.max(1, Math.min(SVG_BASE_DENSITY, density)) })
+  return sharp(content, { ...UNTRUSTED_INPUT, density: Math.max(1, Math.min(SVG_BASE_DENSITY, density)) })
 }
 
 /** Map format string to content-type */
@@ -965,7 +986,9 @@ async function drawPlatedPixels({
   target: { w: number | null; h: number | null }
   format: string
 }): Promise<{ body: Buffer; side: number }> {
-  const intrinsic = await sharp(content).metadata()
+  const intrinsic = SVG_SOURCE_EXTS.has(ext)
+    ? await vectorIntrinsicSize(content)
+    : await sharp(content, UNTRUSTED_INPUT).metadata()
   const side = computePlateSide({
     target,
     intrinsic,

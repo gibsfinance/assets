@@ -1,4 +1,5 @@
 import sharp from 'sharp'
+import { UNTRUSTED_INPUT } from '../../untrusted-input'
 import type { OverlayOptions } from 'sharp'
 import config from '../../../config'
 import { type RequestHandler } from 'express'
@@ -72,7 +73,7 @@ async function rasterize(image: SpriteToken, size: number): Promise<Buffer | nul
     }
     // Awaited here so that a file sharp cannot decode lands in the catch below and becomes an
     // empty cell, instead of rejecting the whole sheet.
-    return await sharp(buf)
+    return await sharp(buf, UNTRUSTED_INPUT)
       .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer()
