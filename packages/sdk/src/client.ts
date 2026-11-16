@@ -1,7 +1,7 @@
-import { getImageUrl, getNetworkImageUrl, type ChainId, type ImageOptions } from './image'
-import { getTokenListUrl, getNetworksUrl, getListIndexUrl } from './list'
-import { fetchSprite, getSpriteUrl, type Sprite, type SpriteOptions } from './sprite'
-import type { TokenList, NetworkInfo, ListInfo } from './types'
+import { getImageUrl, getNetworkImageUrl, type ChainId, type ImageOptions } from './image.js'
+import { getTokenListUrl, getNetworksUrl, getListIndexUrl } from './list.js'
+import { fetchSprite, getSpriteUrl, type Sprite, type SpriteOptions } from './sprite.js'
+import type { TokenList, NetworkInfo, ListInfo } from './types.js'
 
 export interface GibClientOptions {
   /** Base URL of the Gib.Show API */

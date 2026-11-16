@@ -6,7 +6,7 @@ import {
   type ChainId,
   type SpriteOptions,
 } from '@gibs/sdk'
-import { useOptionalGib } from './provider'
+import { useOptionalGib } from './provider.js'
 
 /** Where a list's stylesheet comes from, and the options it was built with. */
 export interface SpriteStylesheetRequest {

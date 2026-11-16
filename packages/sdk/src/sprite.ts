@@ -1,4 +1,4 @@
-import type { ChainId } from './image'
+import type { ChainId } from './image.js'
 import {
   buildSpriteQuery,
   normalizeSpriteAddress,
@@ -8,7 +8,7 @@ import {
   type SpritePlateSettings,
   type SpritePlateShape,
   type SpriteScale,
-} from './sprite-layout'
+} from './sprite-layout.js'
 
 /** Options for fetching a sprite */
 export interface SpriteOptions {

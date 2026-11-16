@@ -1,6 +1,6 @@
 {
   "name": "@gibs/sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "SDK for Gib.Show token metadata and image API",
   "main": "dist/index.js",

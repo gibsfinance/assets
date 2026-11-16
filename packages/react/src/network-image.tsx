@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { useGib } from './provider'
-import GibImage, { type GibImageProps } from './gib-image'
+import { useGib } from './provider.js'
+import GibImage, { type GibImageProps } from './gib-image.js'
 import { getNetworkImageUrl, type ChainId, type ImageOptions } from '@gibs/sdk'
 
 export interface NetworkImageProps extends Omit<GibImageProps, 'src'> {

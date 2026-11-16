@@ -1,4 +1,4 @@
-import type { ChainId } from './image'
+import type { ChainId } from './image.js'
 
 /** Build URL for a specific token list */
 export function getTokenListUrl(baseUrl: string, provider: string, key: string, chainId?: ChainId): string {

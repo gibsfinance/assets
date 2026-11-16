@@ -66,6 +66,11 @@ jobs:
 
       - name: Build SDK
         run: cd packages/sdk && yarn build
+      # The build keeps import paths as written, and Node refuses a relative import with no extension:
+      # 1.0.0 shipped `from './client'` and failed to load outside a bundler. Load the built files the way
+      # plain Node does before publishing them.
+      - name: Load the built SDK in plain Node
+        run: cd packages/sdk && node --input-type=module -e "await import('./dist/index.js'); await import('./dist/sprite-layout.js')"
       - name: Publish @gibs/sdk
         run: cd packages/sdk && npm publish --provenance --access public
         env:
@@ -102,6 +107,8 @@ jobs:
 
       - name: Build React package
         run: cd packages/react && yarn build
+      - name: Load the built React package in plain Node
+        run: cd packages/react && node --input-type=module -e "await import('./dist/index.js')"
       - name: Publish @gibs/react
         run: cd packages/react && npm publish --provenance --access public
         env:
