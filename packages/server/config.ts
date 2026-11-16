@@ -91,6 +91,14 @@ const plateRenders = {
 }
 
 /**
+ * Sprite sheets drawn at once (SPRITE_RENDER_CONCURRENCY, default 1). A sheet holds its slot for seconds, so the
+ * default is one: a second sheet waits in a short line, and past that the caller is told to try again.
+ */
+const spriteRenders = {
+  concurrency: readLimit(process.env.SPRITE_RENDER_CONCURRENCY, 1),
+}
+
+/**
  * Directory that holds the content-addressed image store (see `image-store/`).
  * Set IMAGE_STORE_DIR to move it, for example onto a volume that outlives the
  * container. The default sits in the repository root and is ignored by git.
@@ -153,6 +161,7 @@ export default {
   concurrency,
   sharp,
   plateRenders,
+  spriteRenders,
   imageStoreDirectory,
   imageStore,
   imageBytesInDatabase,

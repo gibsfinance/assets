@@ -20,12 +20,14 @@
  * are all exercised.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Home from './Home'
 import { SettingsProvider } from '../contexts/SettingsContext'
 import { getApiUrl } from '../utils'
+import { getDocsUrl } from '../utils/docs-links'
+import { SPRITE_STYLESHEET_PATH } from '../utils/integration-examples'
 import { prefetchStudioWhenIdle } from './load-studio'
 
 // The idle fetch would pull the whole Studio page into every render below. The module is
@@ -508,13 +510,13 @@ describe('Home — the integration examples', () => {
     expect(screen.getByAltText('Ethereum').getAttribute('src')!.startsWith(exampleUrls[1])).toBe(true)
   })
 
-  it('shows a shortened path in the sample rather than the whole absolute URL', () => {
-    // The samples are read at a glance; the full origin pushes the interesting part of the
-    // path off the line.
+  it('shows each example address once, beside its card, rather than repeating it on the logo', () => {
     stubFetch()
     renderHome()
 
-    expect(screen.getByText('/list/coingecko')).toBeTruthy()
+    for (const url of exampleUrls) {
+      expect(screen.getAllByText(url)).toHaveLength(1)
+    }
   })
 
   it('shows the three token logos the list example is illustrated with', () => {
@@ -524,6 +526,55 @@ describe('Home — the integration examples', () => {
     expect(screen.getByAltText('Token 1')).toBeTruthy()
     expect(screen.getByAltText('Token 2')).toBeTruthy()
     expect(screen.getByAltText('Token 3')).toBeTruthy()
+  })
+})
+
+describe('Home — the image options and sprite sheet cards', () => {
+  it('draws the image options card with its option tabs, the first one selected', () => {
+    stubFetch()
+    renderHome()
+
+    expect(screen.getByRole('heading', { name: 'Image Options' })).toBeTruthy()
+    expect(screen.getAllByRole('tab')[0].getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('shows the address of the option the reader picks, and no other option’s address', () => {
+    stubFetch()
+    renderHome()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Vector only' }))
+
+    const panel = screen.getByRole('tabpanel')
+    expect(
+      within(panel).getByText(getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?only=vector')),
+    ).toBeTruthy()
+    expect(
+      within(panel).queryByText(
+        getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599?w=64&h=64&as=webp'),
+      ),
+    ).toBeNull()
+  })
+
+  it('draws the sprite sheet card with the real stylesheet in place', () => {
+    stubFetch()
+    const { container } = renderHome()
+
+    const link = container.querySelector('link[rel="stylesheet"]')!
+    expect(link.getAttribute('href')).toBe(getApiUrl(SPRITE_STYLESHEET_PATH))
+  })
+
+  it('links all five cards to the documentation page that covers them', () => {
+    stubFetch()
+    renderHome()
+
+    const docsLinks = screen.getAllByRole('link', { name: /Read the full documentation/ })
+    expect(docsLinks.map((link) => link.getAttribute('href'))).toEqual([
+      getDocsUrl('images'),
+      getDocsUrl('networks'),
+      getDocsUrl('tokenLists'),
+      getDocsUrl('imageOptions'),
+      getDocsUrl('spriteSheets'),
+    ])
   })
 })
 

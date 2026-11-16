@@ -44,6 +44,8 @@
   --ui-surface-tooltip: var(--color-gray-900);
   --ui-surface-thumb: var(--color-white);
   --ui-surface-bright: var(--color-gray-200);
+  /* The same dark in both themes: logos are shown here to test how they read on a dark page. */
+  --ui-surface-backdrop: var(--color-gray-900);
   /* Scrims */
   --ui-scrim-soft: color-mix(in oklab, var(--color-black) 20%, transparent);
   /* Borders */
@@ -168,6 +170,7 @@
   --color-surface-tooltip: var(--ui-surface-tooltip);
   --color-surface-thumb: var(--ui-surface-thumb);
   --color-surface-bright: var(--ui-surface-bright);
+  --color-surface-backdrop: var(--ui-surface-backdrop);
   /* Scrims */
   --color-scrim-soft: var(--ui-scrim-soft);
   /* Borders */

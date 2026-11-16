@@ -25,9 +25,11 @@
     "module": "ESNext" /* Specify what module code is generated. */,
     // "rootDir": "./",                                  /* Specify the root folder within your source files. */
     "moduleResolution": "bundler" /* Specify how TypeScript looks up a file from a given module specifier. */,
-    // "paths": {
-    //   "@/*": ["packages/server/src/*"]
-    // } /* Specify a set of entries that re-map imports to additional lookup locations. */,
+    // @gibs/sdk publishes dist/, which only exists after a build and can be weeks stale in a working copy.
+    // The react tests already read its source (packages/react/vitest.config.ts); the typecheck reads the same.
+    "paths": {
+      "@gibs/sdk": ["./packages/sdk/src/index.ts"]
+    } /* Specify a set of entries that re-map imports to additional lookup locations. */,
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
     // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */
     "types": ["node"],

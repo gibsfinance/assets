@@ -28,6 +28,7 @@ import { attributionHeaders } from './attribution'
 import { setImageSecurityHeaders } from './headers'
 import { createRateLimiter, DEFAULT_WINDOW_MS, type RateLimiter } from './rate-limit'
 import { createConcurrencyGate, GATE_FULL, type ConcurrencyGate } from './concurrency-gate'
+import { refuse as turnAway, type Refusal } from './refusal'
 import { isLinkOnlyHost } from '../../link-only-hosts'
 import { REMOTE_IMAGE_SHED, sharedRemoteImages, type RemoteImageLoader } from './remote-image'
 import {
@@ -673,14 +674,8 @@ const OVER_BUDGET = Symbol('over-budget')
 /** What `producePlated` answers when a plate was asked for and cannot be produced. */
 const PLATE_FAILED = Symbol('plate-failed')
 
-/** What `settlePlate` answers when the logo's visibility cannot be measured. */
-const UNMEASURABLE = Symbol('unmeasurable')
-
-interface Refusal {
-  status: number
-  retryAfterSeconds: number
-  message: string
-}
+/** What `settlePlate` answers when the logo could not be measured, so the caller can tell that from "no plate". */
+export const UNMEASURABLE = Symbol('unmeasurable')
 
 const PLATE_BUSY: Refusal = {
   status: 503,
@@ -731,11 +726,6 @@ function spendPlate(budgets: PlateBudgets): boolean {
  * request is handled. Written here, not thrown: the error funnel turns every 5xx into a generic 500.
  * Never cacheable, so an edge cache cannot keep a refusal and serve it after the load has passed.
  */
-function turnAway(res: Response, { status, retryAfterSeconds, message }: Refusal): true {
-  res.set('retry-after', String(retryAfterSeconds)).set('cache-control', 'no-store')
-  res.status(status).json({ error: message })
-  return true
-}
 
 /**
  * The bytes of a link-mode image, read from its remote address. Null when they cannot be had: the
@@ -808,7 +798,7 @@ const drawFailures = createFailureMemory()
  * Null when it gets none because none is needed; `UNMEASURABLE` when the logo cannot be measured, so
  * the caller can tell "no plate needed" from "could not tell".
  */
-async function settlePlate({
+export async function settlePlate({
   request,
   key,
   content,

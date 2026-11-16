@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useGib } from './provider'
+import { useOptionalGib } from './provider'
 import GibImage, { type GibImageProps } from './gib-image'
 import { getImageUrl, type ChainId, type ImageOptions } from '@gibs/sdk'
 
@@ -37,12 +37,8 @@ export function TokenImage({
   height,
   ...rest
 }: TokenImageProps) {
-  let client: ReturnType<typeof useGib> | null = null
-  try {
-    client = useGib()
-  } catch {
-    // GibProvider not available — use baseUrl or production default
-  }
+  // Without a provider the base address is the one given, or the production default.
+  const client = useOptionalGib()
 
   const resolvedBaseUrl = baseUrlOverride || client?.baseUrl || 'https://gib.show'
   const w = width || size
@@ -51,7 +47,12 @@ export function TokenImage({
   // Built through the SDK rather than inline: the two used to spell the format
   // param differently, and only the SDK's spelling is the one the server reads.
   const src = useMemo(
-    () => getImageUrl(resolvedBaseUrl, chainId, address, { width: w * 2, height: h * 2, format }),
+    () =>
+      getImageUrl(resolvedBaseUrl, chainId, address, {
+        width: w * 2,
+        height: h * 2,
+        format,
+      }),
     [resolvedBaseUrl, chainId, address, w, h, format],
   )
 

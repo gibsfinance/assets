@@ -83,6 +83,10 @@ ENV PUBLIC_BASE_URL=$PUBLIC_BASE_URL
 COPY tsconfig.json ./
 COPY packages/utils packages/utils
 COPY packages/dexscreener packages/dexscreener
+# The server imports the sprite layout from the SDK's source (its exports point there in the repository).
+# Only the manifest and the source are needed; the SDK's build output is not used by the server.
+COPY packages/sdk/package.json packages/sdk/package.json
+COPY packages/sdk/src packages/sdk/src
 COPY packages/server packages/server
 COPY --from=interface /usr/src/app/packages/ui/dist packages/ui/dist
 # Static files only. The server serves them on the host names in DOCS_HOSTNAMES

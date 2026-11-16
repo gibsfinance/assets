@@ -19,6 +19,7 @@
 import { and, asc, count, eq, gt, inArray, isNotNull, isNull, or, sql as dsql } from 'drizzle-orm'
 import { getDrizzle, type DrizzleDB } from '../db/drizzle'
 import { unexportedBytesSql } from '../db/image-columns'
+import { deleteVariantsOfImage } from '../db/image-variant-rows'
 import * as s from '../db/schema'
 import { log } from '../logger'
 import { LEGACY_VECTOR_EXT } from '../image-format'
@@ -262,10 +263,9 @@ async function rewriteRow(
       .where(and(eq(s.image.imageHash, row.imageHash), stillWhatWasRead))
       .returning({ imageHash: s.image.imageHash })
     if (updated.length === 0) return { outcome: 'skipped' as const, variants: 0 }
-    const removed = await transaction
-      .delete(s.imageVariant)
-      .where(eq(s.imageVariant.imageHash, row.imageHash))
-      .returning({ imageHash: s.imageVariant.imageHash })
+    const removed = await deleteVariantsOfImage(transaction, row.imageHash).returning({
+      imageHash: s.imageVariant.imageHash,
+    })
     return { outcome: 'rewritten' as const, variants: removed.length }
   })
 }

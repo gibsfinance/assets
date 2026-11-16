@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "description": "content",
+      "enabled": true,
+      "expression": "(http.request.uri.path wildcard r\"/image/*\") or (http.request.uri.path wildcard r\"/list/*\") or (http.request.uri.path wildcard r\"/token/*\") or (http.request.uri.path wildcard r\"/sprite/*\") or (http.request.uri.path wildcard r\"/stats\") or (http.request.uri.path wildcard r\"/networks\")",
+      "cacheEnabled": true,
+      "edge": {
+        "mode": "respect_origin",
+        "statusCodes": [
+          {
+            "code": 404,
+            "seconds": 3600
+          }
+        ]
+      }
+    },
+    {
+      "description": "page: cache index.html at the edge for 60s",
+      "enabled": true,
+      "expression": "(http.host in {\"gib.show\" \"staging.gib.show\"} and http.request.uri.path in {\"/\" \"/index.html\"})",
+      "cacheEnabled": true,
+      "edge": {
+        "mode": "override_origin",
+        "seconds": 60,
+        "statusCodes": []
+      },
+      "browser": {
+        "mode": "respect_origin"
+      }
+    }
+  ]
+}

@@ -1,26 +1,30 @@
-import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
+import { useMemo, useCallback, useState, useRef, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { useMetrics } from '../hooks/useMetrics'
 import { useSettings } from '../contexts/SettingsContext'
 import { countSupportedNetworks } from '../utils/network-metrics'
 import { getApiUrl } from '../utils'
+import { getDocsUrl, type DocsPageName } from '../utils/docs-links'
 import { prefetchStudioWhenIdle } from './load-studio'
-import CodeBlock from '../components/CodeBlock'
 import Attribution from '../components/Attribution'
 import FloatingIcons from '../components/FloatingIcons'
 import CountUpNumber from '../components/CountUpNumber'
 import Image from '../components/Image'
+import IntegrationCard, { IntegrationAddress } from '../components/IntegrationCard'
+import ImageOptionsExample from '../components/ImageOptionsExample'
+import SpriteSheetExample from '../components/SpriteSheetExample'
 import {
-  faArrowRight,
   faBolt,
   faCloud,
   faFlask,
   faImage,
-  faLink,
+  faLayerGroup,
   faList,
   faListUl,
   faNetworkWired,
   faShield,
+  faSliders,
+  type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from '../components/Icon'
 
@@ -43,14 +47,36 @@ const features = [
   },
 ]
 
-const examples = [
+/**
+ * The three compact cards. Each shows its live logo above the text, and its one address below it.
+ * The address is shown once: the preview draws the logo and does not repeat the address.
+ */
+const examples: {
+  type: string
+  icon: IconDefinition
+  title: string
+  description: string
+  code: string
+  docsPage: DocsPageName
+  preview: ReactNode
+}[] = [
   {
     type: 'token-image',
     icon: faImage,
     title: 'Token Images',
     description: 'Fetch token logo for any token on any supported chain. Automatically handles fallback assets.',
     code: getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599'),
-    displayUrl: `/image/eip155-1/0x2260...`,
+    docsPage: 'images',
+    preview: (
+      <Image
+        src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+        alt="WBTC Token"
+        size={64}
+        skeleton
+        shape="circle"
+        className="rounded-full"
+      />
+    ),
   },
   {
     type: 'network-image',
@@ -58,7 +84,17 @@ const examples = [
     title: 'Network Logos',
     description: 'Get chain/network logos and metadata. Perfect for network selectors.',
     code: getApiUrl('/image/eip155-1'),
-    displayUrl: `/image/eip155-1`,
+    docsPage: 'networks',
+    preview: (
+      <Image
+        src={getApiUrl('/image/eip155-1')}
+        alt="Ethereum"
+        size={64}
+        skeleton
+        shape="circle"
+        className="rounded-full"
+      />
+    ),
   },
   {
     type: 'token-list',
@@ -66,95 +102,37 @@ const examples = [
     title: 'Token Lists',
     description: 'Get curated token lists with optional network filtering.',
     code: getApiUrl('/list/coingecko'),
-    displayUrl: `/list/coingecko`,
+    docsPage: 'tokenLists',
+    preview: (
+      <div className="flex -space-x-4">
+        <Image
+          src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
+          alt="Token 1"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+        <Image
+          src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
+          alt="Token 2"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+        <Image
+          src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
+          alt="Token 3"
+          size={56}
+          skeleton
+          shape="circle"
+          className="rounded-full border-2 border-border-overlap"
+        />
+      </div>
+    ),
   },
 ]
-
-type ExamplePreviewProps = {
-  type: string
-  displayUrl: string
-}
-
-function ExamplePreview({ type, displayUrl }: ExamplePreviewProps) {
-  if (type === 'token-image') {
-    return (
-      <div className="flex flex-col md:flex-row items-center gap-4">
-        <div className="flex flex-row items-center gap-3">
-          <Image
-            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
-            alt="WBTC Token"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full"
-          />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-        </div>
-        <CodeBlock code={displayUrl} />
-      </div>
-    )
-  }
-
-  if (type === 'network-image') {
-    return (
-      <div className="flex flex-col md:flex-row items-center gap-4">
-        <div className="flex flex-row items-center gap-3">
-          <Image
-            src={getApiUrl('/image/eip155-1')}
-            alt="Ethereum"
-            size={48}
-            skeleton
-            lazy
-            shape="circle"
-            className="rounded-full"
-          />
-          <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-        </div>
-        <CodeBlock code={displayUrl} />
-      </div>
-    )
-  }
-
-  // The only caller is the map below over the module-level `examples` list, which
-  // declares exactly three entries: 'token-image', 'network-image', 'token-list'. The
-  // first two are handled above, so reaching this point means the type is 'token-list'.
-  // There is no fourth type to fall through to, so this closing branch needs no guard
-  // and no dead default beneath it.
-  return (
-    <div className="flex flex-col md:flex-row items-center gap-4">
-      <div className="flex flex-row items-center gap-3">
-        <div className="flex -space-x-4">
-          <Image
-            src={getApiUrl('/image/eip155-1/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599')}
-            alt="Token 1"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-          <Image
-            src={getApiUrl('/image/eip155-1/0x6B175474E89094C44Da98b954EedeAC495271d0F')}
-            alt="Token 2"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-          <Image
-            src={getApiUrl('/image/eip155-1/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48')}
-            alt="Token 3"
-            skeleton
-            shape="circle"
-            size={48}
-            className="rounded-full border-2 border-border-overlap"
-          />
-        </div>
-        <Icon icon={faArrowRight} className="hidden md:visible text-accent-content" />
-      </div>
-      <CodeBlock code={displayUrl} />
-    </div>
-  )
-}
 
 export default function Home() {
   const navigate = useNavigate()
@@ -318,41 +296,40 @@ export default function Home() {
           </section>
 
           {/* Integration Examples */}
-          <section className="space-y-8 py-12">
+          <section className="space-y-6 py-8">
             <h2 className="font-heading text-center text-3xl font-bold text-content-strong">Simple Integration</h2>
-            <div className="grid gap-6">
+            <div className="grid items-stretch gap-4 lg:grid-cols-3">
               {examples.map((example) => (
-                <div
+                <IntegrationCard
                   key={example.type}
-                  className="glass-card p-6 transition-all duration-200 hover:shadow-glow-accent-subtle">
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    {/* Visual Preview */}
-                    <div className="flex items-center justify-center rounded-lg bg-surface-inset p-4">
-                      <ExamplePreview type={example.type} displayUrl={example.displayUrl} />
-                    </div>
-
-                    {/* Description */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-4">
-                        <div className="rounded-lg bg-accent/10 p-3">
-                          <Icon icon={example.icon} className="text-2xl text-accent-content" />
-                        </div>
-                        <h3 className="font-heading text-lg font-bold text-content-strong">{example.title}</h3>
-                      </div>
-                      <p className="text-content-secondary">{example.description}</p>
-                      <a
-                        href={example.code}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-content-subtle">
-                        <Icon icon={faLink} className="text-accent-content" />
-                        <code className="break-all font-mono">{example.code}</code>
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                  layout="compact"
+                  icon={example.icon}
+                  title={example.title}
+                  description={example.description}
+                  docsHref={getDocsUrl(example.docsPage)}
+                  preview={example.preview}>
+                  <IntegrationAddress href={example.code} />
+                </IntegrationCard>
               ))}
             </div>
+
+            <IntegrationCard
+              layout="wide"
+              icon={faSliders}
+              title="Image Options"
+              description="Add options to a token or network image address to resize it, change its format, or put a plate behind a logo. Pick an option to see its image and address."
+              docsHref={getDocsUrl('imageOptions')}>
+              <ImageOptionsExample />
+            </IntegrationCard>
+
+            <IntegrationCard
+              layout="wide"
+              icon={faLayerGroup}
+              title="Sprite Sheets"
+              description="One request draws a whole list. The sheet is one picture of every logo in the list, and a stylesheet says where each token sits in it."
+              docsHref={getDocsUrl('spriteSheets')}>
+              <SpriteSheetExample />
+            </IntegrationCard>
           </section>
 
           {/* Platform Metrics */}

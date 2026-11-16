@@ -22,6 +22,14 @@ export function GibProvider({ children, ...options }: GibProviderProps) {
   return <GibContext.Provider value={client}>{children}</GibContext.Provider>
 }
 
+/**
+ * The client from context, or null outside a provider. For components that also work without one and
+ * fall back to a base address they are given.
+ */
+export function useOptionalGib(): GibClient | null {
+  return useContext(GibContext)
+}
+
 /** Access the Gib.Show client from context */
 export function useGib(): GibClient {
   const ctx = useContext(GibContext)

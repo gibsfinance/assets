@@ -8,6 +8,7 @@
  * or all rows (token list endpoints). The `sorted` flag adds an outer ORDER BY.
  */
 import * as fs from 'fs'
+import { isVectorImageExtension } from '@gibs/sdk/sprite-layout'
 import * as path from 'path'
 import * as viem from 'viem'
 import { failureLog, responseToBuffer, type ChainId } from '@gibs/utils'
@@ -23,6 +24,7 @@ import {
 } from '../image-placeholders'
 import { getImageStore, hashBytes } from '../image-store'
 import { imageColumnsWithoutStoredBytes, unexportedBytesSql } from './image-columns'
+import { deleteVariantsOfImage } from './image-variant-rows'
 import { isLinkOnlyHost, linkOnlyUriPrefixes } from '../link-only-hosts'
 import { toCAIP2, namespaceOf, expectedNetworkType, isFakedEvmReference, TEST_NETWORK_TYPE } from '../chain-id'
 import * as utils from '../utils'
@@ -195,6 +197,11 @@ const NO_STORED_BYTES: StoredImageBytes = { bytes: Buffer.alloc(0), sha256: null
  * `uri` refreshes the link. The single shared write is what keeps a
  * downloaded image and a link-only one from drifting onto two different
  * upsert shapes.
+ *
+ * The write runs in one transaction. The image row is locked while its stored digest is read, so a concurrent write
+ * of the same image waits. When the conflict update changes the digest, the image's resized copies (`image_variant`)
+ * are removed in the same transaction: a copy drawn from the old bytes must not outlive them. A row whose digest is
+ * unchanged keeps its copies.
  */
 const upsertImageAndLink = async (
   {
@@ -217,11 +224,39 @@ const upsertImageAndLink = async (
   },
   tx?: DrizzleTx,
 ) => {
-  const db = tx ?? getDrizzle()
+  if (tx) return writeImageAndLink(tx, { originalUri, stored, ext, imageHash, mode })
+  return getDrizzle().transaction((transaction) =>
+    writeImageAndLink(transaction, { originalUri, stored, ext, imageHash, mode }),
+  )
+}
+
+/** The body of {@link upsertImageAndLink}: runs inside the transaction it is given. */
+const writeImageAndLink = async (
+  db: DrizzleTx,
+  {
+    originalUri,
+    stored,
+    ext,
+    imageHash,
+    mode,
+  }: {
+    originalUri: string
+    stored: StoredImageBytes
+    ext: string
+    imageHash: string
+    mode: ImageMode
+  },
+) => {
   // The database copy is optional (IMAGE_BYTES_IN_DATABASE). The digest and length are not: they
   // are what every reader uses to find the file, and `images export` selects on the length.
   const content = config.imageBytesInDatabase ? stored.bytes : null
   const { sha256: contentSha256, byteSize } = stored
+  // The stored digest is read under a row lock, so the comparison below holds until this transaction ends.
+  const [previous] = await db
+    .select({ contentSha256: s.image.contentSha256 })
+    .from(s.image)
+    .where(eq(s.image.imageHash, imageHash))
+    .for('update')
   const [inserted] = await db
     .insert(s.image)
     .values({ uri: originalUri, content, contentSha256, byteSize, imageHash, ext, mode })
@@ -236,6 +271,10 @@ const upsertImageAndLink = async (
       },
     })
     .returning(imageColumnsWithoutStoredBytes)
+  // A conflict that changes the digest makes every resized copy of the old bytes stale. A new row has none.
+  if (previous !== undefined && previous.contentSha256 !== contentSha256) {
+    await deleteVariantsOfImage(db, imageHash)
+  }
   const [link] = await db
     .insert(s.link)
     .values({
@@ -1111,7 +1150,8 @@ export const purgeUnreferencedPlaceholderImages = async (tx?: DrizzleTx) => {
 }
 
 /** Whether an image extension names a vector format (`.svg`, or the `.svg+xml` spelling). */
-export const isVectorExt = (ext: string | null | undefined): boolean => ext === '.svg' || ext === '.svg+xml'
+/** Whether a stored extension is a vector image. The rule lives in the shared sprite layout. */
+export const isVectorExt = isVectorImageExtension
 
 /**
  * Point a network's icon slot at `imageHash` on behalf of `providerKey`, but only if

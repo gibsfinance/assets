@@ -164,6 +164,7 @@ describe('openapi covers the routes the server actually registers', () => {
     // both directions, and updating it is the one-line acknowledgement that the
     // public surface changed.
     const operations = [...documented.values()].reduce((total, methods) => total + methods.size, 0)
-    expect(operations).toBe(31)
+    // 32: the sprite stylesheet at /sprite/{providerKey}/{listKey}/sheet.css is the one added here.
+    expect(operations).toBe(32)
   })
 })

@@ -99,6 +99,7 @@ falls back to the default.
 | `SHARP_CACHE_ITEMS` | 64 | most operations sharp keeps cached |
 | `SHARP_CONCURRENCY` | 1 | threads libvips may use |
 | `PLATE_RENDER_CONCURRENCY` | `SHARP_CONCURRENCY` | plated images drawn at once; a line of 8 times that waits (4 places per caller), past it 503 + `Retry-After` |
+| `SPRITE_RENDER_CONCURRENCY` | `1` | sprite sheets drawn at once; a line of 8 times that waits (2 places per caller), past it 503 + `Retry-After` |
 | `CLIENT_ADDRESS_HEADER` | none | header that carries the real client address (`cf-connecting-ip` behind Cloudflare); read only when named, never trusted by default (`image/client-address.ts`) |
 | `IMAGE_STORE` | `local` | which storage holds image bytes: `local`, `s3`, `gcs`, `azure`, `ipfs`, or JSON for `tiered` / `mirrored` / `fallback` (see "Image Store" below) |
 | `IMAGE_STORE_DIR` | `<repository root>/image-store` | `local`: root of the content-addressed image store |
@@ -210,16 +211,21 @@ Return visitors paint from cache; the build removes the two blocking requests.
   deploy and redeploy). The build then ships a `/sw.js` that deletes every cache and unregisters
   itself, and the page stops registering a worker. Browsers pick it up on their next update check,
   which they make on each navigation and at least daily. Remove the variable to turn the worker back on.
-- **Edge cache for the page:** a Cloudflare cache rule (zone `gib.show`, phase
-  `http_request_cache_settings`, description "page: cache index.html at the edge for 60s") caches
-  `/` and `/index.html` on `gib.show` and `staging.gib.show` for 60 seconds, edge only. Browsers still
-  get the origin's `no-cache` (browser TTL: respect origin). A deploy reaches first-time visitors
-  within a minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of
-  about 120 ms. The other rule in that phase ("content") caches `/image`, `/list`, `/token`, `/stats`,
-  `/networks`. It respects the origin's lifetimes, except that it keeps 404 answers for one hour:
+- **Edge cache for the page:** two Cloudflare cache rules (zone `gib.show`, phase
+  `http_request_cache_settings`) hold the edge rules. The page rule ("page: cache index.html at the
+  edge for 60s") keeps `/` and `/index.html` on `gib.show` and `staging.gib.show` at the edge for 60
+  seconds. Browsers still get the origin's `no-cache`. A deploy reaches first-time visitors within a
+  minute, with no purge. The page arrives in about 30-50 ms on a warm connection instead of about
+  120 ms. The content rule ("content") covers `/image`, `/list`, `/token`, `/sprite`, `/stats` and
+  `/networks`. It follows the origin's lifetimes, except that it keeps 404 answers for one hour:
   without that, Cloudflare kept them about 3 minutes despite the origin's `max-age=86400`, and one
-  client polling a few imageless addresses sent about 3,000 requests a day to the server. Edit both
-  rules through the Cloudflare API, not by hand, so this note stays true.
+  client polling a few imageless addresses sent about 3,000 requests a day to the server.
+  Edit the rules through the Cloudflare API, not by hand. Then export them from `packages/docs`:
+  `CLOUDFLARE_ZONE_ID=<zone> CLOUDFLARE_API_TOKEN=<token> node scripts/export-edge-cache-rules.ts`.
+  That rewrites `packages/docs/src/data/edge-cache-rules.json` and the table on the caching page
+  (`packages/docs/src/content/docs/api-reference/caching.md`); commit both. Add `--check` to compare
+  the live rules with the committed file. It exits 1 and names each difference. The script lives at
+  `packages/docs/scripts/export-edge-cache-rules.ts`.
 - The non-home route loader (`src/prerender/route-loader.ts`) is one module of markup and style, so
   swapping the artwork is a one-file change. A test holds its byte size under a budget.
 
@@ -319,7 +325,9 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   call on bytes from outside spreads `UNTRUSTED_INPUT` into its options: the raster sanitizer, the resize and measurement
   openers (including the SVG density path), and the sprite rasteriser. sharp reads the header first, so a palette PNG that
   claims 16383 by 16383 pixels is refused before any pixel is decoded (a 255 KB file of that size decoded for about six
-  seconds before the cap). Images that a server composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
+  seconds before the cap). The same cap bounds the total of every picture one vector document embeds (a budget per
+  document, spent only by pictures that are kept), so many small-looking embeds cannot exceed it in sum. Images that a server
+  composes itself (plates, the sprite sheet) are not untrusted. Idle shutdown: a worker with no job for `SANITIZER_IDLE_MS` (60 s) is terminated, so the memory exists
   only while remote files are being cleaned; the next job starts a fresh worker. A job takes its worker's idle stop away,
   and the idle timer never stops a worker that is running a job. `close()` answers every waiting job and every later job
   unavailable, and stops the workers.
@@ -343,7 +351,7 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   Stored vector images pass `sanitizeImage`, so this is the second wall. The vector sanitizer (`svg-sanitize.ts`) reads
   the file with `@xmldom/xmldom` (pinned, MIT licence, no dependencies of its own), keeps only a list of vector image
   elements in the vector image namespace, removes `on*` attributes, checks every `href` and `src` under any prefix
-  (decoded the way a browser reads it), cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
+  (decoded the way a browser reads it), replaces a data address with `#` unless it is an embedded picture that passes the check below, cleans `@import`, `url()` (also an unterminated one) and the functions that take a bare-string address (`image-set(`, `image(`, `cross-fade(`, `element(`, with their `-webkit-` forms; the whole declaration is dropped) in styles and in every attribute value
   (after style sheet escapes are read, so `\75rl(` is caught), removes `xml:base` everywhere, and writes a cleaned copy
   into a new document (`copyChildren` / `copyElement`). The copy is linear: xmldom re-indexes a parent's children on
   every removal and `setAttributeNS` scans the whole attribute list on every write, so the walk never removes a node and
@@ -355,7 +363,18 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   frame otherwise); a format with no re-encoder (`.apng`, `.bmp`, `.tif`, `.ico`, `.heic`, `.jxl`) or a file sharp cannot decode
   throws `ImageRejectedError` (the base of `SvgRejectedError`) and nothing is stored. Sharp cannot write an animated PNG,
   so APNG is refused, not flattened. A style element's text or a `style` attribute over `MAX_STYLE_TEXT_LENGTH` (256 KiB), or a document over
-  `MAX_ATTRIBUTES` (200,000), is rejected. Other attribute values (path data) get no length cap, only the remote-load
+  `MAX_ATTRIBUTES` (200,000), is rejected. Embedded pictures: a data address in an `image` link, or any address whose
+  label is an image type, is kept only when its base64 text is well formed, its bytes are a Portable Network Graphics,
+  JPEG, GIF, WebP or AVIF file by their magic numbers (`svg-raster-embed.ts`), and its header states a size that the
+  document's budget can pay (`cleanedEmbeddedRaster` in `svg-sanitize.ts`; the budget starts at `MAX_INPUT_PIXELS` per
+  document and a refused picture costs nothing). The size comes from the header, never from the label, and nothing is
+  decoded. A picture whose label is wrong (`img/png`) is rewritten to the type its bytes are, as a browser would sniff
+  it; a label that is not an image type is read only on an `image` element, and anywhere else it is blanked. A
+  correctly labelled picture is kept as written. AVIF is always refused, because its size sits in item tables this
+  check does not read. Non-base64 addresses are blanked. A nested vector address (`data:image/svg+xml`) is blanked: the
+  document inside it is neither cleaned nor measured, so a 12000 by 12000 picture one level down drew for about a
+  second before this rule. Nothing is ever relabelled to a vector type. The renderer does not decode a `url()` data address in a style declaration (a 12000
+  by 12000 embed in a fill drew nothing and took about 2 ms), so only `href`/`src` carry pictures. Other attribute values (path data) get no length cap, only the remote-load
   check. An animation (`animate`, `set` and the rest) is removed when it targets `href`, `src`, `base` or an `on*` attribute,
   or when a `to`, `from`, `by` or `values` value would change under the style cleaning. The vector
   changes were checked on the 4,441 files of the smoldapp sample: the copy walk gives byte-identical output for every
@@ -368,6 +387,21 @@ Four collectors (`trustwallet`, `smoldapp`, `pls369`, `ethereum-lists`) read rep
   batch process with no deadline.
   A new route that sends image bytes must call `setImageSecurityHeaders`.
 - `RANKING_SPACING = 1000` in `sync-order.ts` — groups sub-lists under providers
+- **Sprites** (`server/image/sprite.ts`, `packages/sdk/src/sprite-layout.ts`): a list's logos on one sheet. The manifest
+  (`/sprite/:p/:l`), the sheet (`…/sheet`) and the cascading stylesheet (`…/sheet.css`) all read one layout. The layout
+  module is the single source for the token class names, the scope class, the layout version and the stylesheet text.
+  The server imports it from the SDK's source (its `exports` point there in the repository); `publish-exports.mjs`
+  rewrites the subpath to `dist` at publish. Tokens are placed in list order (`list_token_order_id`, then chain,
+  address, entry id), never by image format, so the limit cuts the same rows for every endpoint. Vectors under
+  `content=mixed` take no cell. The version hashes the settings and every placement, and a request that pins a stale
+  `v=` answers 409, never a redirect. Plates and gaps use the single-image plate rules; a plated sheet is cut to 500
+  tokens. The sheet is capped at 16,383 pixels a side and 25 million in all.
+  Drawing is bounded like single plates: a sheet is charged in cells (1 unit a cell, 2 a plated cell) against a per-caller
+  budget (3000 a minute) and a global one (20000 a minute), spent only when the sheet is drawn, and drawn through its own
+  gate (`sprite-budget.ts`, 1 at a time). A refusal is `no-store` 429 or 503 with `Retry-After`. The manifest and
+  stylesheet draw nothing but a string of vector pictures, and inline at most 4 MiB of them. Lifetimes: manifest,
+  stylesheet and unpinned sheet 5 minutes (`SPRITE_INDEX_SECONDS`); a sheet pinned by `v=` a day
+  (`SPRITE_VERSIONED_SHEET_SECONDS`), because the version names its layout.
 
 ### Image Bytes: the Store
 Image bytes live in a content-addressed store (`packages/server/src/image-store/`, directory `IMAGE_STORE_DIR`,

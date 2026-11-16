@@ -1,0 +1,39 @@
+{
+  "description": "Golden contract for sprite layout: the layout version, the scope class and the token classes for one fixed request. Computed by the shared module in @gibs/sdk (packages/sdk/src/sprite-layout.ts). The server suite asserts that its manifest and stylesheet carry these values, and the software development kit suite asserts that its own helpers compute them. If either side drifts from the shared module, one of the two suites goes red. Regenerate only when a layout rule changes on purpose, and say so in the commit.",
+  "provider": "pulsex",
+  "list": "extended",
+  "request": {
+    "size": 16,
+    "cols": 5,
+    "limit": 500,
+    "scale": 2,
+    "gap": 2,
+    "bg": "FF8800",
+    "shape": "square",
+    "content": "mixed"
+  },
+  "entries": [
+    { "key": "eip155-1-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "vector": false },
+    { "key": "solana-501-GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g", "vector": true },
+    { "key": "eip155-369-0x50f1ca62e6fb8adf438ca1f50067ab83670094a6", "vector": false }
+  ],
+  "version": "18e55705b5d46d",
+  "scope": "gibsheet-0da3c1fbeae6cd",
+  "classes": [
+    {
+      "chainId": 1,
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "className": "gib-eip155-1-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    },
+    {
+      "chainId": "solana-501",
+      "address": "GozPNCAseytzxCR3d2k8hTsTYkr4SDpuXy2RQAZFVx2g",
+      "className": "gib-solana-501-_goz_p_n_c_aseytzx_c_r3d2k8h_ts_t_ykr4_s_dpu_xy2_r_q_a_z_f_vx2g"
+    },
+    {
+      "chainId": 369,
+      "address": "0x50f1ca62e6fb8adf438ca1f50067ab83670094a6",
+      "className": "gib-eip155-369-0x50f1ca62e6fb8adf438ca1f50067ab83670094a6"
+    }
+  ]
+}

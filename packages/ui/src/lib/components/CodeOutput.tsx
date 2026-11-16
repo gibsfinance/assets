@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useMemo } from 'react'
 import { useStudio } from '../contexts/StudioContext'
 import { root } from '../config'
 import CodeBlock from './CodeBlock'
@@ -11,8 +11,9 @@ import {
   generateHtmlSnippet,
   generateImgTag,
 } from '../utils/snippet-generators'
-import { faCheck, faCopy, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
 import { Icon } from './Icon'
+import CopyButton from './CopyButton'
 
 // ---------------------------------------------------------------------------
 // Tab + mode controls
@@ -72,51 +73,6 @@ function ModeSwitch({ value, onChange }: ModeSwitchProps) {
         </button>
       ))}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Copy button with feedback
-// ---------------------------------------------------------------------------
-
-interface CopyButtonProps {
-  text: string
-  label: string
-  variant?: 'primary' | 'secondary'
-}
-
-function CopyButton({ text, label, variant = 'primary' }: CopyButtonProps) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard API not available — silently ignore
-    }
-  }, [text])
-
-  const baseClass =
-    variant === 'primary'
-      ? 'rounded-lg bg-accent px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-accent-soft disabled:opacity-50'
-      : 'rounded-lg border border-border bg-surface-inset px-4 py-2 text-sm font-medium text-content-muted transition-colors hover:bg-surface-control hover:text-content-body'
-
-  return (
-    <button type="button" onClick={handleCopy} className={baseClass}>
-      {copied ? (
-        <>
-          <Icon icon={faCheck} className="mr-2 text-xs" />
-          Copied!
-        </>
-      ) : (
-        <>
-          <Icon icon={faCopy} className="mr-2 text-xs" />
-          {label}
-        </>
-      )}
-    </button>
   )
 }
 

@@ -14,6 +14,7 @@ export default defineConfig({
         'scripts/generate-openapi.ts',
         'scripts/check-no-select.ts',
         'scripts/copy-storybook.ts',
+        'scripts/export-edge-cache-rules.ts',
       ],
       thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
