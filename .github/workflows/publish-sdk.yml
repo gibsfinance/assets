@@ -71,10 +71,11 @@ jobs:
       # plain Node does before publishing them.
       - name: Load the built SDK in plain Node
         run: cd packages/sdk && node --input-type=module -e "await import('./dist/index.js'); await import('./dist/sprite-layout.js')"
+      # Trusted publishing: npm checks this run's GitHub identity token against the trusted publisher set on
+      # the package (repository gibsfinance/assets, workflow publish-sdk.yml). No npm token is stored anywhere,
+      # and npm adds provenance on its own. Needs npm 11.5.1 or later, which Node 24 ships.
       - name: Publish @gibs/sdk
-        run: cd packages/sdk && npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: cd packages/sdk && npm publish --access public
 
   publish-react:
     needs: publish-sdk
@@ -110,6 +111,4 @@ jobs:
       - name: Load the built React package in plain Node
         run: cd packages/react && node --input-type=module -e "await import('./dist/index.js')"
       - name: Publish @gibs/react
-        run: cd packages/react && npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: cd packages/react && npm publish --access public
